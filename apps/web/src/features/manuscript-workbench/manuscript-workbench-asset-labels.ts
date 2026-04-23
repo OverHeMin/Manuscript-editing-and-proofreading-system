@@ -73,3 +73,45 @@ export function formatWorkbenchGeneratedOutputTypeLabel(
 
   return "结果文件";
 }
+
+export function buildWorkbenchAssetDisplayName(
+  manuscriptTitle: string,
+  asset: {
+    asset_type: string;
+    file_name?: string | null;
+  },
+): string {
+  const baseTitle = manuscriptTitle.trim().length > 0 ? manuscriptTitle.trim() : "稿件";
+  const suffix = resolveWorkbenchAssetDisplaySuffix(asset.asset_type);
+  if (suffix) {
+    return `${baseTitle}${suffix}`;
+  }
+
+  const baseName = asset.file_name?.trim();
+  if (baseName && baseName.length > 0) {
+    return baseName;
+  }
+
+  return formatWorkbenchGeneratedOutputTypeLabel(asset.asset_type);
+}
+
+function resolveWorkbenchAssetDisplaySuffix(assetType: string): string | null {
+  switch (assetType) {
+    case "original":
+      return " - 原稿";
+    case "screening_report":
+      return " - 初筛结果";
+    case "edited_docx":
+      return " - 编辑稿";
+    case "proofreading_draft_report":
+      return " - 校对草稿报告";
+    case "final_proof_annotated_docx":
+      return " - 校对批注稿";
+    case "final_proof_issue_report":
+      return " - 校对问题报告";
+    case "human_final_docx":
+      return " - 人工终稿";
+    default:
+      return null;
+  }
+}

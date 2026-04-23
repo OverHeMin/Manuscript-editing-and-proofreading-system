@@ -10,6 +10,7 @@ import {
   exportCurrentAsset,
   getJob,
   getManuscript,
+  getModuleExecutionConcurrency,
   listManuscriptAssets,
   uploadManuscriptBatch,
   uploadManuscript,
@@ -17,6 +18,7 @@ import {
   type DocumentAssetExportViewModel,
   type DocumentAssetViewModel,
   type JobViewModel,
+  type ModuleExecutionConcurrencySnapshotViewModel,
   type UploadManuscriptBatchInput,
   type UploadManuscriptBatchResult,
   type ModuleExecutionOverviewViewModel,
@@ -94,6 +96,7 @@ export interface ManuscriptWorkbenchWorkspace {
   templateFamily?: TemplateFamilyViewModel | null;
   journalTemplateProfiles?: JournalTemplateProfileViewModel[];
   selectedJournalTemplateProfile?: JournalTemplateProfileViewModel | null;
+  moduleExecutionConcurrency?: ModuleExecutionConcurrencySnapshotViewModel;
 }
 
 export interface ManuscriptWorkbenchKnowledgeReferenceViewModel {
@@ -212,6 +215,10 @@ export interface PublishHumanFinalAndLoadResult {
   workspace: ManuscriptWorkbenchWorkspace;
 }
 
+export interface ManuscriptWorkbenchProofreadingGovernanceHandoffOptions {
+  snapshotId?: string;
+}
+
 export interface UpdateTemplateSelectionAndLoadInput {
   manuscriptId: string;
   templateFamilyId?: string | null;
@@ -223,8 +230,10 @@ export interface ManuscriptWorkbenchController {
     manuscriptId: string,
     options?: ManuscriptWorkbenchWorkspaceLoadOptions,
   ): Promise<ManuscriptWorkbenchWorkspace>;
+  loadModuleExecutionConcurrency(): Promise<ModuleExecutionConcurrencySnapshotViewModel>;
   loadProofreadingGovernanceHandoff?(
     manuscriptId: string,
+    options?: ManuscriptWorkbenchProofreadingGovernanceHandoffOptions,
   ): Promise<ManuscriptWorkbenchProofreadingGovernanceHandoffViewModel>;
   loadTemplateContext?(
     templateFamilyId: string,
@@ -287,8 +296,12 @@ export function createManuscriptWorkbenchController(
     loadWorkspace(manuscriptId, options) {
       return loadWorkspaceWithKnowledge(manuscriptId, options);
     },
-    loadProofreadingGovernanceHandoff(manuscriptId) {
-      return loadProofreadingGovernanceHandoff(client, manuscriptId);
+    async loadModuleExecutionConcurrency() {
+      const response = await getModuleExecutionConcurrency(client);
+      return response.body;
+    },
+    loadProofreadingGovernanceHandoff(manuscriptId, options) {
+      return loadProofreadingGovernanceHandoff(client, manuscriptId, options);
     },
     async loadTemplateContext(templateFamilyId) {
       const [availableTemplateFamilies, templateFamily, journalTemplateProfiles] =
@@ -519,8 +532,10 @@ async function loadTemplateContext(
 async function loadProofreadingGovernanceHandoff(
   client: ManuscriptWorkbenchHttpClient,
   manuscriptId: string,
+  options: ManuscriptWorkbenchProofreadingGovernanceHandoffOptions = {},
 ): Promise<ManuscriptWorkbenchProofreadingGovernanceHandoffViewModel> {
   const normalizedManuscriptId = manuscriptId.trim();
+  const normalizedSnapshotId = options.snapshotId?.trim() ?? "";
   if (normalizedManuscriptId.length === 0) {
     return {
       residualReviewItems: [],
@@ -533,7 +548,10 @@ async function loadProofreadingGovernanceHandoff(
       method: "GET",
       url:
         "/api/v1/modules/proofreading/governance-handoff" +
-        `?manuscriptId=${encodeURIComponent(normalizedManuscriptId)}`,
+        `?manuscriptId=${encodeURIComponent(normalizedManuscriptId)}` +
+        (normalizedSnapshotId
+          ? `&snapshotId=${encodeURIComponent(normalizedSnapshotId)}`
+          : ""),
     })
   ).body;
 }

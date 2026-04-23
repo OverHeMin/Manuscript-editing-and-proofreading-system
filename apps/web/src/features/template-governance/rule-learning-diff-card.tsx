@@ -343,6 +343,8 @@ function formatResidualStatus(value: string): string {
       return "可生成候选";
     case "validation_failed":
       return "复验未通过";
+    case "manual_review_pending":
+      return "待人工复核";
     case "manual_only":
       return "仅人工处理";
     case "evidence_only":

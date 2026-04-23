@@ -110,9 +110,9 @@ test("editing workbench saves a journal template context before running editing"
   });
 
   await expect(page.getByRole("heading", { name: /编辑工作区/ })).toBeVisible();
-  await expect(page.getByRole("textbox", { name: /稿件查找|搜索稿件 ID/ })).toHaveValue(
-    prepared.manuscriptId,
-  );
+  await expect(
+    page.getByRole("textbox", { name: /稿件查找|搜索稿件 ID/ }),
+  ).toHaveValue(prepared.manuscriptTitle);
   await expect(page.locator("body")).toContainText("基础模板家族");
   await expect(page.locator("body")).toContainText(seededFamilyName);
 
@@ -158,6 +158,7 @@ async function prepareEditingWorkbenchJournalScenario(
   },
 ): Promise<{
   manuscriptId: string;
+  manuscriptTitle: string;
   journalTemplateId: string;
   journalName: string;
 }> {
@@ -273,6 +274,7 @@ async function prepareEditingWorkbenchJournalScenario(
 
   return {
     manuscriptId: uploaded.manuscript.id,
+    manuscriptTitle: `${input.label} clinical manuscript`,
     journalTemplateId: journalTemplate.id,
     journalName,
   };

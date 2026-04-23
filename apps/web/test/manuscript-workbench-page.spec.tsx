@@ -10,6 +10,7 @@ import {
   buildManualManuscriptTypeOptions,
   buildProofreadingConfirmationDecisions,
   buildJournalTemplateOptions,
+  buildWorkbenchAssetDisplayName,
   buildWorkbenchModuleRunInput,
   deriveUploadTitleFromFileName,
   resolveProofreadingDraftSelection,
@@ -19,13 +20,19 @@ import {
   resolveTemplateFamilyIdForManuscriptType,
   resolveManualFeedbackContext,
   pruneConfirmationState,
+  resolveQueueActivityLabel,
   buildTemplateFamilyOptions,
+  hydrateWorkbenchDetailJob,
   loadPrefilledWorkbenchPageData,
   ManuscriptWorkbenchFocusCanvas,
   ManuscriptWorkbenchPage,
   resolveWorkbenchGeneratedAssetFileName,
   resolveWorkbenchNotice,
 } from "../src/features/manuscript-workbench/manuscript-workbench-page.tsx";
+import {
+  buildProofreadingConfirmationItems,
+  buildProofreadingDocumentBlocks,
+} from "../src/features/manuscript-workbench/manuscript-workbench-detail.tsx";
 
 function createStubController() {
   return {
@@ -75,8 +82,8 @@ test("submission workbench keeps the upload intake as the default rendering path
   assert.match(markup, /上传稿件/u);
 });
 
-test("prefilled proofreading page data includes governance handoff when the controller can load it", async () => {
-  const calls: string[] = [];
+test("prefilled proofreading page data includes governance handoff for the current proofreading snapshot", async () => {
+  const calls: Array<string | { manuscriptId: string; snapshotId?: string }> = [];
   const result = await loadPrefilledWorkbenchPageData(
     {
       loadWorkspace: async () => {
@@ -88,6 +95,44 @@ test("prefilled proofreading page data includes governance handoff when the cont
             manuscript_type: "clinical_study",
             status: "processing",
             created_by: "proofreader-1",
+            module_execution_overview: {
+              screening: {
+                module: "screening",
+                observation_status: "not_started",
+              },
+              editing: {
+                module: "editing",
+                observation_status: "not_started",
+              },
+              proofreading: {
+                module: "proofreading",
+                observation_status: "reported",
+                latest_snapshot: {
+                  id: "snapshot-proof-1",
+                  manuscript_id: "manuscript-proof-1",
+                  module: "proofreading",
+                  job_id: "job-proof-1",
+                  execution_profile_id: "execution-profile-proof-1",
+                  module_template_id: "template-proof-1",
+                  module_template_version_no: 1,
+                  prompt_template_id: "prompt-proof-1",
+                  prompt_template_version: "v1",
+                  skill_package_ids: [],
+                  skill_package_versions: [],
+                  model_id: "gpt-proof-1",
+                  knowledge_item_ids: [],
+                  created_asset_ids: [],
+                  created_at: "2026-04-21T09:05:00.000Z",
+                  agent_execution: {
+                    observation_status: "not_linked",
+                  },
+                  runtime_binding_readiness: {
+                    observation_status: "failed_open",
+                    error: "not used",
+                  },
+                },
+              },
+            },
             created_at: "2026-04-21T09:00:00.000Z",
             updated_at: "2026-04-21T09:10:00.000Z",
           },
@@ -118,8 +163,11 @@ test("prefilled proofreading page data includes governance handoff when the cont
       loadJob: async () => {
         throw new Error("not used");
       },
-      loadProofreadingGovernanceHandoff: async () => {
-        calls.push("loadProofreadingGovernanceHandoff");
+      loadProofreadingGovernanceHandoff: async (manuscriptId, options) => {
+        calls.push({
+          manuscriptId,
+          snapshotId: options?.snapshotId,
+        });
         return {
           residualReviewItems: [
             {
@@ -158,7 +206,10 @@ test("prefilled proofreading page data includes governance handoff when the cont
   );
   assert.deepEqual(calls, [
     "loadWorkspace",
-    "loadProofreadingGovernanceHandoff",
+    {
+      manuscriptId: "manuscript-proof-1",
+      snapshotId: "snapshot-proof-1",
+    },
   ]);
 });
 
@@ -220,30 +271,28 @@ test("prefilled proofreading page data requests a proofreader-safe workspace loa
 });
 
 test("governed execution preflight exposes explicit provider and runtime readiness failures", () => {
-  assert.equal(
-    resolveGovernedExecutionBlockMessage("editing", {
-      mode: "editing",
-      providerReadinessStatus: "warning",
-      runtimeBindingReadinessStatus: "ready",
-    }),
-    "编辑的 AI 提供商未就绪，请先检查模型连接后再执行。",
-  );
-  assert.equal(
-    resolveGovernedExecutionBlockMessage("screening", {
-      mode: "screening",
-      providerReadinessStatus: "ok",
-      runtimeBindingReadinessStatus: "missing",
-    }),
-    "初筛尚未绑定可用运行时，请先完成运行时绑定后再执行。",
-  );
-  assert.equal(
-    resolveGovernedExecutionBlockMessage("proofreading", {
-      mode: "proofreading",
-      providerReadinessStatus: "ok",
-      runtimeBindingReadinessStatus: "degraded",
-    }),
-    "校对的运行时绑定处于降级状态，请修复后再执行。",
-  );
+  const providerBlocked = resolveGovernedExecutionBlockMessage("editing", {
+    mode: "editing",
+    providerReadinessStatus: "warning",
+    runtimeBindingReadinessStatus: "ready",
+  });
+  const runtimeMissing = resolveGovernedExecutionBlockMessage("screening", {
+    mode: "screening",
+    providerReadinessStatus: "ok",
+    runtimeBindingReadinessStatus: "missing",
+  });
+  const runtimeDegraded = resolveGovernedExecutionBlockMessage("proofreading", {
+    mode: "proofreading",
+    providerReadinessStatus: "ok",
+    runtimeBindingReadinessStatus: "degraded",
+  });
+
+  assert.equal(providerBlocked, "编辑的 AI 准备未完成，请先检查系统设置后再执行。");
+  assert.equal(runtimeMissing, "初筛的 AI 准备未完成，请先完成相关设置后再执行。");
+  assert.equal(runtimeDegraded, "校对的 AI 准备异常，请修复设置后再执行。");
+  assert.doesNotMatch(providerBlocked ?? "", /提供商|模型连接/u);
+  assert.doesNotMatch(runtimeMissing ?? "", /运行时/u);
+  assert.doesNotMatch(runtimeDegraded ?? "", /运行时/u);
 });
 
 test("module success messages mention the generated output type", () => {
@@ -252,21 +301,21 @@ test("module success messages mention the generated output type", () => {
       id: "asset-screening-1",
       asset_type: "screening_report",
     }),
-    "已生成初筛报告 asset-screening-1",
+    "已生成初筛报告",
   );
   assert.equal(
     buildModuleRunSuccessMessage("editing", {
       id: "asset-editing-1",
       asset_type: "edited_docx",
     }),
-    "已生成编辑稿件 asset-editing-1",
+    "已生成编辑稿件",
   );
   assert.equal(
     buildModuleRunSuccessMessage("proofreading", {
       id: "asset-proofreading-1",
       asset_type: "final_proof_annotated_docx",
     }),
-    "已生成校对批注稿 asset-proofreading-1",
+    "已生成校对批注稿",
   );
 });
 
@@ -292,19 +341,45 @@ test("screening editing and proofreading share the compact desk family without o
     assert.match(markup, /data-pane-height="shell-aligned"/);
     assert.match(markup, /data-pane="queue-rail"/);
     assert.match(markup, /data-scroll-pane="queue"/);
-    assert.match(markup, /data-pane="focus-canvas"/);
-    assert.match(markup, /data-scroll-pane="focus"/);
-    assert.match(markup, /data-focus-body="scrollable"/);
-    assert.match(markup, /data-pane="batch-slab"/);
-    assert.match(markup, /data-scroll-pane="batch"/);
-    assert.match(markup, /data-batch-slab="bounded"/);
+    assert.match(markup, /data-pane="workspace-column"/);
+    assert.match(markup, /data-scroll-pane="workspace"/);
+    assert.match(markup, /data-pane="workspace-stage"/);
+    assert.match(markup, /data-pane="result-stage"/);
+    assert.match(markup, /manuscript-workbench-operation-panel/);
+    assert.match(markup, /manuscript-workbench-result-panel/);
+    assert.match(
+      markup,
+      /data-pane="workspace-column"[\s\S]*data-pane="workspace-stage"[\s\S]*data-pane="result-stage"/,
+    );
     assert.match(markup, /上传稿件/u);
     assert.doesNotMatch(markup, /manuscript-workbench-desk-bar/);
     assert.doesNotMatch(markup, /manuscript-workbench-summary-strip/);
     assert.doesNotMatch(markup, /manuscript-workbench-controls-intro/);
     assert.doesNotMatch(markup, /manuscript-workbench-batch-drawer-trigger/);
     assert.doesNotMatch(markup, /manuscript-workbench-batch-slab-meta/);
+    assert.doesNotMatch(markup, /执行上下文/u);
+    assert.doesNotMatch(markup, /统一入口/u);
+    assert.doesNotMatch(markup, /治理稿/u);
   }
+});
+
+test("mainline workbench hides evaluation handoff ids from the simplified main page", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchPage
+      mode="proofreading"
+      actorRole="proofreader"
+      controller={createStubController()}
+      prefilledManuscriptId="manuscript-prefill-1"
+      prefilledReviewedCaseSnapshotId="snapshot-prefill-1"
+      prefilledSampleSetItemId="sample-item-prefill-1"
+    />,
+  );
+
+  assert.doesNotMatch(markup, /已审核案例快照 ID/u);
+  assert.doesNotMatch(markup, /样本集条目 ID/u);
+  assert.doesNotMatch(markup, /manuscript-prefill-1/u);
+  assert.doesNotMatch(markup, /snapshot-prefill-1/u);
+  assert.doesNotMatch(markup, /sample-item-prefill-1/u);
 });
 
 test("workbench notice logic localizes upload and error feedback before rendering", () => {
@@ -327,7 +402,7 @@ test("workbench notice logic localizes upload and error feedback before renderin
   assert.deepEqual(uploadNotice, {
     tone: "success",
     title: "操作已完成",
-    message: "已上传稿件 manuscript-1",
+    message: "已上传稿件",
   });
   assert.deepEqual(errorNotice, {
     tone: "error",
@@ -356,7 +431,31 @@ test("uploaded manuscript notice stays in completed state even when follow-up se
   assert.deepEqual(uploadNotice, {
     tone: "success",
     title: "操作已完成",
-    message: "已上传稿件 manuscript-1",
+    message: "已上传稿件",
+  });
+});
+
+test("mainline notices describe follow-up progress without governance jargon", () => {
+  const notice = resolveWorkbenchNotice({
+    error: "",
+    status: "已生成编辑稿",
+    latestActionResult: {
+      tone: "success",
+      actionLabel: "Run Editing",
+      message: "已生成编辑稿",
+      details: [
+        {
+          label: "Settlement",
+          value: "业务已完成，后续处理中",
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(notice, {
+    tone: "success",
+    title: "操作已记录",
+    message: "已生成编辑稿，后续处理仍在进行中。",
   });
 });
 
@@ -542,6 +641,58 @@ test("upload title helper defaults single-file titles to the uploaded file name 
   assert.equal(
     deriveUploadTitleFromFileName("   ", "submission sample manuscript"),
     "submission sample manuscript",
+  );
+});
+
+test("asset display names stay tied to the manuscript title instead of raw file names", () => {
+  assert.equal(
+    buildWorkbenchAssetDisplayName("心血管综述", {
+      asset_type: "original",
+      file_name: "original.docx",
+    }),
+    "心血管综述 - 原稿",
+  );
+  assert.equal(
+    buildWorkbenchAssetDisplayName("心血管综述", {
+      asset_type: "edited_docx",
+      file_name: "editing-output.docx",
+    }),
+    "心血管综述 - 编辑稿",
+  );
+  assert.equal(
+    buildWorkbenchAssetDisplayName("心血管综述", {
+      asset_type: "screening_report",
+      file_name: "screening-report.md",
+    }),
+    "心血管综述 - 初筛结果",
+  );
+  assert.equal(
+    buildWorkbenchAssetDisplayName("心血管综述", {
+      asset_type: "final_proof_annotated_docx",
+      file_name: "proofreading-final.docx",
+    }),
+    "心血管综述 - 校对批注稿",
+  );
+});
+
+test("queue activity labels stay localized for completed and queued module runs", () => {
+  const manuscript = {
+    id: "manuscript-1",
+    title: "心血管综述",
+    manuscript_type: "review",
+    status: "processing",
+    created_by: "editor-1",
+    created_at: "2026-04-16T09:00:00.000Z",
+    updated_at: "2026-04-16T09:30:00.000Z",
+  } as never;
+
+  assert.equal(
+    resolveQueueActivityLabel(manuscript, "proofreading", "completed"),
+    "最近一次校对已完成",
+  );
+  assert.equal(
+    resolveQueueActivityLabel(manuscript, "editing", "queued"),
+    "等待编辑空闲",
   );
 });
 
@@ -1072,6 +1223,127 @@ test("proofreading confirmation detail follows the parent draft asset so the hum
     })?.id,
     "asset-proof-final-1",
   );
+});
+
+test("proofreading detail hydration prefers the full job payload so issue queue and manuscript blocks stay available", async () => {
+  const latestJobSummary = {
+    id: "job-proof-draft-1",
+    manuscript_id: "manuscript-1",
+    module: "proofreading",
+    job_type: "create_proofreading_draft",
+    status: "completed",
+    requested_by: "proofreader-1",
+    attempt_count: 1,
+    payload: {},
+  } as never;
+  const fullJob = {
+    ...latestJobSummary,
+    payload: {
+      proofreadingPlan: {
+        issues: [
+          {
+            itemId: "issue-1",
+            title: "术语不统一",
+            description: "术语前后表述不一致。",
+            severity: "medium",
+            issueType: "terminology",
+            anchor: {
+              blockIndex: 1,
+              quote: "心功能不全",
+              sectionLabel: "讨论",
+            },
+            suggestion: {
+              action: "replace_text",
+              replacementText: "心力衰竭",
+            },
+          },
+        ],
+      },
+      proofreadingSourceBlocks: [
+        {
+          blockId: "block-1",
+          blockIndex: 0,
+          sectionLabel: "摘要",
+          text: "研究纳入 100 例患者。",
+        },
+        {
+          blockId: "block-2",
+          blockIndex: 1,
+          sectionLabel: "讨论",
+          text: "患者存在心功能不全表现。",
+        },
+      ],
+    },
+  } as never;
+
+  const hydratedJob = await hydrateWorkbenchDetailJob(
+    {
+      loadJob: async () => fullJob,
+    } as never,
+    {
+      sourceJobId: "job-proof-draft-1",
+      latestJob: latestJobSummary,
+    },
+  );
+
+  assert.equal(hydratedJob?.id, "job-proof-draft-1");
+  assert.equal(buildProofreadingConfirmationItems(hydratedJob).length, 1);
+  assert.equal(buildProofreadingDocumentBlocks(hydratedJob).length, 2);
+  assert.equal(
+    buildProofreadingConfirmationItems(hydratedJob)[0]?.replacementText,
+    "心力衰竭",
+  );
+});
+
+test("proofreading detail hydration falls back to the cached latest job only when the full reload fails", async () => {
+  const cachedJob = {
+    id: "job-proof-draft-1",
+    manuscript_id: "manuscript-1",
+    module: "proofreading",
+    job_type: "create_proofreading_draft",
+    status: "completed",
+    requested_by: "proofreader-1",
+    attempt_count: 1,
+    payload: {
+      proofreadingPlan: {
+        issues: [
+          {
+            itemId: "issue-1",
+            anchor: {
+              blockIndex: 0,
+              quote: "原文",
+            },
+            suggestion: {
+              replacementText: "修订后",
+            },
+          },
+        ],
+      },
+      proofreadingSourceBlocks: [
+        {
+          blockId: "block-1",
+          blockIndex: 0,
+          text: "原文",
+        },
+      ],
+    },
+  } as never;
+
+  const hydratedJob = await hydrateWorkbenchDetailJob(
+    {
+      loadJob: async () => {
+        throw new Error("network unavailable");
+      },
+    } as never,
+    {
+      sourceJobId: "job-proof-draft-1",
+      latestJob: cachedJob,
+    },
+  );
+
+  assert.equal(hydratedJob, cachedJob);
+  assert.equal(buildProofreadingConfirmationItems(hydratedJob).length, 1);
+  assert.equal(buildProofreadingDocumentBlocks(hydratedJob).length, 1);
 });
 
 test("publish human final action results use the server confirmation summary as the authoritative settlement record", () => {

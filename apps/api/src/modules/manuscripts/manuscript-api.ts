@@ -50,6 +50,10 @@ import {
 } from "../execution-tracking/execution-tracking-api.ts";
 import { DEFAULT_RUNNING_ATTEMPT_STALE_AFTER_MS } from "../agent-execution/agent-execution-view.ts";
 import { GOVERNED_MANUSCRIPT_MAINLINE_MODULES } from "../shared/module-run-support.ts";
+import type {
+  ModuleExecutionConcurrencyController,
+  ModuleExecutionConcurrencySnapshot,
+} from "../shared/module-execution-concurrency-controller.ts";
 
 const MAINLINE_ATTEMPT_LEDGER_VISIBLE_LIMIT = 9;
 
@@ -85,6 +89,10 @@ export interface CreateManuscriptApiOptions {
     "getActiveBindingReadinessForScope"
   >;
   agentExecutionService?: Pick<AgentExecutionService, "getLog">;
+  moduleExecutionConcurrencyController?: Pick<
+    ModuleExecutionConcurrencyController,
+    "getSnapshot"
+  >;
   now?: () => Date;
   runningAttemptStaleAfterMs?: number;
 }
@@ -241,6 +249,35 @@ export function createManuscriptApi(options: CreateManuscriptApiOptions) {
             runningAttemptStaleAfterMs,
           },
         }),
+      };
+    },
+
+    async getModuleExecutionConcurrency(): Promise<
+      RouteResponse<ModuleExecutionConcurrencySnapshot>
+    > {
+      return {
+        status: 200,
+        body:
+          options.moduleExecutionConcurrencyController?.getSnapshot() ?? {
+            active: {
+              global: 0,
+              screening: 0,
+              editing: 0,
+              proofreading: 0,
+            },
+            queued: {
+              global: 0,
+              screening: 0,
+              editing: 0,
+              proofreading: 0,
+            },
+            limits: {
+              global: 0,
+              screening: 0,
+              editing: 0,
+              proofreading: 0,
+            },
+          },
       };
     },
   };

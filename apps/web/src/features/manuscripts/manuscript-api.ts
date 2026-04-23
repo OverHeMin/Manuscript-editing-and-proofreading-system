@@ -2,6 +2,7 @@ import type {
   DocumentAssetExportViewModel,
   DocumentAssetViewModel,
   JobViewModel,
+  ModuleExecutionConcurrencySnapshotViewModel,
   UploadManuscriptBatchInput,
   UploadManuscriptBatchResult,
   ManuscriptViewModel,
@@ -95,5 +96,12 @@ export function getJob(client: ManuscriptHttpClient, jobId: string) {
   return client.request<JobViewModel>({
     method: "GET",
     url: `/api/v1/jobs/${jobId}`,
+  });
+}
+
+export function getModuleExecutionConcurrency(client: ManuscriptHttpClient) {
+  return client.request<ModuleExecutionConcurrencySnapshotViewModel>({
+    method: "GET",
+    url: "/api/v1/module-execution/concurrency",
   });
 }

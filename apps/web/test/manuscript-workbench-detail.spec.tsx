@@ -85,6 +85,14 @@ test("document preview detail keeps legacy doc manuscripts operationally pending
   );
 
   assert.match(markup, /LibreOffice unavailable; doc to docx normalization deferred\./);
+  assert.match(markup, /稿件预览/u);
+  assert.match(markup, /只读查看/u);
+  assert.match(markup, /批注来源/u);
+  assert.match(markup, /文档批注/u);
+  assert.doesNotMatch(markup, /预览会话/u);
+  assert.doesNotMatch(markup, /onlyoffice/u);
+  assert.doesNotMatch(markup, /<dd>view<\/dd>/u);
+  assert.doesNotMatch(markup, /<dt>资产类型<\/dt>/u);
 });
 
 test("asset detail kind routes proofreading draft reports into the dedicated issue workbench", () => {
@@ -287,7 +295,7 @@ test("proofreading detail page renders the dedicated issue workbench with explic
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchAssetDetailPage
       mode="proofreading"
-      manuscriptTitle="校对问题工作台"
+      manuscriptTitle="心血管综述稿"
       asset={{
         id: "asset-proof-1",
         manuscript_id: "manuscript-1",
@@ -357,6 +365,7 @@ test("proofreading detail page renders the dedicated issue workbench with explic
   assert.match(markup, /校对问题工作台/u);
   assert.match(markup, /问题队列/u);
   assert.match(markup, /稿件原文/u);
+  assert.match(markup, /心血管综述稿 - 校对草稿报告/u);
   assert.match(markup, /采纳并手改/u);
   assert.match(markup, /仅人工处理/u);
   assert.match(markup, /升级处理/u);
@@ -366,6 +375,7 @@ test("proofreading detail page renders the dedicated issue workbench with explic
   assert.match(markup, /5 mg\/dL（人工确认）/u);
   assert.match(markup, /发布人工终稿/u);
   assert.match(markup, /下载校对草稿报告/u);
+  assert.doesNotMatch(markup, /proofreading-draft\.md/u);
 });
 
 test("proofreading report detail keeps draft reports labeled as reports instead of manuscript deliverables", () => {
@@ -396,5 +406,7 @@ test("proofreading report detail keeps draft reports labeled as reports instead 
   );
 
   assert.match(markup, /data-detail-kind="report_preview"/);
+  assert.match(markup, /校对报告稿件 - 校对草稿报告/u);
   assert.match(markup, /下载校对草稿报告/u);
+  assert.doesNotMatch(markup, /proofreading-draft\.md/u);
 });

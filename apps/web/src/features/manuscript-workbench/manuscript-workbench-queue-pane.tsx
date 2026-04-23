@@ -7,7 +7,13 @@ import type {
 } from "./manuscript-workbench-controller.ts";
 
 type AnyWorkbenchJob = JobViewModel | ModuleJobViewModel;
-export type ManuscriptWorkbenchQueueFilter = "all" | "pending" | "in_progress" | "completed";
+
+export type ManuscriptWorkbenchQueueFilter =
+  | "all"
+  | "pending"
+  | "in_progress"
+  | "completed"
+  | "failed";
 
 export interface ManuscriptWorkbenchQueueItem {
   manuscriptId: string;
@@ -44,47 +50,48 @@ export function ManuscriptWorkbenchQueuePane({
   onOpenQueueItem,
 }: ManuscriptWorkbenchQueuePaneProps) {
   const canLoadWorkspace = lookup.manuscriptId.trim().length > 0;
-  const queueTitle = `${formatWorkbenchModeLabel(mode)}队列`;
-  const queueHint = resolveQueueHint(mode);
+  const lookupDisplayValue =
+    workspace?.manuscript &&
+    lookup.manuscriptId.trim() === workspace.manuscript.id
+      ? workspace.manuscript.title
+      : lookup.manuscriptId;
   const filteredQueueItems =
     activeQueueFilter === "all"
       ? queueItems
       : queueItems.filter((item) => item.queueStatus === activeQueueFilter);
+  const concurrencySnapshot = workspace?.moduleExecutionConcurrency;
+  const queueListHint = resolveQueueListHint(mode, concurrencySnapshot);
 
   return (
     <aside className="manuscript-workbench-queue-pane" data-queue-view="worklist">
       <header className="manuscript-workbench-queue-pane-header">
         <div>
-          <span className="manuscript-workbench-section-eyebrow">待处理队列</span>
-          <h3>{queueTitle}</h3>
-          <p>{queueHint}</p>
+          <span className="manuscript-workbench-section-eyebrow">稿件队列</span>
+          <h3>{`${formatWorkbenchModeLabel(mode)}工作区`}</h3>
+          <p>{resolveQueueHint(mode)}</p>
         </div>
       </header>
 
       <div className="manuscript-workbench-queue-search">
         <label className={resolveLookupFieldClassName(!canLoadWorkspace)}>
-          <span>搜索稿件 ID</span>
+          <span>稿件查找</span>
           <input
-            value={lookup.manuscriptId}
+            value={lookupDisplayValue}
             onChange={(event) => lookup.onChange(event.target.value)}
-            placeholder="输入稿件 ID 或沿用上一环节移交"
+            placeholder="输入稿件标题或编号"
           />
         </label>
         <button type="button" disabled={busy || !canLoadWorkspace} onClick={() => lookup.onLoad()}>
-          {busy ? "加载中..." : "进入单稿工作区"}
+          {busy ? "加载中..." : "打开稿件"}
         </button>
       </div>
 
       <div className="manuscript-workbench-queue-filters" aria-label="队列筛选">
-        {([
-          ["all", "全部稿件"],
-          ["pending", "待处理"],
-          ["in_progress", "处理中"],
-          ["completed", "已完成"],
-        ] as const).map(([filter, label]) => (
+        {QUEUE_FILTER_OPTIONS.map(([filter, label]) => (
           <button
             key={filter}
             type="button"
+            data-queue-filter={filter}
             className={
               filter === activeQueueFilter
                 ? "manuscript-workbench-queue-filter is-active"
@@ -97,66 +104,79 @@ export function ManuscriptWorkbenchQueuePane({
         ))}
       </div>
 
-      <div className="manuscript-workbench-queue-list">
-        {filteredQueueItems.length > 0 ? (
-          filteredQueueItems.map((item) => (
-            <article
-              key={item.manuscriptId}
-              className={
-                item.isActive
-                  ? "manuscript-workbench-queue-item is-active"
-                  : "manuscript-workbench-queue-item"
-              }
-            >
-              <div className="manuscript-workbench-queue-item-header">
-                <div>
-                  <span className="manuscript-workbench-queue-item-kicker">
-                    {item.queueScope === "batch" ? "当前批次" : "最近进入"}
-                  </span>
-                  <h4>{item.title}</h4>
+      <div className="manuscript-workbench-queue-list-shell">
+        <div className="manuscript-workbench-queue-list-header">
+          <strong>已上传稿件</strong>
+          <p>{queueListHint}</p>
+        </div>
+        <div className="manuscript-workbench-queue-list">
+          {filteredQueueItems.length > 0 ? (
+            filteredQueueItems.map((item) => (
+              <article
+                key={item.manuscriptId}
+                data-queue-item-status={item.queueStatus}
+                className={
+                  item.isActive
+                    ? "manuscript-workbench-queue-item is-active"
+                    : "manuscript-workbench-queue-item"
+                }
+              >
+                <div className="manuscript-workbench-queue-item-header">
+                  <div>
+                    <span className="manuscript-workbench-queue-item-kicker">
+                      {item.queueScope === "batch" ? "当前批次" : "最近打开"}
+                    </span>
+                    <h4>{item.title}</h4>
+                  </div>
+                  <span className="manuscript-workbench-queue-item-badge">{item.statusLabel}</span>
                 </div>
-                <span className="manuscript-workbench-queue-item-badge">{item.statusLabel}</span>
-              </div>
-              <dl className="manuscript-workbench-queue-item-meta">
-                <div>
-                  <dt>稿件编号</dt>
-                  <dd>{item.manuscriptId}</dd>
+                <dl className="manuscript-workbench-queue-item-meta">
+                  <div>
+                    <dt>稿件类型</dt>
+                    <dd>{item.manuscriptTypeLabel}</dd>
+                  </div>
+                  <div>
+                    <dt>当前状态</dt>
+                    <dd>{item.activityLabel}</dd>
+                  </div>
+                </dl>
+                <div className="manuscript-workbench-button-row">
+                  <button
+                    type="button"
+                    className="manuscript-workbench-queue-open"
+                    disabled={busy}
+                    onClick={() => onOpenQueueItem(item.manuscriptId)}
+                  >
+                    打开稿件
+                  </button>
                 </div>
-                <div>
-                  <dt>稿件类型</dt>
-                  <dd>{item.manuscriptTypeLabel}</dd>
-                </div>
-                <div>
-                  <dt>当前进度</dt>
-                  <dd>{item.activityLabel}</dd>
-                </div>
-              </dl>
-              <div className="manuscript-workbench-button-row">
-                <button
-                  type="button"
-                  className="manuscript-workbench-queue-open"
-                  disabled={busy}
-                  onClick={() => onOpenQueueItem(item.manuscriptId)}
-                >
-                  打开稿件
-                </button>
-              </div>
-            </article>
-          ))
-        ) : (
-          <div className="manuscript-workbench-queue-empty">
-            <strong>当前筛选下还没有稿件</strong>
-            <p>
-              {workspace
-                ? `最近任务：${latestJob ? formatWorkbenchModeLabel(latestJob.module) : "等待执行记录"}`
-                : "先上传或载入稿件，左侧队列就会开始形成可切换的工作清单。"}
-            </p>
-          </div>
-        )}
+              </article>
+            ))
+          ) : (
+            <div className="manuscript-workbench-queue-empty">
+              <strong>当前筛选下没有稿件</strong>
+              <p>
+                {workspace
+                  ? `最近任务：${latestJob ? formatWorkbenchModeLabel(latestJob.module) : "暂无执行记录"}`
+                  : "先上传或加载稿件，左侧列表会显示已上传稿件和处理状态。"}
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </aside>
   );
 }
+
+const QUEUE_FILTER_OPTIONS: ReadonlyArray<
+  readonly [ManuscriptWorkbenchQueueFilter, string]
+> = [
+  ["all", "全部"],
+  ["pending", "待处理"],
+  ["in_progress", "处理中"],
+  ["completed", "已完成"],
+  ["failed", "失败"],
+];
 
 function resolveLookupFieldClassName(isInvalid: boolean): string {
   return isInvalid
@@ -166,14 +186,14 @@ function resolveLookupFieldClassName(isInvalid: boolean): string {
 
 function resolveQueueHint(mode: Exclude<ManuscriptWorkbenchMode, "submission">): string {
   if (mode === "screening") {
-    return "先看队列，再进入单稿判断，避免初筛页面堆成参数后台。";
+    return "左侧只保留查找、状态和队列，不再堆额外参数。";
   }
 
   if (mode === "editing") {
-    return "围绕当前稿件的结构修订与交接判断组织编辑工作。";
+    return "先看稿件状态，再进入右侧结果区继续处理。";
   }
 
-  return "保持终稿确认路径清晰，批量动作不遮挡当前校对判断。";
+  return "校对入口保持简洁，状态和排队情况在这里直接可见。";
 }
 
 function formatWorkbenchModeLabel(mode: string): string {
@@ -200,3 +220,31 @@ function formatWorkbenchModeLabel(mode: string): string {
   return mode;
 }
 
+function formatConcurrencyScopeLabel(
+  scope: Exclude<ManuscriptWorkbenchMode, "submission"> | "global",
+): string {
+  if (scope === "global") {
+    return "总队列";
+  }
+
+  if (scope === "screening") {
+    return "初筛";
+  }
+
+  if (scope === "editing") {
+    return "编辑";
+  }
+
+  return "校对";
+}
+
+function resolveQueueListHint(
+  mode: Exclude<ManuscriptWorkbenchMode, "submission">,
+  snapshot: ManuscriptWorkbenchWorkspace["moduleExecutionConcurrency"] | undefined,
+): string {
+  if (!snapshot) {
+    return "这里显示已上传稿件和处理状态，打开后继续在右侧处理。";
+  }
+
+  return `总并发 ${snapshot.limits.global}，${formatConcurrencyScopeLabel(mode)}并发 ${snapshot.limits[mode]}，超出自动排队。`;
+}

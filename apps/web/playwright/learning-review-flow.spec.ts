@@ -15,6 +15,7 @@ const proofreadingHeading = /校对工作区/;
 const runScreeningLabel = "\u6267\u884c\u521d\u7b5b";
 const runEditingLabel = "\u6267\u884c\u7f16\u8f91";
 const createDraftLabel = "生成校对草稿";
+const manuscriptTitle = "Phase 8AA Learning Review Browser Smoke";
 test("admin can complete the governed learning review flow from manuscript handoff", async ({
   page,
   request,
@@ -28,7 +29,7 @@ test("admin can complete the governed learning review flow from manuscript hando
 
   const uploadResponse = await request.post(`${apiBaseUrl}/api/v1/manuscripts/upload`, {
     data: {
-      title: "Phase 8AA Learning Review Browser Smoke",
+      title: manuscriptTitle,
       manuscriptType: "clinical_study",
       createdBy: "ignored-by-server",
       fileName: "phase8aa-source.docx",
@@ -62,10 +63,11 @@ test("admin can complete the governed learning review flow from manuscript hando
   await expect(page.locator("body")).toContainText("已自动带入稿件");
   await expect(
     page.getByRole("textbox", { name: /稿件查找|搜索稿件 ID/ }),
-  ).toHaveValue(manuscriptId);
+  ).toHaveValue(manuscriptTitle);
 
   await page.getByRole("button", { name: runScreeningLabel }).click();
   await expect(page.locator("body")).toContainText("操作已完成");
+  await expandResultDetails(page);
   const editingLink = page.getByRole("link", { name: "前往编辑工作台" });
   await expect(editingLink).toBeVisible();
 
@@ -85,6 +87,7 @@ test("admin can complete the governed learning review flow from manuscript hando
   expect(
     editingJob.payload?.tableInspectionFindings?.[0]?.semantic_hit?.column_key,
   ).toBe(semanticTableColumnKey);
+  await expandResultDetails(page);
   const proofreadingLink = page.getByRole("link", { name: "前往校对工作台" });
   await expect(proofreadingLink).toBeVisible();
 
@@ -95,7 +98,7 @@ test("admin can complete the governed learning review flow from manuscript hando
   });
 
   await page.getByRole("button", { name: createDraftLabel }).click();
-  await expect(page.locator("body")).toContainText("proofreading_draft_report");
+  await expect(page.locator("body")).toContainText("已生成校对草稿报告");
   const proofreadingDraftAsset = await waitForCurrentAsset(
     request,
     manuscriptId,
@@ -121,7 +124,7 @@ test("admin can complete the governed learning review flow from manuscript hando
   const issueDetail = selectedIssue.locator(
     ".manuscript-workbench-proofreading-issue-detail",
   );
-  await issueDetail.getByRole("button", { name: /^采纳$/ }).click();
+  await clickViaDom(issueDetail.getByRole("button", { name: /^采纳$/ }));
   await expect(issueDetail.getByRole("button", { name: /^采纳$/ })).toHaveClass(
     /is-selected/,
   );
@@ -130,7 +133,7 @@ test("admin can complete the governed learning review flow from manuscript hando
     ".manuscript-workbench-proofreading-issue-pane .manuscript-workbench-button-row--sticky button",
   );
   await expect(publishHumanFinalButton).toBeEnabled();
-  await publishHumanFinalButton.click();
+  await clickViaDom(publishHumanFinalButton);
   await expect(page.locator("body")).toContainText("已发布人工终稿资产");
   const learningReviewHref =
     `#template-governance?manuscriptId=${manuscriptId}` +
@@ -291,6 +294,7 @@ test("admin can hand off editing manual feedback into rule center and open the s
   });
 
   await page.getByRole("button", { name: runScreeningLabel }).click();
+  await expandResultDetails(page);
   const editingLink = page.locator(`a[href*="#editing?manuscriptId=${manuscriptId}"]`).first();
   await expect(editingLink).toBeVisible();
 
@@ -325,21 +329,22 @@ test("admin can hand off editing manual feedback into rule center and open the s
     manuscript.module_execution_overview?.editing?.latest_snapshot?.id ?? "";
   expect(editingSnapshotId).toBeTruthy();
 
-  const manualFeedbackCard = page
-    .locator(".manuscript-workbench-manual-feedback")
-    .filter({ has: page.locator("textarea") });
-  const manualFeedbackSubmitButton = manualFeedbackCard.locator(
-    "button.manuscript-workbench-shortcut",
+  const resultDetailsBody = await expandResultDetails(page);
+  const manualFeedbackNoteField = resultDetailsBody.locator(
+    ".manuscript-workbench-manual-feedback-note",
   );
-  await expect(manualFeedbackCard).toBeVisible();
+  const manualFeedbackSubmitButton = resultDetailsBody.getByRole("button", {
+    name: "提交复核项",
+  });
+  await expect(manualFeedbackNoteField).toBeVisible();
   await expect(manualFeedbackSubmitButton).toBeDisabled();
-  await manualFeedbackCard.scrollIntoViewIfNeeded();
+  await manualFeedbackNoteField.scrollIntoViewIfNeeded();
 
-  const incorrectHitRadio = manualFeedbackCard.getByRole("radio").nth(1);
+  const incorrectHitRadio = resultDetailsBody.getByRole("radio").nth(1);
   await incorrectHitRadio.focus();
   await incorrectHitRadio.press("Space");
   await expect(incorrectHitRadio).toBeChecked();
-  await manualFeedbackCard.locator("textarea").fill(manualFeedbackNote);
+  await manualFeedbackNoteField.locator("textarea").fill(manualFeedbackNote);
   await expect(manualFeedbackSubmitButton).toBeEnabled();
 
   const manualFeedbackResponse = await request.post(
@@ -424,13 +429,43 @@ async function navigateToProofreadingIssueWorkbench(
 
   const issueToggle = page.locator(".manuscript-workbench-proofreading-issue-toggle").first();
   await expect(issueToggle).toBeVisible();
-  await issueToggle.click();
+  await clickViaDom(issueToggle);
   await expect(
     page.locator(".manuscript-workbench-proofreading-issue-detail").first(),
   ).toBeVisible();
   await expect(
     page.locator('.manuscript-workbench-proofreading-block[data-selected="true"]').first(),
   ).toBeVisible();
+}
+
+async function expandResultDetails(page: Page) {
+  const details = page.locator(".manuscript-workbench-result-details").first();
+  await expect(details).toBeVisible();
+
+  const isOpen = await details.evaluate(
+    (element: Element) => (element as HTMLDetailsElement).open,
+  );
+  if (!isOpen) {
+    const summary = details.locator("summary").first();
+    await expect(summary).toBeVisible();
+    await clickViaDom(summary);
+    await expect
+      .poll(() =>
+        details.evaluate(
+          (element: Element) => (element as HTMLDetailsElement).open,
+        ),
+      )
+      .toBe(true);
+  }
+
+  const body = details.locator(".manuscript-workbench-result-details-body").first();
+  await expect(body).toBeVisible();
+  return body;
+}
+
+async function clickViaDom(locator: Locator) {
+  await expect(locator).toBeVisible();
+  await locator.evaluate((element: HTMLElement) => element.click());
 }
 
 async function waitForCurrentAsset(

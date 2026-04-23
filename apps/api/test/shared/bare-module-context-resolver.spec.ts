@@ -5,6 +5,7 @@ import { InMemoryManuscriptRepository } from "../../src/modules/manuscripts/in-m
 import {
   resolveBareModuleContext,
 } from "../../src/modules/shared/bare-module-context-resolver.ts";
+import { getBareModulePromptSkeleton } from "../../src/modules/shared/bare-module-prompt-skeletons.ts";
 
 test("bare module context resolves module-scoped model routing without template-family governance", async () => {
   const manuscriptRepository = new InMemoryManuscriptRepository();
@@ -55,10 +56,11 @@ test("bare module context resolves module-scoped model routing without template-
   });
 
   assert.equal(context.executionMode, "bare");
-  assert.equal(context.moduleTemplateId, "bare-editing-template");
-  assert.equal(context.promptTemplateId, "bare-editing-prompt");
+  const promptSkeleton = getBareModulePromptSkeleton("editing");
+  assert.equal(context.moduleTemplateId, promptSkeleton.templateId);
+  assert.equal(context.promptTemplateId, promptSkeleton.id);
   assert.equal(context.modelSelection.model.id, "model-bare-editing-1");
-  assert.equal(context.promptSkeleton.id, "bare-editing-prompt");
+  assert.equal(context.promptSkeleton.id, promptSkeleton.id);
   assert.deepEqual(context.skillPackageIds, []);
   assert.deepEqual(context.knowledgeHits, []);
   assert.deepEqual(modelSelectionInputs, [
@@ -69,4 +71,16 @@ test("bare module context resolves module-scoped model routing without template-
       actorRole: "editor",
     },
   ]);
+});
+
+test("bare module prompt skeleton IDs stay UUID-compatible for persistent runtime lookups", () => {
+  const uuidPattern =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+
+  for (const module of ["screening", "editing", "proofreading"] as const) {
+    const skeleton = getBareModulePromptSkeleton(module);
+    assert.match(skeleton.id, uuidPattern);
+    assert.match(skeleton.templateId, uuidPattern);
+    assert.match(skeleton.executionProfileId, uuidPattern);
+  }
 });

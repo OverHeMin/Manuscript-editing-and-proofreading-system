@@ -208,6 +208,27 @@ export interface ManuscriptModuleExecutionOverviewViewModel {
   proofreading: ModuleExecutionOverviewViewModel;
 }
 
+export interface ModuleExecutionConcurrencySnapshotViewModel {
+  active: {
+    global: number;
+    screening: number;
+    editing: number;
+    proofreading: number;
+  };
+  queued: {
+    global: number;
+    screening: number;
+    editing: number;
+    proofreading: number;
+  };
+  limits: {
+    global: number;
+    screening: number;
+    editing: number;
+    proofreading: number;
+  };
+}
+
 export type ManuscriptMainlineReadinessDerivedStatus =
   | "ready_for_next_step"
   | "in_progress"

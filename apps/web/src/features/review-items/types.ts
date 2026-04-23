@@ -87,6 +87,7 @@ export interface ResidualReviewItemViewModel extends ReviewItemBaseViewModel {
     | "validation_pending"
     | "candidate_ready"
     | "validation_failed"
+    | "manual_review_pending"
     | "manual_only"
     | "evidence_only"
     | "candidate_created"
@@ -142,6 +143,8 @@ export function formatResidualReviewSourceStatusLabel(
       return "候选已就绪";
     case "validation_failed":
       return "Harness 未通过";
+    case "manual_review_pending":
+      return "待人工复核";
     case "manual_only":
       return "仅人工处理";
     case "evidence_only":

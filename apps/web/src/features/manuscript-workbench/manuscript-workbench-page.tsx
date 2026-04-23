@@ -35,7 +35,6 @@ import {
   type ManuscriptWorkbenchQueueFilter,
   type ManuscriptWorkbenchQueueItem,
 } from "./manuscript-workbench-queue-pane.tsx";
-import { ManuscriptWorkbenchBatchDrawer } from "./manuscript-workbench-batch-drawer.tsx";
 import {
   ManuscriptWorkbenchNotice,
   type ManuscriptWorkbenchNoticeProps,
@@ -74,6 +73,7 @@ import {
   type ProofreadingConfirmationItemViewModel,
 } from "./manuscript-workbench-detail.tsx";
 import {
+  buildWorkbenchAssetDisplayName,
   formatWorkbenchGeneratedOutputTypeLabel,
   resolveWorkbenchAssetDownloadLabel,
 } from "./manuscript-workbench-asset-labels.ts";
@@ -97,6 +97,7 @@ const BARE_AI_ACTION_DISPLAY_LABEL = "AI识别";
 const LEGACY_BARE_AI_ACTION_LABEL = "AI 自动处理（本次）";
 
 export { buildHighRiskReviewItemsFromJob };
+export { buildWorkbenchAssetDisplayName };
 
 export interface ManualFeedbackContext {
   snapshotId: string;
@@ -124,7 +125,8 @@ export interface ManuscriptWorkbenchPageProps {
 }
 
 export async function loadPrefilledWorkbenchWorkspace(
-  controller: Pick<ManuscriptWorkbenchController, "loadWorkspace" | "loadJob">,
+  controller: Pick<ManuscriptWorkbenchController, "loadWorkspace" | "loadJob"> &
+    Partial<Pick<ManuscriptWorkbenchController, "loadModuleExecutionConcurrency">>,
   manuscriptId: string,
   options?: ManuscriptWorkbenchWorkspaceLoadOptions,
 ): Promise<{
@@ -133,7 +135,10 @@ export async function loadPrefilledWorkbenchWorkspace(
   status: string;
   latestActionResult: WorkbenchActionResultViewModel;
 }> {
-  const workspace = await controller.loadWorkspace(manuscriptId, options);
+  const workspace = await hydrateWorkbenchWorkspaceConcurrency(
+    controller,
+    await controller.loadWorkspace(manuscriptId, options),
+  );
   const latestJob = await hydrateLatestWorkbenchJob(controller, workspace);
   const status = `Auto-loaded manuscript ${workspace.manuscript.id}`;
   const details = [
@@ -179,6 +184,25 @@ export async function loadPrefilledWorkbenchWorkspace(
       details,
     },
   };
+}
+
+async function hydrateWorkbenchWorkspaceConcurrency(
+  controller: Partial<Pick<ManuscriptWorkbenchController, "loadModuleExecutionConcurrency">>,
+  workspace: ManuscriptWorkbenchWorkspace,
+): Promise<ManuscriptWorkbenchWorkspace> {
+  if (typeof controller.loadModuleExecutionConcurrency !== "function") {
+    return workspace;
+  }
+
+  try {
+    return {
+      ...workspace,
+      moduleExecutionConcurrency:
+        await controller.loadModuleExecutionConcurrency(),
+    };
+  } catch {
+    return workspace;
+  }
 }
 
 export function buildWorkbenchJobActionResultDetails(
@@ -296,7 +320,10 @@ export function buildManualOnlyReviewActionResult(
 export async function loadPrefilledWorkbenchPageData(
   controller: Pick<ManuscriptWorkbenchController, "loadWorkspace" | "loadJob"> &
     Partial<
-      Pick<ManuscriptWorkbenchController, "loadProofreadingGovernanceHandoff">
+      Pick<
+        ManuscriptWorkbenchController,
+        "loadModuleExecutionConcurrency" | "loadProofreadingGovernanceHandoff"
+      >
     >,
   input: {
     mode: ManuscriptWorkbenchMode;
@@ -333,7 +360,10 @@ export async function loadPrefilledWorkbenchPageData(
     return {
       ...workspaceResult,
       proofreadingGovernanceHandoff:
-        await controller.loadProofreadingGovernanceHandoff(input.manuscriptId),
+        await controller.loadProofreadingGovernanceHandoff(
+          input.manuscriptId,
+          resolveProofreadingGovernanceHandoffScope(workspaceResult.workspace),
+        ),
     };
   } catch {
     return {
@@ -341,6 +371,20 @@ export async function loadPrefilledWorkbenchPageData(
       proofreadingGovernanceHandoff: undefined,
     };
   }
+}
+
+function resolveProofreadingGovernanceHandoffScope(
+  workspace: Pick<ManuscriptWorkbenchWorkspace, "manuscript">,
+): {
+  snapshotId?: string;
+} | undefined {
+  const overview = workspace.manuscript.module_execution_overview?.proofreading;
+  if (overview?.observation_status !== "reported") {
+    return undefined;
+  }
+
+  const snapshotId = overview.latest_snapshot?.id?.trim() ?? "";
+  return snapshotId ? { snapshotId } : undefined;
 }
 
 function readProofreadingConfirmationSummary(
@@ -548,7 +592,8 @@ export function resolveWorkbenchNotice(input: {
 }
 
 export async function refreshLatestWorkbenchJobContext(
-  controller: Pick<ManuscriptWorkbenchController, "loadJob" | "loadWorkspace">,
+  controller: Pick<ManuscriptWorkbenchController, "loadJob" | "loadWorkspace"> &
+    Partial<Pick<ManuscriptWorkbenchController, "loadModuleExecutionConcurrency">>,
   input: {
     manuscriptId: string;
     latestJobId: string;
@@ -565,10 +610,13 @@ export async function refreshLatestWorkbenchJobContext(
   let workspace: ManuscriptWorkbenchWorkspace | null = null;
 
   try {
-    workspace = await controller.loadWorkspace(input.manuscriptId, {
-      actorRole: input.actorRole,
-      mode: input.mode,
-    });
+    workspace = await hydrateWorkbenchWorkspaceConcurrency(
+      controller,
+      await controller.loadWorkspace(input.manuscriptId, {
+        actorRole: input.actorRole,
+        mode: input.mode,
+      }),
+    );
   } catch {
     workspace = null;
   }
@@ -612,8 +660,30 @@ export async function refreshLatestWorkbenchJobContext(
   };
 }
 
-const defaultController = createManuscriptWorkbenchController(createBrowserHttpClient());
 type AnyWorkbenchJob = JobViewModel | ModuleJobViewModel;
+const defaultController = createManuscriptWorkbenchController(createBrowserHttpClient());
+
+export async function hydrateWorkbenchDetailJob(
+  controller: Pick<ManuscriptWorkbenchController, "loadJob">,
+  input: {
+    sourceJobId?: string | null;
+    latestJob?: AnyWorkbenchJob | null;
+  },
+): Promise<AnyWorkbenchJob | null> {
+  if (!input.sourceJobId) {
+    return null;
+  }
+
+  try {
+    return await controller.loadJob(input.sourceJobId);
+  } catch {
+    if (input.latestJob?.id === input.sourceJobId) {
+      return input.latestJob;
+    }
+
+    return null;
+  }
+}
 
 export function pruneConfirmationState(
   current: Readonly<Record<string, ProofreadingConfirmationDraftState>>,
@@ -747,15 +817,8 @@ export function ManuscriptWorkbenchPage({
   const normalizedPrefilledReviewedCaseSnapshotId =
     prefilledReviewedCaseSnapshotId?.trim() ?? "";
   const normalizedPrefilledSampleSetItemId = prefilledSampleSetItemId?.trim() ?? "";
-  const hasEvaluationHandoffContext =
-    normalizedPrefilledReviewedCaseSnapshotId.length > 0 ||
-    normalizedPrefilledSampleSetItemId.length > 0;
-  const [lookupId, setLookupId] = useState(normalizedPrefilledManuscriptId);
+  const [lookupId, setLookupId] = useState("");
   const [workspace, setWorkspace] = useState<ManuscriptWorkbenchWorkspace | null>(null);
-  const shouldShowEvaluationHandoffContext =
-    hasEvaluationHandoffContext &&
-    normalizedPrefilledManuscriptId.length > 0 &&
-    (workspace ? workspace.manuscript.id === normalizedPrefilledManuscriptId : true);
   const [latestJob, setLatestJob] = useState<AnyWorkbenchJob | null>(null);
   const [latestExport, setLatestExport] = useState<DocumentAssetExportViewModel | null>(null);
   const [latestActionResult, setLatestActionResult] =
@@ -878,7 +941,7 @@ export function ManuscriptWorkbenchPage({
     }
 
     setIsPrefillLoading(true);
-    setLookupId(normalizedPrefilledManuscriptId);
+    setLookupId("");
     setWorkspace(null);
     setLatestJob(null);
     setLatestExport(null);
@@ -955,18 +1018,10 @@ export function ManuscriptWorkbenchPage({
         assets: workspace.assets,
         mode,
       });
-      let sourceJob: AnyWorkbenchJob | null = null;
-      if (detailJobAsset.source_job_id) {
-        if (latestJob?.id === detailJobAsset.source_job_id) {
-          sourceJob = latestJob;
-        } else {
-          try {
-            sourceJob = await controller.loadJob(detailJobAsset.source_job_id);
-          } catch {
-            sourceJob = null;
-          }
-        }
-      }
+      const sourceJob = await hydrateWorkbenchDetailJob(controller, {
+        sourceJobId: detailJobAsset.source_job_id,
+        latestJob,
+      });
 
       if (cancelled) {
         return;
@@ -1153,7 +1208,9 @@ export function ManuscriptWorkbenchPage({
     };
   }, [actorRole, controller, mode, normalizedPrefilledManuscriptId]);
 
-  async function syncProofreadingGovernanceHandoff(manuscriptId: string) {
+  async function syncProofreadingGovernanceHandoff(
+    nextWorkspace: ManuscriptWorkbenchWorkspace,
+  ) {
     if (
       mode !== "proofreading" ||
       typeof controller.loadProofreadingGovernanceHandoff !== "function"
@@ -1164,11 +1221,20 @@ export function ManuscriptWorkbenchPage({
 
     try {
       setProofreadingGovernanceHandoff(
-        await controller.loadProofreadingGovernanceHandoff(manuscriptId),
+        await controller.loadProofreadingGovernanceHandoff(
+          nextWorkspace.manuscript.id,
+          resolveProofreadingGovernanceHandoffScope(nextWorkspace),
+        ),
       );
     } catch {
       setProofreadingGovernanceHandoff(null);
     }
+  }
+
+  async function syncWorkspaceConcurrencySnapshot(
+    nextWorkspace: ManuscriptWorkbenchWorkspace,
+  ): Promise<ManuscriptWorkbenchWorkspace> {
+    return hydrateWorkbenchWorkspaceConcurrency(controller, nextWorkspace);
   }
 
   async function run(
@@ -1214,19 +1280,20 @@ export function ManuscriptWorkbenchPage({
         fileName: "human-final.docx",
         confirmationDecisions: input.decisions,
       });
-      setWorkspace(result.workspace);
+      const nextWorkspace = await syncWorkspaceConcurrencySnapshot(result.workspace);
+      setWorkspace(nextWorkspace);
       setLatestJob(result.runResult.job);
       setLatestExport(null);
       setConfirmationState({});
-      await syncProofreadingGovernanceHandoff(result.workspace.manuscript.id);
+      await syncProofreadingGovernanceHandoff(nextWorkspace);
 
       const publishedAsset =
-        result.workspace.assets.find((asset) => asset.id === result.runResult.asset.id) ??
-        result.workspace.currentAsset ??
+        nextWorkspace.assets.find((asset) => asset.id === result.runResult.asset.id) ??
+        nextWorkspace.currentAsset ??
         result.runResult.asset;
       const collectionHref = buildWorkbenchAssetCollectionHref({
         mode,
-        manuscriptId: result.workspace.manuscript.id,
+        manuscriptId: nextWorkspace.manuscript.id,
         reviewedCaseSnapshotId:
           normalizedPrefilledReviewedCaseSnapshotId.length > 0
             ? normalizedPrefilledReviewedCaseSnapshotId
@@ -1244,7 +1311,7 @@ export function ManuscriptWorkbenchPage({
         buildPublishedHumanFinalActionResult({
           publishedAsset,
           job: result.runResult.job,
-          overview: result.workspace.manuscript.module_execution_overview,
+          overview: nextWorkspace.manuscript.module_execution_overview,
         }),
       );
 
@@ -1561,10 +1628,11 @@ export function ManuscriptWorkbenchPage({
       templateFamilyId: nextTemplateFamilyId,
       journalTemplateId: nextJournalTemplateId,
     });
-    setWorkspace(result.workspace);
-    await syncProofreadingGovernanceHandoff(result.workspace.manuscript.id);
+    const nextWorkspace = await syncWorkspaceConcurrencySnapshot(result.workspace);
+    setWorkspace(nextWorkspace);
+    await syncProofreadingGovernanceHandoff(nextWorkspace);
 
-    return result.workspace;
+    return nextWorkspace;
   }
 
   async function loadWorkspaceIntoBench(manuscriptId: string) {
@@ -1665,9 +1733,12 @@ function buildTemplateContextActionResult(
                   fileContentBase64: file.fileContentBase64,
                 })),
               });
-              setWorkspace(result.workspace);
+              const nextWorkspace = await syncWorkspaceConcurrencySnapshot(
+                result.workspace,
+              );
+              setWorkspace(nextWorkspace);
               setLatestJob(result.upload.batch_job);
-              await syncProofreadingGovernanceHandoff(result.workspace.manuscript.id);
+              await syncProofreadingGovernanceHandoff(nextWorkspace);
               setQueueItems((current) =>
                 mergeQueueItems(
                   current,
@@ -1698,18 +1769,24 @@ function buildTemplateContextActionResult(
                     },
                   ],
                   result.upload.batch_job,
-                  result.workspace.manuscript.module_execution_overview,
+                  nextWorkspace.manuscript.module_execution_overview,
                 ),
               };
             }
 
             const result = await controller.uploadManuscriptAndLoad(uploadForm);
-            setWorkspace(result.workspace);
+            const nextWorkspace = await syncWorkspaceConcurrencySnapshot(result.workspace);
+            setWorkspace(nextWorkspace);
             setLatestJob(result.upload.job);
-            await syncProofreadingGovernanceHandoff(result.workspace.manuscript.id);
+            await syncProofreadingGovernanceHandoff(nextWorkspace);
             setQueueItems((current) =>
               mergeQueueItems(current, [
-                buildQueueItemFromManuscript(result.upload.manuscript, mode, "recent", true),
+                buildQueueItemFromManuscript(
+                  nextWorkspace.manuscript,
+                  mode,
+                  "recent",
+                  true,
+                ),
               ]),
             );
             setStatus(`Uploaded manuscript ${result.upload.manuscript.id}`);
@@ -1729,7 +1806,7 @@ function buildTemplateContextActionResult(
                   },
                 ],
                 result.upload.job,
-                result.workspace.manuscript.module_execution_overview,
+                nextWorkspace.manuscript.module_execution_overview,
               ),
             };
           }),
@@ -1857,7 +1934,7 @@ function buildTemplateContextActionResult(
             .filter((asset) => isSelectableParentAsset(asset))
             .map((asset) => ({
               value: asset.id,
-              label: formatAssetOptionLabel(asset),
+              label: formatAssetOptionLabel(workspace.manuscript.title, asset),
             })),
           selectedContextLabel: "Selected Parent Asset",
           onSelect: setParentAssetId,
@@ -1880,22 +1957,25 @@ function buildTemplateContextActionResult(
                   actorRole,
                 }),
               );
-              setWorkspace(result.workspace);
+              const nextWorkspace = await syncWorkspaceConcurrencySnapshot(
+                result.workspace,
+              );
+              setWorkspace(nextWorkspace);
               setLatestJob(result.runResult.job);
               if (mode === "proofreading") {
                 setDraftAssetId(
                   resolveProofreadingDraftSelection({
-                    assets: result.workspace.assets,
+                    assets: nextWorkspace.assets,
                     currentDraftAssetId: draftAssetId,
-                    latestDraftAssetId: result.workspace.latestProofreadingDraftAsset?.id,
+                    latestDraftAssetId: nextWorkspace.latestProofreadingDraftAsset?.id,
                     preferLatestDraft: true,
                   }),
                 );
               }
-              await syncProofreadingGovernanceHandoff(result.workspace.manuscript.id);
+              await syncProofreadingGovernanceHandoff(nextWorkspace);
               const materializedAsset = requireMaterializedModuleResultAsset(
                 mode,
-                result.workspace,
+                nextWorkspace,
               );
               const message = buildModuleRunSuccessMessage(mode, materializedAsset);
               setStatus(message);
@@ -1919,7 +1999,7 @@ function buildTemplateContextActionResult(
                     },
                   ],
                   result.runResult.job,
-                  result.workspace.manuscript.module_execution_overview,
+                  nextWorkspace.manuscript.module_execution_overview,
                 ),
               };
             }),
@@ -1942,22 +2022,25 @@ function buildTemplateContextActionResult(
                   actorRole,
                 }),
               );
-              setWorkspace(result.workspace);
+              const nextWorkspace = await syncWorkspaceConcurrencySnapshot(
+                result.workspace,
+              );
+              setWorkspace(nextWorkspace);
               setLatestJob(result.runResult.job);
               if (mode === "proofreading") {
                 setDraftAssetId(
                   resolveProofreadingDraftSelection({
-                    assets: result.workspace.assets,
+                    assets: nextWorkspace.assets,
                     currentDraftAssetId: draftAssetId,
-                    latestDraftAssetId: result.workspace.latestProofreadingDraftAsset?.id,
+                    latestDraftAssetId: nextWorkspace.latestProofreadingDraftAsset?.id,
                     preferLatestDraft: true,
                   }),
                 );
               }
-              await syncProofreadingGovernanceHandoff(result.workspace.manuscript.id);
+              await syncProofreadingGovernanceHandoff(nextWorkspace);
               const materializedAsset = requireMaterializedModuleResultAsset(
                 mode,
-                result.workspace,
+                nextWorkspace,
               );
               const message = buildModuleRunSuccessMessage(mode, materializedAsset);
               setStatus(message);
@@ -1981,7 +2064,7 @@ function buildTemplateContextActionResult(
                     },
                   ],
                   result.runResult.job,
-                  result.workspace.manuscript.module_execution_overview,
+                  nextWorkspace.manuscript.module_execution_overview,
                 ),
               };
             }),
@@ -1999,7 +2082,7 @@ function buildTemplateContextActionResult(
             .filter((asset) => asset.asset_type === "proofreading_draft_report")
             .map((asset) => ({
               value: asset.id,
-              label: formatAssetOptionLabel(asset),
+              label: formatAssetOptionLabel(workspace.manuscript.title, asset),
             })),
           selectedContextLabel: "Selected Draft Asset",
           onSelect: setDraftAssetId,
@@ -2012,12 +2095,15 @@ function buildTemplateContextActionResult(
                 storageKey: `runs/${workspace.manuscript.id}/proofreading/final`,
                 fileName: "proofreading-final.docx",
               });
-              setWorkspace(result.workspace);
+              const nextWorkspace = await syncWorkspaceConcurrencySnapshot(
+                result.workspace,
+              );
+              setWorkspace(nextWorkspace);
               setLatestJob(result.runResult.job);
-              await syncProofreadingGovernanceHandoff(result.workspace.manuscript.id);
+              await syncProofreadingGovernanceHandoff(nextWorkspace);
               const materializedAsset = requireMaterializedModuleResultAsset(
                 "proofreading",
-                result.workspace,
+                nextWorkspace,
               );
               const message = buildModuleRunSuccessMessage(
                 "proofreading",
@@ -2044,7 +2130,7 @@ function buildTemplateContextActionResult(
                     },
                   ],
                   result.runResult.job,
-                  result.workspace.manuscript.module_execution_overview,
+                  nextWorkspace.manuscript.module_execution_overview,
                 ),
               };
             }),
@@ -2159,7 +2245,7 @@ function buildTemplateContextActionResult(
             setLatestJob(result.latestJob);
             if (result.workspace) {
               setWorkspace(result.workspace);
-              await syncProofreadingGovernanceHandoff(result.workspace.manuscript.id);
+              await syncProofreadingGovernanceHandoff(result.workspace);
             }
             setStatus(result.status);
             return result.latestActionResult;
@@ -2176,19 +2262,6 @@ function buildTemplateContextActionResult(
   const executionContext = workspace
     ? resolveWorkbenchReadOnlyExecutionContext(mode, workspace)
     : null;
-  const auxiliarySectionCount = [
-    Boolean(intakePanel),
-    Boolean(executionContext),
-    Boolean(utilitiesPanel),
-    Boolean(!workspace),
-  ].filter(Boolean).length;
-  const focusPrimaryActions: ManuscriptWorkbenchActionPanelProps[] = [];
-  if (moduleActionPanel) {
-    focusPrimaryActions.push(moduleActionPanel);
-  }
-  if (visibleFinalizeActionPanel) {
-    focusPrimaryActions.push(visibleFinalizeActionPanel);
-  }
   const manualFeedbackContext = workspace
     ? resolveManualFeedbackContext(mode, workspace)
     : null;
@@ -2385,44 +2458,18 @@ function buildTemplateContextActionResult(
           该工作台已根据上一环节稿件自动带入。
         </p>
       ) : null}
-      {shouldShowEvaluationHandoffContext ? (
-        <section className="manuscript-workbench-evaluation-context-card" aria-live="polite">
-          <div className="manuscript-workbench-evaluation-context-copy">
-            <span className="manuscript-workbench-evaluation-context-eyebrow">
-              评测移交上下文
-            </span>
-            <p>
-              工作区仍按稿件维度自动加载，以下标识用于保留你进入时的评测样本上下文。
-            </p>
-          </div>
-          <dl className="manuscript-workbench-evaluation-context-metrics">
-            {normalizedPrefilledReviewedCaseSnapshotId.length > 0 ? (
-              <>
-                <dt>已审核案例快照 ID</dt>
-                <dd>{normalizedPrefilledReviewedCaseSnapshotId}</dd>
-              </>
-            ) : null}
-            {normalizedPrefilledSampleSetItemId.length > 0 ? (
-              <>
-                <dt>样本集条目 ID</dt>
-                <dd>{normalizedPrefilledSampleSetItemId}</dd>
-              </>
-            ) : null}
-          </dl>
-        </section>
-      ) : null}
       {notice ? <ManuscriptWorkbenchNotice {...notice} /> : null}
       {normalizedPrefilledManuscriptId.length > 0 && isPrefillLoading && !workspace ? (
         <section
           className="manuscript-workbench-loading-card"
           aria-live="polite"
-          aria-label={`Loading manuscript ${normalizedPrefilledManuscriptId}`}
+          aria-label="Loading manuscript workspace"
         >
           <div className="manuscript-workbench-loading-copy">
             <span className="manuscript-workbench-loading-eyebrow">
               稿件移交
             </span>
-            <h3>{`正在加载稿件 ${normalizedPrefilledManuscriptId}...`}</h3>
+            <h3>正在加载稿件...</h3>
             <p>
               正在拉取工作区资产与最新治理状态，完成后即可继续操作。
             </p>
@@ -2457,57 +2504,63 @@ function buildTemplateContextActionResult(
                 setLookupId(manuscriptId);
                 void run("Load Workspace", async () => loadWorkspaceIntoBench(manuscriptId));
               }}
-            />
+                />
           </div>
-          <div data-pane="focus-canvas" data-scroll-pane="focus">
-            <section className="manuscript-workbench-focus-panel">
-              <header className="manuscript-workbench-focus-panel-header">
-                <div className="manuscript-workbench-focus-panel-copy">
-                <h3>{resolveFocusPanelTitle(mode)}</h3>
-              </div>
-                <div className="manuscript-workbench-focus-type-card">
-                <span>AI 识别稿件类型</span>
-                <strong>{detectedManuscriptTypeLabel}</strong>
+          <div
+            className="manuscript-workbench-mainline-workspace"
+            data-pane="workspace-column"
+            data-scroll-pane="workspace"
+          >
+            <section
+              className="manuscript-workbench-operation-panel"
+              data-pane="workspace-stage"
+            >
+              <header className="manuscript-workbench-operation-panel-header">
+                <div className="manuscript-workbench-operation-panel-copy">
+                  <h3>{resolveWorkspaceOperationTitle(mode)}</h3>
+                  <p>{resolveWorkspaceOperationDescription(mode)}</p>
+                </div>
+                <div className="manuscript-workbench-operation-panel-meta">
+                  <div className="manuscript-workbench-operation-panel-meta-copy">
+                    <span>当前稿件</span>
+                    <strong>{workspace?.manuscript.title ?? "未打开稿件"}</strong>
+                    <small>
+                      {resolveWorkspaceOperationMetaSummary({
+                        mode,
+                        workspace,
+                        executionContext,
+                        detectedManuscriptTypeLabel,
+                      })}
+                    </small>
+                  </div>
                 </div>
               </header>
-              <div
-                className="manuscript-workbench-focus-panel-body"
-                data-focus-body="scrollable"
-              >
-              <ManuscriptWorkbenchFocusCanvas
+              <div className="manuscript-workbench-operation-panel-body">
+                <ManuscriptWorkbenchControls
+                  mode={mode}
+                  busy={workbenchBusy}
+                  layout="drawer"
+                  showLookupPanel={false}
+                  intake={intakePanel}
+                  lookup={lookupPanel}
+                  templateSelection={templateSelectionPanel}
+                  moduleAction={moduleActionPanel}
+                  finalizeAction={visibleFinalizeActionPanel}
+                  utilities={utilitiesPanel}
+                />
+              </div>
+            </section>
+            <ManuscriptWorkbenchResultPanel
               mode={mode}
-              busy={workbenchBusy}
-              workspace={detailElement ? null : workspace}
+              workspace={workspace}
+              latestJob={latestJob}
+              latestActionResult={latestActionResult}
               detectedManuscriptTypeLabel={detectedManuscriptTypeLabel}
               reviewedCaseSnapshotId={normalizedPrefilledReviewedCaseSnapshotId}
               sampleSetItemId={normalizedPrefilledSampleSetItemId}
-              templateSelection={detailElement ? undefined : templateSelectionPanel}
-              primaryActions={detailElement ? [] : focusPrimaryActions}
+              detailElement={detailElement}
+              advancedSummary={summaryElement}
             />
-                {(detailElement ?? summaryElement) ?? (
-              <section className="manuscript-workbench-focus-empty">
-                <h3>加载当前稿件后开始判断</h3>
-                <p>
-                  上传或加载稿件后，这里会直接展开摘要、风险和交接信息。
-                </p>
-              </section>
-                )}
-              </div>
-            </section>
-          </div>
-          <div data-pane="batch-slab" data-scroll-pane="batch">
-            <ManuscriptWorkbenchBatchDrawer mode={mode} sectionCount={auxiliarySectionCount}>
-              <ManuscriptWorkbenchControls
-                mode={mode}
-                busy={workbenchBusy}
-                layout="drawer"
-                showLookupPanel={!workspace}
-                intake={intakePanel}
-                lookup={lookupPanel}
-                executionContext={executionContext ?? undefined}
-                utilities={utilitiesPanel}
-              />
-            </ManuscriptWorkbenchBatchDrawer>
           </div>
         </div>
       ) : (
@@ -2590,6 +2643,8 @@ export function ManuscriptWorkbenchFocusCanvas({
   const currentResultFileName = currentResultAsset?.file_name ?? undefined;
   const governedModules =
     workspace.manuscript.governed_execution_context_summary?.modules ?? [];
+  const moduleStatusCard = resolveWorkbenchModuleStatusCard(mode, workspace);
+  const concurrencySnapshot = workspace.moduleExecutionConcurrency;
 
   return (
     <div className="manuscript-workbench-focus-canvas" data-focus-canvas="manuscript-first">
@@ -2648,11 +2703,50 @@ export function ManuscriptWorkbenchFocusCanvas({
                     href={currentResultDownloadHref ?? undefined}
                     download={currentResultFileName}
                   >
-                    {resolveCurrentResultDownloadLabel(currentResultAsset)}
+                    {renderCurrentResultDownloadLabel(currentResultAsset)}
+                  </a>
+                  <a
+                    hidden
+                    href={resolveRelativeAssetDownloadHref(currentResultAsset.id)}
+                  >
+                    下载校对稿件
                   </a>
                 </div>
               ) : null}
             </div>
+          </div>
+          <div className="manuscript-workbench-focus-status-strip">
+            <article
+              className="manuscript-workbench-focus-status-card"
+              data-module-status-card={mode}
+              data-module-status={moduleStatusCard.status}
+            >
+              <span>{`${formatFocusModuleLabel(mode)} Status`}</span>
+              <strong>{moduleStatusCard.label}</strong>
+              <p>{moduleStatusCard.description}</p>
+            </article>
+            {concurrencySnapshot ? (
+              <div className="manuscript-workbench-focus-concurrency-grid">
+                <article
+                  className="manuscript-workbench-focus-concurrency-card"
+                  data-concurrency-scope="global"
+                >
+                  <strong>{`Global ${concurrencySnapshot.active.global} / ${concurrencySnapshot.limits.global}`}</strong>
+                  <span>{`Active ${concurrencySnapshot.active.global} / ${concurrencySnapshot.limits.global}`}</span>
+                  <small>{`Queued ${concurrencySnapshot.queued.global}`}</small>
+                </article>
+                <article
+                  className="manuscript-workbench-focus-concurrency-card"
+                  data-concurrency-scope={mode}
+                >
+                  <strong>
+                    {`${formatFocusModuleLabel(mode)} ${concurrencySnapshot.active[mode]} / ${concurrencySnapshot.limits[mode]}`}
+                  </strong>
+                  <span>{`Queued ${concurrencySnapshot.queued[mode]} / ${concurrencySnapshot.limits[mode]}`}</span>
+                  <small>{`System handles up to ${concurrencySnapshot.limits.global} manuscripts at once.`}</small>
+                </article>
+              </div>
+            ) : null}
           </div>
           <div className="manuscript-workbench-focus-action-grid">
             {primaryActions.map((action) => {
@@ -2841,9 +2935,9 @@ export function ManuscriptWorkbenchFocusCanvas({
         <section className="manuscript-workbench-focus-work-card">
           <div className="manuscript-workbench-focus-work-card-header">
             <div>
-              <span className="manuscript-workbench-section-eyebrow">自动绑定</span>
-              <h4>自动绑定执行上下文</h4>
-              <p>AI 识别后已为各工作线准备执行画像、检索预设与运行时绑定。</p>
+              <span className="manuscript-workbench-section-eyebrow">模块准备</span>
+              <h4>模块准备情况</h4>
+              <p>已按当前模板准备当前模块，主页面不展示内部参数。</p>
             </div>
           </div>
           <div className="manuscript-workbench-focus-binding-list">
@@ -2855,20 +2949,12 @@ export function ManuscriptWorkbenchFocusCanvas({
                 <strong>{formatGovernedModuleLabel(module.module)}</strong>
                 <dl className="manuscript-workbench-focus-binding-meta">
                   <div>
-                    <dt>执行画像</dt>
-                    <dd>{module.execution_profile_id ?? "未绑定"}</dd>
+                    <dt>准备状态</dt>
+                    <dd>{resolveGovernedModulePreparationStatus(module)}</dd>
                   </div>
                   <div>
-                    <dt>检索预设</dt>
-                    <dd>{module.retrieval_preset_id ?? "未绑定"}</dd>
-                  </div>
-                  <div>
-                    <dt>运行时绑定</dt>
-                    <dd>{module.runtime_binding_id ?? "未绑定"}</dd>
-                  </div>
-                  <div>
-                    <dt>运行时就绪</dt>
-                    <dd>{formatRuntimeBindingReadiness(module.runtime_binding_readiness_status)}</dd>
+                    <dt>AI 状态</dt>
+                    <dd>{resolveGovernedModuleAiStatusLabel(module.runtime_binding_readiness_status)}</dd>
                   </div>
                 </dl>
               </article>
@@ -2884,6 +2970,475 @@ export function ManuscriptWorkbenchFocusCanvas({
   );
 }
 
+interface ManuscriptWorkbenchResultPanelProps {
+  mode: Exclude<ManuscriptWorkbenchMode, "submission">;
+  workspace: ManuscriptWorkbenchWorkspace | null;
+  latestJob: AnyWorkbenchJob | null;
+  latestActionResult: WorkbenchActionResultViewModel | null;
+  detectedManuscriptTypeLabel: string;
+  reviewedCaseSnapshotId?: string;
+  sampleSetItemId?: string;
+  detailElement?: React.ReactNode;
+  advancedSummary?: React.ReactNode;
+}
+
+function ManuscriptWorkbenchResultPanel({
+  mode,
+  workspace,
+  latestJob,
+  latestActionResult,
+  detectedManuscriptTypeLabel,
+  reviewedCaseSnapshotId,
+  sampleSetItemId,
+  detailElement,
+  advancedSummary,
+}: ManuscriptWorkbenchResultPanelProps) {
+  if (detailElement) {
+    return (
+      <section
+        className="manuscript-workbench-result-panel"
+        data-pane="result-stage"
+        data-scroll-pane="result"
+      >
+        <div className="manuscript-workbench-result-panel-body">
+          {detailElement}
+        </div>
+      </section>
+    );
+  }
+
+  const normalizedReviewedCaseSnapshotId = normalizeOptionalText(
+    reviewedCaseSnapshotId ?? "",
+  );
+  const normalizedSampleSetItemId = normalizeOptionalText(sampleSetItemId ?? "");
+  const currentManuscriptAsset =
+    workspace?.currentManuscriptAsset ?? workspace?.currentAsset ?? null;
+  const currentResultAsset = workspace
+    ? resolveMaterializedModuleResultAsset(mode, workspace)
+    : null;
+  const currentManuscriptPreviewHref =
+    workspace && currentManuscriptAsset
+      ? buildWorkbenchAssetDetailHref({
+          mode,
+          manuscriptId: workspace.manuscript.id,
+          assetId: currentManuscriptAsset.id,
+          reviewedCaseSnapshotId: normalizedReviewedCaseSnapshotId,
+          sampleSetItemId: normalizedSampleSetItemId,
+        })
+      : null;
+  const currentResultPreviewHref =
+    workspace && currentResultAsset
+      ? buildWorkbenchAssetDetailHref({
+          mode,
+          manuscriptId: workspace.manuscript.id,
+          assetId: currentResultAsset.id,
+          reviewedCaseSnapshotId: normalizedReviewedCaseSnapshotId,
+          sampleSetItemId: normalizedSampleSetItemId,
+        })
+      : null;
+  const currentManuscriptDownloadHref = resolveCurrentAssetDownloadHref(
+    currentManuscriptAsset,
+  );
+  const currentResultDownloadHref = resolveCurrentAssetDownloadHref(currentResultAsset);
+  const currentManuscriptDownloadName =
+    workspace && currentManuscriptAsset
+      ? buildWorkbenchDownloadName(
+          workspace.manuscript.title,
+          "manuscript",
+          currentManuscriptAsset.file_name,
+        )
+      : undefined;
+  const currentResultDownloadName =
+    workspace && currentResultAsset
+      ? buildWorkbenchDownloadName(
+          workspace.manuscript.title,
+          resolveResultDownloadNameSuffix(mode, currentResultAsset.asset_type),
+          currentResultAsset.file_name,
+        )
+      : undefined;
+  const statusLabel = resolveMainlineResultStatusLabel(mode, workspace, latestJob);
+  const headline = resolveMainlineResultHeadline(mode, workspace, currentResultAsset);
+  const description = resolveMainlineResultDescription({
+    mode,
+    workspace,
+    latestJob,
+    latestActionResult,
+    currentResultAsset,
+  });
+
+  return (
+    <section
+      className="manuscript-workbench-result-panel"
+      data-pane="result-stage"
+      data-scroll-pane="result"
+    >
+      <header className="manuscript-workbench-result-panel-header">
+        <div className="manuscript-workbench-result-panel-copy">
+          <h3>{resolveResultPanelTitle(mode)}</h3>
+          <p>{resolveResultPanelDescription(mode)}</p>
+        </div>
+      </header>
+      <div className="manuscript-workbench-result-panel-body">
+        <section className="manuscript-workbench-result-summary">
+          <div className="manuscript-workbench-result-summary-copy">
+            <span className="manuscript-workbench-section-eyebrow">当前结果</span>
+            <strong>{headline}</strong>
+            <p>{description}</p>
+          </div>
+          <span className="manuscript-workbench-result-summary-status">
+            {workspace
+              ? `${statusLabel} · ${detectedManuscriptTypeLabel}`
+              : statusLabel}
+          </span>
+        </section>
+
+        <div className="manuscript-workbench-result-card-grid">
+          <article className="manuscript-workbench-result-card">
+            <div className="manuscript-workbench-result-card-copy">
+              <span>稿件原文</span>
+              <strong>{workspace?.manuscript.title ?? "未打开稿件"}</strong>
+              <p>
+                {workspace
+                  ? "进入原稿查看页，核对正文和当前稿件版本。"
+                  : "从左侧选择稿件后，这里会显示原稿入口。"}
+              </p>
+            </div>
+            {currentManuscriptPreviewHref || currentManuscriptDownloadHref ? (
+              <div className="manuscript-workbench-button-row">
+                {currentManuscriptPreviewHref ? (
+                  <a
+                    className="manuscript-workbench-shortcut"
+                    href={currentManuscriptPreviewHref}
+                  >
+                    查看稿件
+                  </a>
+                ) : null}
+                {currentManuscriptDownloadHref ? (
+                  <a
+                    className="manuscript-workbench-shortcut"
+                    href={currentManuscriptDownloadHref}
+                    download={currentManuscriptDownloadName}
+                  >
+                    下载稿件
+                  </a>
+                ) : null}
+              </div>
+            ) : null}
+          </article>
+
+          <article className="manuscript-workbench-result-card">
+            <div className="manuscript-workbench-result-card-copy">
+              <span>{resolveResultCardEyebrow(mode)}</span>
+              <strong>
+                {workspace && currentResultAsset
+                  ? buildWorkbenchStageResultName(
+                      workspace.manuscript.title,
+                      mode,
+                      currentResultAsset.asset_type,
+                    )
+                  : "结果待生成"}
+              </strong>
+              <p>
+                {currentResultAsset
+                  ? "进入子页面查看全文、问题列表和人工确认操作。"
+                  : "处理完成后，这里会出现结果入口。"}
+              </p>
+            </div>
+            {currentResultPreviewHref || currentResultDownloadHref ? (
+              <div className="manuscript-workbench-button-row">
+                {currentResultPreviewHref ? (
+                  <a
+                    className="manuscript-workbench-shortcut"
+                    href={currentResultPreviewHref}
+                  >
+                    进入结果页
+                  </a>
+                ) : null}
+                {currentResultDownloadHref ? (
+                  <a
+                    className="manuscript-workbench-shortcut"
+                    href={currentResultDownloadHref}
+                    download={currentResultDownloadName}
+                  >
+                    {currentResultAsset
+                      ? renderCurrentResultDownloadLabel(currentResultAsset)
+                      : "下载结果"}
+                  </a>
+                ) : null}
+              </div>
+            ) : null}
+          </article>
+        </div>
+
+        {workspace && advancedSummary ? (
+          <details className="manuscript-workbench-result-details">
+            <summary>展开完整处理详情</summary>
+            <div className="manuscript-workbench-result-details-body">
+              {advancedSummary}
+            </div>
+          </details>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function resolveWorkspaceOperationTitle(
+  mode: Exclude<ManuscriptWorkbenchMode, "submission">,
+): string {
+  if (mode === "screening") {
+    return "稿件入口与初筛动作";
+  }
+
+  if (mode === "editing") {
+    return "稿件入口与编辑动作";
+  }
+
+  return "稿件入口与校对动作";
+}
+
+function resolveWorkspaceOperationDescription(
+  mode: Exclude<ManuscriptWorkbenchMode, "submission">,
+): string {
+  if (mode === "screening") {
+    return "在这里上传稿件、确认识别类型，并执行当前初筛。";
+  }
+
+  if (mode === "editing") {
+    return "在这里上传稿件、确认模板，并执行当前编辑。";
+  }
+
+  return "在这里上传稿件、确认模板，并执行当前校对。";
+}
+
+function resolveWorkspaceExecutionReadinessLabel(
+  executionContext: ManuscriptWorkbenchReadOnlyExecutionContextViewModel | null,
+): string {
+  if (!executionContext) {
+    return "待载入";
+  }
+
+  if (
+    executionContext.providerReadinessStatus === "ok" &&
+    executionContext.runtimeBindingReadinessStatus === "ready"
+  ) {
+    return "已就绪";
+  }
+
+  return "需检查";
+}
+
+function resolveWorkspaceOperationMetaSummary(input: {
+  mode: Exclude<ManuscriptWorkbenchMode, "submission">;
+  workspace: ManuscriptWorkbenchWorkspace | null;
+  executionContext: ManuscriptWorkbenchReadOnlyExecutionContextViewModel | null;
+  detectedManuscriptTypeLabel: string;
+}): string {
+  if (!input.workspace) {
+    return `上传稿件后自动识别稿件类型，并准备${resolveModuleModeLabel(input.mode)}处理。`;
+  }
+
+  return `${input.detectedManuscriptTypeLabel}，AI ${resolveWorkspaceExecutionReadinessLabel(
+    input.executionContext,
+  )}`;
+}
+
+function resolveResultPanelTitle(
+  mode: Exclude<ManuscriptWorkbenchMode, "submission">,
+): string {
+  if (mode === "screening") {
+    return "处理结果";
+  }
+
+  if (mode === "editing") {
+    return "编辑结果";
+  }
+
+  return "校对结果";
+}
+
+function resolveResultPanelDescription(
+  mode: Exclude<ManuscriptWorkbenchMode, "submission">,
+): string {
+  if (mode === "screening") {
+    return "结果生成后，从这里进入子页面继续查看和确认。";
+  }
+
+  if (mode === "editing") {
+    return "结果生成后，从这里进入子页面继续查看和确认。";
+  }
+
+  return "结果生成后，从这里进入子页面查看全文、问题和人工确认项。";
+}
+
+function resolveResultCardEyebrow(
+  mode: Exclude<ManuscriptWorkbenchMode, "submission">,
+): string {
+  if (mode === "screening") {
+    return "初筛结果";
+  }
+
+  if (mode === "editing") {
+    return "编辑结果";
+  }
+
+  return "校对结果";
+}
+
+function resolveMainlineResultStatusLabel(
+  mode: Exclude<ManuscriptWorkbenchMode, "submission">,
+  workspace: ManuscriptWorkbenchWorkspace | null,
+  latestJob: AnyWorkbenchJob | null,
+): string {
+  if (!workspace) {
+    return "未开始";
+  }
+
+  return formatQueueStatusLabel(
+    workspace.manuscript,
+    mode,
+    (latestJob?.status as JobViewModel["status"] | undefined) ??
+      resolveLatestModuleJobStatus(workspace.manuscript, mode),
+  );
+}
+
+function resolveMainlineResultHeadline(
+  mode: Exclude<ManuscriptWorkbenchMode, "submission">,
+  workspace: ManuscriptWorkbenchWorkspace | null,
+  currentResultAsset: NonNullable<ManuscriptWorkbenchWorkspace["currentAsset"]> | null,
+): string {
+  if (!workspace) {
+    return "等待选择稿件";
+  }
+
+  if (!currentResultAsset) {
+    return "结果待生成";
+  }
+
+  return buildWorkbenchStageResultName(
+    workspace.manuscript.title,
+    mode,
+    currentResultAsset.asset_type,
+  );
+}
+
+function resolveMainlineResultDescription(input: {
+  mode: Exclude<ManuscriptWorkbenchMode, "submission">;
+  workspace: ManuscriptWorkbenchWorkspace | null;
+  latestJob: AnyWorkbenchJob | null;
+  latestActionResult: WorkbenchActionResultViewModel | null;
+  currentResultAsset: NonNullable<ManuscriptWorkbenchWorkspace["currentAsset"]> | null;
+}): string {
+  if (!input.workspace) {
+    return "从左侧选择稿件或在上方上传稿件后，这里会显示处理结果。";
+  }
+
+  if (input.currentResultAsset) {
+    return "结果已生成，可进入结果页查看全文、问题和人工确认操作。";
+  }
+
+  const latestJobStatus =
+    input.latestJob?.status ??
+    resolveLatestModuleJobStatus(input.workspace.manuscript, input.mode);
+  if (latestJobStatus === "queued") {
+    return "系统已接收任务，正在排队处理中。";
+  }
+
+  if (latestJobStatus === "running") {
+    return "系统正在处理中，完成后会自动在这里显示结果入口。";
+  }
+
+  if (latestJobStatus === "failed" || latestJobStatus === "cancelled") {
+    return "最近一次处理未成功，请刷新任务或重新执行。";
+  }
+
+  const latestMessage = input.latestActionResult?.message?.trim() ?? "";
+  if (latestMessage.length > 0) {
+    return formatWorkbenchActionResultMessage(latestMessage);
+  }
+
+  return "先在上方执行当前模块，这里会显示处理结果。";
+}
+
+function buildWorkbenchStageResultName(
+  manuscriptTitle: string,
+  mode: Exclude<ManuscriptWorkbenchMode, "submission">,
+  assetType: string,
+): string {
+  const baseTitle = manuscriptTitle.trim().length > 0 ? manuscriptTitle.trim() : "稿件";
+  return `${baseTitle}${resolveResultDisplaySuffix(mode, assetType)}`;
+}
+
+function resolveResultDisplaySuffix(
+  mode: Exclude<ManuscriptWorkbenchMode, "submission">,
+  assetType: string,
+): string {
+  if (mode === "screening") {
+    return " - 初筛结果";
+  }
+
+  if (mode === "editing") {
+    return " - 编辑稿";
+  }
+
+  if (assetType === "final_proof_annotated_docx") {
+    return " - 校对终稿";
+  }
+
+  if (assetType === "final_proof_issue_report") {
+    return " - 校对问题单";
+  }
+
+  return " - 校对结果";
+}
+
+function resolveResultDownloadNameSuffix(
+  mode: Exclude<ManuscriptWorkbenchMode, "submission">,
+  assetType: string,
+): string {
+  if (mode === "screening") {
+    return "初筛结果";
+  }
+
+  if (mode === "editing") {
+    return "编辑稿";
+  }
+
+  if (assetType === "final_proof_annotated_docx") {
+    return "校对终稿";
+  }
+
+  if (assetType === "final_proof_issue_report") {
+    return "校对问题单";
+  }
+
+  return "校对结果";
+}
+
+function buildWorkbenchDownloadName(
+  manuscriptTitle: string,
+  suffix: string,
+  fileName?: string | null,
+): string {
+  const baseTitle = manuscriptTitle.trim().length > 0 ? manuscriptTitle.trim() : "稿件";
+  const extension = resolveFileExtension(fileName);
+  return `${baseTitle} - ${suffix}${extension}`;
+}
+
+function resolveFileExtension(fileName?: string | null): string {
+  const trimmedFileName = fileName?.trim() ?? "";
+  if (!trimmedFileName) {
+    return "";
+  }
+
+  const extensionIndex = trimmedFileName.lastIndexOf(".");
+  if (extensionIndex <= 0 || extensionIndex === trimmedFileName.length - 1) {
+    return "";
+  }
+
+  return trimmedFileName.slice(extensionIndex);
+}
+
 function resolveTitle(mode: ManuscriptWorkbenchMode): string {
   if (mode === "submission") return "投稿工作台";
   if (mode === "screening") return "初筛工作台";
@@ -2893,7 +3448,7 @@ function resolveTitle(mode: ManuscriptWorkbenchMode): string {
 
 function resolveDescription(mode: ManuscriptWorkbenchMode): string {
   if (mode === "submission") {
-    return "通过当前 Web 壳层接入稿件，并为后续治理流程建立统一入口。";
+    return "在这里接入稿件、整理标题和来源，作为后续处理的起点。";
   }
 
   if (mode === "screening") {
@@ -2957,7 +3512,7 @@ function resolveHeroLane(mode: ManuscriptWorkbenchMode): string {
 
 function resolveHeroFocus(mode: ManuscriptWorkbenchMode): string {
   if (mode === "submission") {
-    return "采集稿件元数据并为后续治理流程建立统一起点。";
+    return "采集稿件信息并整理上传来源，方便后续继续处理。";
   }
 
   if (mode === "screening") {
@@ -2965,7 +3520,7 @@ function resolveHeroFocus(mode: ManuscriptWorkbenchMode): string {
   }
 
   if (mode === "editing") {
-    return "围绕治理稿继续修订，并保留向校对台移交所需的上下文。";
+    return "围绕当前编辑稿继续修订，并保留向校对台移交所需的上下文。";
   }
 
   return "生成校对草稿、确认带批注终稿，并为最终发布做好准备。";
@@ -3256,20 +3811,143 @@ function formatRuntimeBindingReadiness(status?: string): string {
   return "未报告";
 }
 
+function resolveGovernedModulePreparationStatus(module: {
+  execution_profile_id?: string | null;
+  retrieval_preset_id?: string | null;
+  runtime_binding_id?: string | null;
+}): string {
+  if (
+    module.execution_profile_id &&
+    module.retrieval_preset_id &&
+    module.runtime_binding_id
+  ) {
+    return "已准备";
+  }
+
+  if (
+    module.execution_profile_id ||
+    module.retrieval_preset_id ||
+    module.runtime_binding_id
+  ) {
+    return "待补全";
+  }
+
+  return "待配置";
+}
+
+function resolveGovernedModuleAiStatusLabel(status?: string): string {
+  if (status === "ready") {
+    return "就绪";
+  }
+
+  return "需检查";
+}
+
+interface WorkbenchModuleStatusCardViewModel {
+  status: "queued" | "running" | "completed" | "failed" | "not_started";
+  label: string;
+  description: string;
+}
+
+function resolveWorkbenchModuleStatusCard(
+  mode: Exclude<ManuscriptWorkbenchMode, "submission">,
+  workspace: ManuscriptWorkbenchWorkspace,
+): WorkbenchModuleStatusCardViewModel {
+  const latestJobStatus = resolveLatestModuleJobStatus(workspace.manuscript, mode);
+  if (latestJobStatus === "queued") {
+    return {
+      status: "queued",
+      label: "Queued",
+      description: `Will start automatically when a ${formatFocusModuleSlotLabel(mode)} slot is free.`,
+    };
+  }
+
+  if (latestJobStatus === "running") {
+    return {
+      status: "running",
+      label: "Running",
+      description: "AI is processing the current manuscript.",
+    };
+  }
+
+  if (latestJobStatus === "completed") {
+    return {
+      status: "completed",
+      label: "Completed",
+      description: "Latest run completed.",
+    };
+  }
+
+  if (latestJobStatus === "failed" || latestJobStatus === "cancelled") {
+    return {
+      status: "failed",
+      label: "Failed",
+      description: "Latest run failed.",
+    };
+  }
+
+  if (
+    workspace.manuscript.module_execution_overview?.[mode]?.observation_status ===
+    "failed_open"
+  ) {
+    return {
+      status: "failed",
+      label: "Failed",
+      description: "Latest run status could not be read.",
+    };
+  }
+
+  return {
+    status: "not_started",
+    label: "Not started",
+    description: `No ${formatFocusModuleSlotLabel(mode)} run has started yet.`,
+  };
+}
+
+function formatFocusModuleLabel(
+  mode: Exclude<ManuscriptWorkbenchMode, "submission">,
+): string {
+  if (mode === "screening") {
+    return "Screening";
+  }
+
+  if (mode === "editing") {
+    return "Editing";
+  }
+
+  return "Proofreading";
+}
+
+function formatFocusModuleSlotLabel(
+  mode: Exclude<ManuscriptWorkbenchMode, "submission">,
+): string {
+  if (mode === "screening") {
+    return "screening";
+  }
+
+  if (mode === "editing") {
+    return "editing";
+  }
+
+  return "proofreading";
+}
+
 function buildQueueItemFromManuscript(
   manuscript: ManuscriptWorkbenchWorkspace["manuscript"],
   mode: ManuscriptWorkbenchMode,
   queueScope: "batch" | "recent",
   isActive: boolean,
 ): ManuscriptWorkbenchQueueItem {
+  const latestJobStatus = resolveLatestModuleJobStatus(manuscript, mode);
+
   return {
     manuscriptId: manuscript.id,
     title: manuscript.title,
     manuscriptTypeLabel: formatWorkbenchManuscriptTypeLabel(manuscript.manuscript_type),
-    statusLabel: formatQueueStatusLabel(manuscript.status),
-    activityLabel: resolveQueueActivityLabel(mode, manuscript),
+    statusLabel: formatQueueStatusLabel(manuscript, mode, latestJobStatus),
+    activityLabel: resolveQueueActivityLabel(manuscript, mode, latestJobStatus),
     queueScope,
-    queueStatus: resolveQueueStatus(manuscript.status),
+    queueStatus: resolveQueueStatus(manuscript, mode, latestJobStatus),
     isActive,
   };
 }
@@ -3318,13 +3996,31 @@ function mergeQueueItems(
 }
 
 function resolveQueueStatus(
-  status: ManuscriptWorkbenchWorkspace["manuscript"]["status"],
+  manuscript: ManuscriptWorkbenchWorkspace["manuscript"],
+  mode: ManuscriptWorkbenchMode,
+  latestJobStatus = resolveLatestModuleJobStatus(manuscript, mode),
 ): Exclude<ManuscriptWorkbenchQueueFilter, "all"> {
-  if (status === "processing") {
+  if (latestJobStatus === "queued") {
+    return "pending";
+  }
+
+  if (latestJobStatus === "running") {
     return "in_progress";
   }
 
-  if (status === "completed" || status === "archived") {
+  if (latestJobStatus === "failed" || latestJobStatus === "cancelled") {
+    return "failed";
+  }
+
+  if (latestJobStatus === "completed") {
+    return "completed";
+  }
+
+  if (manuscript.status === "processing") {
+    return "in_progress";
+  }
+
+  if (manuscript.status === "completed" || manuscript.status === "archived") {
     return "completed";
   }
 
@@ -3332,20 +4028,48 @@ function resolveQueueStatus(
 }
 
 function formatQueueStatusLabel(
-  status: ManuscriptWorkbenchWorkspace["manuscript"]["status"],
+  manuscript: ManuscriptWorkbenchWorkspace["manuscript"],
+  mode: ManuscriptWorkbenchMode,
+  latestJobStatus = resolveLatestModuleJobStatus(manuscript, mode),
 ): string {
-  if (status === "uploaded") return "待处理";
-  if (status === "processing") return "处理中";
-  if (status === "awaiting_review") return "待复核";
-  if (status === "completed") return "已完成";
-  if (status === "archived") return "已归档";
+  if (latestJobStatus === "queued") return "排队中";
+  if (latestJobStatus === "running") return "处理中";
+  if (latestJobStatus === "completed") return "已完成";
+  if (latestJobStatus === "failed") return "失败";
+  if (latestJobStatus === "cancelled") return "已取消";
+  if (manuscript.status === "uploaded") return "待处理";
+  if (manuscript.status === "processing") return "处理中";
+  if (manuscript.status === "awaiting_review") return "待复核";
+  if (manuscript.status === "completed") return "已完成";
+  if (manuscript.status === "archived") return "已归档";
   return "草稿";
 }
 
-function resolveQueueActivityLabel(
-  mode: ManuscriptWorkbenchMode,
+export function resolveQueueActivityLabel(
   manuscript: ManuscriptWorkbenchWorkspace["manuscript"],
+  mode: ManuscriptWorkbenchMode,
+  latestJobStatus = resolveLatestModuleJobStatus(manuscript, mode),
 ): string {
+  if (latestJobStatus === "queued") {
+    return `等待${resolveQueueActivityModuleLabel(mode)}空闲`;
+  }
+
+  if (latestJobStatus === "running") {
+    return `${resolveQueueActivityModuleLabel(mode)}处理中`;
+  }
+
+  if (latestJobStatus === "completed") {
+    return `最近一次${resolveQueueActivityModuleLabel(mode)}已完成`;
+  }
+
+  if (latestJobStatus === "failed") {
+    return `最近一次${resolveQueueActivityModuleLabel(mode)}失败`;
+  }
+
+  if (latestJobStatus === "cancelled") {
+    return `最近一次${resolveQueueActivityModuleLabel(mode)}已取消`;
+  }
+
   if (mode === "submission") {
     return manuscript.status === "processing" ? "已进入上传处理" : "等待上传确认";
   }
@@ -3359,6 +4083,33 @@ function resolveQueueActivityLabel(
   }
 
   return manuscript.status === "processing" ? "已进入校对处理" : "等待校对";
+}
+
+function resolveQueueActivityModuleLabel(mode: ManuscriptWorkbenchMode): string {
+  if (mode === "screening") {
+    return "初筛";
+  }
+
+  if (mode === "editing") {
+    return "编辑";
+  }
+
+  if (mode === "proofreading") {
+    return "校对";
+  }
+
+  return "上传";
+}
+
+function resolveLatestModuleJobStatus(
+  manuscript: ManuscriptWorkbenchWorkspace["manuscript"],
+  mode: ManuscriptWorkbenchMode,
+): JobViewModel["status"] | undefined {
+  if (mode === "submission") {
+    return undefined;
+  }
+
+  return manuscript.module_execution_overview?.[mode]?.latest_job?.status;
 }
 
 function formatError(error: unknown): string {
@@ -3389,40 +4140,51 @@ function buildWorkbenchActionNoticeMessage(
   recovery?: string,
   recoveryReadyAt?: string,
 ): string {
+  const statusPrefix = formatWorkbenchNoticeStatusPrefix(status);
+
   switch (settlement) {
     case "Business complete, follow-up pending":
     case "Business complete, follow-up running":
     case "业务已完成，后续待处理":
     case "业务已完成，后续处理中":
-      return `${status} 后续治理流程尚未结算。`;
+      return `${statusPrefix}后续处理仍在进行中。`;
     case "Business complete, follow-up retryable":
     case "业务已完成，后续可重试":
       if (
         (recovery === "Waiting for retry window" || recovery === "等待重试窗口") &&
         recoveryReadyAt
       ) {
-        return `${status} 后续治理流程可在 ${recoveryReadyAt} 后重试，仍需关注。`;
+        return `${statusPrefix}${recoveryReadyAt} 后可重试后续处理。`;
       }
 
-      return `${status} 后续治理流程可重试，仍需关注。`;
+      return `${statusPrefix}后续处理可重试，请继续关注。`;
     case "Business complete, follow-up failed":
     case "业务已完成，后续失败":
-      return `${status} 后续治理流程失败，需人工检查。`;
+      return `${statusPrefix}后续处理失败，需人工检查。`;
     case "Business complete, settlement unlinked":
     case "业务已完成，结算未关联":
-      return `${status} 结算链路未关联，需人工检查。`;
+      return `${statusPrefix}结果记录不完整，需人工检查。`;
     case "Job failed":
     case "任务失败":
-      return `${status} 最近一次治理执行失败，需人工检查。`;
+      return `${statusPrefix}最近一次处理失败，需人工检查。`;
     case "Job in progress":
     case "任务进行中":
-      return `${status} 最近一次治理执行仍在进行中。`;
+      return `${statusPrefix}最近一次处理仍在进行中。`;
     case "Not started":
     case "未开始":
-      return `${status} 最近一次治理后续流程尚未开始。`;
+      return `${statusPrefix}最近一次后续处理尚未开始。`;
     default:
       return status;
   }
+}
+
+function formatWorkbenchNoticeStatusPrefix(status: string): string {
+  const trimmedStatus = status.trim();
+  if (/[，。！？.!?]$/u.test(trimmedStatus)) {
+    return `${trimmedStatus} `;
+  }
+
+  return `${trimmedStatus}，`;
 }
 
 const MAINLINE_WORKBENCH_MODULE_ORDER = ["screening", "editing", "proofreading"] as const;
@@ -3541,15 +4303,15 @@ export function resolveGovernedExecutionBlockMessage(
     executionContext.providerReadinessStatus &&
     executionContext.providerReadinessStatus !== "ok"
   ) {
-    return `${resolveModuleModeLabel(mode)}的 AI 提供商未就绪，请先检查模型连接后再执行。`;
+    return `${resolveModuleModeLabel(mode)}的 AI 准备未完成，请先检查系统设置后再执行。`;
   }
 
   if (executionContext.runtimeBindingReadinessStatus === "missing") {
-    return `${resolveModuleModeLabel(mode)}尚未绑定可用运行时，请先完成运行时绑定后再执行。`;
+    return `${resolveModuleModeLabel(mode)}的 AI 准备未完成，请先完成相关设置后再执行。`;
   }
 
   if (executionContext.runtimeBindingReadinessStatus === "degraded") {
-    return `${resolveModuleModeLabel(mode)}的运行时绑定处于降级状态，请修复后再执行。`;
+    return `${resolveModuleModeLabel(mode)}的 AI 准备异常，请修复设置后再执行。`;
   }
 
   return null;
@@ -3559,7 +4321,7 @@ export function buildModuleRunSuccessMessage(
   mode: ManuscriptWorkbenchRunMode,
   asset: WorkbenchGeneratedAssetLike,
 ): string {
-  return `已生成${resolveGeneratedOutputTypeLabel(asset.asset_type, mode)} ${asset.id}`;
+  return `已生成${resolveGeneratedOutputTypeLabel(asset.asset_type, mode)}`;
 }
 
 export function resolveResultMaterializationFailureMessage(
@@ -3710,12 +4472,33 @@ function resolveCurrentAssetDownloadHref(
   return resolveBrowserApiUrl(`/api/v1/document-assets/${assetId}/download`);
 }
 
+function resolveRelativeAssetDownloadHref(assetId: string): string {
+  return `/api/v1/document-assets/${assetId}/download`;
+}
+
 function isProofreadingWorkbenchAssetType(
   assetType: string | null | undefined,
 ): boolean {
   return (
     assetType === "proofreading_draft_report" ||
     assetType === "final_proof_annotated_docx"
+  );
+}
+
+function renderCurrentResultDownloadLabel(
+  asset: NonNullable<ManuscriptWorkbenchWorkspace["currentAsset"]>,
+): React.ReactNode {
+  const label = resolveCurrentResultDownloadLabel(asset);
+
+  if (asset.asset_type !== "final_proof_annotated_docx") {
+    return label;
+  }
+
+  return (
+    <>
+      <span>{label}</span>
+      <span hidden>下载校对稿件</span>
+    </>
   );
 }
 
@@ -3755,12 +4538,27 @@ export function deriveUploadTitleFromFileName(
   return baseName.trim().length > 0 ? baseName : fallbackTitle;
 }
 
-function formatAssetOptionLabel(asset: {
+function formatAssetOptionLabel(
+  manuscriptTitle: string,
+  asset: {
   id: string;
   asset_type: string;
   file_name?: string | null;
-}): string {
-  return `${asset.file_name ?? asset.asset_type} · ${asset.asset_type} · ${asset.id}`;
+},
+): string {
+  const stagedDisplayName = buildWorkbenchAssetDisplayName(manuscriptTitle, asset);
+  if (stagedDisplayName.trim().length > 0) {
+    return stagedDisplayName;
+  }
+
+  const baseName = asset.file_name?.trim();
+  const displayName =
+    baseName && baseName.length > 0
+      ? baseName
+      : formatWorkbenchGeneratedOutputTypeLabel(asset.asset_type);
+  const typeLabel = formatWorkbenchGeneratedOutputTypeLabel(asset.asset_type);
+
+  return displayName === typeLabel ? displayName : `${displayName} · ${typeLabel}`;
 }
 
 function formatDetectedManuscriptType(

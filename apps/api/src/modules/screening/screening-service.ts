@@ -47,18 +47,22 @@ import {
   resolveModuleExecutionMode,
 } from "../shared/module-run-support.ts";
 import {
+  ModuleExecutionConcurrencyController,
+  runControlledModuleJob,
+} from "../shared/module-execution-concurrency-controller.ts";
+import {
   createWriteTransactionManager,
   type WriteTransactionManager,
 } from "../shared/write-transaction-manager.ts";
 import type { ModuleTemplateRepository } from "../templates/template-repository.ts";
 import type { ToolPermissionPolicyService } from "../tool-permission-policies/tool-permission-policy-service.ts";
 import type { MainlineAiRuntimeExecutor } from "../shared/mainline-ai-runtime-executor.ts";
+import type { AiGovernanceContext } from "../shared/ai-governance-context.ts";
 import { materializeTextAsset } from "../shared/text-asset-materialization.ts";
 import {
   ScreeningAiReportService,
   type ScreeningAiReport,
 } from "./screening-ai-report-service.ts";
-import type { AiGovernanceContext } from "../shared/ai-governance-context.ts";
 
 export interface RunScreeningInput {
   manuscriptId: string;
@@ -109,6 +113,7 @@ export interface ScreeningServiceOptions {
   >;
   manuscriptQualityService?: Pick<ManuscriptQualityService, "runChecks">;
   documentStructureService?: Pick<DocumentStructureService, "extract">;
+  moduleExecutionConcurrencyController?: ModuleExecutionConcurrencyController;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager;
   createId?: () => string;
@@ -169,6 +174,7 @@ export class ScreeningService {
     "runChecks"
   >;
   private readonly documentStructureService?: Pick<DocumentStructureService, "extract">;
+  private readonly moduleExecutionConcurrencyController: ModuleExecutionConcurrencyController;
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager;
   private readonly createId: () => string;
@@ -214,6 +220,9 @@ export class ScreeningService {
       };
     this.manuscriptQualityService = options.manuscriptQualityService;
     this.documentStructureService = options.documentStructureService;
+    this.moduleExecutionConcurrencyController =
+      options.moduleExecutionConcurrencyController ??
+      new ModuleExecutionConcurrencyController();
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
       options.transactionManager ??
@@ -229,393 +238,409 @@ export class ScreeningService {
   async run(input: RunScreeningInput): Promise<ScreeningRunResult> {
     this.permissionGuard.assert(input.actorRole, "workbench.screening");
     const executionMode = resolveModuleExecutionMode(input.executionMode);
+    const queuedTimestamp = this.now().toISOString();
+    const jobId = this.createId();
+    const queuedJob: JobRecord = {
+      id: jobId,
+      manuscript_id: input.manuscriptId,
+      module: "screening",
+      job_type: "screening_run",
+      status: "queued",
+      requested_by: input.requestedBy,
+      payload: {
+        parentAssetId: input.parentAssetId,
+        ...(executionMode === "bare" ? { executionMode } : {}),
+      },
+      attempt_count: 0,
+      started_at: undefined,
+      finished_at: undefined,
+      error_message: undefined,
+      created_at: queuedTimestamp,
+      updated_at: queuedTimestamp,
+    };
 
-    const committed = await this.transactionManager.withTransaction(async (context) => {
-      const { jobRepository } = context;
-      if (!jobRepository) {
-        throw new Error("Screening runs require a job repository.");
-      }
-      const documentAssetService = this.documentAssetService.createScoped({
-        manuscriptRepository: context.manuscriptRepository,
-        assetRepository: context.assetRepository,
-      });
+    const committed = await runControlledModuleJob({
+      controller: this.moduleExecutionConcurrencyController,
+      module: "screening",
+      jobRepository: this.jobRepository,
+      queuedJob,
+      now: this.now,
+      run: (runningJob) =>
+        this.transactionManager.withTransaction(async (context) => {
+          const { jobRepository } = context;
+          if (!jobRepository) {
+            throw new Error("Screening runs require a job repository.");
+          }
+          const documentAssetService = this.documentAssetService.createScoped({
+            manuscriptRepository: context.manuscriptRepository,
+            assetRepository: context.assetRepository,
+          });
 
-      const timestamp = this.now().toISOString();
-      const jobId = this.createId();
-      let normalizedContext: {
-        executionProfileId: string;
-        templateId: string;
-        moduleTemplateVersionNo: number;
-        promptTemplateId: string;
-        promptTemplateVersion: string;
-        skillPackageIds: string[];
-        skillPackageVersions: string[];
-        knowledgeHits: RecordKnowledgeHitInput[];
-        modelSelection: Awaited<ReturnType<AiGatewayService["resolveModelSelection"]>>;
-        verificationCheckProfileIds: string[];
-        evaluationSuiteIds: string[];
-        releaseCheckProfileId?: string;
-        qualityPackageVersionIds?: string[];
-        governanceContext?: AiGovernanceContext;
-        agentRuntimeId?: string;
-        sandboxProfileId?: string;
-        agentProfileId?: string;
-        runtimeBindingId?: string;
-        toolPermissionPolicyId?: string;
-      };
-      if (executionMode === "bare") {
-        const bareContext = await resolveBareModuleContext({
-          manuscriptId: input.manuscriptId,
-          module: "screening",
-          jobId,
-          actorId: input.requestedBy,
-          actorRole: input.actorRole,
-          manuscriptRepository: this.manuscriptRepository,
-          aiGatewayService: this.aiGatewayService,
-        });
-        normalizedContext = {
-          executionProfileId: bareContext.executionProfileId,
-          templateId: bareContext.moduleTemplateId,
-          moduleTemplateVersionNo: bareContext.moduleTemplateVersionNo,
-          promptTemplateId: bareContext.promptTemplateId,
-          promptTemplateVersion: bareContext.promptTemplateVersion,
-          skillPackageIds: bareContext.skillPackageIds,
-          skillPackageVersions: bareContext.skillPackageVersions,
-          knowledgeHits: bareContext.knowledgeHits,
-          modelSelection: bareContext.modelSelection,
-          verificationCheckProfileIds: bareContext.verificationCheckProfileIds,
-          evaluationSuiteIds: bareContext.evaluationSuiteIds,
-          qualityPackageVersionIds: bareContext.qualityPackageVersionIds,
-        };
-      } else {
-        const governedContext = await resolveGovernedAgentContext({
-          manuscriptId: input.manuscriptId,
-          module: "screening",
-          jobId,
-          actorId: input.requestedBy,
-          actorRole: input.actorRole,
-          manuscriptRepository: this.manuscriptRepository,
-          moduleTemplateRepository: this.moduleTemplateRepository,
-          executionGovernanceService: this.executionGovernanceService,
-          promptSkillRegistryRepository: this.promptSkillRegistryRepository,
-          knowledgeRepository: this.knowledgeRepository,
-          aiGatewayService: this.aiGatewayService,
-          retrievalPresetService: this.retrievalPresetService,
-          manualReviewPolicyService: this.manualReviewPolicyService,
-          sandboxProfileService: this.sandboxProfileService,
-          agentProfileService: this.agentProfileService,
-          agentRuntimeService: this.agentRuntimeService,
-          runtimeBindingService: this.runtimeBindingService,
-          runtimeBindingReadinessService: this.runtimeBindingReadinessService,
-          aiProviderRuntimeService: this.aiProviderRuntimeService,
-          aiProviderRuntimeCutoverEnabled: this.aiProviderRuntimeCutoverEnabled,
-          toolPermissionPolicyService: this.toolPermissionPolicyService,
-        });
-        normalizedContext = {
-          executionProfileId: governedContext.executionProfile.id,
-          templateId: governedContext.moduleContext.moduleTemplate.id,
-          moduleTemplateVersionNo:
-            governedContext.moduleContext.moduleTemplate.version_no,
-          promptTemplateId: governedContext.moduleContext.promptTemplate.id,
-          promptTemplateVersion:
-            governedContext.moduleContext.promptTemplate.version,
-          skillPackageIds: governedContext.moduleContext.skillPackages.map(
-            (record) => record.id,
-          ),
-          skillPackageVersions: governedContext.moduleContext.skillPackages.map(
-            (record) => record.version,
-          ),
-          knowledgeHits: governedContext.moduleContext.knowledgeSelections.map(
-            (selection) => ({
-              knowledgeItemId: selection.knowledgeItem.id,
+          let normalizedContext: {
+            executionProfileId: string;
+            templateId: string;
+            moduleTemplateVersionNo: number;
+            promptTemplateId: string;
+            promptTemplateVersion: string;
+            skillPackageIds: string[];
+            skillPackageVersions: string[];
+            knowledgeHits: RecordKnowledgeHitInput[];
+            modelSelection: Awaited<ReturnType<AiGatewayService["resolveModelSelection"]>>;
+            verificationCheckProfileIds: string[];
+            evaluationSuiteIds: string[];
+            releaseCheckProfileId?: string;
+            qualityPackageVersionIds?: string[];
+            governanceContext?: AiGovernanceContext;
+            agentRuntimeId?: string;
+            sandboxProfileId?: string;
+            agentProfileId?: string;
+            runtimeBindingId?: string;
+            toolPermissionPolicyId?: string;
+          };
+          if (executionMode === "bare") {
+            const bareContext = await resolveBareModuleContext({
+              manuscriptId: input.manuscriptId,
+              module: "screening",
+              jobId,
+              actorId: input.requestedBy,
+              actorRole: input.actorRole,
+              manuscriptRepository: this.manuscriptRepository,
+              aiGatewayService: this.aiGatewayService,
+            });
+            normalizedContext = {
+              executionProfileId: bareContext.executionProfileId,
+              templateId: bareContext.moduleTemplateId,
+              moduleTemplateVersionNo: bareContext.moduleTemplateVersionNo,
+              promptTemplateId: bareContext.promptTemplateId,
+              promptTemplateVersion: bareContext.promptTemplateVersion,
+              skillPackageIds: bareContext.skillPackageIds,
+              skillPackageVersions: bareContext.skillPackageVersions,
+              knowledgeHits: bareContext.knowledgeHits,
+              modelSelection: bareContext.modelSelection,
+              verificationCheckProfileIds: bareContext.verificationCheckProfileIds,
+              evaluationSuiteIds: bareContext.evaluationSuiteIds,
+              qualityPackageVersionIds: bareContext.qualityPackageVersionIds,
+            };
+          } else {
+            const governedContext = await resolveGovernedAgentContext({
+              manuscriptId: input.manuscriptId,
+              module: "screening",
+              jobId,
+              actorId: input.requestedBy,
+              actorRole: input.actorRole,
+              manuscriptRepository: this.manuscriptRepository,
+              moduleTemplateRepository: this.moduleTemplateRepository,
+              executionGovernanceService: this.executionGovernanceService,
+              promptSkillRegistryRepository: this.promptSkillRegistryRepository,
+              knowledgeRepository: this.knowledgeRepository,
+              aiGatewayService: this.aiGatewayService,
+              retrievalPresetService: this.retrievalPresetService,
+              manualReviewPolicyService: this.manualReviewPolicyService,
+              sandboxProfileService: this.sandboxProfileService,
+              agentProfileService: this.agentProfileService,
+              agentRuntimeService: this.agentRuntimeService,
+              runtimeBindingService: this.runtimeBindingService,
+              runtimeBindingReadinessService: this.runtimeBindingReadinessService,
+              aiProviderRuntimeService: this.aiProviderRuntimeService,
+              aiProviderRuntimeCutoverEnabled: this.aiProviderRuntimeCutoverEnabled,
+              toolPermissionPolicyService: this.toolPermissionPolicyService,
+            });
+            normalizedContext = {
+              executionProfileId: governedContext.executionProfile.id,
+              templateId: governedContext.moduleContext.moduleTemplate.id,
+              moduleTemplateVersionNo:
+                governedContext.moduleContext.moduleTemplate.version_no,
+              promptTemplateId: governedContext.moduleContext.promptTemplate.id,
+              promptTemplateVersion:
+                governedContext.moduleContext.promptTemplate.version,
+              skillPackageIds: governedContext.moduleContext.skillPackages.map(
+                (record) => record.id,
+              ),
+              skillPackageVersions: governedContext.moduleContext.skillPackages.map(
+                (record) => record.version,
+              ),
+              knowledgeHits: governedContext.moduleContext.knowledgeSelections.map(
+                (selection) => ({
+                  knowledgeItemId: selection.knowledgeItem.id,
+                  matchSourceId: selection.matchSourceId,
+                  bindingRuleId: selection.bindingRuleId,
+                  matchSource: selection.matchSource,
+                  matchReasons: selection.matchReasons,
+                }),
+              ),
+              modelSelection: governedContext.moduleContext.modelSelection,
+              verificationCheckProfileIds:
+                governedContext.verificationExpectations
+                  .verification_check_profile_ids,
+              evaluationSuiteIds:
+                governedContext.verificationExpectations.evaluation_suite_ids,
+              releaseCheckProfileId:
+                governedContext.verificationExpectations.release_check_profile_id,
+              qualityPackageVersionIds:
+                governedContext.runtimeBinding.quality_package_version_ids,
+              governanceContext: buildScreeningGovernanceContext({
+                promptHardRuleSummary:
+                  governedContext.moduleContext.promptTemplate.hard_rule_summary,
+                ruleSetVersionNo: governedContext.moduleContext.ruleSet.version_no,
+                rules: governedContext.moduleContext.rules,
+                resolvedRules: governedContext.moduleContext.resolvedRules,
+                knowledgeSelections:
+                  governedContext.moduleContext.knowledgeSelections.map(
+                    (selection) => ({
+                      knowledgeItemId: selection.knowledgeItem.id,
+                      matchSource: selection.matchSource,
+                      bindingRuleId: selection.bindingRuleId,
+                      matchSourceId: selection.matchSourceId,
+                      matchReasons: selection.matchReasons,
+                    }),
+                  ),
+              }),
+              agentRuntimeId: governedContext.runtime.id,
+              sandboxProfileId: governedContext.sandboxProfile.id,
+              agentProfileId: governedContext.agentProfile.id,
+              runtimeBindingId: governedContext.runtimeBinding.id,
+              toolPermissionPolicyId: governedContext.toolPolicy.id,
+            };
+          }
+          const executionLog =
+            executionMode === "bare"
+              ? undefined
+              : await this.agentExecutionService.createLog({
+                  manuscriptId: input.manuscriptId,
+                  module: "screening",
+                  triggeredBy: input.requestedBy,
+                  runtimeId: normalizedContext.agentRuntimeId!,
+                  sandboxProfileId: normalizedContext.sandboxProfileId!,
+                  agentProfileId: normalizedContext.agentProfileId!,
+                  runtimeBindingId: normalizedContext.runtimeBindingId!,
+                  toolPermissionPolicyId:
+                    normalizedContext.toolPermissionPolicyId!,
+                  routingPolicyVersionId:
+                    normalizedContext.modelSelection.policy_version_id,
+                  routingPolicyScopeKind:
+                    normalizedContext.modelSelection.policy_scope_kind,
+                  routingPolicyScopeValue:
+                    normalizedContext.modelSelection.policy_scope_value,
+                  resolvedModelId: normalizedContext.modelSelection.model.id,
+                  fallbackModelId:
+                    normalizedContext.modelSelection.fallback_chain[0]?.id,
+                  knowledgeItemIds: normalizedContext.knowledgeHits.map(
+                    (selection) => selection.knowledgeItemId,
+                  ),
+                  verificationCheckProfileIds:
+                    normalizedContext.verificationCheckProfileIds,
+                  evaluationSuiteIds: normalizedContext.evaluationSuiteIds,
+                  releaseCheckProfileId: normalizedContext.releaseCheckProfileId,
+                });
+          const sourceAsset = await context.assetRepository.findById(
+            input.parentAssetId,
+          );
+          const sourceBlocks =
+            await this.manuscriptQualitySourceBlockResolver.resolveBlocks({
+              manuscriptId: input.manuscriptId,
+              assetId: input.parentAssetId,
+            });
+          const documentStructureSnapshot = this.documentStructureService
+            ? await this.documentStructureService.extract({
+                manuscriptId: input.manuscriptId,
+                assetId: input.parentAssetId,
+                fileName:
+                  sourceAsset?.file_name ?? input.fileName ?? input.parentAssetId,
+              })
+            : undefined;
+          const qualityRun = await this.runManuscriptQualityChecks({
+            manuscriptId: input.manuscriptId,
+            assetId: input.parentAssetId,
+            sourceBlocks,
+            tableSnapshots: documentStructureSnapshot?.tables ?? [],
+            qualityPackageVersionIds: normalizedContext.qualityPackageVersionIds,
+          });
+          const medicalReviewSignals = buildMedicalReviewSignals(qualityRun?.issues);
+          const screeningReportResult =
+            await this.screeningAiReportService.createReport({
+              manuscriptId: input.manuscriptId,
+              sourceFileName:
+                sourceAsset?.file_name ?? input.fileName ?? input.parentAssetId,
+              sourceBlocks: sourceBlocks.map((block) => ({
+                text: block.text,
+                blockKind: block.block_kind,
+              })),
+              tableCount: documentStructureSnapshot?.tables.length ?? 0,
+              qualityIssues: qualityRun?.issues,
+              qualitySummary: qualityRun?.quality_findings_summary,
+              governanceContext: normalizedContext.governanceContext,
+            });
+          const screeningReport = structuredClone(
+            screeningReportResult.report,
+          ) as ScreeningAiReport;
+          const screeningReportMarkdown = screeningReportResult.markdown;
+
+          if (this.textAssetRootDir) {
+            await this.textAssetMaterializer({
+              rootDir: this.textAssetRootDir,
+              storageKey: input.storageKey,
+              content: screeningReportMarkdown,
+            });
+          }
+
+          const asset = await documentAssetService.createAsset({
+            manuscriptId: input.manuscriptId,
+            assetType: "screening_report",
+            storageKey: input.storageKey,
+            mimeType: "text/markdown",
+            createdBy: input.requestedBy,
+            fileName: input.fileName,
+            parentAssetId: input.parentAssetId,
+            sourceModule: "screening",
+            sourceJobId: jobId,
+          });
+          const snapshot = await this.executionTrackingService.recordSnapshot({
+            manuscriptId: input.manuscriptId,
+            module: "screening",
+            jobId,
+            executionProfileId: normalizedContext.executionProfileId,
+            moduleTemplateId: normalizedContext.templateId,
+            moduleTemplateVersionNo: normalizedContext.moduleTemplateVersionNo,
+            promptTemplateId: normalizedContext.promptTemplateId,
+            promptTemplateVersion: normalizedContext.promptTemplateVersion,
+            skillPackageIds: normalizedContext.skillPackageIds,
+            skillPackageVersions: normalizedContext.skillPackageVersions,
+            modelId: normalizedContext.modelSelection.model.id,
+            modelVersion: normalizedContext.modelSelection.model.model_version,
+            qualityPackages: qualityRun?.resolved_quality_packages,
+            createdAssetIds: [asset.id],
+            agentExecutionLogId: executionLog?.id,
+            qualityFindingsSummary: qualityRun
+              ? structuredClone(qualityRun.quality_findings_summary)
+              : undefined,
+            knowledgeHits: normalizedContext.knowledgeHits.map((selection) => ({
+              knowledgeItemId: selection.knowledgeItemId,
               matchSourceId: selection.matchSourceId,
               bindingRuleId: selection.bindingRuleId,
               matchSource: selection.matchSource,
               matchReasons: selection.matchReasons,
-            }),
-          ),
-          modelSelection: governedContext.moduleContext.modelSelection,
-          verificationCheckProfileIds:
-            governedContext.verificationExpectations
-              .verification_check_profile_ids,
-          evaluationSuiteIds:
-            governedContext.verificationExpectations.evaluation_suite_ids,
-          releaseCheckProfileId:
-            governedContext.verificationExpectations.release_check_profile_id,
-          qualityPackageVersionIds:
-            governedContext.runtimeBinding.quality_package_version_ids,
-          governanceContext: buildScreeningGovernanceContext({
-            promptHardRuleSummary:
-              governedContext.moduleContext.promptTemplate.hard_rule_summary,
-            ruleSetVersionNo: governedContext.moduleContext.ruleSet.version_no,
-            rules: governedContext.moduleContext.rules,
-            resolvedRules: governedContext.moduleContext.resolvedRules,
-            knowledgeSelections: governedContext.moduleContext.knowledgeSelections.map(
-              (selection) => ({
-                knowledgeItemId: selection.knowledgeItem.id,
-                matchSource: selection.matchSource,
-                bindingRuleId: selection.bindingRuleId,
-                matchSourceId: selection.matchSourceId,
-                matchReasons: selection.matchReasons,
-              }),
-            ),
-          }),
-          agentRuntimeId: governedContext.runtime.id,
-          sandboxProfileId: governedContext.sandboxProfile.id,
-          agentProfileId: governedContext.agentProfile.id,
-          runtimeBindingId: governedContext.runtimeBinding.id,
-          toolPermissionPolicyId: governedContext.toolPolicy.id,
-        };
-      }
-      const executionLog =
-        executionMode === "bare"
-          ? undefined
-          : await this.agentExecutionService.createLog({
-              manuscriptId: input.manuscriptId,
-              module: "screening",
-              triggeredBy: input.requestedBy,
-              runtimeId: normalizedContext.agentRuntimeId!,
-              sandboxProfileId: normalizedContext.sandboxProfileId!,
-              agentProfileId: normalizedContext.agentProfileId!,
-              runtimeBindingId: normalizedContext.runtimeBindingId!,
-              toolPermissionPolicyId: normalizedContext.toolPermissionPolicyId!,
-              routingPolicyVersionId:
-                normalizedContext.modelSelection.policy_version_id,
-              routingPolicyScopeKind:
-                normalizedContext.modelSelection.policy_scope_kind,
-              routingPolicyScopeValue:
-                normalizedContext.modelSelection.policy_scope_value,
-              resolvedModelId: normalizedContext.modelSelection.model.id,
-              fallbackModelId:
-                normalizedContext.modelSelection.fallback_chain[0]?.id,
+            })),
+          });
+          if (executionLog) {
+            await this.agentExecutionService.completeLog({
+              logId: executionLog.id,
+              executionSnapshotId: snapshot.id,
+            });
+          }
+
+          const finishedTimestamp = this.now().toISOString();
+          const completedJob: JobRecord = {
+            ...runningJob,
+            status: "completed",
+            payload: {
+              ...runningJob.payload,
+              templateId: normalizedContext.templateId,
+              executionProfileId: normalizedContext.executionProfileId,
+              promptTemplateId: normalizedContext.promptTemplateId,
+              skillPackageIds: normalizedContext.skillPackageIds,
               knowledgeItemIds: normalizedContext.knowledgeHits.map(
                 (selection) => selection.knowledgeItemId,
               ),
-              verificationCheckProfileIds:
-                normalizedContext.verificationCheckProfileIds,
-              evaluationSuiteIds: normalizedContext.evaluationSuiteIds,
-              releaseCheckProfileId: normalizedContext.releaseCheckProfileId,
-            });
+              modelId: normalizedContext.modelSelection.model.id,
+              ...(normalizedContext.agentRuntimeId
+                ? {
+                    agentRuntimeId: normalizedContext.agentRuntimeId,
+                  }
+                : {}),
+              ...(normalizedContext.sandboxProfileId
+                ? {
+                    sandboxProfileId: normalizedContext.sandboxProfileId,
+                  }
+                : {}),
+              ...(normalizedContext.agentProfileId
+                ? {
+                    agentProfileId: normalizedContext.agentProfileId,
+                  }
+                : {}),
+              ...(normalizedContext.runtimeBindingId
+                ? {
+                    runtimeBindingId: normalizedContext.runtimeBindingId,
+                  }
+                : {}),
+              ...(normalizedContext.toolPermissionPolicyId
+                ? {
+                    toolPermissionPolicyId:
+                      normalizedContext.toolPermissionPolicyId,
+                  }
+                : {}),
+              ...(executionLog
+                ? {
+                    agentExecutionLogId: executionLog.id,
+                  }
+                : {}),
+              ...(normalizedContext.governanceContext
+                ? {
+                    governanceContext: normalizedContext.governanceContext,
+                  }
+                : {}),
+              snapshotId: snapshot.id,
+              outputAssetId: asset.id,
+              outputAssetType: "screening_report",
+              screeningReport,
+              ...(qualityRun
+                ? {
+                    qualityFindings: qualityRun.issues.map((issue) =>
+                      structuredClone(issue),
+                    ),
+                    qualityFindingSummary: structuredClone(
+                      qualityRun.quality_findings_summary,
+                    ),
+                    ...(medicalReviewSignals.length > 0
+                      ? {
+                          medicalReviewSignals: medicalReviewSignals.map(
+                            (signal) => ({
+                              ...signal,
+                            }),
+                          ),
+                        }
+                      : {}),
+                  }
+                : {}),
+            },
+            attempt_count: 1,
+            started_at: runningJob.started_at,
+            finished_at: finishedTimestamp,
+            updated_at: finishedTimestamp,
+          };
+          await jobRepository.save(completedJob);
 
-      const queuedJob: JobRecord = {
-        id: jobId,
-        manuscript_id: input.manuscriptId,
-        module: "screening",
-        job_type: "screening_run",
-        status: "queued",
-        requested_by: input.requestedBy,
-        payload: {
-          templateId: normalizedContext.templateId,
-          executionProfileId: normalizedContext.executionProfileId,
-          promptTemplateId: normalizedContext.promptTemplateId,
-          skillPackageIds: normalizedContext.skillPackageIds,
-          knowledgeItemIds: normalizedContext.knowledgeHits.map(
-            (selection) => selection.knowledgeItemId,
-          ),
-          modelId: normalizedContext.modelSelection.model.id,
-          ...(executionMode === "bare" ? { executionMode } : {}),
-          ...(normalizedContext.agentRuntimeId
-            ? {
-                agentRuntimeId: normalizedContext.agentRuntimeId,
-              }
-            : {}),
-          ...(normalizedContext.sandboxProfileId
-            ? {
-                sandboxProfileId: normalizedContext.sandboxProfileId,
-              }
-            : {}),
-          ...(normalizedContext.agentProfileId
-            ? {
-                agentProfileId: normalizedContext.agentProfileId,
-              }
-            : {}),
-          ...(normalizedContext.runtimeBindingId
-            ? {
-                runtimeBindingId: normalizedContext.runtimeBindingId,
-              }
-            : {}),
-          ...(normalizedContext.toolPermissionPolicyId
-            ? {
-                toolPermissionPolicyId: normalizedContext.toolPermissionPolicyId,
-              }
-            : {}),
-          ...(executionLog
-            ? {
-                agentExecutionLogId: executionLog.id,
-              }
-            : {}),
-          ...(normalizedContext.governanceContext
-            ? {
-                governanceContext: normalizedContext.governanceContext,
-              }
-            : {}),
-          parentAssetId: input.parentAssetId,
-        },
-        attempt_count: 0,
-        started_at: undefined,
-        finished_at: undefined,
-        error_message: undefined,
-        created_at: timestamp,
-        updated_at: timestamp,
-      };
-      await jobRepository.save(queuedJob);
-      const sourceAsset = await context.assetRepository.findById(input.parentAssetId);
-      const sourceBlocks = await this.manuscriptQualitySourceBlockResolver.resolveBlocks({
-        manuscriptId: input.manuscriptId,
-        assetId: input.parentAssetId,
-      });
-      const documentStructureSnapshot = this.documentStructureService
-        ? await this.documentStructureService.extract({
-            manuscriptId: input.manuscriptId,
-            assetId: input.parentAssetId,
-            fileName:
-              sourceAsset?.file_name ?? input.fileName ?? input.parentAssetId,
-          })
-        : undefined;
-      const qualityRun = await this.runManuscriptQualityChecks({
-        manuscriptId: input.manuscriptId,
-        assetId: input.parentAssetId,
-        sourceBlocks,
-        tableSnapshots: documentStructureSnapshot?.tables ?? [],
-        qualityPackageVersionIds: normalizedContext.qualityPackageVersionIds,
-      });
-      const medicalReviewSignals = buildMedicalReviewSignals(qualityRun?.issues);
-      const screeningReportResult = await this.screeningAiReportService.createReport({
-        manuscriptId: input.manuscriptId,
-        sourceFileName:
-          sourceAsset?.file_name ?? input.fileName ?? input.parentAssetId,
-        sourceBlocks: sourceBlocks.map((block) => ({
-          text: block.text,
-          blockKind: block.block_kind,
-        })),
-        tableCount: documentStructureSnapshot?.tables.length ?? 0,
-        qualityIssues: qualityRun?.issues,
-        qualitySummary: qualityRun?.quality_findings_summary,
-        governanceContext: normalizedContext.governanceContext,
-      });
-      const screeningReport = structuredClone(
-        screeningReportResult.report,
-      ) as ScreeningAiReport;
-      const screeningReportMarkdown = screeningReportResult.markdown;
-
-      if (this.textAssetRootDir) {
-        await this.textAssetMaterializer({
-          rootDir: this.textAssetRootDir,
-          storageKey: input.storageKey,
-          content: screeningReportMarkdown,
-        });
-      }
-
-      const asset = await documentAssetService.createAsset({
-        manuscriptId: input.manuscriptId,
-        assetType: "screening_report",
-        storageKey: input.storageKey,
-        mimeType: "text/markdown",
-        createdBy: input.requestedBy,
-        fileName: input.fileName,
-        parentAssetId: input.parentAssetId,
-        sourceModule: "screening",
-        sourceJobId: jobId,
-      });
-      const snapshot = await this.executionTrackingService.recordSnapshot({
-        manuscriptId: input.manuscriptId,
-        module: "screening",
-        jobId,
-        executionProfileId: normalizedContext.executionProfileId,
-        moduleTemplateId: normalizedContext.templateId,
-        moduleTemplateVersionNo: normalizedContext.moduleTemplateVersionNo,
-        promptTemplateId: normalizedContext.promptTemplateId,
-        promptTemplateVersion: normalizedContext.promptTemplateVersion,
-        skillPackageIds: normalizedContext.skillPackageIds,
-        skillPackageVersions: normalizedContext.skillPackageVersions,
-        modelId: normalizedContext.modelSelection.model.id,
-        modelVersion: normalizedContext.modelSelection.model.model_version,
-        qualityPackages: qualityRun?.resolved_quality_packages,
-        createdAssetIds: [asset.id],
-        agentExecutionLogId: executionLog?.id,
-        qualityFindingsSummary: qualityRun
-          ? structuredClone(qualityRun.quality_findings_summary)
-          : undefined,
-        knowledgeHits: normalizedContext.knowledgeHits.map((selection) => ({
-          knowledgeItemId: selection.knowledgeItemId,
-          matchSourceId: selection.matchSourceId,
-          bindingRuleId: selection.bindingRuleId,
-          matchSource: selection.matchSource,
-          matchReasons: selection.matchReasons,
-        })),
-      });
-      if (executionLog) {
-        await this.agentExecutionService.completeLog({
-          logId: executionLog.id,
-          executionSnapshotId: snapshot.id,
-        });
-      }
-
-      const completedJob: JobRecord = {
-        ...queuedJob,
-        status: "completed",
-        payload: {
-          ...queuedJob.payload,
-          snapshotId: snapshot.id,
-          outputAssetId: asset.id,
-          outputAssetType: "screening_report",
-          screeningReport,
-          ...(qualityRun
-            ? {
-                qualityFindings: qualityRun.issues.map((issue) =>
-                  structuredClone(issue),
-                ),
-                qualityFindingSummary: structuredClone(
-                  qualityRun.quality_findings_summary,
-                ),
-                ...(medicalReviewSignals.length > 0
-                  ? {
-                      medicalReviewSignals: medicalReviewSignals.map((signal) => ({
-                        ...signal,
-                      })),
-                    }
-                  : {}),
-              }
-            : {}),
-        },
-        attempt_count: 1,
-        started_at: timestamp,
-        finished_at: timestamp,
-        updated_at: timestamp,
-      };
-      await jobRepository.save(completedJob);
-
-      return {
-        agentExecutionLogId: executionLog?.id,
-        response: {
-          job: completedJob,
-          asset,
-          template_id: normalizedContext.templateId,
-          execution_profile_id: normalizedContext.executionProfileId,
-          prompt_template_id: normalizedContext.promptTemplateId,
-          skill_package_ids: normalizedContext.skillPackageIds,
-          snapshot_id: snapshot.id,
-          knowledge_item_ids: normalizedContext.knowledgeHits.map(
-            (selection) => selection.knowledgeItemId,
-          ),
-          model_id: normalizedContext.modelSelection.model.id,
-          ...(normalizedContext.agentRuntimeId
-            ? {
-                agent_runtime_id: normalizedContext.agentRuntimeId,
-              }
-            : {}),
-          ...(normalizedContext.agentProfileId
-            ? {
-                agent_profile_id: normalizedContext.agentProfileId,
-              }
-            : {}),
-          ...(executionLog
-            ? {
-                agent_execution_log_id: executionLog.id,
-              }
-            : {}),
-        },
-      };
+          return {
+            agentExecutionLogId: executionLog?.id,
+            response: {
+              job: completedJob,
+              asset,
+              template_id: normalizedContext.templateId,
+              execution_profile_id: normalizedContext.executionProfileId,
+              prompt_template_id: normalizedContext.promptTemplateId,
+              skill_package_ids: normalizedContext.skillPackageIds,
+              snapshot_id: snapshot.id,
+              knowledge_item_ids: normalizedContext.knowledgeHits.map(
+                (selection) => selection.knowledgeItemId,
+              ),
+              model_id: normalizedContext.modelSelection.model.id,
+              ...(normalizedContext.agentRuntimeId
+                ? {
+                    agent_runtime_id: normalizedContext.agentRuntimeId,
+                  }
+                : {}),
+              ...(normalizedContext.agentProfileId
+                ? {
+                    agent_profile_id: normalizedContext.agentProfileId,
+                  }
+                : {}),
+              ...(executionLog
+                ? {
+                    agent_execution_log_id: executionLog.id,
+                  }
+                : {}),
+            },
+          };
+        }),
     });
 
     await dispatchGovernedOrchestrationBestEffort({
@@ -675,18 +700,26 @@ function buildScreeningGovernanceContext(input: {
     .sort((left, right) => left.order_no - right.order_no);
   const hardRuleSummaryLines = enabledRules.map((rule) => {
     const firstSection = Array.isArray(rule.scope.sections)
-      ? rule.scope.sections.find((section): section is string => typeof section === "string")
+      ? rule.scope.sections.find(
+          (section): section is string => typeof section === "string",
+        )
       : undefined;
     return `- ${firstSection ?? "document"}: ${rule.action.kind} (${rule.severity})`;
   });
   const requiredChecks = enabledRules.map((rule) => {
     const firstSection = Array.isArray(rule.scope.sections)
-      ? rule.scope.sections.find((section): section is string => typeof section === "string")
+      ? rule.scope.sections.find(
+          (section): section is string => typeof section === "string",
+        )
       : undefined;
     return `${rule.id}: ${firstSection ?? "document"} / ${rule.action.kind} / ${rule.severity}`;
   });
   const manualReviewItems = enabledRules
-    .filter((rule) => rule.execution_mode === "inspect" || rule.confidence_policy === "manual_only")
+    .filter(
+      (rule) =>
+        rule.execution_mode === "inspect" ||
+        rule.confidence_policy === "manual_only",
+    )
     .map((rule) => `${rule.id}: ${deriveScreeningReviewReason(rule)}`);
   const resolvedRules = input.resolvedRules.map((entry) => ({
     ruleId: entry.rule.id,

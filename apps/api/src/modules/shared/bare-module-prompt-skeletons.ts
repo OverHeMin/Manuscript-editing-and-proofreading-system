@@ -20,10 +20,10 @@ const BARE_MODULE_PROMPT_SKELETONS: Record<
   BareModulePromptSkeleton
 > = {
   screening: {
-    id: "bare-screening-prompt",
+    id: "00000000-0000-4000-8000-000000000011",
     module: "screening",
-    templateId: "bare-screening-template",
-    executionProfileId: "bare-screening-execution-profile",
+    templateId: "00000000-0000-4000-8000-000000000012",
+    executionProfileId: "00000000-0000-4000-8000-000000000013",
     moduleTemplateVersionNo: 1,
     promptTemplateVersion: "bare-v1",
     systemInstructions:
@@ -35,10 +35,10 @@ const BARE_MODULE_PROMPT_SKELETONS: Record<
     reportStyle: "Use concise operator-facing markdown.",
   },
   editing: {
-    id: "bare-editing-prompt",
+    id: "00000000-0000-4000-8000-000000000021",
     module: "editing",
-    templateId: "bare-editing-template",
-    executionProfileId: "bare-editing-execution-profile",
+    templateId: "00000000-0000-4000-8000-000000000022",
+    executionProfileId: "00000000-0000-4000-8000-000000000023",
     moduleTemplateVersionNo: 1,
     promptTemplateVersion: "bare-v1",
     systemInstructions:
@@ -51,10 +51,10 @@ const BARE_MODULE_PROMPT_SKELETONS: Record<
     forbiddenOperations: ["fabrication", "meaning_shift"],
   },
   proofreading: {
-    id: "bare-proofreading-prompt",
+    id: "00000000-0000-4000-8000-000000000031",
     module: "proofreading",
-    templateId: "bare-proofreading-template",
-    executionProfileId: "bare-proofreading-execution-profile",
+    templateId: "00000000-0000-4000-8000-000000000032",
+    executionProfileId: "00000000-0000-4000-8000-000000000033",
     moduleTemplateVersionNo: 1,
     promptTemplateVersion: "bare-v1",
     systemInstructions:

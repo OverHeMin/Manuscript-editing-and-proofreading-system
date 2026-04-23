@@ -5,6 +5,77 @@ import {
   resolveWorkbenchReadOnlyExecutionContext,
 } from "../src/features/manuscript-workbench/index.ts";
 
+test("manuscript workbench controller loads the shared module execution concurrency snapshot", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/module-execution/concurrency"
+      ) {
+        return {
+          status: 200,
+          body: {
+            active: {
+              global: 1,
+              screening: 1,
+              editing: 0,
+              proofreading: 0,
+            },
+            queued: {
+              global: 2,
+              screening: 1,
+              editing: 1,
+              proofreading: 0,
+            },
+            limits: {
+              global: 2,
+              screening: 2,
+              editing: 1,
+              proofreading: 1,
+            },
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const snapshot = await controller.loadModuleExecutionConcurrency();
+
+  assert.deepEqual(snapshot, {
+    active: {
+      global: 1,
+      screening: 1,
+      editing: 0,
+      proofreading: 0,
+    },
+    queued: {
+      global: 2,
+      screening: 1,
+      editing: 1,
+      proofreading: 0,
+    },
+    limits: {
+      global: 2,
+      screening: 2,
+      editing: 1,
+      proofreading: 1,
+    },
+  });
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    ["GET /api/v1/module-execution/concurrency"],
+  );
+});
+
 test("manuscript workbench controller uploads a manuscript and hydrates workspace", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const hydratedUploadJob = {
@@ -2906,7 +2977,7 @@ test("manuscript workbench controller forwards structured governed evidence and 
   });
 });
 
-test("manuscript workbench controller loads proofreading governance handoff with manuscript-scoped residual items and rule candidates", async () => {
+test("manuscript workbench controller loads proofreading governance handoff with the current proofreading snapshot scope", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const controller = createManuscriptWorkbenchController({
     request: async <TResponse>(input: {
@@ -2982,7 +3053,7 @@ test("manuscript workbench controller loads proofreading governance handoff with
       if (
         input.method === "GET" &&
         input.url ===
-          "/api/v1/modules/proofreading/governance-handoff?manuscriptId=manuscript-proof-1"
+          "/api/v1/modules/proofreading/governance-handoff?manuscriptId=manuscript-proof-1&snapshotId=snapshot-proof-1"
       ) {
         return {
           status: 200,
@@ -3044,6 +3115,9 @@ test("manuscript workbench controller loads proofreading governance handoff with
 
   const result = await controller.loadProofreadingGovernanceHandoff?.(
     "manuscript-proof-1",
+    {
+      snapshotId: "snapshot-proof-1",
+    },
   );
 
   assert.deepEqual(result, {
@@ -3098,7 +3172,7 @@ test("manuscript workbench controller loads proofreading governance handoff with
   assert.deepEqual(
     requests.map((request) => `${request.method} ${request.url}`),
     [
-      "GET /api/v1/modules/proofreading/governance-handoff?manuscriptId=manuscript-proof-1",
+      "GET /api/v1/modules/proofreading/governance-handoff?manuscriptId=manuscript-proof-1&snapshotId=snapshot-proof-1",
     ],
   );
 });

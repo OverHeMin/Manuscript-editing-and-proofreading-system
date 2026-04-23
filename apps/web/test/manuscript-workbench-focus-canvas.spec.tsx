@@ -39,6 +39,31 @@ function createWorkspace() {
           },
         ],
       },
+      module_execution_overview: {
+        screening: {
+          module: "screening",
+          observation_status: "reported",
+          latest_job: {
+            id: "job-screening-queued-1",
+            manuscript_id: "manuscript-1",
+            module: "screening",
+            job_type: "screening_run",
+            status: "queued",
+            requested_by: "editor-1",
+            attempt_count: 0,
+            created_at: "2026-04-15T09:06:00.000Z",
+            updated_at: "2026-04-15T09:06:00.000Z",
+          },
+        },
+        editing: {
+          module: "editing",
+          observation_status: "not_started",
+        },
+        proofreading: {
+          module: "proofreading",
+          observation_status: "not_started",
+        },
+      },
       status: "uploaded",
       created_by: "editor-1",
       current_template_family_id: undefined,
@@ -97,50 +122,49 @@ function createWorkspace() {
       updated_at: "2026-04-15T09:00:00.000Z",
     },
     latestProofreadingDraftAsset: null,
+    moduleExecutionConcurrency: {
+      active: {
+        global: 1,
+        screening: 1,
+        editing: 0,
+        proofreading: 0,
+      },
+      queued: {
+        global: 2,
+        screening: 1,
+        editing: 1,
+        proofreading: 0,
+      },
+      limits: {
+        global: 2,
+        screening: 2,
+        editing: 1,
+        proofreading: 1,
+      },
+    },
   } as never;
 }
 
-test("focus canvas makes manuscript processing and AI confirmation the primary work surface", () => {
+test("focus canvas surfaces the current module state without exposing internal binding identifiers", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchFocusCanvas
       mode="screening"
       busy={false}
       workspace={createWorkspace()}
-      detectedManuscriptTypeLabel="综述（低置信度，待人工确认）"
-      templateSelection={{
-        title: "Journal Template",
-        resolvedManuscriptTypeLabel: "综述（低置信度，待人工确认）",
-        confidenceLabel: "低置信度，需人工确认",
-        confidenceLevel: "low",
-        requiresOperatorReview: true,
-        showManualManuscriptTypeSelect: true,
-        manualManuscriptTypeValue: "review",
-        manualManuscriptTypeOptions: [
-          { value: "review", label: "综述" },
-          { value: "clinical_study", label: "临床研究" },
-        ],
-        baseTemplateLabel: "Review Family",
-        selectedTemplateFamilyId: "family-review",
-        templateFamilyOptions: [
-          { value: "family-review", label: "Review Family" },
-          { value: "family-clinical", label: "Clinical Study Family" },
-        ],
-        selectedJournalTemplateId: "",
-        currentAppliedLabel: "仅基础模板",
-        hasPendingChange: false,
-        options: [{ value: "journal-template-1", label: "Review Journal Template" }],
-        onManualManuscriptTypeSelect: () => {},
-        onTemplateFamilySelect: () => {},
-        onSelect: () => {},
-        onApply: () => {},
-      }}
+      detectedManuscriptTypeLabel="Review (needs manual confirmation)"
+      templateSelection={undefined}
       primaryActions={[
         {
           title: "Screening Run",
           selectedAssetId: "asset-original-1",
           emptyLabel: "Select asset",
           actionLabel: "Run Screening",
-          options: [{ value: "asset-original-1", label: "原始稿件 / neurology-review.docx" }],
+          options: [
+            {
+              value: "asset-original-1",
+              label: "Original manuscript / neurology-review.docx",
+            },
+          ],
           selectedContextLabel: "Selected Parent Asset",
           onSelect: () => {},
           onRun: () => {},
@@ -151,20 +175,29 @@ test("focus canvas makes manuscript processing and AI confirmation the primary w
   );
 
   assert.match(markup, /data-focus-canvas="manuscript-first"/);
+  assert.match(markup, /data-module-status-card="screening"/);
+  assert.match(markup, /data-module-status="queued"/);
+  assert.match(markup, /data-concurrency-scope="global"/);
+  assert.match(markup, /data-concurrency-scope="screening"/);
+  assert.match(markup, /Queued/);
+  assert.match(markup, /Will start automatically when a screening slot is free\./);
+  assert.match(markup, /Active 1 \/ 2/);
+  assert.match(markup, /Queued 1 \/ 2/);
   assert.match(markup, /data-action-row="sticky"/);
-  assert.match(markup, /处理稿件/u);
-  assert.match(markup, /确认 AI 识别结果/u);
-  assert.match(markup, /人工确认稿件类型/u);
-  assert.match(markup, /人工修正稿件类型与模板/u);
-  assert.match(markup, /期刊模板（小期刊\/场景）/u);
-  assert.match(markup, /AI 识别失败或低置信度时请先人工确认稿件类型/u);
-  assert.match(markup, /自动绑定执行上下文/u);
-  assert.match(markup, /screening-profile-1/);
-  assert.match(markup, /retrieval-screening-v1/);
-  assert.match(markup, /binding-screening-v2/);
+  assert.match(markup, /模块准备情况/u);
+  assert.match(markup, /已按当前模板准备当前模块/u);
+  assert.match(markup, /准备状态/u);
+  assert.match(markup, /已准备/u);
+  assert.match(markup, /AI 状态/u);
+  assert.match(markup, /就绪/u);
+  assert.doesNotMatch(markup, /自动绑定执行上下文/u);
+  assert.doesNotMatch(markup, /执行画像/u);
+  assert.doesNotMatch(markup, /检索预设/u);
+  assert.doesNotMatch(markup, /运行时绑定/u);
+  assert.doesNotMatch(markup, /screening-profile-1/);
+  assert.doesNotMatch(markup, /retrieval-screening-v1/);
+  assert.doesNotMatch(markup, /binding-screening-v2/);
   assert.match(markup, /supporting summary/);
-  assert.match(markup, /查看当前稿件/u);
-  assert.match(markup, /下载当前稿件/u);
   assert.match(
     markup,
     /href="http:\/\/localhost\/api\/v1\/document-assets\/asset-original-1\/download"/,

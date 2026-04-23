@@ -92,15 +92,22 @@ test("drawer layout surfaces intake controls without extra intro scaffolding abo
   assert.match(markup, /上传稿件/u);
   assert.match(markup, /data-dropzone="manuscript-upload"/);
   assert.match(markup, /拖拽稿件到这里/u);
+  assert.match(markup, /高级导入/u);
+  assert.match(markup, /远程稿件地址（可选）/u);
+  assert.match(markup, /已选择 2 个稿件/u);
+  assert.match(markup, /已附加 2 个稿件/u);
   assert.match(markup, /人工确认稿件类型/u);
   assert.match(markup, /期刊模板（小期刊\/场景）/u);
   assert.match(markup, /低置信度时请先人工确认稿件类型/u);
+  assert.doesNotMatch(markup, /存储键/u);
+  assert.doesNotMatch(markup, /case-report\.docx/u);
+  assert.doesNotMatch(markup, /case-report-supplement\.docx/u);
   assert.doesNotMatch(markup, /manuscript-workbench-controls-intro/);
   assert.doesNotMatch(markup, /manuscript-workbench-batch-drawer-trigger/);
   assert.doesNotMatch(markup, /manuscript-workbench-batch-slab-meta/);
 });
 
-test("full layout keeps execution context read only with localized execution status copy", () => {
+test("full layout keeps only operator-facing AI readiness copy on the main page", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchControls
       mode="editing"
@@ -124,17 +131,76 @@ test("full layout keeps execution context read only with localized execution sta
 
   assert.match(markup, /data-execution-context="readonly"/);
   assert.match(markup, /data-execution-mode="editing"/);
-  assert.match(markup, /AI 接入/u);
-  assert.match(markup, /model-editing-1/);
-  assert.match(markup, /policy-editing-v2/);
-  assert.match(markup, /模板族策略/u);
-  assert.match(markup, /需关注/u);
-  assert.match(markup, /已降级/u);
+  assert.match(markup, /同屏完成接入、检索与处理动作/u);
+  assert.match(markup, /稿件编号/u);
+  assert.doesNotMatch(markup, /稿件 ID/u);
+  assert.doesNotMatch(markup, /治理动作/u);
+  assert.match(markup, /AI 准备情况/u);
+  assert.match(markup, /当前方式/u);
+  assert.match(markup, /受控处理/u);
+  assert.match(markup, /当前模板/u);
+  assert.match(markup, /已按当前模板装载/u);
+  assert.match(markup, /AI 状态/u);
+  assert.match(markup, /需检查/u);
+  assert.match(markup, /需要调整时前往系统设置/u);
+  assert.doesNotMatch(markup, /执行上下文/u);
+  assert.doesNotMatch(markup, /模型 ID/u);
+  assert.doesNotMatch(markup, /路由策略/u);
+  assert.doesNotMatch(markup, /模型来源/u);
+  assert.doesNotMatch(markup, /运行时绑定/u);
+  assert.doesNotMatch(markup, /服务商就绪/u);
+  assert.doesNotMatch(markup, /运行时就绪/u);
+  assert.doesNotMatch(markup, /model-editing-1/);
+  assert.doesNotMatch(markup, /policy-editing-v2/);
   assert.doesNotMatch(markup, /template_family_policy/);
   assert.doesNotMatch(markup, /warning/);
   assert.doesNotMatch(markup, /degraded/);
   assert.doesNotMatch(markup, /name="provider"/);
   assert.doesNotMatch(markup, /name="temperature"/);
+});
+
+test("template selection warnings keep pending changes in operator language", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchControls
+      mode="editing"
+      busy={false}
+      layout="drawer"
+      showLookupPanel={false}
+      lookup={{
+        manuscriptId: "manuscript-1",
+        onChange: () => {},
+        onLoad: () => {},
+      }}
+      templateSelection={{
+        title: "Journal Template",
+        resolvedManuscriptTypeLabel: "Clinical Study",
+        confidenceLabel: "High confidence",
+        confidenceLevel: "high",
+        requiresOperatorReview: false,
+        showManualManuscriptTypeSelect: false,
+        manualManuscriptTypeValue: "",
+        manualManuscriptTypeOptions: [],
+        baseTemplateLabel: "Clinical Study Family",
+        selectedTemplateFamilyId: "family-clinical",
+        templateFamilyOptions: [
+          {
+            value: "family-clinical",
+            label: "Clinical Study Family",
+          },
+        ],
+        selectedJournalTemplateId: "",
+        currentAppliedLabel: "Base family only",
+        hasPendingChange: true,
+        options: [],
+        onTemplateFamilySelect: () => {},
+        onSelect: () => {},
+        onApply: () => {},
+      }}
+    />,
+  );
+
+  assert.match(markup, /已有未保存的模板切换，请先保存，再继续处理。/u);
+  assert.doesNotMatch(markup, /治理动作/u);
 });
 
 test("module action panels expose a one-time bare AI secondary action without changing the primary governed action", () => {

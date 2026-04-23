@@ -374,6 +374,10 @@ import {
 } from "../modules/screening/index.ts";
 import { ModuleTemplateFamilyNotConfiguredError } from "../modules/shared/module-run-support.ts";
 import {
+  ModuleExecutionConcurrencyController,
+  resolveModuleExecutionConcurrencyLimitsFromEnv,
+} from "../modules/shared/module-execution-concurrency-controller.ts";
+import {
   createTemplateApi,
   ExtractionCandidateIntakeStateError,
   GovernedContentModuleNotFoundError,
@@ -544,6 +548,9 @@ type HttpRouteMatch =
   | {
       route: "manuscripts-list-assets";
       manuscriptId: string;
+    }
+  | {
+      route: "module-execution-concurrency";
     }
   | {
       route: "jobs-get";
@@ -1970,6 +1977,13 @@ export function createInMemoryApiRuntime(input: {
     });
   }
 
+  const moduleExecutionConcurrencyLimits =
+    resolveModuleExecutionConcurrencyLimitsFromEnv(process.env);
+  const moduleExecutionConcurrencyController =
+    new ModuleExecutionConcurrencyController({
+      limits: moduleExecutionConcurrencyLimits,
+    });
+
   const screeningService = new ScreeningService({
     manuscriptRepository,
     assetRepository,
@@ -1993,6 +2007,7 @@ export function createInMemoryApiRuntime(input: {
     textAssetRootDir: input.uploadRootDir,
     manuscriptQualitySourceBlockResolver: docxSourceBlockResolver,
     documentStructureService,
+    moduleExecutionConcurrencyController,
   });
   const editingService = new EditingService({
     manuscriptRepository,
@@ -2019,6 +2034,7 @@ export function createInMemoryApiRuntime(input: {
     editorialDocxTransformService,
     reviewItemsService,
     activationMetricsService: editorialRuleActivationMetricsService,
+    moduleExecutionConcurrencyController,
   });
   const proofreadingService = new ProofreadingService({
     manuscriptRepository,
@@ -2047,6 +2063,7 @@ export function createInMemoryApiRuntime(input: {
     reviewItemsService,
     learningService,
     residualLearningService,
+    moduleExecutionConcurrencyController,
   });
 
   return {
@@ -2079,6 +2096,7 @@ export function createInMemoryApiRuntime(input: {
       executionResolutionService,
       runtimeBindingReadinessService,
       agentExecutionService,
+      moduleExecutionConcurrencyController,
     }),
     proofreadingApi: createProofreadingApi({
       proofreadingService,
@@ -2711,16 +2729,95 @@ function seedDemoWorkbenchData(input: {
     prompt: "Seeded editing preview prompt",
   });
 
-  for (const module of [
-    ...SEEDED_CLINICAL_STUDY_GENERAL_MODULES,
-    ...SEEDED_CLINICAL_STUDY_MEDICAL_MODULES,
-  ]) {
-    void input.templateFamilyRepository.saveContentModule(module);
-  }
+  void input.templateFamilyRepository.saveContentModule({
+    id: "general-module-seeded-1",
+    module_class: "general",
+    name: "参考文献格式统一",
+    category: "reference",
+    manuscript_type_scope: ["clinical_study", "review"],
+    execution_module_scope: ["editing", "proofreading"],
+    applicable_sections: ["references"],
+    summary: "统一参考文献著录顺序、期刊缩写与标点格式。",
+    guidance: ["作者后接题名", "期刊名使用标准缩写"],
+    status: "published",
+    created_at: "2026-03-31T07:56:30.000Z",
+    updated_at: "2026-03-31T07:56:30.000Z",
+  });
+  void input.templateFamilyRepository.saveContentModule({
+    id: "general-module-seeded-2",
+    module_class: "general",
+    name: "缩略语首次释义",
+    category: "terminology",
+    manuscript_type_scope: ["clinical_study", "systematic_review"],
+    execution_module_scope: ["screening", "editing"],
+    applicable_sections: ["abstract", "introduction"],
+    summary: "确保英文缩略语首次出现时给出全称，并保持全文一致。",
+    guidance: ["首次出现时括注全称", "后文保持缩略语统一"],
+    status: "draft",
+    created_at: "2026-03-31T07:57:00.000Z",
+    updated_at: "2026-03-31T07:57:00.000Z",
+  });
+  void input.templateFamilyRepository.saveContentModule({
+    id: "medical-module-seeded-1",
+    module_class: "medical_specialized",
+    name: "伦理声明核查",
+    category: "ethics",
+    manuscript_type_scope: ["clinical_study", "case_report"],
+    execution_module_scope: ["screening", "editing"],
+    applicable_sections: ["ethics", "methods"],
+    summary: "核对伦理审批号、知情同意与伦理委员会表述是否完整。",
+    guidance: ["缺失审批号时转人工复核", "涉及人体研究必须有知情同意说明"],
+    evidence_level: "high",
+    risk_level: "high",
+    status: "published",
+    created_at: "2026-03-31T07:57:30.000Z",
+    updated_at: "2026-03-31T07:57:30.000Z",
+  });
+  void input.templateFamilyRepository.saveContentModule({
+    id: "medical-module-seeded-2",
+    module_class: "medical_specialized",
+    name: "终点与统计口径核对",
+    category: "statistics",
+    manuscript_type_scope: ["clinical_study"],
+    execution_module_scope: ["screening", "editing", "proofreading"],
+    applicable_sections: ["abstract", "methods", "results"],
+    summary: "检查主要终点、统计方法和结果表述是否前后一致。",
+    guidance: ["终点名称需与方法学一致", "P 值和效应量必须对应"],
+    evidence_level: "high",
+    risk_level: "medium",
+    status: "draft",
+    created_at: "2026-03-31T07:58:00.000Z",
+    updated_at: "2026-03-31T07:58:00.000Z",
+  });
 
-  for (const composition of SEEDED_CLINICAL_STUDY_TEMPLATE_COMPOSITIONS) {
-    void input.templateFamilyRepository.saveTemplateComposition(composition);
-  }
+  void input.templateFamilyRepository.saveTemplateComposition({
+    id: "template-composition-seeded-1",
+    name: "临床研究主模板",
+    manuscript_type: "clinical_study",
+    general_module_ids: ["general-module-seeded-1", "general-module-seeded-2"],
+    medical_module_ids: ["medical-module-seeded-1", "medical-module-seeded-2"],
+    execution_module_scope: ["screening", "editing", "proofreading"],
+    notes: "适用于常规临床研究来稿的全流程治理。",
+    source_task_id: "extraction-task-seeded-1",
+    source_candidate_ids: ["extraction-candidate-seeded-2"],
+    version_no: 1,
+    status: "draft",
+    created_at: "2026-03-31T07:58:30.000Z",
+    updated_at: "2026-03-31T07:58:30.000Z",
+  });
+  void input.templateFamilyRepository.saveTemplateComposition({
+    id: "template-composition-seeded-2",
+    name: "病例报告精简模板",
+    manuscript_type: "case_report",
+    general_module_ids: ["general-module-seeded-1"],
+    medical_module_ids: ["medical-module-seeded-1"],
+    execution_module_scope: ["editing", "proofreading"],
+    notes: "优先覆盖伦理与作者信息等高频结构。",
+    version_no: 1,
+    status: "published",
+    created_at: "2026-03-31T07:59:00.000Z",
+    updated_at: "2026-03-31T07:59:00.000Z",
+  });
 
   void input.extractionTaskRepository.saveTask({
     id: "extraction-task-seeded-1",
@@ -3002,31 +3099,230 @@ function seedDemoWorkbenchData(input: {
     ],
     createdAt: "2026-03-31T07:56:15.000Z",
   });
-  for (const asset of SEEDED_CLINICAL_STUDY_KNOWLEDGE_ASSETS) {
+  seedGovernedKnowledgeAsset({
+    repository: input.knowledgeRepository,
+    assetId: "knowledge-general-reference-1",
+    title: "参考文献著录顺序统一",
+    canonicalText: "参考文献应按作者、题名、期刊名、年份的标准顺序统一呈现。",
+    summary: "默认绑定到通用包“参考文献格式统一”，供编辑与校对复用。",
+    knowledgeKind: "rule",
+    moduleScope: "editing",
+    manuscriptTypes: ["clinical_study", "review"],
+    sections: ["references"],
+    bindings: [
+      {
+        bindingKind: "general_package",
+        bindingTargetId: "general-module-seeded-1",
+        bindingTargetLabel: "参考文献格式统一",
+      },
+    ],
+    createdAt: "2026-03-31T07:56:40.000Z",
+  });
+  seedGovernedKnowledgeAsset({
+    repository: input.knowledgeRepository,
+    assetId: "knowledge-general-abbreviation-1",
+    title: "缩略语首次释义规则",
+    canonicalText: "英文缩略语首次出现时应补全称，并保证后文缩略语写法一致。",
+    summary: "默认绑定到通用包“缩略语首次释义”，覆盖摘要与引言常见问题。",
+    knowledgeKind: "rule",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study", "systematic_review"],
+    sections: ["abstract", "introduction"],
+    bindings: [
+      {
+        bindingKind: "general_package",
+        bindingTargetId: "general-module-seeded-2",
+        bindingTargetLabel: "缩略语首次释义",
+      },
+    ],
+    createdAt: "2026-03-31T07:57:05.000Z",
+  });
+  seedGovernedKnowledgeAsset({
+    repository: input.knowledgeRepository,
+    assetId: "knowledge-general-structure-1",
+    title: "临床研究章节结构主线规则",
+    canonicalText:
+      "临床研究稿件应至少能定位目标、方法、结果、结论与伦理信息，并保持章节顺序稳定。",
+    summary: "默认绑定到通用包“标题层级与章节顺序”，用于筛查和后续结构统一。",
+    knowledgeKind: "checklist",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+    sections: ["body"],
+    riskTags: ["structure"],
+    bindings: [
+      {
+        bindingKind: "general_package",
+        bindingTargetId: "general-module-seeded-5",
+        bindingTargetLabel: "标题层级与章节顺序",
+      },
+    ],
+    createdAt: "2026-03-31T07:57:50.000Z",
+  });
+  seedGovernedKnowledgeAsset({
+    repository: input.knowledgeRepository,
+    assetId: "knowledge-medical-ethics-1",
+    title: "伦理声明完整性核查",
+    canonicalText: "涉及人体研究时，伦理审批号、伦理委员会名称与知情同意说明必须齐全。",
+    summary: "默认绑定到医学专用包“伦理声明核查”，用于高风险筛查。",
+    knowledgeKind: "rule",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study", "case_report"],
+    sections: ["ethics", "methods"],
+    riskTags: ["ethics"],
+    bindings: [
+      {
+        bindingKind: "medical_package",
+        bindingTargetId: "medical-module-seeded-1",
+        bindingTargetLabel: "伦理声明核查",
+      },
+    ],
+    createdAt: "2026-03-31T07:57:35.000Z",
+  });
+  seedGovernedKnowledgeAsset({
+    repository: input.knowledgeRepository,
+    assetId: "knowledge-medical-endpoint-1",
+    title: "终点与统计口径一致性核对",
+    canonicalText: "主要终点名称、统计方法、P 值与结果表述必须在摘要、方法、结果之间保持一致。",
+    summary: "默认绑定到医学专用包“终点与统计口径核对”，用于临床研究稿件。",
+    knowledgeKind: "rule",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+    sections: ["abstract", "methods", "results"],
+    riskTags: ["statistics"],
+    bindings: [
+      {
+        bindingKind: "medical_package",
+        bindingTargetId: "medical-module-seeded-2",
+        bindingTargetLabel: "终点与统计口径核对",
+      },
+    ],
+    createdAt: "2026-03-31T07:58:05.000Z",
+  });
+  seedGovernedKnowledgeAsset({
+    repository: input.knowledgeRepository,
+    assetId: "knowledge-medical-study-design-1",
+    title: "研究设计与纳排标准规则",
+    canonicalText:
+      "临床研究需明确研究类型、纳入排除标准、分组方法、样本来源与随访窗口。",
+    summary: "默认绑定到医学专用包“研究设计与纳排标准核查”，用于筛查阶段的主线判断。",
+    knowledgeKind: "checklist",
+    moduleScope: "screening",
+    manuscriptTypes: ["clinical_study"],
+    sections: ["methods"],
+    riskTags: ["study-design"],
+    bindings: [
+      {
+        bindingKind: "medical_package",
+        bindingTargetId: "medical-module-seeded-3",
+        bindingTargetLabel: "研究设计与纳排标准核查",
+      },
+    ],
+    createdAt: "2026-03-31T07:58:50.000Z",
+  });
+  void input.editorialRuleRepository.saveRuleSet({
+    id: "rule-set-screening-1",
+    template_family_id: "family-seeded-1",
+    module: "screening",
+    version_no: 1,
+    status: "published",
+  });
+  void input.editorialRuleRepository.saveRuleSet({
+    id: "rule-set-editing-1",
+    template_family_id: "family-seeded-1",
+    module: "editing",
+    version_no: 1,
+    status: "published",
+  });
+  void input.editorialRuleRepository.saveRuleSet({
+    id: "rule-set-proofreading-1",
+    template_family_id: "family-seeded-1",
+    module: "proofreading",
+    version_no: 1,
+    status: "published",
+  });
+  void input.editorialRuleRepository.saveRule({
+    id: "rule-table-editing-1",
+    rule_set_id: "rule-set-editing-1",
+    order_no: 10,
+    rule_object: "table",
+    rule_type: "format",
+    execution_mode: "inspect",
+    scope: {
+      sections: ["results"],
+    },
+    selector: {
+      semantic_target: "header_cell",
+      header_path_includes: ["Treatment group", "n (%)"],
+    },
+    trigger: {
+      kind: "table_shape",
+      layout: "three_line_table",
+    },
+    action: {
+      kind: "emit_finding",
+      message: "Seeded editing table review target.",
+    },
+    authoring_payload: {},
+    confidence_policy: "manual_only",
+    severity: "warning",
+    enabled: true,
+  });
+  void input.editorialRuleRepository.saveRule({
+    id: "rule-table-proofreading-1",
+    rule_set_id: "rule-set-proofreading-1",
+    order_no: 10,
+    rule_object: "table",
+    rule_type: "format",
+    execution_mode: "inspect",
+    scope: {
+      sections: ["results"],
+    },
+    selector: {
+      semantic_target: "header_cell",
+      header_path_includes: ["Treatment group", "n (%)"],
+    },
+    trigger: {
+      kind: "table_shape",
+      layout: "three_line_table",
+    },
+    action: {
+      kind: "emit_finding",
+      message: "Seeded proofreading table review target.",
+    },
+    authoring_payload: {},
+    confidence_policy: "manual_only",
+    severity: "warning",
+    enabled: true,
+  });
+
+  for (const moduleRecord of SEEDED_CLINICAL_STUDY_GENERAL_MODULES) {
+    void input.templateFamilyRepository.saveContentModule(
+      structuredClone(moduleRecord),
+    );
+  }
+  for (const moduleRecord of SEEDED_CLINICAL_STUDY_MEDICAL_MODULES) {
+    void input.templateFamilyRepository.saveContentModule(
+      structuredClone(moduleRecord),
+    );
+  }
+  for (const compositionRecord of SEEDED_CLINICAL_STUDY_TEMPLATE_COMPOSITIONS) {
+    void input.templateFamilyRepository.saveTemplateComposition(
+      structuredClone(compositionRecord),
+    );
+  }
+  for (const assetDefinition of SEEDED_CLINICAL_STUDY_KNOWLEDGE_ASSETS) {
     seedGovernedKnowledgeAsset({
       repository: input.knowledgeRepository,
-      assetId: asset.assetId,
-      title: asset.title,
-      canonicalText: asset.canonicalText,
-      summary: asset.summary,
-      knowledgeKind: asset.knowledgeKind,
-      status: asset.status,
-      moduleScope: asset.moduleScope,
-      manuscriptTypes: asset.manuscriptTypes,
-      sections: asset.sections,
-      riskTags: asset.riskTags,
-      disciplineTags: asset.disciplineTags,
-      bindings: asset.bindings,
-      createdAt: asset.createdAt,
-      updatedAt: asset.updatedAt,
-      revisionNo: asset.revisionNo,
+      ...structuredClone(assetDefinition),
     });
   }
-  for (const ruleSet of SEEDED_CLINICAL_STUDY_RULE_SETS) {
-    void input.editorialRuleRepository.saveRuleSet(ruleSet);
+  for (const ruleSetRecord of SEEDED_CLINICAL_STUDY_RULE_SETS) {
+    void input.editorialRuleRepository.saveRuleSet(
+      structuredClone(ruleSetRecord),
+    );
   }
-  for (const rule of SEEDED_CLINICAL_STUDY_RULES) {
-    void input.editorialRuleRepository.saveRule(rule);
+  for (const ruleRecord of SEEDED_CLINICAL_STUDY_RULES) {
+    void input.editorialRuleRepository.saveRule(structuredClone(ruleRecord));
   }
 
   void input.executionGovernanceRepository.saveProfile({
@@ -4060,6 +4356,9 @@ async function handleRoute(
       return runtime.manuscriptApi.listAssets({
         manuscriptId: routeMatch.manuscriptId,
       });
+    case "module-execution-concurrency":
+      await requireManuscriptSurfaceSession(req, runtime, "manuscript workbench");
+      return runtime.manuscriptApi.getModuleExecutionConcurrency();
     case "jobs-get":
       await requireManuscriptSurfaceSession(req, runtime, "manuscript workbench");
       return runtime.manuscriptApi.getJob({
@@ -4233,11 +4532,15 @@ async function handleRoute(
     }
     case "modules-proofreading-governance-handoff": {
       const session = await requirePermission(req, runtime, "workbench.proofreading");
+      const snapshotId = coalesceOptionalString(
+        readRequestUrl(req).searchParams.get("snapshotId") ?? undefined,
+      );
       return runtime.proofreadingApi.getGovernanceHandoff({
         manuscriptId:
           coalesceOptionalString(
             readRequestUrl(req).searchParams.get("manuscriptId") ?? undefined,
           ) ?? "",
+        ...(snapshotId ? { snapshotId } : {}),
         actorRole: session.user.role,
       });
     }
@@ -6914,6 +7217,12 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return {
       route: "manuscripts-get",
       manuscriptId: manuscriptGetMatch[1],
+    };
+  }
+
+  if (method === "GET" && path === "/api/v1/module-execution/concurrency") {
+    return {
+      route: "module-execution-concurrency",
     };
   }
 

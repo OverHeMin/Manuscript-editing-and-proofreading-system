@@ -100,3 +100,62 @@ test("proofreader can load manuscript-scoped proofreading governance handoff", a
     await stopServer(server as ApiHttpServer);
   }
 });
+
+test("proofreader can load snapshot-scoped proofreading governance handoff", async () => {
+  const runtime = createWorkbenchRuntime();
+  const observedCalls: Array<{
+    manuscriptId: string;
+    snapshotId?: string;
+    actorRole: string;
+  }> = [];
+  (
+    runtime.proofreadingApi as Record<string, unknown>
+  ).getGovernanceHandoff = async (input: {
+    manuscriptId: string;
+    snapshotId?: string;
+    actorRole: string;
+  }) => {
+    observedCalls.push(input);
+    return {
+      status: 200,
+      body: {
+        residualReviewItems: [],
+        ruleCandidates: [],
+      },
+    };
+  };
+
+  const server = createApiHttpServer({
+    appEnv: "local",
+    allowedOrigins: ["http://127.0.0.1:4173"],
+    runtime: runtime as never,
+  });
+  server.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", () => resolve()));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.proofreader");
+    const response = await fetch(
+      `${baseUrl}/api/v1/modules/proofreading/governance-handoff?manuscriptId=manuscript-seeded-1&snapshotId=snapshot-proof-1`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(observedCalls, [
+      {
+        manuscriptId: "manuscript-seeded-1",
+        snapshotId: "snapshot-proof-1",
+        actorRole: "proofreader",
+      },
+    ]);
+  } finally {
+    await stopServer(server as ApiHttpServer);
+  }
+});

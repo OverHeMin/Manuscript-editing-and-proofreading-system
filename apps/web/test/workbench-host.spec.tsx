@@ -252,7 +252,7 @@ test("workbench host runtime render routes rule center overview hashes to the ov
   );
 
   assert.match(markup, /template-governance-overview-page/u);
-  assert.match(markup, /待确认提取候选/u);
+  assert.match(markup, /查看待审核/u);
   assert.doesNotMatch(markup, /rule-package-workbench-columns/u);
 });
 
@@ -280,7 +280,7 @@ test("workbench host runtime render routes rule center overview hashes to the ov
   );
 
   assert.match(markup, /template-governance-overview-page/u);
-  assert.match(markup, /待确认提取候选/u);
+  assert.match(markup, /查看待审核/u);
   assert.doesNotMatch(markup, /rule-package-workbench-columns/u);
 });
 
