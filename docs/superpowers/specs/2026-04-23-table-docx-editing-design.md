@@ -145,12 +145,59 @@ It must never auto-change:
 - medical meaning
 - interpretation of study results
 
+### 3.7 Shared transform must enforce module-scoped table auto-apply
+
+`editing` and `proofreading` currently share the same DOCX transform service, so this package must add an explicit runtime guard instead of relying on convention.
+
+The shared transform contract must carry enough information to answer:
+
+- which module invoked the transform
+- which asset type is being produced
+- whether table auto-apply is disabled, inspect-only, or editing-safe-apply
+
+The recommended runtime field is:
+
+- `tableAutoApplyMode: "disabled" | "inspect_only" | "editing_safe_apply"`
+
+The locked behavior is:
+
+- `editing -> edited_docx` may use `editing_safe_apply`
+- `proofreading -> proofreading_draft_report` uses `disabled`
+- `proofreading -> final_proof_annotated_docx` uses `inspect_only` or `disabled`
+- `proofreading -> human_final_docx` uses `disabled`
+
+If table patch instructions are present while `tableAutoApplyMode !== "editing_safe_apply"`, the transform must fail closed by skipping table writeback and recording that those patches were not eligible on this path.
+
+### 3.8 Rule authoring must represent auto-apply intent explicitly
+
+The rule-center contract cannot infer future table auto-apply purely from free-text requirements or from `execution_mode`.
+
+Compiled table rules must eventually carry explicit auto-apply metadata, including at least:
+
+- `grade`
+- `patch_type`
+- `apply_scope`
+- `required_snapshot_capabilities`
+
+The recommended values are:
+
+- `grade: "A" | "B" | "C"`
+- `apply_scope: "editing_only" | "inspect_only"`
+
+Migration rule:
+
+- all existing table rules remain inspect-only by default until they are explicitly reviewed and promoted into the new contract
+
+This avoids accidentally treating today's proofreading-oriented table rules as editing-safe writeback rules.
+
 ## 4. Scope And Non-Goals
 
 ### 4.1 In Scope
 
 - classify table rules into auto-apply readiness grades
+- extend rule-center authoring and compilation so table rules can explicitly declare auto-apply readiness
 - build a deterministic table patch plan from semantic table hits
+- extend the table semantic snapshot where needed so caption, title, note-zone, and style patches have real anchors
 - apply safe table patches into editing-side DOCX artifacts
 - return explicit patch execution results and skip reasons
 - keep proofreading on the same semantic hit model without table auto-rewrite
@@ -182,8 +229,29 @@ This layer remains responsible for:
 - identifying table ids
 - exposing semantic coordinates such as `header_path`, `row_key`, `column_key`, and `footnote_anchor`
 - describing whether a table is a three-line table and whether unit markers or footnotes exist
+- surfacing first-class caption anchors before caption patches are promoted to `A`
+- surfacing enough note-zone or footnote-zone structure before whole-note text patches are promoted to `A`
+- surfacing enough style profile data before border or three-line-table patches are promoted to `A`
 
 This layer does not decide whether a rule is safe to auto-apply.
+
+The current repo already supports stable semantic entities for:
+
+- `header_cell`
+- `stub_column`
+- `data_cell`
+- `footnote_item`
+- `unit_marker`
+
+Before caption or style patch families can become truly `A` class, the snapshot contract must be extended so the currently theoretical targets become real first-class snapshot data, especially:
+
+- `table_label`
+- `table_title`
+- table-level caption text or equivalent composed caption fields
+- note-zone text when the note lives outside `footnote_item`
+- style-profile anchors needed for border-only formatting patches
+
+If the semantic snapshot cannot represent a target explicitly, that patch family must not be promoted to `A`.
 
 ### 5.2 Rule Hit Layer
 
@@ -213,6 +281,12 @@ into a deterministic patch instruction that answers:
 - what exact anchor should be targeted
 - whether the patch is A, B, or C class
 - whether the patch is safe to auto-apply in editing
+
+The planner must also enforce:
+
+- required snapshot capabilities for the patch type
+- apply-scope compatibility with the current module and target asset
+- downgrade of unsupported `A` candidates into explicit skip results rather than silent best-effort writeback
 
 ### 5.4 DOCX Patch Execution Layer
 
@@ -276,10 +350,17 @@ Typical `C` reasons:
 
 The initial recommended `A` families are:
 
-- caption or title prefix normalization
-- table note or footnote wording normalization
-- unit formatting normalization
 - safe header naming normalization
+- footnote wording normalization
+- unit formatting normalization
+
+The next recommended `A` families, after snapshot/schema extension, are:
+
+- caption or title prefix normalization
+- table note-zone wording normalization
+
+The next recommended style-only `A` family, after writer hardening, is:
+
 - safe three-line table border styling
 
 The initial recommended `B` families are:
@@ -294,6 +375,22 @@ The initial recommended `C` families are:
 - statistical marker reinterpretation
 - any change that could alter scientific meaning
 
+### 6.5 Rule authoring and migration posture
+
+The first implementation must not assume that current table rules are already promotion-ready.
+
+The migration order is:
+
+1. keep existing table rules as inspect-only
+2. add explicit `grade`, `patch_type`, and `apply_scope` fields to compiled table rules
+3. promote a reviewed subset into `A`
+
+No table rule should become auto-apply merely because:
+
+- `confidence_policy` is permissive
+- free-text `caption_requirement` or `layout_requirement` sounds deterministic
+- the rule currently hits in proofreading
+
 ## 7. Table Patch Contract
 
 The system should introduce an explicit patch contract for editing-side table rewrite.
@@ -305,21 +402,31 @@ Each patch instruction should minimally include:
 - `tableId`
 - `patchType`
 - `grade`
+- `applyScope`
 - `anchor`
+- `requiredSnapshotCapabilities`
 - `proposedBefore`
 - `proposedAfter`
 - `rationale`
 - `evidencePack`
 
+Patch instructions are runtime artifacts, not authoring records. They are emitted only when a compiled table rule explicitly declares a patch-capable posture.
+
 ### 7.1 Initial Patch Types
 
 The first patch types should be intentionally narrow:
 
-- `replace_table_caption_text`
-- `replace_table_note_text`
 - `replace_header_cell_text`
 - `replace_footnote_text`
 - `normalize_unit_text`
+
+The next patch types require semantic snapshot extension before they can be `A` class:
+
+- `replace_table_caption_text`
+- `replace_table_note_text`
+
+The first style-only patch type requires writer hardening before it can be `A` class:
+
 - `apply_three_line_table_style`
 
 ### 7.2 Anchor Model
@@ -328,13 +435,23 @@ Patch anchors should be semantic, not raw row-column coordinates alone.
 
 Allowed anchors in the first version should include:
 
-- `table_id + table_label`
 - `table_id + header_path`
 - `table_id + row_key + column_key`
 - `table_id + footnote_anchor`
 - `table_id + note_kind`
 
+The following anchors become valid only after snapshot extension:
+
+- `table_id + table_label`
+- `table_id + table_title`
+- `table_id + caption_text`
+
 Raw XML position can still be used internally by the writer after anchor resolution, but it must not be the product-level contract.
+
+This means:
+
+- `replace_header_cell_text`, `replace_footnote_text`, and `normalize_unit_text` can start from the current semantic base
+- `replace_table_caption_text` and `replace_table_note_text` are gated on snapshot capabilities, not just on writer effort
 
 ### 7.3 Fixed Apply Order
 
@@ -383,11 +500,20 @@ The system should only fail the entire transform when the writer cannot guarante
 
 It should evolve to:
 
+- accept explicit runtime guard information for table auto-apply scope
 - collect deterministic non-table rules
 - collect editing AI replacements
 - collect table patch instructions for `A` rules
 - send a unified payload to the Python worker
 - return both text-level and table-level execution results
+
+The transform input contract should be extended so it can distinguish:
+
+- editing-side safe writeback
+- proofreading inspect-only rendering
+- proofreading human-final publication
+
+Without this contract change, a future table patch engine would be too easy to invoke accidentally from proofreading paths.
 
 ### 9.2 Extend The Python Worker Instead Of Replacing It
 
@@ -399,6 +525,8 @@ The worker should be extended to:
 - resolve local table anchors in `word/document.xml`
 - write only the targeted caption, note, header, footnote, unit, or style segment
 - return patch result ledgers
+
+The worker must also enforce the runtime guard from the caller. It must not infer table auto-apply eligibility by itself from raw rule fields.
 
 ### 9.3 Stable Output Is More Important Than Max Coverage
 
@@ -433,6 +561,11 @@ Proofreading should:
 - not auto-rewrite table structure in this package
 - use human confirmation to decide what becomes residual evidence or governed learning input
 
+Any proofreading path that still reuses the shared DOCX transform must pass a mode that disables table auto-apply. This includes both:
+
+- proofreading-generated manuscript variants
+- `human_final_docx` publication
+
 ### 10.3 Human Final Artifact Boundary
 
 `human_final_docx` remains the final artifact after proofreading confirmation.
@@ -466,6 +599,15 @@ When proofreading operators confirm a final outcome, the system should preserve 
 - operator final decision
 - whether the AI or rule suggestion was accepted, edited, or rejected
 
+The semantic anchor context should be normalized, not stored only as free-form location text. At minimum it should preserve the same fields used by runtime semantic hits, such as:
+
+- `table_id`
+- `semantic_target`
+- `header_path`
+- `row_key`
+- `column_key`
+- `footnote_anchor`
+
 ### 11.3 Promotion From B To A
 
 A `B` rule family should only become `A` after:
@@ -488,6 +630,13 @@ Instead, it should expose truthful operational metrics such as:
 - human rollback or rejection rate
 - residual-to-gold-case conversion count
 - B-to-A promotion count
+
+The current activation metrics baseline already covers:
+
+- `writeback_created_count`
+- `writeback_applied_count`
+
+This package should extend that baseline rather than replacing it. New table-specific metrics should be added explicitly, not inferred from generic governed-hit counters.
 
 For customer or operator communication, these metrics are more honest and more useful than a universal "AI accuracy" percentage.
 
@@ -533,7 +682,24 @@ Add negative coverage for:
 
 ## 14. Suggested Implementation Slices
 
-### 14.1 Slice 1
+### 14.1 Slice 0
+
+Introduce hard runtime and authoring boundaries first:
+
+- shared transform `tableAutoApplyMode` guard
+- explicit table rule `grade`, `patch_type`, and `apply_scope`
+- migration default that keeps existing table rules inspect-only
+
+### 14.2 Slice 1
+
+Extend the semantic snapshot to support the first target patch families safely:
+
+- confirm current support for header, footnote, and unit anchors
+- add caption/title anchors if caption patches are in scope for the first release
+- add note-zone anchors if whole-note rewrite is in scope for the first release
+- define style-profile anchors before border-style patches are attempted
+
+### 14.3 Slice 2
 
 Introduce the planning contract and result ledger:
 
@@ -541,16 +707,17 @@ Introduce the planning contract and result ledger:
 - table patch instruction model
 - table patch result model
 
-### 14.2 Slice 2
+### 14.4 Slice 3
 
 Implement the first safe editing-side patch families:
 
-- caption text
-- note text
 - header text
+- footnote text
 - unit normalization
 
-### 14.3 Slice 3
+Add caption or note-zone text only after the required snapshot anchors exist.
+
+### 14.5 Slice 4
 
 Add style-only table formatting support:
 
@@ -558,7 +725,7 @@ Add style-only table formatting support:
 
 only after the text patch path is already stable.
 
-### 14.4 Slice 4
+### 14.6 Slice 5
 
 Wire truthful observability and proofreading residual feedback into:
 
@@ -574,9 +741,16 @@ The first implementation plan will likely touch:
 - `apps/api/src/modules/editorial-execution/types.ts`
 - `apps/api/src/modules/editorial-rules/editorial-rule-table-hit-service.ts`
 - `apps/api/src/modules/document-pipeline/document-structure-service.ts`
+- `apps/api/src/modules/document-pipeline/python-docx-structure-worker-adapter.ts`
+- `apps/worker-py/src/document_pipeline/parse_docx.py`
+- `apps/worker-py/src/document_pipeline/table_semantics.py`
 - `apps/worker-py/src/document_pipeline/apply_editorial_rules.py`
 - `apps/api/src/modules/proofreading/proofreading-service.ts`
 - `apps/api/src/modules/residual-learning/proofreading-residual-adapter.ts`
+- `apps/api/src/modules/editorial-rules/rule-package-compile-service.ts`
+- `apps/web/src/features/template-governance/rule-authoring-types.ts`
+- `apps/web/src/features/template-governance/rule-authoring-serialization.ts`
+- `apps/web/src/features/template-governance/rule-authoring-table-semantic-fields.tsx`
 
 It will likely also need new focused test coverage under:
 
@@ -589,6 +763,8 @@ It will likely also need new focused test coverage under:
 
 This design is correctly implemented when all of the following are true:
 
+- the shared DOCX transform hard-blocks table auto-apply outside approved editing paths
+- rule-center table rules can explicitly represent `A` / `B` / `C`, patch type, and apply scope
 - at least the initial `A` table rule families create real effects in `edited_docx`
 - the system returns explicit per-patch results rather than silently hiding failures
 - a failed or skipped table patch does not prevent valid DOCX delivery unless output safety is impossible
