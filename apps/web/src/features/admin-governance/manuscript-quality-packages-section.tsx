@@ -24,6 +24,7 @@ const defaultTargetScopesByKind: Record<
 export interface ManuscriptQualityPackagesSectionProps {
   packages: readonly ManuscriptQualityPackageViewModel[];
   isMutating: boolean;
+  surface?: "default" | "harness";
   onCreateDraft: (
     input: Omit<CreateManuscriptQualityPackageDraftInput, "actorRole">,
   ) => Promise<void>;
@@ -33,9 +34,12 @@ export interface ManuscriptQualityPackagesSectionProps {
 export function ManuscriptQualityPackagesSection(
   props: ManuscriptQualityPackagesSectionProps,
 ) {
+  const isHarnessSurface = props.surface === "harness";
   const [packageKind, setPackageKind] =
     useState<ManuscriptQualityPackageKind>("general_style_package");
-  const [packageName, setPackageName] = useState("Medical Research Style");
+  const [packageName, setPackageName] = useState(
+    resolveDefaultPackageName("general_style_package", props.surface),
+  );
   const [targetScopes, setTargetScopes] = useState<
     CreateManuscriptQualityPackageDraftInput["targetScopes"]
   >([...defaultTargetScopesByKind.general_style_package]);
@@ -83,15 +87,16 @@ export function ManuscriptQualityPackagesSection(
 
   return (
     <article className="admin-governance-panel admin-governance-panel-wide">
-      <h3>Quality Packages</h3>
+      <h3>{isHarnessSurface ? "质量包治理" : "Quality Packages"}</h3>
       <p className="admin-governance-empty">
-        Maintain governed proofreading and medical analyzer packages here, then bind the published
-        versions into runtime bindings and Harness comparisons.
+        {isHarnessSurface
+          ? "在这里维护可治理的质量包版本，并将已发布版本绑定到运行绑定和 Harness 对照链路中。"
+          : "Maintain governed proofreading and medical analyzer packages here, then bind the published versions into runtime bindings and Harness comparisons."}
       </p>
 
       <div className="admin-governance-form-grid">
         <label className="admin-governance-field">
-          <span>Package Kind</span>
+          <span>{isHarnessSurface ? "质量包类型" : "Package Kind"}</span>
           <select
             value={packageKind}
             onChange={(event) => {
@@ -101,7 +106,7 @@ export function ManuscriptQualityPackagesSection(
 
               setPackageKind(nextKind);
               setTargetScopes([...defaultTargetScopesByKind[nextKind]]);
-              setPackageName(defaultPackageName(nextKind));
+              setPackageName(resolveDefaultPackageName(nextKind, props.surface));
               setManifestText((current) =>
                 current.trim().length === 0 || current === previousDefault
                   ? nextDefault
@@ -110,13 +115,17 @@ export function ManuscriptQualityPackagesSection(
             }}
             disabled={props.isMutating}
           >
-            <option value="general_style_package">General Style Package</option>
-            <option value="medical_analyzer_package">Medical Analyzer Package</option>
+            <option value="general_style_package">
+              {isHarnessSurface ? "通用风格质量包" : "General Style Package"}
+            </option>
+            <option value="medical_analyzer_package">
+              {isHarnessSurface ? "医学分析质量包" : "Medical Analyzer Package"}
+            </option>
           </select>
         </label>
 
         <label className="admin-governance-field">
-          <span>Package Name</span>
+          <span>{isHarnessSurface ? "质量包名称" : "Package Name"}</span>
           <input
             type="text"
             value={packageName}
@@ -127,7 +136,7 @@ export function ManuscriptQualityPackagesSection(
       </div>
 
       <fieldset className="admin-governance-module-selector">
-        <legend>Target Scopes</legend>
+        <legend>{isHarnessSurface ? "目标范围" : "Target Scopes"}</legend>
         <div className="admin-governance-module-options">
           {defaultTargetScopesByKind[packageKind].map((scope) => (
             <label key={scope} className="admin-governance-module-option">
@@ -150,7 +159,7 @@ export function ManuscriptQualityPackagesSection(
       </fieldset>
 
       <label className="admin-governance-field">
-        <span>Package Manifest</span>
+        <span>{isHarnessSurface ? "质量包清单" : "Package Manifest"}</span>
         {packageKind === "general_style_package" ? (
           <>
             {parsedManifestState.manifest ? (
@@ -164,11 +173,13 @@ export function ManuscriptQualityPackagesSection(
               />
             ) : (
               <p className="admin-governance-error">
-                Structured editor is temporarily unavailable until the raw JSON is valid again.
+                {isHarnessSurface
+                  ? "原始 JSON 恢复有效前，结构化编辑器暂不可用。"
+                  : "Structured editor is temporarily unavailable until the raw JSON is valid again."}
               </p>
             )}
             <details>
-              <summary>Advanced JSON</summary>
+              <summary>{isHarnessSurface ? "高级 JSON" : "Advanced JSON"}</summary>
               <textarea
                 value={manifestText}
                 onChange={(event) => setManifestText(event.target.value)}
@@ -190,11 +201,13 @@ export function ManuscriptQualityPackagesSection(
               />
             ) : (
               <p className="admin-governance-error">
-                Structured editor is temporarily unavailable until the raw JSON is valid again.
+                {isHarnessSurface
+                  ? "原始 JSON 恢复有效前，结构化编辑器暂不可用。"
+                  : "Structured editor is temporarily unavailable until the raw JSON is valid again."}
               </p>
             )}
             <details>
-              <summary>Advanced JSON</summary>
+              <summary>{isHarnessSurface ? "高级 JSON" : "Advanced JSON"}</summary>
               <textarea
                 value={manifestText}
                 onChange={(event) => setManifestText(event.target.value)}
@@ -224,7 +237,7 @@ export function ManuscriptQualityPackagesSection(
             manifestText.trim().length === 0
           }
         >
-          Create Draft Package Version
+          {isHarnessSurface ? "创建草稿质量包版本" : "Create Draft Package Version"}
         </button>
       </div>
 
@@ -237,10 +250,15 @@ export function ManuscriptQualityPackagesSection(
                   {record.package_name} / v{record.version}
                 </strong>
                 <p>
-                  {formatPackageKind(record.package_kind)} / {record.target_scopes.join(", ")}
+                  {formatPackageKind(record.package_kind, props.surface)} /{" "}
+                  {Array.isArray(record.target_scopes)
+                    ? record.target_scopes.join(", ")
+                    : props.surface === "harness"
+                      ? "范围未记录"
+                      : "scope unavailable"}
                 </p>
                 <details>
-                  <summary>Manifest Preview</summary>
+                  <summary>{isHarnessSurface ? "清单预览" : "Manifest Preview"}</summary>
                   <pre>{JSON.stringify(record.manifest, null, 2)}</pre>
                 </details>
               </div>
@@ -253,7 +271,7 @@ export function ManuscriptQualityPackagesSection(
                     onClick={() => void props.onPublishVersion(record.id)}
                     disabled={props.isMutating}
                   >
-                    Publish
+                    {isHarnessSurface ? "发布" : "Publish"}
                   </button>
                 ) : null}
               </div>
@@ -262,19 +280,24 @@ export function ManuscriptQualityPackagesSection(
         </ul>
       ) : (
         <p className="admin-governance-empty">
-          No quality packages yet. Create a governed draft package first.
+          {isHarnessSurface
+            ? "当前还没有质量包，请先创建治理草稿。"
+            : "No quality packages yet. Create a governed draft package first."}
         </p>
       )}
     </article>
   );
 }
 
-function defaultPackageName(kind: ManuscriptQualityPackageKind): string {
+function resolveDefaultPackageName(
+  kind: ManuscriptQualityPackageKind,
+  surface: ManuscriptQualityPackagesSectionProps["surface"] = "default",
+): string {
   switch (kind) {
     case "general_style_package":
-      return "Medical Research Style";
+      return surface === "harness" ? "医学研究通用风格" : "Medical Research Style";
     case "medical_analyzer_package":
-      return "Medical Analyzer Base";
+      return surface === "harness" ? "医学分析基础包" : "Medical Analyzer Base";
   }
 }
 
@@ -294,12 +317,13 @@ function defaultManifestText(kind: ManuscriptQualityPackageKind): string {
 
 function formatPackageKind(
   kind: ManuscriptQualityPackageViewModel["package_kind"],
+  surface: ManuscriptQualityPackagesSectionProps["surface"] = "default",
 ): string {
   switch (kind) {
     case "general_style_package":
-      return "General Style";
+      return surface === "harness" ? "通用风格" : "General Style";
     case "medical_analyzer_package":
-      return "Medical Analyzer";
+      return surface === "harness" ? "医学分析" : "Medical Analyzer";
   }
 }
 

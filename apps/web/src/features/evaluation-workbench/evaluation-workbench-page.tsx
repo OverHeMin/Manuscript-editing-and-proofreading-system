@@ -8,9 +8,15 @@ import type {
   AdminHarnessScopeViewModel,
   HarnessEnvironmentPreviewViewModel,
 } from "../admin-governance/admin-governance-controller.ts";
+import { createAdminGovernanceWorkbenchController } from "../admin-governance/admin-governance-controller.ts";
+import { AgentToolingGovernanceSection } from "../admin-governance/agent-tooling-governance-section.tsx";
+import { ManuscriptQualityPackagesSection } from "../admin-governance/manuscript-quality-packages-section.tsx";
 import type { AuthRole } from "../auth/index.ts";
 import type { WorkbenchHarnessSection } from "../auth/workbench.ts";
-import { HarnessOperatorSection } from "./harness-operator-section.tsx";
+import {
+  HarnessOperatorSection,
+  type HarnessOperatorWorkspaceSnapshot,
+} from "./harness-operator-section.tsx";
 import { HarnessDatasetsWorkbenchPage } from "../harness-datasets/harness-datasets-workbench-page.tsx";
 import type { HarnessDatasetsWorkbenchOverview } from "../harness-datasets/types.ts";
 import type { ManuscriptWorkbenchMode } from "../manuscript-workbench/manuscript-workbench-controller.ts";
@@ -26,8 +32,12 @@ import {
   type EvaluationWorkbenchOverview,
 } from "./evaluation-workbench-controller.ts";
 import type { EvaluationWorkbenchHistoryWindowPreset } from "./evaluation-workbench-operations.ts";
+import { HarnessResizableSplitPane } from "./harness-resizable-split-pane.tsx";
 
 const defaultController = createEvaluationWorkbenchController(createBrowserHttpClient());
+const defaultHarnessController = createAdminGovernanceWorkbenchController(
+  createBrowserHttpClient(),
+);
 const baseFinalizeForm = {
   status: "passed" as "passed" | "failed",
   evidenceKind: "url" as VerificationEvidenceKind,
@@ -242,6 +252,15 @@ function EvaluationWorkbenchOperationsView(props: {
   onSelectHistoryFilter: (filter: EvaluationWorkbenchHistoryFilter) => void;
   onSelectHistorySortMode: (sortMode: EvaluationWorkbenchHistorySortMode) => void;
 }) {
+  const resolvedHarnessController = props.harnessController ?? defaultHarnessController;
+  const [operatorSnapshot, setOperatorSnapshot] = useState<HarnessOperatorWorkspaceSnapshot>(() =>
+    createInitialHarnessOperatorSnapshot({
+      initialHarnessOverview: props.initialHarnessOverview,
+      initialHarnessScope: props.initialHarnessScope,
+      initialHarnessPreview: props.initialHarnessPreview,
+    }),
+  );
+  const [governanceReloadSignal, setGovernanceReloadSignal] = useState(0);
   const normalizedPrefilledManuscriptId = props.prefilledManuscriptId?.trim() ?? "";
   const selectedRun =
     props.overview.runs.find((item) => item.id === props.overview.selectedRunId) ?? null;
@@ -272,12 +291,27 @@ function EvaluationWorkbenchOperationsView(props: {
     selectedRun != null && !visibleHistory.some((entry) => entry.run.id === selectedRun.id);
   const selectedInspectionFinalization =
     selectedRunHistoryEntry?.finalized ?? props.overview.selectedRunFinalization;
+  const harnessOverview = operatorSnapshot.overview ?? props.initialHarnessOverview ?? null;
+  const harnessScope = operatorSnapshot.scope ?? props.initialHarnessScope ?? null;
+  const harnessPreview = operatorSnapshot.preview ?? props.initialHarnessPreview ?? null;
+  const activeEnvironment = harnessScope?.activeEnvironment ?? null;
+  const activeQualityPackageSummary = describeHarnessQualityPackageSummary(
+    activeEnvironment?.runtime_binding.quality_package_version_ids ?? [],
+    harnessOverview?.qualityPackages ?? [],
+  );
+  const candidateQualityPackageSummary = describeHarnessQualityPackageSummary(
+    harnessPreview?.candidate_environment.runtime_binding.quality_package_version_ids ?? [],
+    harnessOverview?.qualityPackages ?? [],
+  );
   const datasetDraftCount = props.initialDatasetsOverview?.draftVersions.length ?? 0;
   const datasetPublishedCount = props.initialDatasetsOverview?.publishedVersions.length ?? 0;
   const datasetVersionCount = datasetDraftCount + datasetPublishedCount;
+  const isOverviewFocus = props.section === "overview";
+  const isRunsFocus = props.section === "runs";
+  const isDatasetsFocus = props.section === "datasets";
 
   return (
-    <section className="evaluation-workbench">
+    <section className="evaluation-workbench evaluation-workbench-single-page">
       <header className="evaluation-workbench-hero">
         <div className="evaluation-workbench-hero-copy">
           <p className="evaluation-workbench-eyebrow">Harness 控制</p>
@@ -288,6 +322,27 @@ function EvaluationWorkbenchOperationsView(props: {
         </div>
         {props.statusMessage ? <p className="evaluation-workbench-status">{props.statusMessage}</p> : null}
       </header>
+
+      <nav className="evaluation-workbench-region-nav" aria-label="Harness 页面入口">
+        <a
+          className={buildHarnessWorkspaceNavLinkClassName(isOverviewFocus)}
+          href={formatWorkbenchHash("evaluation-workbench", { harnessSection: "overview" })}
+        >
+          总览
+        </a>
+        <a
+          className={buildHarnessWorkspaceNavLinkClassName(isRunsFocus)}
+          href={formatWorkbenchHash("evaluation-workbench", { harnessSection: "runs" })}
+        >
+          运行记录
+        </a>
+        <a
+          className={buildHarnessWorkspaceNavLinkClassName(isDatasetsFocus)}
+          href={formatWorkbenchHash("evaluation-workbench", { harnessSection: "datasets" })}
+        >
+          数据与样本
+        </a>
+      </nav>
 
       {normalizedPrefilledManuscriptId.length > 0 ? (
         <div className="evaluation-workbench-result">
@@ -308,96 +363,6 @@ function EvaluationWorkbenchOperationsView(props: {
         </div>
       ) : null}
 
-      <section className="evaluation-workbench-panel evaluation-workbench-delta-summary">
-        <div className="evaluation-workbench-panel-header">
-          <h3>运行总览</h3>
-          <span>{describeHistoryWindowPresetLabel(props.overview.suiteOperations.defaultWindow)}</span>
-        </div>
-        {props.overview.suiteOperations.delta != null && defaultComparison != null ? (
-          <>
-            <div className="evaluation-workbench-delta-badge-row">
-              <span className={`evaluation-workbench-delta-badge is-${props.overview.suiteOperations.delta.classification}`}>
-                变化分类：{formatDeltaClassificationLabel(props.overview.suiteOperations.delta.classification)}
-              </span>
-              <span className="evaluation-workbench-delta-inline-note">
-                默认对照：{defaultComparison.selected.run.id} 对 {defaultComparison.baseline.run.id}
-              </span>
-            </div>
-            <p className="evaluation-workbench-delta-copy">
-              {describeDeltaReasonCopy({
-                delta: props.overview.suiteOperations.delta,
-                defaultComparison,
-              })}
-            </p>
-            <p className="evaluation-workbench-delta-copy">
-              {describeDeltaNextOperatorCue({
-                selectedEntry: defaultComparison.selected,
-                baselineEntry: defaultComparison.baseline,
-              })}
-            </p>
-            <div className="evaluation-workbench-delta-meta">
-              <span>最新结果与基线对照</span>
-              <span>
-                当前时间窗口展示 {visibleHistory.length} / {props.overview.finalizedRunHistory.length} 条已定稿运行
-              </span>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="evaluation-workbench-delta-copy">
-              {describeHonestDegradationCopy({
-                honestDegradation: props.overview.suiteOperations.honestDegradation,
-                windowPreset: props.overview.suiteOperations.defaultWindow,
-              })}
-            </p>
-            <p className="evaluation-workbench-delta-copy">
-              {describeHonestDegradationNextStep(props.overview.suiteOperations.honestDegradation)}
-            </p>
-          </>
-        )}
-      </section>
-
-      <section
-        className="evaluation-workbench-panel evaluation-workbench-comparison-panel"
-        data-evaluation-comparison-state={
-          defaultComparison != null && defaultComparisonDetail != null
-            ? "ready"
-            : "unavailable"
-        }
-      >
-        <div className="evaluation-workbench-panel-header">
-          <h3>结果对照</h3>
-          <span>最新结果与基线对照</span>
-        </div>
-        {defaultComparison != null && defaultComparisonDetail != null ? (
-          <EvaluationWorkbenchRunComparisonCard
-            comparisonScopeLabel="最新结果与基线对照"
-            selectedEntry={defaultComparison.selected}
-            previousEntry={defaultComparison.baseline}
-            selectedEvidence={[...defaultComparisonDetail.selectedEvidence]}
-            previousEvidence={[...defaultComparisonDetail.baselineEvidence]}
-          />
-        ) : (
-          <div className="evaluation-workbench-result evaluation-workbench-history-guidance">
-            <strong>暂时无法对照</strong>
-            <p className="evaluation-workbench-empty">
-              {describeHonestDegradationCopy({
-                honestDegradation: props.overview.suiteOperations.honestDegradation,
-                windowPreset: props.overview.suiteOperations.defaultWindow,
-              })}
-            </p>
-          </div>
-        )}
-      </section>
-
-      <EvaluationWorkbenchReleaseGateSummaryCard
-        defaultComparison={defaultComparison}
-        selectedRunId={selectedRun?.id ?? null}
-        selectedInspectionFinalization={selectedInspectionFinalization}
-        honestDegradation={props.overview.suiteOperations.honestDegradation}
-        historyWindowPreset={props.overview.suiteOperations.defaultWindow}
-      />
-
       <section className="evaluation-workbench-summary">
         <SummaryCard label="核查配置" value={props.overview.checkProfiles.length} />
         <SummaryCard label="发布配置" value={props.overview.releaseCheckProfiles.length} />
@@ -408,308 +373,831 @@ function EvaluationWorkbenchOperationsView(props: {
         <SummaryCard label="数据集版本" value={datasetVersionCount} />
       </section>
 
-      <div className="evaluation-workbench-unified-layout">
-        <aside className="evaluation-workbench-workspace-sidebar">
-          <section className="evaluation-workbench-panel">
-            <div className="evaluation-workbench-panel-header">
-              <h3>Harness 工作区</h3>
-              <span>Unified operator loop</span>
-            </div>
-            <nav className="evaluation-workbench-harness-nav" aria-label="Harness 工作区">
-              <a
-                className={buildHarnessWorkspaceNavLinkClassName(props.section === "overview")}
-                href={formatWorkbenchHash("evaluation-workbench", { harnessSection: "overview" })}
-              >
-                总览
-              </a>
-              <a
-                className={buildHarnessWorkspaceNavLinkClassName(props.section === "runs")}
-                href={formatWorkbenchHash("evaluation-workbench", { harnessSection: "runs" })}
-              >
-                运行记录
-              </a>
-              <a
-                className={buildHarnessWorkspaceNavLinkClassName(props.section === "datasets")}
-                href={formatWorkbenchHash("evaluation-workbench", { harnessSection: "datasets" })}
-              >
-                数据与样本
-              </a>
-            </nav>
-            <article className="evaluation-workbench-harness-datasets-entry">
-              <strong>数据与样本</strong>
-              <p className="evaluation-workbench-harness-copy">
-                数据集入口仍然留在当前 Harness 工作区里，方便和最近运行、证据、治理控制放在同一个操作链里。
-              </p>
-              <div className="evaluation-workbench-history-compare">
-                <span>草稿 {datasetDraftCount} 个</span>
-                <span>已发布 {datasetPublishedCount} 个</span>
-              </div>
-              <a
-                className="workbench-secondary-action"
-                href={formatWorkbenchHash("evaluation-workbench", { harnessSection: "datasets" })}
-              >
-                打开数据与样本
-              </a>
-            </article>
-          </section>
-          <div className="evaluation-workbench-layout">
-            <section className="evaluation-workbench-panel">
-          <div className="evaluation-workbench-panel-header">
-            <h3>历史结果</h3>
-            <span>{visibleHistory.length} 条可见 / {props.overview.finalizedRunHistory.length} 条总计</span>
+      <section
+        className={`evaluation-workbench-region evaluation-workbench-region-status${isOverviewFocus ? " is-emphasized" : ""}`}
+      >
+        <div className="evaluation-workbench-region-header">
+          <div className="evaluation-workbench-region-copy">
+            <p className="evaluation-workbench-region-eyebrow">先看状态</p>
+            <h3>全局状态</h3>
+            <p>这里全部是只读信号，用来确认当前真实生效环境、候选差异和风险，再决定是否调整。</p>
           </div>
-          <p className="evaluation-workbench-empty">
-            当前时间窗口展示 {visibleHistory.length} / {props.overview.finalizedRunHistory.length} 条已定稿运行。
-          </p>
-          <div className="evaluation-workbench-control-grid">
-            <Field label="时间窗口">
-              <select
-                value={props.overview.suiteOperations.defaultWindow}
-                onChange={(event) =>
-                  props.onSelectHistoryWindow(
-                    event.target.value as EvaluationWorkbenchHistoryWindowPreset,
-                  )
-                }
-              >
-                {createHistoryWindowOptions().map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="建议筛选">
-              <select
-                value={props.historyFilter}
-                onChange={(event) =>
-                  props.onSelectHistoryFilter(
-                    event.target.value as EvaluationWorkbenchHistoryFilter,
-                  )
-                }
-              >
-                {createHistoryFilterControlOptions().map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="排序方式">
-              <select
-                value={props.historySortMode}
-                onChange={(event) =>
-                  props.onSelectHistorySortMode(
-                    event.target.value as EvaluationWorkbenchHistorySortMode,
-                  )
-                }
-              >
-                {createHistorySortControlOptions().map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
+          <div className="evaluation-workbench-region-tags">
+            <span className="evaluation-workbench-region-tag is-readonly">只读</span>
+            <span className="evaluation-workbench-region-tag">真实数据</span>
           </div>
-          {selectedRunOutsideVisibleWindow && selectedRun ? (
-            <div className="evaluation-workbench-result evaluation-workbench-history-hidden-selection">
-              <strong>当前查看运行：{selectedRun.id}</strong>
-              <p className="evaluation-workbench-empty">
-                当前查看运行 {selectedRun.id} 不在当前历史窗口内。
-              </p>
-            </div>
-          ) : null}
-          {sortedVisibleHistory.length > 0 ? (
-            <ul className="evaluation-workbench-stack evaluation-workbench-history-list">
-              {sortedVisibleHistory.map((entry) => (
-                <li key={entry.run.id}>
-                  <button
-                    type="button"
-                    aria-label={`历史运行 ${entry.run.id}`}
-                    className={`evaluation-workbench-select${entry.run.id === selectedRun?.id ? " is-selected" : ""}`}
-                    onClick={() => props.onSelectRun(entry.run.id)}
-                  >
-                    <strong>{entry.run.id}</strong>
-                    <span>
-                      {describeHistoryStatusPair(
-                        entry.finalized.recommendation.status,
-                        entry.finalized.evidence_pack.summary_status,
-                      )}
-                    </span>
-                    <EvaluationWorkbenchHistoryEntrySignals entry={entry} />
-                    {summarizeFinalizedEntry(entry) ? <span>{summarizeFinalizedEntry(entry)}</span> : null}
-                    {describeDefaultComparisonRoleLabel(entry.run.id, defaultComparison).map((label) => (
-                      <span key={label}>{label}</span>
-                    ))}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="evaluation-workbench-result evaluation-workbench-history-empty-state">
-              <strong>当前筛选条件下没有符合的已定稿运行。</strong>
-            </div>
-          )}
-            </section>
-          </div>
-        </aside>
+        </div>
 
-        <main className={`evaluation-workbench-workspace-main${props.section === "datasets" ? " is-datasets" : ""}`}>
-          {props.section === "datasets" ? (
-            <HarnessDatasetsWorkbenchPage
-              embedded
-              initialOverview={props.initialDatasetsOverview}
-            />
-          ) : null}
-
-          <section className="evaluation-workbench-panel">
-          <div className="evaluation-workbench-panel-header">
-            <h3>套件信号摘要</h3>
-            <span>{describeHistoryWindowPresetLabel(props.overview.suiteOperations.defaultWindow)}</span>
-          </div>
-          <div className="evaluation-workbench-history-summary-grid">
-            <article className="evaluation-workbench-history-summary-card">
-              <strong>建议分布</strong>
-              <span>
-                {formatSignalDistributionSummary(
-                  props.overview.suiteOperations.signals.recommendationDistribution,
-                )}
-              </span>
-            </article>
-            <article className="evaluation-workbench-history-summary-card">
-              <strong>证据包结果</strong>
-              <span>
-                {formatSignalDistributionSummary(
-                  props.overview.suiteOperations.signals.evidencePackOutcomeMix,
-                )}
-              </span>
-            </article>
-            <article className="evaluation-workbench-history-summary-card">
-              <strong>复发信号</strong>
-              <span>
-                {formatRecurrenceSignalSummary(props.overview.suiteOperations.signals.recurrence)}
-              </span>
-            </article>
-          </div>
-        </section>
-
-        <section className="evaluation-workbench-panel">
-          <div className="evaluation-workbench-panel-header">
-            <h3>评测套件</h3>
-            <span>{props.overview.suites.length} 已配置</span>
-          </div>
-          {props.overview.suites.length === 0 ? (
-            <p className="evaluation-workbench-empty">暂无已配置评测套件。</p>
-          ) : (
-            <ul className="evaluation-workbench-stack">
-              {props.overview.suites.map((suite) => (
-                <li key={suite.id}>
-                  <button
-                    type="button"
-                    className={`evaluation-workbench-select${suite.id === props.overview.selectedSuiteId ? " is-selected" : ""}`}
-                    onClick={() => props.onSelectSuite(suite.id)}
-                    data-evaluation-suite-id={suite.id}
-                    data-evaluation-suite-type={suite.suite_type}
-                  >
-                    <strong>{suite.name}</strong>
-                    <span>{formatSuiteTypeLabel(suite.suite_type)} | {formatLifecycleStatusLabel(suite.status)}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className="evaluation-workbench-panel">
-          <div className="evaluation-workbench-panel-header">
-            <h3>当前查看</h3>
-            <span>{selectedRun?.id ?? "请先选择运行"}</span>
-          </div>
-          {selectedRun == null ? (
-            <p className="evaluation-workbench-empty">
-              请选择一条运行，查看已定稿证据与只读详情。
-            </p>
-          ) : (
-            <>
-              <div className="evaluation-workbench-result evaluation-workbench-history-detail">
-                <strong>当前查看运行：{selectedRun.id}</strong>
-                <div className="evaluation-workbench-history-compare">
-                  <span>运行状态：{formatRunStatusLabel(selectedRun.status)}</span>
-                  <span>样本条目：{selectedRun.run_item_count ?? 0}</span>
-                  {selectedInspectionFinalization ? (
-                    <>
-                      <span>建议结论：{formatRecommendationStatusLabel(selectedInspectionFinalization.recommendation.status)}</span>
-                      <span>证据包：{selectedInspectionFinalization.evidence_pack.id}</span>
-                      {selectedInspectionFinalization.recommendation.decision_reason ? (
-                        <span>{selectedInspectionFinalization.recommendation.decision_reason}</span>
-                      ) : null}
-                    </>
-                  ) : (
-                    <span>当前运行尚未生成已定稿建议。</span>
-                  )}
-                  {selectedRunOutsideVisibleWindow ? (
-                    <span>
-                      该运行不在默认摘要使用的历史窗口内。
-                    </span>
-                  ) : null}
-                  {!selectedRunOutsideVisibleWindow && !selectedInspectionFinalization ? (
-                    <span>
-                      该运行仍在当前窗口中，但尚未完成定稿。
-                    </span>
-                  ) : null}
+        <HarnessResizableSplitPane
+          direction="horizontal"
+          initialRatio={0.56}
+          minRatio={0.34}
+          maxRatio={0.72}
+          className="evaluation-workbench-status-split"
+          primary={
+            <div className="evaluation-workbench-region-stack">
+              <section className="evaluation-workbench-panel evaluation-workbench-delta-summary">
+                <div className="evaluation-workbench-panel-header">
+                  <h3>运行总览</h3>
+                  <span>{describeHistoryWindowPresetLabel(props.overview.suiteOperations.defaultWindow)}</span>
                 </div>
-              </div>
-              {selectedInspectionFinalization ? (
-                <EvaluationWorkbenchEvidencePackSummary
-                  evidencePack={selectedInspectionFinalization.evidence_pack}
-                />
-              ) : null}
-              {selectedRun.governed_source ? (
-                <EvaluationWorkbenchGovernedSourceDetailCard selectedRun={selectedRun} />
-              ) : null}
-              {props.overview.runItems.length > 0 ? (
-                <>
-                  <EvaluationWorkbenchLinkedSampleContextList
-                    runItems={props.overview.runItems}
-                    sampleSetItems={props.overview.sampleSetItems}
-                    selectedRunItemId={props.selectedRunItemId}
-                    defaultWorkbenchMode={resolveLinkedSampleWorkbenchMode(selectedSampleSet?.module)}
-                    onFocusRunItem={props.onSelectRunItem}
-                  />
-                  {selectedRunItem && linkedSampleSetItem ? (
-                    <EvaluationWorkbenchSelectedRunItemDetailCard
-                      selectedRun={selectedRun}
-                      selectedRunItem={selectedRunItem}
-                      linkedSampleSetItem={linkedSampleSetItem}
-                    />
-                  ) : null}
-                </>
-              ) : (
-                <p className="evaluation-workbench-empty">
-                  当前查看区域保持只读，所选运行暂无样本关联条目。
-                </p>
-              )}
-              <EvaluationWorkbenchEvidenceList
-                evidence={props.overview.selectedRunEvidence}
-                emptyMessage="该运行暂无已保存的核验证据。"
-              />
-            </>
-          )}
-        </section>
-        </main>
+                {props.overview.suiteOperations.delta != null && defaultComparison != null ? (
+                  <>
+                    <div className="evaluation-workbench-delta-badge-row">
+                      <span className={`evaluation-workbench-delta-badge is-${props.overview.suiteOperations.delta.classification}`}>
+                        变化分类：{formatDeltaClassificationLabel(props.overview.suiteOperations.delta.classification)}
+                      </span>
+                      <span className="evaluation-workbench-delta-inline-note">
+                        默认对照：{defaultComparison.selected.run.id} 对 {defaultComparison.baseline.run.id}
+                      </span>
+                    </div>
+                    <p className="evaluation-workbench-delta-copy">
+                      {describeDeltaReasonCopy({
+                        delta: props.overview.suiteOperations.delta,
+                        defaultComparison,
+                      })}
+                    </p>
+                    <p className="evaluation-workbench-delta-copy">
+                      {describeDeltaNextOperatorCue({
+                        selectedEntry: defaultComparison.selected,
+                        baselineEntry: defaultComparison.baseline,
+                      })}
+                    </p>
+                    <div className="evaluation-workbench-delta-meta">
+                      <span>最新结果与基线对照</span>
+                      <span>
+                        当前时间窗口展示 {visibleHistory.length} / {props.overview.finalizedRunHistory.length} 条已定稿运行
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="evaluation-workbench-delta-copy">
+                      {describeHonestDegradationCopy({
+                        honestDegradation: props.overview.suiteOperations.honestDegradation,
+                        windowPreset: props.overview.suiteOperations.defaultWindow,
+                      })}
+                    </p>
+                    <p className="evaluation-workbench-delta-copy">
+                      {describeHonestDegradationNextStep(props.overview.suiteOperations.honestDegradation)}
+                    </p>
+                  </>
+                )}
+              </section>
 
-        <aside className="evaluation-workbench-workspace-rail">
-          <HarnessOperatorSection
-            actorRole={props.actorRole}
-            harnessController={props.harnessController}
-            initialHarnessOverview={props.initialHarnessOverview}
-            initialHarnessScope={props.initialHarnessScope}
-            initialHarnessPreview={props.initialHarnessPreview}
-          />
-        </aside>
-      </div>
+              <div className="evaluation-workbench-history-summary-grid">
+                <StatusSnapshotCard
+                  label="当前生效环境"
+                  summary={describeHarnessEnvironmentSummary(activeEnvironment)}
+                />
+                <StatusSnapshotCard
+                  label="当前质量包"
+                  summary={activeQualityPackageSummary}
+                />
+                <StatusSnapshotCard
+                  label="候选质量包"
+                  summary={candidateQualityPackageSummary}
+                />
+                <StatusSnapshotCard
+                  label="最近裁决校准"
+                  summary={describeJudgeCalibrationSummary(harnessOverview?.latestJudgeCalibrationBatchOutcome ?? null)}
+                />
+              </div>
+
+              <EvaluationWorkbenchReleaseGateSummaryCard
+                defaultComparison={defaultComparison}
+                selectedRunId={selectedRun?.id ?? null}
+                selectedInspectionFinalization={selectedInspectionFinalization}
+                honestDegradation={props.overview.suiteOperations.honestDegradation}
+                historyWindowPreset={props.overview.suiteOperations.defaultWindow}
+              />
+            </div>
+          }
+          secondary={
+            <div className="evaluation-workbench-region-stack">
+              <div className="evaluation-workbench-history-summary-grid">
+                <StatusSnapshotCard
+                  label="候选差异"
+                  summary={describeHarnessPreviewDiffSummary(harnessPreview)}
+                  tone={harnessPreview?.diff.changed_components.length ? "warning" : "neutral"}
+                />
+                <StatusSnapshotCard
+                  label="适配器健康"
+                  summary={describeHarnessAdapterHealthSummary(harnessOverview?.harnessAdapterHealth ?? [])}
+                  tone={hasHarnessAdapterIssues(harnessOverview?.harnessAdapterHealth ?? []) ? "warning" : "success"}
+                />
+                <StatusSnapshotCard
+                  label="最近异常"
+                  summary={describeRecentAnomalySummary(visibleHistory)}
+                  tone={describeRecentAnomalyTone(visibleHistory)}
+                />
+                <StatusSnapshotCard
+                  label="风险提示"
+                  summary={describeHarnessRiskSummary(
+                    defaultComparison,
+                    props.overview.suiteOperations.signals.recurrence,
+                    props.overview.suiteOperations.honestDegradation,
+                  )}
+                  tone={defaultComparison?.selected.finalized.recommendation.status === "recommended" ? "neutral" : "warning"}
+                />
+              </div>
+
+              <section
+                className="evaluation-workbench-panel evaluation-workbench-comparison-panel"
+                data-evaluation-comparison-state={
+                  defaultComparison != null && defaultComparisonDetail != null
+                    ? "ready"
+                    : "unavailable"
+                }
+              >
+                <div className="evaluation-workbench-panel-header">
+                  <h3>结果对照</h3>
+                  <span>最新结果与基线对照</span>
+                </div>
+                {defaultComparison != null && defaultComparisonDetail != null ? (
+                  <EvaluationWorkbenchRunComparisonCard
+                    comparisonScopeLabel="最新结果与基线对照"
+                    selectedEntry={defaultComparison.selected}
+                    previousEntry={defaultComparison.baseline}
+                    selectedEvidence={[...defaultComparisonDetail.selectedEvidence]}
+                    previousEvidence={[...defaultComparisonDetail.baselineEvidence]}
+                  />
+                ) : (
+                  <div className="evaluation-workbench-result evaluation-workbench-history-guidance">
+                    <strong>暂时无法对照</strong>
+                    <p className="evaluation-workbench-empty">
+                      {describeHonestDegradationCopy({
+                        honestDegradation: props.overview.suiteOperations.honestDegradation,
+                        windowPreset: props.overview.suiteOperations.defaultWindow,
+                      })}
+                    </p>
+                  </div>
+                )}
+              </section>
+            </div>
+          }
+          separatorLabel="调整全局状态左右区域宽度"
+        />
+      </section>
+
+      <section
+        className={`evaluation-workbench-region evaluation-workbench-region-actions${isOverviewFocus ? " is-emphasized" : ""}`}
+      >
+        <div className="evaluation-workbench-region-header">
+          <div className="evaluation-workbench-region-copy">
+            <p className="evaluation-workbench-region-eyebrow">再做操作</p>
+            <h3>操作控制</h3>
+            <p>这里的选择、预览、验证、激活和回滚都会连接真实 Harness 能力，不展示虚假开关。</p>
+          </div>
+          <div className="evaluation-workbench-region-tags">
+            <span className="evaluation-workbench-region-tag is-editable">可提交</span>
+            <span className="evaluation-workbench-region-tag">影响真实环境</span>
+          </div>
+        </div>
+
+        <HarnessOperatorSection
+          actorRole={props.actorRole}
+          harnessController={resolvedHarnessController}
+          initialHarnessOverview={props.initialHarnessOverview}
+          initialHarnessScope={props.initialHarnessScope}
+          initialHarnessPreview={props.initialHarnessPreview}
+          reloadSignal={governanceReloadSignal}
+          layout="split"
+          showScopeSummary={false}
+          onStateChange={setOperatorSnapshot}
+        />
+      </section>
+
+      <section
+        className={`evaluation-workbench-region evaluation-workbench-region-history${isRunsFocus ? " is-emphasized" : ""}`}
+      >
+        <div className="evaluation-workbench-region-header">
+          <div className="evaluation-workbench-region-copy">
+            <p className="evaluation-workbench-region-eyebrow">持续追踪</p>
+            <h3>运行记录</h3>
+            <p>筛选、排序和详情查看都留在同一页，不再把记录和分析拆到别处。</p>
+          </div>
+          <div className="evaluation-workbench-region-tags">
+            <span className="evaluation-workbench-region-tag is-readonly">只读检查</span>
+            <span className="evaluation-workbench-region-tag">上下分隔可调</span>
+          </div>
+        </div>
+
+        <HarnessResizableSplitPane
+          direction="vertical"
+          initialRatio={0.42}
+          minRatio={0.24}
+          maxRatio={0.72}
+          className="evaluation-workbench-history-split"
+          primary={
+            <section className="evaluation-workbench-panel">
+              <div className="evaluation-workbench-panel-header">
+                <h3>历史结果</h3>
+                <span>{visibleHistory.length} 条可见 / {props.overview.finalizedRunHistory.length} 条总计</span>
+              </div>
+              <p className="evaluation-workbench-empty">
+                当前时间窗口展示 {visibleHistory.length} / {props.overview.finalizedRunHistory.length} 条已定稿运行。
+              </p>
+              <div className="evaluation-workbench-control-grid">
+                <Field label="时间窗口">
+                  <select
+                    value={props.overview.suiteOperations.defaultWindow}
+                    onChange={(event) =>
+                      props.onSelectHistoryWindow(
+                        event.target.value as EvaluationWorkbenchHistoryWindowPreset,
+                      )
+                    }
+                  >
+                    {createHistoryWindowOptions().map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="建议筛选">
+                  <select
+                    value={props.historyFilter}
+                    onChange={(event) =>
+                      props.onSelectHistoryFilter(
+                        event.target.value as EvaluationWorkbenchHistoryFilter,
+                      )
+                    }
+                  >
+                    {createHistoryFilterControlOptions().map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="排序方式">
+                  <select
+                    value={props.historySortMode}
+                    onChange={(event) =>
+                      props.onSelectHistorySortMode(
+                        event.target.value as EvaluationWorkbenchHistorySortMode,
+                      )
+                    }
+                  >
+                    {createHistorySortControlOptions().map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+              {selectedRunOutsideVisibleWindow && selectedRun ? (
+                <div className="evaluation-workbench-result evaluation-workbench-history-hidden-selection">
+                  <strong>当前查看运行：{selectedRun.id}</strong>
+                  <p className="evaluation-workbench-empty">
+                    当前查看运行 {selectedRun.id} 不在当前历史窗口内。
+                  </p>
+                </div>
+              ) : null}
+              {sortedVisibleHistory.length > 0 ? (
+                <ul className="evaluation-workbench-stack evaluation-workbench-history-list">
+                  {sortedVisibleHistory.map((entry) => (
+                    <li key={entry.run.id}>
+                      <button
+                        type="button"
+                        aria-label={`历史运行 ${entry.run.id}`}
+                        className={`evaluation-workbench-select${entry.run.id === selectedRun?.id ? " is-selected" : ""}`}
+                        onClick={() => props.onSelectRun(entry.run.id)}
+                      >
+                        <strong>{entry.run.id}</strong>
+                        <span>
+                          {describeHistoryStatusPair(
+                            entry.finalized.recommendation.status,
+                            entry.finalized.evidence_pack.summary_status,
+                          )}
+                        </span>
+                        <EvaluationWorkbenchHistoryEntrySignals entry={entry} />
+                        {summarizeFinalizedEntry(entry) ? <span>{summarizeFinalizedEntry(entry)}</span> : null}
+                        {describeDefaultComparisonRoleLabel(entry.run.id, defaultComparison).map((label) => (
+                          <span key={label}>{label}</span>
+                        ))}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="evaluation-workbench-result evaluation-workbench-history-empty-state">
+                  <strong>当前筛选条件下没有符合的已定稿运行。</strong>
+                </div>
+              )}
+            </section>
+          }
+          secondary={
+            <div className="evaluation-workbench-region-stack evaluation-workbench-history-bottom">
+              <div className="evaluation-workbench-layout">
+                <section className="evaluation-workbench-panel">
+                  <div className="evaluation-workbench-panel-header">
+                    <h3>套件信号摘要</h3>
+                    <span>{describeHistoryWindowPresetLabel(props.overview.suiteOperations.defaultWindow)}</span>
+                  </div>
+                  <div className="evaluation-workbench-history-summary-grid">
+                    <article className="evaluation-workbench-history-summary-card">
+                      <strong>建议分布</strong>
+                      <span>
+                        {formatSignalDistributionSummary(
+                          props.overview.suiteOperations.signals.recommendationDistribution,
+                        )}
+                      </span>
+                    </article>
+                    <article className="evaluation-workbench-history-summary-card">
+                      <strong>证据包结果</strong>
+                      <span>
+                        {formatSignalDistributionSummary(
+                          props.overview.suiteOperations.signals.evidencePackOutcomeMix,
+                        )}
+                      </span>
+                    </article>
+                    <article className="evaluation-workbench-history-summary-card">
+                      <strong>复发信号</strong>
+                      <span>
+                        {formatRecurrenceSignalSummary(props.overview.suiteOperations.signals.recurrence)}
+                      </span>
+                    </article>
+                    <article className="evaluation-workbench-history-summary-card">
+                      <strong>当前窗口</strong>
+                      <span>
+                        当前窗口可见 {visibleHistory.length} / {props.overview.finalizedRunHistory.length} 条已定稿运行。
+                      </span>
+                    </article>
+                  </div>
+                </section>
+
+                <section className="evaluation-workbench-panel">
+                  <div className="evaluation-workbench-panel-header">
+                    <h3>评测套件</h3>
+                    <span>{props.overview.suites.length} 已配置</span>
+                  </div>
+                  {props.overview.suites.length === 0 ? (
+                    <p className="evaluation-workbench-empty">暂无已配置评测套件。</p>
+                  ) : (
+                    <ul className="evaluation-workbench-stack">
+                      {props.overview.suites.map((suite) => (
+                        <li key={suite.id}>
+                          <button
+                            type="button"
+                            className={`evaluation-workbench-select${suite.id === props.overview.selectedSuiteId ? " is-selected" : ""}`}
+                            onClick={() => props.onSelectSuite(suite.id)}
+                            data-evaluation-suite-id={suite.id}
+                            data-evaluation-suite-type={suite.suite_type}
+                          >
+                            <strong>{suite.name}</strong>
+                            <span>{formatSuiteTypeLabel(suite.suite_type)} | {formatLifecycleStatusLabel(suite.status)}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              </div>
+
+              <section className="evaluation-workbench-panel">
+                <div className="evaluation-workbench-panel-header">
+                  <h3>当前查看</h3>
+                  <span>{selectedRun?.id ?? "请先选择运行"}</span>
+                </div>
+                {selectedRun == null ? (
+                  <p className="evaluation-workbench-empty">
+                    请选择一条运行，查看已定稿证据与只读详情。
+                  </p>
+                ) : (
+                  <>
+                    <div className="evaluation-workbench-result evaluation-workbench-history-detail">
+                      <strong>当前查看运行：{selectedRun.id}</strong>
+                      <div className="evaluation-workbench-history-compare">
+                        <span>运行状态：{formatRunStatusLabel(selectedRun.status)}</span>
+                        <span>样本条目：{selectedRun.run_item_count ?? 0}</span>
+                        {selectedInspectionFinalization ? (
+                          <>
+                            <span>建议结论：{formatRecommendationStatusLabel(selectedInspectionFinalization.recommendation.status)}</span>
+                            <span>证据包：{selectedInspectionFinalization.evidence_pack.id}</span>
+                            {selectedInspectionFinalization.recommendation.decision_reason ? (
+                              <span>{selectedInspectionFinalization.recommendation.decision_reason}</span>
+                            ) : null}
+                          </>
+                        ) : (
+                          <span>当前运行尚未生成已定稿建议。</span>
+                        )}
+                        {selectedRunOutsideVisibleWindow ? (
+                          <span>
+                            该运行不在默认摘要使用的历史窗口内。
+                          </span>
+                        ) : null}
+                        {!selectedRunOutsideVisibleWindow && !selectedInspectionFinalization ? (
+                          <span>
+                            该运行仍在当前窗口中，但尚未完成定稿。
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    {selectedInspectionFinalization ? (
+                      <EvaluationWorkbenchEvidencePackSummary
+                        evidencePack={selectedInspectionFinalization.evidence_pack}
+                      />
+                    ) : null}
+                    {selectedRun.governed_source ? (
+                      <EvaluationWorkbenchGovernedSourceDetailCard selectedRun={selectedRun} />
+                    ) : null}
+                    {props.overview.runItems.length > 0 ? (
+                      <>
+                        <EvaluationWorkbenchLinkedSampleContextList
+                          runItems={props.overview.runItems}
+                          sampleSetItems={props.overview.sampleSetItems}
+                          selectedRunItemId={props.selectedRunItemId}
+                          defaultWorkbenchMode={resolveLinkedSampleWorkbenchMode(selectedSampleSet?.module)}
+                          onFocusRunItem={props.onSelectRunItem}
+                        />
+                        {selectedRunItem && linkedSampleSetItem ? (
+                          <EvaluationWorkbenchSelectedRunItemDetailCard
+                            selectedRun={selectedRun}
+                            selectedRunItem={selectedRunItem}
+                            linkedSampleSetItem={linkedSampleSetItem}
+                          />
+                        ) : null}
+                      </>
+                    ) : (
+                      <p className="evaluation-workbench-empty">
+                        当前查看区域保持只读，所选运行暂无样本关联条目。
+                      </p>
+                    )}
+                    <EvaluationWorkbenchEvidenceList
+                      evidence={props.overview.selectedRunEvidence}
+                      emptyMessage="该运行暂无已保存的核验证据。"
+                    />
+                  </>
+                )}
+              </section>
+            </div>
+          }
+          separatorLabel="调整历史结果与详情区域高度"
+        />
+      </section>
+
+      <section
+        className={`evaluation-workbench-region evaluation-workbench-region-governance${isOverviewFocus ? " is-emphasized" : ""}`}
+      >
+        <div className="evaluation-workbench-region-header">
+          <div className="evaluation-workbench-region-copy">
+            <p className="evaluation-workbench-region-eyebrow">补齐治理</p>
+            <h3>治理配置</h3>
+            <p>这里只放 Harness 真正能调的路由、运行绑定和质量包；上游共享资产只引用，不在此页做维护。</p>
+          </div>
+          <div className="evaluation-workbench-region-tags">
+            <span className="evaluation-workbench-region-tag is-editable">可编辑</span>
+            <span className="evaluation-workbench-region-tag">只放 Harness 归属</span>
+          </div>
+        </div>
+
+        <HarnessGovernanceWorkspace
+          actorRole={props.actorRole}
+          controller={resolvedHarnessController}
+          initialOverview={props.initialHarnessOverview}
+          onMutationApplied={() => setGovernanceReloadSignal((current) => current + 1)}
+        />
+      </section>
+
+      <section
+        className={`evaluation-workbench-region evaluation-workbench-region-datasets${isDatasetsFocus ? " is-emphasized" : ""}`}
+      >
+        <div className="evaluation-workbench-region-header">
+          <div className="evaluation-workbench-region-copy">
+            <p className="evaluation-workbench-region-eyebrow">同页闭环</p>
+            <h3>数据与样本</h3>
+            <p>数据集仍留在 Harness 内，和运行、证据、绑定治理保持同一工作链路。</p>
+          </div>
+          <div className="evaluation-workbench-region-tags">
+            <span className="evaluation-workbench-region-tag is-editable">可导出</span>
+            <span className="evaluation-workbench-region-tag">草稿 {datasetDraftCount} 个</span>
+            <span className="evaluation-workbench-region-tag">已发布 {datasetPublishedCount} 个</span>
+          </div>
+        </div>
+
+        <HarnessDatasetsWorkbenchPage
+          embedded
+          initialOverview={props.initialDatasetsOverview}
+        />
+      </section>
     </section>
   );
+}
+
+function HarnessGovernanceWorkspace(props: {
+  actorRole?: AuthRole;
+  controller: AdminGovernanceWorkbenchController;
+  initialOverview?: AdminGovernanceOverview | null;
+  onMutationApplied?: () => void;
+}) {
+  const [overview, setOverview] = useState<AdminGovernanceOverview | null>(
+    props.initialOverview ?? null,
+  );
+  const [loadStatus, setLoadStatus] = useState<"idle" | "loading" | "ready" | "error">(
+    props.initialOverview ? "ready" : "idle",
+  );
+  const [isMutating, setIsMutating] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (props.initialOverview != null) {
+      setOverview(props.initialOverview);
+      setLoadStatus("ready");
+      return;
+    }
+
+    void loadOverview();
+  }, [props.controller, props.initialOverview]);
+
+  if (loadStatus === "error" && !overview) {
+    return (
+      <article className="evaluation-workbench-panel" role="alert">
+        <div className="evaluation-workbench-panel-header">
+          <h3>Harness 治理配置暂不可用</h3>
+          <span>加载失败</span>
+        </div>
+        <p className="evaluation-workbench-empty">
+          {errorMessage ?? "暂时无法加载 Harness 治理配置。"}
+        </p>
+      </article>
+    );
+  }
+
+  if (!overview) {
+    return (
+      <article className="evaluation-workbench-panel" role="status">
+        <div className="evaluation-workbench-panel-header">
+          <h3>Harness 治理配置</h3>
+          <span>加载中</span>
+        </div>
+        <p className="evaluation-workbench-empty">
+          正在加载路由治理、运行绑定和质量包配置...
+        </p>
+      </article>
+    );
+  }
+
+  return (
+    <div className="evaluation-workbench-governance-stack">
+      <p className="evaluation-workbench-harness-copy evaluation-workbench-governance-note">
+        模型注册、沙箱配置、代理档案、代理运行时和工具注册等共享资产仍由上游治理区维护。
+        Harness 在这里只引用它们，并直接治理自己的路由版本、运行绑定、质量包和执行证据。
+      </p>
+      {statusMessage ? <p className="evaluation-workbench-status">{statusMessage}</p> : null}
+      {errorMessage ? <p className="evaluation-workbench-error">{errorMessage}</p> : null}
+      <AgentToolingGovernanceSection
+        actorRole={props.actorRole ?? "admin"}
+        controller={props.controller}
+        overview={overview}
+        isMutating={isMutating}
+        surface="harness"
+        runMutation={runMutation}
+        onOverviewChange={(nextOverview, nextStatusMessage) => {
+          setOverview(nextOverview);
+          setStatusMessage(nextStatusMessage);
+          setErrorMessage(null);
+          props.onMutationApplied?.();
+        }}
+      />
+      <ManuscriptQualityPackagesSection
+        packages={overview.qualityPackages}
+        isMutating={isMutating}
+        surface="harness"
+        onCreateDraft={async (input) => {
+          await runMutation(async () => {
+            const result = await props.controller.createQualityPackageDraftAndReload({
+              actorRole: props.actorRole ?? "admin",
+              ...input,
+            });
+            setOverview(result.overview);
+            setStatusMessage(`已创建质量包草稿：${result.createdPackage.package_name}`);
+            setErrorMessage(null);
+            props.onMutationApplied?.();
+          });
+        }}
+        onPublishVersion={async (packageVersionId) => {
+          await runMutation(async () => {
+            const nextOverview = await props.controller.publishQualityPackageVersionAndReload({
+              actorRole: props.actorRole ?? "admin",
+              packageVersionId,
+              selectedTemplateFamilyId: overview.selectedTemplateFamilyId,
+            });
+            setOverview(nextOverview);
+            setStatusMessage(`已发布质量包版本：${packageVersionId}`);
+            setErrorMessage(null);
+            props.onMutationApplied?.();
+          });
+        }}
+      />
+    </div>
+  );
+
+  async function loadOverview() {
+    setLoadStatus("loading");
+    setErrorMessage(null);
+
+    try {
+      const nextOverview = await props.controller.loadOverview();
+      setOverview(nextOverview);
+      setLoadStatus("ready");
+    } catch (error) {
+      setLoadStatus("error");
+      setErrorMessage(toErrorMessage(error));
+    }
+  }
+
+  async function runMutation(work: () => Promise<void>) {
+    setIsMutating(true);
+    setErrorMessage(null);
+    setStatusMessage(null);
+
+    try {
+      await work();
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setIsMutating(false);
+    }
+  }
+}
+
+function StatusSnapshotCard(props: {
+  label: string;
+  summary: string;
+  tone?: "neutral" | "success" | "warning";
+}) {
+  return (
+    <article className={`evaluation-workbench-history-summary-card evaluation-workbench-status-card is-${props.tone ?? "neutral"}`}>
+      <strong>{props.label}</strong>
+      <span>{props.summary}</span>
+    </article>
+  );
+}
+
+function createInitialHarnessOperatorSnapshot(input: {
+  initialHarnessOverview?: AdminGovernanceOverview | null;
+  initialHarnessScope?: AdminHarnessScopeViewModel | null;
+  initialHarnessPreview?: HarnessEnvironmentPreviewViewModel | null;
+}): HarnessOperatorWorkspaceSnapshot {
+  return {
+    overview: input.initialHarnessOverview ?? null,
+    scope: input.initialHarnessScope ?? null,
+    preview: input.initialHarnessPreview ?? null,
+    latestRun: null,
+    statusMessage: null,
+    errorMessage: null,
+    isLoading: input.initialHarnessOverview == null,
+    isMutating: false,
+  };
+}
+
+function describeHarnessEnvironmentSummary(
+  environment: AdminHarnessScopeViewModel["activeEnvironment"] | HarnessEnvironmentPreviewViewModel["candidate_environment"] | null,
+) {
+  if (environment == null) {
+    return "当前没有可用的 Harness 生效环境。";
+  }
+
+  return `${environment.execution_profile.module} / ${environment.execution_profile.manuscript_type} / ${environment.execution_profile.template_family_id}；执行配置 ${environment.execution_profile.id}；运行绑定 ${environment.runtime_binding.id}。`;
+}
+
+function describeHarnessPreviewDiffSummary(preview: HarnessEnvironmentPreviewViewModel | null) {
+  if (preview == null) {
+    return "尚未生成候选环境预览。";
+  }
+
+  return preview.diff.changed_components.length > 0
+    ? preview.diff.changed_components.map(formatHarnessChangedComponentLabel).join("、")
+    : "候选环境与当前环境没有差异。";
+}
+
+function formatHarnessChangedComponentLabel(component: string) {
+  switch (component) {
+    case "execution_profile":
+      return "执行配置";
+    case "runtime_binding":
+      return "运行绑定";
+    case "model_routing_policy_version":
+      return "路由版本";
+    case "retrieval_preset":
+      return "检索预设";
+    case "manual_review_policy":
+      return "人工复核策略";
+    default:
+      return component;
+  }
+}
+
+function describeHarnessQualityPackageSummary(
+  versionIds: readonly string[],
+  qualityPackages: AdminGovernanceOverview["qualityPackages"],
+) {
+  if (versionIds.length === 0) {
+    return "当前没有绑定质量包。";
+  }
+
+  const labels = versionIds.map((versionId) => {
+    const matched = qualityPackages.find((record) => record.id === versionId);
+    return matched ? `${matched.package_name} / v${matched.version}` : versionId;
+  });
+
+  return labels.join("；");
+}
+
+function describeHarnessAdapterHealthSummary(
+  adapterHealth: AdminGovernanceOverview["harnessAdapterHealth"],
+) {
+  if (adapterHealth.length === 0) {
+    return "当前没有适配器健康快照。";
+  }
+
+  const successCount = adapterHealth.filter((entry) => entry.latest_status === "succeeded").length;
+  const degradedCount = adapterHealth.filter((entry) => entry.latest_status === "degraded").length;
+  const failedCount = adapterHealth.filter(
+    (entry) => entry.latest_status === "failed" || entry.latest_status === "never_run",
+  ).length;
+
+  return `共 ${adapterHealth.length} 个适配器；正常 ${successCount}，降级 ${degradedCount}，异常 ${failedCount}。`;
+}
+
+function hasHarnessAdapterIssues(
+  adapterHealth: AdminGovernanceOverview["harnessAdapterHealth"],
+) {
+  return adapterHealth.some(
+    (entry) => entry.latest_status === "degraded" || entry.latest_status === "failed",
+  );
+}
+
+function describeJudgeCalibrationSummary(
+  outcome: AdminGovernanceOverview["latestJudgeCalibrationBatchOutcome"],
+) {
+  if (outcome == null) {
+    return "当前没有最新裁决校准结果。";
+  }
+
+  const exactMatchRate =
+    typeof outcome.exact_match_rate === "number"
+      ? `精确一致率 ${(outcome.exact_match_rate * 100).toFixed(1)}%`
+      : "无精确一致率";
+
+  return `${outcome.status}；${exactMatchRate}；分歧 ${outcome.disagreement_count ?? 0}。`;
+}
+
+function describeRecentAnomalySummary(
+  history: readonly EvaluationWorkbenchFinalizedRunHistoryEntry[],
+) {
+  const flagged = history.filter(
+    (entry) =>
+      entry.finalized.recommendation.status !== "recommended" ||
+      entry.finalized.evidence_pack.summary_status !== "recommended",
+  );
+
+  if (flagged.length === 0) {
+    return "当前窗口内没有明显异常。";
+  }
+
+  return flagged
+    .slice(0, 2)
+    .map(
+      (entry) =>
+        `${entry.run.id}：${describeHistoryStatusPair(
+          entry.finalized.recommendation.status,
+          entry.finalized.evidence_pack.summary_status,
+        )}`,
+    )
+    .join("；");
+}
+
+function describeRecentAnomalyTone(
+  history: readonly EvaluationWorkbenchFinalizedRunHistoryEntry[],
+): "success" | "warning" {
+  return history.some((entry) => entry.finalized.recommendation.status !== "recommended")
+    ? "warning"
+    : "success";
+}
+
+function describeHarnessRiskSummary(
+  defaultComparison: EvaluationWorkbenchOverview["suiteOperations"]["defaultComparison"],
+  recurrence: EvaluationWorkbenchOverview["suiteOperations"]["signals"]["recurrence"],
+  honestDegradation: EvaluationWorkbenchOverview["suiteOperations"]["honestDegradation"],
+) {
+  if (honestDegradation != null) {
+    return describeHonestDegradationNextStep(honestDegradation);
+  }
+
+  if (defaultComparison == null) {
+    return "当前没有足够对照数据，需先补足验证运行。";
+  }
+
+  if (defaultComparison.selected.finalized.recommendation.status !== "recommended") {
+    return `默认对照当前不是可推荐结论；${formatRecurrenceSignalSummary(recurrence)}`;
+  }
+
+  return `默认对照可推荐；${formatRecurrenceSignalSummary(recurrence)}`;
 }
 
 function buildHarnessWorkspaceNavLinkClassName(isActive: boolean) {

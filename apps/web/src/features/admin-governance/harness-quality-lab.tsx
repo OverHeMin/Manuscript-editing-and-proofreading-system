@@ -14,20 +14,19 @@ export interface HarnessQualityLabProps {
 export function HarnessQualityLab(props: HarnessQualityLabProps) {
   return (
     <article className="admin-governance-panel">
-      <h3>Quality Lab</h3>
+      <h3>验证实验区</h3>
       <p className="admin-governance-empty">
-        Launch a candidate-bound verification run from the same control plane so the quality
-        evidence is tied to the exact environment you are about to activate.
+        从同一控制链路发起绑定候选环境的验证运行，确保质量证据对应的就是将要激活的那套环境。
       </p>
 
       <label className="admin-governance-field">
-        <span>Evaluation Suite</span>
+        <span>评测套件</span>
         <select
           value={props.selectedSuiteId}
           onChange={(event) => props.onSuiteChange(event.target.value)}
           disabled={props.isMutating}
         >
-          <option value="">Select suite</option>
+          <option value="">请选择套件</option>
           {props.evaluationSuites.map((suite) => (
             <option key={suite.id} value={suite.id}>
               {suite.name} ({suite.id})
@@ -38,19 +37,19 @@ export function HarnessQualityLab(props: HarnessQualityLabProps) {
 
       <div className="admin-governance-policy-grid">
         <article className="admin-governance-asset-row">
-          <span>Candidate Bundle</span>
+          <span>候选组合</span>
           <small>
             {props.preview
               ? props.preview.candidate_environment.execution_profile.id
-              : "Preview a candidate first"}
+              : "请先预览候选环境"}
           </small>
         </article>
         <article className="admin-governance-asset-row">
-          <span>Latest Candidate Run</span>
+          <span>最近候选运行</span>
           <small>
             {props.latestRun
               ? `${props.latestRun.id} · ${props.latestRun.status}`
-              : "No candidate-bound run launched yet"}
+              : "尚未发起候选运行"}
           </small>
         </article>
       </div>
@@ -66,7 +65,7 @@ export function HarnessQualityLab(props: HarnessQualityLabProps) {
             props.selectedSuiteId.trim().length === 0
           }
         >
-          Launch Candidate Run
+          发起候选验证
         </button>
       </div>
     </article>

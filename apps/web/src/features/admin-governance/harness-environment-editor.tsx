@@ -47,15 +47,14 @@ export function HarnessEnvironmentEditor(
 
   return (
     <article className="admin-governance-panel admin-governance-panel-wide">
-      <h3>Environment Editor</h3>
+      <h3>环境编辑</h3>
       <p className="admin-governance-empty">
-        Tune the real governed environment for one scope, then preview the exact candidate bundle
-        before it reaches activation.
+        在当前范围内调整真实治理环境，并在激活前预览确切的候选组合。
       </p>
 
       <div className="admin-governance-form-grid">
         <label className="admin-governance-field">
-          <span>Module</span>
+          <span>模块</span>
           <select
             value={props.module}
             onChange={(event) =>
@@ -70,7 +69,7 @@ export function HarnessEnvironmentEditor(
         </label>
 
         <label className="admin-governance-field">
-          <span>Manuscript Type</span>
+          <span>稿件类型</span>
           <select
             value={props.manuscriptType}
             onChange={(event) =>
@@ -87,12 +86,12 @@ export function HarnessEnvironmentEditor(
         </label>
 
         <label className="admin-governance-field">
-          <span>Template Family</span>
+          <span>模板族</span>
           <input
             type="text"
             value={
               props.templateFamilyId == null
-                ? "No resolved scope"
+                ? "尚未解析范围"
                 : props.templateFamilyName
                   ? `${props.templateFamilyName} (${props.templateFamilyId})`
                   : props.templateFamilyId
@@ -102,7 +101,7 @@ export function HarnessEnvironmentEditor(
         </label>
 
         <label className="admin-governance-field">
-          <span>Execution Profile</span>
+          <span>执行配置</span>
           <select
             value={props.selection.executionProfileId}
             onChange={(event) =>
@@ -119,7 +118,7 @@ export function HarnessEnvironmentEditor(
         </label>
 
         <label className="admin-governance-field">
-          <span>Runtime Binding</span>
+          <span>运行绑定</span>
           <select
             value={props.selection.runtimeBindingId}
             onChange={(event) =>
@@ -136,7 +135,7 @@ export function HarnessEnvironmentEditor(
         </label>
 
         <label className="admin-governance-field">
-          <span>Routing Version</span>
+          <span>路由版本</span>
           <select
             value={props.selection.modelRoutingPolicyVersionId}
             onChange={(event) =>
@@ -155,7 +154,7 @@ export function HarnessEnvironmentEditor(
         </label>
 
         <label className="admin-governance-field">
-          <span>Retrieval Preset</span>
+          <span>检索预设</span>
           <select
             value={props.selection.retrievalPresetId}
             onChange={(event) =>
@@ -172,7 +171,7 @@ export function HarnessEnvironmentEditor(
         </label>
 
         <label className="admin-governance-field">
-          <span>Manual Review Policy</span>
+          <span>人工复核策略</span>
           <select
             value={props.selection.manualReviewPolicyId}
             onChange={(event) =>
@@ -196,40 +195,40 @@ export function HarnessEnvironmentEditor(
           onClick={props.onPreview}
           disabled={props.isMutating || activeEnvironment == null}
         >
-          Preview Candidate Environment
+          预览候选环境
         </button>
       </div>
 
       <div className="admin-governance-policy-grid">
         <HarnessEnvironmentCard
-          title="Active Environment"
+          title="当前生效环境"
           summary={
             activeEnvironment == null
-              ? "Loading active governed environment."
+              ? "正在加载当前治理环境。"
               : summarizeEnvironment(activeEnvironment)
           }
         />
         <HarnessEnvironmentCard
-          title="Candidate Preview"
+          title="候选预览"
           summary={
             props.preview == null
-              ? "Choose governed objects and preview the candidate bundle."
+              ? "请选择治理对象并预览候选组合。"
               : summarizeEnvironment(props.preview.candidate_environment)
           }
         />
         <HarnessEnvironmentCard
-          title="Diff"
+          title="变更差异"
           summary={
             props.preview == null
-              ? "No candidate diff yet."
-              : props.preview.diff.changed_components.join(", ") || "No changes"
+              ? "尚未生成候选差异。"
+              : props.preview.diff.changed_components.join("、") || "无变化"
           }
         />
         <HarnessEnvironmentCard
-          title="Active Quality Packages"
+          title="当前质量包"
           summary={
             activeEnvironment == null
-              ? "Loading active quality package refs."
+              ? "正在加载当前质量包引用。"
               : formatQualityPackageSummary(
                   activeEnvironment.runtime_binding.quality_package_version_ids ?? [],
                   props.qualityPackages,
@@ -237,10 +236,10 @@ export function HarnessEnvironmentEditor(
           }
         />
         <HarnessEnvironmentCard
-          title="Candidate Quality Packages"
+          title="候选质量包"
           summary={
             props.preview == null
-              ? "Preview a candidate to inspect bound package refs."
+              ? "先预览候选环境再查看绑定质量包。"
               : formatQualityPackageSummary(
                   props.preview.candidate_environment.runtime_binding
                     .quality_package_version_ids ?? [],
@@ -269,11 +268,11 @@ function summarizeEnvironment(
   environment: NonNullable<HarnessEnvironmentEditorProps["activeScope"]>["activeEnvironment"],
 ) {
   return [
-    `Execution Profile ${environment.execution_profile.id}`,
-    `Runtime Binding ${environment.runtime_binding.id}`,
-    `Routing ${environment.model_routing_policy_version.id}`,
-    `Retrieval ${environment.retrieval_preset.id}`,
-    `Manual Review ${environment.manual_review_policy.id}`,
+    `执行配置 ${environment.execution_profile.id}`,
+    `运行绑定 ${environment.runtime_binding.id}`,
+    `路由 ${environment.model_routing_policy_version.id}`,
+    `检索 ${environment.retrieval_preset.id}`,
+    `复核 ${environment.manual_review_policy.id}`,
   ].join(" | ");
 }
 
@@ -282,7 +281,7 @@ function formatQualityPackageSummary(
   packages: readonly ManuscriptQualityPackageViewModel[],
 ) {
   if (ids.length === 0) {
-    return "none";
+    return "无";
   }
 
   return ids
