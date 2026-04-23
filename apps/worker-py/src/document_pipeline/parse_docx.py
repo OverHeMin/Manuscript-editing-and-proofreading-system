@@ -131,7 +131,7 @@ def extract_structure_from_document_xml(document_xml: bytes | str) -> dict:
         if child.tag != qualify("tbl"):
             continue
 
-        row_count, column_count, cells, raw_rows = extract_table_dimensions(child)
+        row_count, column_count, cells, raw_rows, border_hints = extract_table_dimensions(child)
         table_entry = {
             "order": len(tables) + 1,
             "row_count": row_count,
@@ -140,6 +140,7 @@ def extract_structure_from_document_xml(document_xml: bytes | str) -> dict:
             "notes": [],
             "cells": cells,
             "raw_rows": raw_rows,
+            "border_hints": border_hints,
         }
         tables.append(table_entry)
         blocks.append(
@@ -173,6 +174,7 @@ def extract_structure_from_document_xml(document_xml: bytes | str) -> dict:
             caption=table.get("caption"),
             notes=table.get("notes") or [],
             rows=table.get("raw_rows") or [],
+            border_hints=table.get("border_hints") or {},
         )
 
     return {
@@ -203,7 +205,7 @@ def extract_paragraph_style(node: ET.Element) -> str | None:
 
 def extract_table_dimensions(
     node: ET.Element,
-) -> tuple[int, int, list[list[str]], list[list[dict]]]:
+) -> tuple[int, int, list[list[str]], list[list[dict]], dict]:
     rows = node.findall("./w:tr", NS)
     cell_rows: list[list[str]] = []
     raw_rows: list[list[dict]] = []
@@ -220,6 +222,7 @@ def extract_table_dimensions(
                     "text": text,
                     "column_span": extract_grid_span(cell),
                     "row_span": extract_row_span(cell),
+                    "borders": extract_cell_border_hints(cell),
                 }
             )
         cell_rows.append(text_row)
@@ -230,7 +233,7 @@ def extract_table_dimensions(
         (sum(int(cell.get("column_span") or 1) for cell in row) for row in raw_rows),
         default=0,
     )
-    return row_count, column_count, cell_rows, raw_rows
+    return row_count, column_count, cell_rows, raw_rows, extract_table_border_hints(node)
 
 
 def extract_grid_span(node: ET.Element) -> int:
@@ -249,6 +252,42 @@ def extract_row_span(node: ET.Element) -> int:
     if vertical_merge is None:
         return 1
     return 2
+
+
+def extract_table_border_hints(node: ET.Element) -> dict:
+    borders = node.find("./w:tblPr/w:tblBorders", NS)
+    if borders is None:
+        return {}
+
+    hints = {}
+    for side in ("top", "bottom", "left", "right", "insideH", "insideV"):
+        if _read_border_enabled(borders.find(f"./w:{side}", NS)):
+            normalized_side = {
+                "insideH": "inside_horizontal",
+                "insideV": "inside_vertical",
+            }.get(side, side)
+            hints[normalized_side] = True
+    return hints
+
+
+def extract_cell_border_hints(node: ET.Element) -> dict:
+    borders = node.find("./w:tcPr/w:tcBorders", NS)
+    if borders is None:
+        return {}
+
+    hints = {}
+    for side in ("top", "bottom", "left", "right"):
+        if _read_border_enabled(borders.find(f"./w:{side}", NS)):
+            hints[side] = True
+    return hints
+
+
+def _read_border_enabled(node: ET.Element | None) -> bool:
+    if node is None:
+        return False
+
+    value = (node.attrib.get(qualify("val")) or "single").strip().lower()
+    return value not in {"nil", "none"}
 
 
 def is_table_caption(text: str) -> bool:

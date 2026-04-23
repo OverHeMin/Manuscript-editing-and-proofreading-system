@@ -3,7 +3,6 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 const apiBaseUrl =
   process.env.PLAYWRIGHT_API_BASE_URL ?? "http://127.0.0.1:3001";
 const submitLabel = "Submit To Review";
-const canonicalTextLabel = "Canonical Text";
 const staleMatchTitle = "Stale duplicate should never render";
 
 test("knowledge library ignores stale immediate duplicate-check results after the draft changes", async ({
@@ -62,7 +61,7 @@ test("knowledge library ignores stale immediate duplicate-check results after th
   });
 
   await page.goto(
-    `/#knowledge-library?assetId=${seededDraft.assetId}&revisionId=${seededDraft.revisionId}`,
+    `/#knowledge-library?knowledgeView=classic&assetId=${seededDraft.assetId}&revisionId=${seededDraft.revisionId}`,
     {
       waitUntil: "domcontentloaded",
     },
@@ -71,10 +70,12 @@ test("knowledge library ignores stale immediate duplicate-check results after th
   const statusRow = page.locator(".knowledge-library-duplicate-status-row");
   const duplicatePanel = page.locator(".knowledge-library-duplicate-panel");
   const duplicateConfirmation = page.locator(".knowledge-library-duplicate-confirmation");
-  const canonicalTextInput = page.getByLabel(canonicalTextLabel);
+  const canonicalTextInput = page
+    .locator(".knowledge-library-editor .knowledge-library-form-grid textarea")
+    .first();
   const submitButton = page.getByRole("button", { name: submitLabel, exact: true });
 
-  await expect(page.getByRole("heading", { name: "Knowledge Library" })).toBeVisible();
+  await expect(page.locator(".knowledge-library-grid-toolbar")).toBeVisible();
   await expect(statusRow).toContainText("No strong duplicate signals");
 
   await canonicalTextInput.fill(firstCanonicalText);
@@ -153,7 +154,7 @@ test("knowledge library ignores stale automatic duplicate-check responses after 
   });
 
   await page.goto(
-    `/#knowledge-library?assetId=${seededDraft.assetId}&revisionId=${seededDraft.revisionId}`,
+    `/#knowledge-library?knowledgeView=classic&assetId=${seededDraft.assetId}&revisionId=${seededDraft.revisionId}`,
     {
       waitUntil: "domcontentloaded",
     },
@@ -162,10 +163,12 @@ test("knowledge library ignores stale automatic duplicate-check responses after 
   const statusRow = page.locator(".knowledge-library-duplicate-status-row");
   const duplicatePanel = page.locator(".knowledge-library-duplicate-panel");
   const duplicateConfirmation = page.locator(".knowledge-library-duplicate-confirmation");
-  const canonicalTextInput = page.getByLabel(canonicalTextLabel);
+  const canonicalTextInput = page
+    .locator(".knowledge-library-editor .knowledge-library-form-grid textarea")
+    .first();
   const submitButton = page.getByRole("button", { name: submitLabel, exact: true });
 
-  await expect(page.getByRole("heading", { name: "Knowledge Library" })).toBeVisible();
+  await expect(page.locator(".knowledge-library-grid-toolbar")).toBeVisible();
   await expect(statusRow).toContainText("No strong duplicate signals");
 
   await canonicalTextInput.fill(canonicalText);
@@ -234,7 +237,7 @@ test("knowledge library blocks continue-anyway when the draft changed after the 
   });
 
   await page.goto(
-    `/#knowledge-library?assetId=${seededDraft.assetId}&revisionId=${seededDraft.revisionId}`,
+    `/#knowledge-library?knowledgeView=classic&assetId=${seededDraft.assetId}&revisionId=${seededDraft.revisionId}`,
     {
       waitUntil: "domcontentloaded",
     },
@@ -243,11 +246,13 @@ test("knowledge library blocks continue-anyway when the draft changed after the 
   const statusRow = page.locator(".knowledge-library-duplicate-status-row");
   const duplicatePanel = page.locator(".knowledge-library-duplicate-panel");
   const duplicateConfirmation = page.locator(".knowledge-library-duplicate-confirmation");
-  const canonicalTextInput = page.getByLabel(canonicalTextLabel);
+  const canonicalTextInput = page
+    .locator(".knowledge-library-editor .knowledge-library-form-grid textarea")
+    .first();
   const continueButton = page.getByRole("button", { name: "Continue Anyway" });
   const submitButton = page.getByRole("button", { name: submitLabel, exact: true });
 
-  await expect(page.getByRole("heading", { name: "Knowledge Library" })).toBeVisible();
+  await expect(page.locator(".knowledge-library-grid-toolbar")).toBeVisible();
   await expect(statusRow).toContainText("No strong duplicate signals");
 
   await canonicalTextInput.fill(firstCanonicalText);
@@ -259,7 +264,7 @@ test("knowledge library blocks continue-anyway when the draft changed after the 
   await page.evaluate(
     ({ nextCanonicalText, continueLabel }) => {
       const canonicalTextArea = document.querySelector(
-        'textarea[placeholder="Canonical knowledge text"]',
+        ".knowledge-library-editor .knowledge-library-form-grid textarea",
       );
       if (!(canonicalTextArea instanceof HTMLTextAreaElement)) {
         throw new Error("Canonical Text textarea not found");

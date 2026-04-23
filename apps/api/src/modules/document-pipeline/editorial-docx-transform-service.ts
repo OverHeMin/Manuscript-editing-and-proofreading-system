@@ -17,6 +17,7 @@ import type {
   TableRuleInspectionFinding,
 } from "../editorial-execution/types.ts";
 import { describeTableInspectionReason } from "../editorial-execution/editorial-rule-expectation.ts";
+import { TableDocxPatchPlanner } from "./table-docx-patch-planner.ts";
 import {
   buildPythonCommandCandidates,
   buildWorkspaceChildProcessEnv,
@@ -36,6 +37,7 @@ export interface EditorialDocxTransformServiceOptions {
   assetRepository: DocumentAssetRepository;
   rootDir?: string;
   tableHitService?: Pick<EditorialRuleTableHitService, "findMatches">;
+  tablePatchPlanner?: Pick<TableDocxPatchPlanner, "plan">;
 }
 
 export class EditorialDocxTransformSourceAssetNotFoundError extends Error {
@@ -56,6 +58,7 @@ export class EditorialDocxTransformService {
   private readonly assetRepository: DocumentAssetRepository;
   private readonly rootDir: string;
   private readonly tableHitService: Pick<EditorialRuleTableHitService, "findMatches">;
+  private readonly tablePatchPlanner: Pick<TableDocxPatchPlanner, "plan">;
 
   constructor(options: EditorialDocxTransformServiceOptions) {
     this.assetRepository = options.assetRepository;
@@ -68,6 +71,11 @@ export class EditorialDocxTransformService {
         process.env.APP_ENV ?? "dev",
       );
     this.tableHitService = options.tableHitService ?? new EditorialRuleTableHitService();
+    this.tablePatchPlanner =
+      options.tablePatchPlanner ??
+      new TableDocxPatchPlanner({
+        tableHitService: this.tableHitService,
+      });
   }
 
   async applyDeterministicRules(
@@ -79,11 +87,17 @@ export class EditorialDocxTransformService {
     }
 
     const deterministicRules = selectDeterministicFormatRules(input.rules);
+    const resolvedRules = resolveRulesForTableProcessing(input);
     const tableInspectionFindings = buildTableInspectionFindings({
       rules: input.rules,
-      resolvedRules: input.resolvedRules,
+      resolvedRules,
       tableSnapshots: input.tableSnapshots ?? [],
       tableHitService: this.tableHitService,
+    });
+    const tablePatchPlanBundle = this.tablePatchPlanner.plan({
+      tableAutoApplyMode: input.tableAutoApplyMode,
+      resolvedRules,
+      tableSnapshots: input.tableSnapshots ?? [],
     });
     const aiReplacements = input.aiReplacements ?? [];
     const sourcePath = resolveStoragePath(this.rootDir, sourceAsset.storage_key);
@@ -92,12 +106,18 @@ export class EditorialDocxTransformService {
     await this.ensureSourceDocxMaterialized(sourceAsset, sourcePath);
     await mkdir(path.dirname(outputPath), { recursive: true });
 
-    if (deterministicRules.length === 0 && aiReplacements.length === 0) {
+    if (
+      deterministicRules.length === 0 &&
+      aiReplacements.length === 0 &&
+      tablePatchPlanBundle.plans.length === 0
+    ) {
       await copyFile(sourcePath, outputPath);
       return {
         appliedRuleIds: [],
         appliedChanges: [],
         tableInspectionFindings,
+        tablePatchPlans: tablePatchPlanBundle.plans,
+        tablePatchResults: tablePatchPlanBundle.results,
       };
     }
 
@@ -106,10 +126,17 @@ export class EditorialDocxTransformService {
       outputPath,
       rules: deterministicRules,
       aiReplacements,
+      tableAutoApplyMode: input.tableAutoApplyMode,
+      tablePatches: tablePatchPlanBundle.plans,
     });
     return {
       ...workerResult,
       tableInspectionFindings,
+      tablePatchPlans: tablePatchPlanBundle.plans,
+      tablePatchResults: [
+        ...tablePatchPlanBundle.results,
+        ...workerResult.tablePatchResults,
+      ],
     };
   }
 
@@ -176,7 +203,14 @@ async function runApplyRulesWorker(input: {
   outputPath: string;
   rules: unknown[];
   aiReplacements?: unknown[];
-}): Promise<DeterministicDocxTransformResult> {
+  tableAutoApplyMode: ApplyDeterministicDocxRulesInput["tableAutoApplyMode"];
+  tablePatches?: unknown[];
+}): Promise<
+  Pick<
+    DeterministicDocxTransformResult,
+    "appliedRuleIds" | "appliedChanges" | "tablePatchResults"
+  >
+> {
   let lastError: Error | undefined;
 
   for (const pythonBin of buildPythonCommandCandidates()) {
@@ -207,8 +241,15 @@ function runPythonScript(
     outputPath: string;
     rules: unknown[];
     aiReplacements?: unknown[];
+    tableAutoApplyMode: ApplyDeterministicDocxRulesInput["tableAutoApplyMode"];
+    tablePatches?: unknown[];
   },
-): Promise<DeterministicDocxTransformResult> {
+): Promise<
+  Pick<
+    DeterministicDocxTransformResult,
+    "appliedRuleIds" | "appliedChanges" | "tablePatchResults"
+  >
+> {
   return new Promise((resolve, reject) => {
     const args = [
       APPLY_EDITORIAL_RULES_SCRIPT,
@@ -220,6 +261,10 @@ function runPythonScript(
       JSON.stringify(input.rules),
       "--ai-replacements-json",
       JSON.stringify(input.aiReplacements ?? []),
+      "--table-auto-apply-mode",
+      input.tableAutoApplyMode,
+      "--table-patches-json",
+      JSON.stringify(input.tablePatches ?? []),
     ];
 
     const child = spawn(pythonBin, args, {
@@ -248,10 +293,26 @@ function runPythonScript(
 
       try {
         const parsed = JSON.parse(stdout) as DeterministicDocxTransformResult;
+        const parsedRecord = parsed as unknown as Record<string, unknown>;
+        const appliedRuleIds = Array.isArray(parsed.appliedRuleIds)
+          ? parsed.appliedRuleIds
+          : Array.isArray(parsedRecord.applied_rule_ids)
+            ? (parsedRecord.applied_rule_ids as string[])
+            : [];
+        const appliedChanges = Array.isArray(parsed.appliedChanges)
+          ? parsed.appliedChanges
+          : Array.isArray(parsedRecord.applied_changes)
+            ? (parsedRecord.applied_changes as DeterministicDocxTransformResult["appliedChanges"])
+            : [];
+        const tablePatchResults = Array.isArray(parsed.tablePatchResults)
+          ? parsed.tablePatchResults
+          : Array.isArray(parsedRecord.table_patch_results)
+            ? (parsedRecord.table_patch_results as DeterministicDocxTransformResult["tablePatchResults"])
+            : [];
         resolve({
-          appliedRuleIds: [...(parsed.appliedRuleIds ?? [])],
-          appliedChanges: [...(parsed.appliedChanges ?? [])],
-          tableInspectionFindings: [...(parsed.tableInspectionFindings ?? [])],
+          appliedRuleIds: [...appliedRuleIds],
+          appliedChanges: [...appliedChanges],
+          tablePatchResults: tablePatchResults.map((entry) => structuredClone(entry)),
         });
       } catch (error) {
         reject(
@@ -262,6 +323,23 @@ function runPythonScript(
       }
     });
   });
+}
+
+function resolveRulesForTableProcessing(
+  input: ApplyDeterministicDocxRulesInput,
+): ResolvedEditorialRule[] {
+  if (input.resolvedRules && input.resolvedRules.length > 0) {
+    return input.resolvedRules;
+  }
+
+  return input.rules.filter((rule) => rule.enabled).map((rule) => ({
+    rule,
+    coverage_key: rule.id,
+    source_layer: "base" as const,
+    overridden_rule_ids: [],
+    resolution_reason: "runtime fallback",
+    execution_posture: "guarded" as const,
+  }));
 }
 
 function buildTableInspectionFindings(input: {

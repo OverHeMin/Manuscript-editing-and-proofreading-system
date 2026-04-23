@@ -8,6 +8,8 @@ import { InMemoryAgentRuntimeRepository } from "../../src/modules/agent-runtime/
 import { AgentRuntimeService } from "../../src/modules/agent-runtime/agent-runtime-service.ts";
 import { InMemoryDocumentAssetRepository } from "../../src/modules/assets/in-memory-document-asset-repository.ts";
 import { EditingService } from "../../src/modules/editing/editing-service.ts";
+import { InMemoryEditorialRuleActivationMetricsRepository } from "../../src/modules/editorial-rules/in-memory-editorial-rule-activation-metrics-repository.ts";
+import { EditorialRuleActivationMetricsService } from "../../src/modules/editorial-rules/editorial-rule-activation-metrics-service.ts";
 import { InMemoryEditorialRuleRepository } from "../../src/modules/editorial-rules/in-memory-editorial-rule-repository.ts";
 import { InMemoryExecutionGovernanceRepository } from "../../src/modules/execution-governance/in-memory-execution-governance-repository.ts";
 import { ExecutionGovernanceService } from "../../src/modules/execution-governance/execution-governance-service.ts";
@@ -316,6 +318,11 @@ test("editing service resolves governed rules and persists deterministic changes
   const transformCalls: Array<Record<string, unknown>> = [];
   const createdAssets: Array<Record<string, unknown>> = [];
   const autoRecordedGovernedHits: Array<Record<string, unknown>> = [];
+  const activationMetricsService = new EditorialRuleActivationMetricsService({
+    repository: new InMemoryEditorialRuleActivationMetricsRepository(),
+    editorialRuleRepository,
+    now: () => new Date("2026-04-07T10:00:00.000Z"),
+  });
   const editingService = new EditingService({
     manuscriptRepository,
     assetRepository,
@@ -394,6 +401,7 @@ test("editing service resolves governed rules and persists deterministic changes
         }));
       },
     } as never,
+    activationMetricsService,
     documentStructureService: {
       async extract() {
         return {
@@ -462,6 +470,65 @@ test("editing service resolves governed rules and persists deterministic changes
               },
             },
           ],
+          tablePatchPlans: [
+            {
+              patch_id: "patch-header",
+              rule_id: "rule-table-treatment-group",
+              table_id: "table-1",
+              patch_type: "replace_header_cell_text",
+              grade: "A",
+              apply_scope: "editing_only",
+              semantic_target: "header_cell",
+              anchor: {
+                table_id: "table-1",
+                semantic_target: "header_cell",
+                header_path: ["Treatment group", "n (%)"],
+                column_key: "Treatment group > n (%)",
+              },
+              required_snapshot_capabilities: ["header_cell"],
+              proposed_before: "n (%)",
+              proposed_after: "n（%）",
+              rationale:
+                'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)".',
+              evidence_pack: {
+                match_reason:
+                  'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)".',
+              },
+            },
+          ],
+          tablePatchResults: [
+            {
+              patch_id: "patch-header",
+              rule_id: "rule-table-treatment-group",
+              table_id: "table-1",
+              patch_type: "replace_header_cell_text",
+              status: "applied",
+              reason: "Header cell patch applied.",
+              semantic_target: "header_cell",
+              anchor: {
+                table_id: "table-1",
+                semantic_target: "header_cell",
+                header_path: ["Treatment group", "n (%)"],
+                column_key: "Treatment group > n (%)",
+              },
+              required_snapshot_capabilities: ["header_cell"],
+            },
+            {
+              patch_id: "patch-style",
+              rule_id: "rule-table-treatment-group",
+              table_id: "table-1",
+              patch_type: "apply_three_line_table_style",
+              status: "skipped_unsafe",
+              reason:
+                "Style patch family is not yet safe for deterministic DOCX auto-apply.",
+              semantic_target: "style_profile",
+              anchor: {
+                table_id: "table-1",
+                semantic_target: "style_profile",
+              },
+              required_snapshot_capabilities: ["style_profile"],
+            },
+          ],
         };
       },
     } as never,
@@ -479,6 +546,10 @@ test("editing service resolves governed rules and persists deterministic changes
   });
 
   assert.equal(transformCalls.length, 1);
+  assert.equal(
+    transformCalls[0]?.tableAutoApplyMode,
+    "editing_safe_apply",
+  );
   assert.deepEqual(transformCalls[0]?.rules, [
     {
       id: "rule-abstract-objective",
@@ -625,6 +696,65 @@ test("editing service resolves governed rules and persists deterministic changes
       },
     },
   ]);
+  assert.deepEqual(result.job.payload?.tablePatchPlans, [
+    {
+      patch_id: "patch-header",
+      rule_id: "rule-table-treatment-group",
+      table_id: "table-1",
+      patch_type: "replace_header_cell_text",
+      grade: "A",
+      apply_scope: "editing_only",
+      semantic_target: "header_cell",
+      anchor: {
+        table_id: "table-1",
+        semantic_target: "header_cell",
+        header_path: ["Treatment group", "n (%)"],
+        column_key: "Treatment group > n (%)",
+      },
+      required_snapshot_capabilities: ["header_cell"],
+      proposed_before: "n (%)",
+      proposed_after: "n（%）",
+      rationale:
+        'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)".',
+      evidence_pack: {
+        match_reason:
+          'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)".',
+      },
+    },
+  ]);
+  assert.deepEqual(result.job.payload?.tablePatchResults, [
+    {
+      patch_id: "patch-header",
+      rule_id: "rule-table-treatment-group",
+      table_id: "table-1",
+      patch_type: "replace_header_cell_text",
+      status: "applied",
+      reason: "Header cell patch applied.",
+      semantic_target: "header_cell",
+      anchor: {
+        table_id: "table-1",
+        semantic_target: "header_cell",
+        header_path: ["Treatment group", "n (%)"],
+        column_key: "Treatment group > n (%)",
+      },
+      required_snapshot_capabilities: ["header_cell"],
+    },
+    {
+      patch_id: "patch-style",
+      rule_id: "rule-table-treatment-group",
+      table_id: "table-1",
+      patch_type: "apply_three_line_table_style",
+      status: "skipped_unsafe",
+      reason:
+        "Style patch family is not yet safe for deterministic DOCX auto-apply.",
+      semantic_target: "style_profile",
+      anchor: {
+        table_id: "table-1",
+        semantic_target: "style_profile",
+      },
+      required_snapshot_capabilities: ["style_profile"],
+    },
+  ]);
   assert.deepEqual(result.job.payload?.manualReviewItems, [
     {
       ruleId: "rule-discussion-reshape",
@@ -682,6 +812,12 @@ test("editing service resolves governed rules and persists deterministic changes
       },
     ],
   );
+  const tablePatchMetrics = await activationMetricsService.getRuleMetrics(
+    "rule-table-treatment-group",
+  );
+  assert.equal(tablePatchMetrics.totals.governed_hit_count, 0);
+  assert.equal(tablePatchMetrics.totals.table_patch_applied_count, 1);
+  assert.equal(tablePatchMetrics.totals.table_patch_skipped_unsafe_count, 1);
   assert.equal(createdAssets[0]?.storage_key, "edited/manuscript-1/output.docx");
   assert.equal(result.asset.id, "asset-edited-1");
 });

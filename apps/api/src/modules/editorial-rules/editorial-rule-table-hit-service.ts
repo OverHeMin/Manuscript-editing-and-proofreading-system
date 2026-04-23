@@ -2,16 +2,25 @@ import type {
   DocumentStructureTableDataCell,
   DocumentStructureTableFootnoteItem,
   DocumentStructureTableHeaderCell,
+  DocumentStructureTableNoteZone,
   DocumentStructureTableSemanticCoordinate,
   DocumentStructureTableSnapshot,
+  DocumentStructureTableStyleProfile,
   DocumentStructureTableStubColumn,
+  DocumentStructureTableTextAnchor,
+  DocumentStructureTableUnitMarker,
 } from "../document-pipeline/document-structure-service.ts";
 import type { EditorialRuleRecord } from "./editorial-rule-record.ts";
 
 type TableSemanticTarget =
+  | "table_label"
+  | "table_title"
+  | "note_zone"
+  | "style_profile"
   | "header_cell"
   | "stub_column"
   | "data_cell"
+  | "unit_marker"
   | "footnote_item";
 
 interface TableSemanticSelector {
@@ -52,6 +61,51 @@ export class EditorialRuleTableHitService {
       }
 
       switch (selector.semantic_target) {
+        case "table_label":
+          return table.table_label && matchesTextAnchor(table.table_label, selector)
+            ? [
+                {
+                  table_id: table.table_id,
+                  semantic_target: "table_label" as const,
+                  semantic_coordinate: cloneCoordinate(table.table_label.coordinate),
+                  reason: `Matched semantic target "table_label" in table "${table.table_id}".`,
+                },
+              ]
+            : [];
+        case "table_title":
+          return table.table_title && matchesTextAnchor(table.table_title, selector)
+            ? [
+                {
+                  table_id: table.table_id,
+                  semantic_target: "table_title" as const,
+                  semantic_coordinate: cloneCoordinate(table.table_title.coordinate),
+                  reason: `Matched semantic target "table_title" in table "${table.table_id}".`,
+                },
+              ]
+            : [];
+        case "note_zone":
+          return table.note_zone &&
+            matchesNoteZone(table.note_zone, table.footnote_items, selector)
+            ? [
+                {
+                  table_id: table.table_id,
+                  semantic_target: "note_zone" as const,
+                  semantic_coordinate: cloneCoordinate(table.note_zone.coordinate),
+                  reason: `Matched semantic target "note_zone" in table "${table.table_id}".`,
+                },
+              ]
+            : [];
+        case "style_profile":
+          return table.style_profile && matchesStyleProfile(table.style_profile, selector)
+            ? [
+                {
+                  table_id: table.table_id,
+                  semantic_target: "style_profile" as const,
+                  semantic_coordinate: cloneCoordinate(table.style_profile.coordinate),
+                  reason: `Matched semantic target "style_profile" in table "${table.table_id}".`,
+                },
+              ]
+            : [];
         case "header_cell":
           return table.header_cells
             .filter((cell) => matchesHeaderCell(cell, selector))
@@ -78,6 +132,15 @@ export class EditorialRuleTableHitService {
               semantic_target: "data_cell" as const,
               semantic_coordinate: cloneCoordinate(cell.coordinate),
               reason: `Matched semantic target "data_cell" in table "${table.table_id}" at row "${cell.row_key}" and column "${cell.column_key}".`,
+            }));
+        case "unit_marker":
+          return (table.unit_markers ?? [])
+            .filter((marker) => matchesUnitMarker(marker, selector))
+            .map((marker) => ({
+              table_id: table.table_id,
+              semantic_target: "unit_marker" as const,
+              semantic_coordinate: cloneCoordinate(marker.coordinate),
+              reason: `Matched semantic target "unit_marker" in table "${table.table_id}" for unit "${marker.text}".`,
             }));
         case "footnote_item":
           return table.footnote_items
@@ -179,6 +242,37 @@ function matchesDataCell(
   return true;
 }
 
+function matchesUnitMarker(
+  marker: DocumentStructureTableUnitMarker,
+  selector: TableSemanticSelector,
+): boolean {
+  if (
+    selector.header_path_includes &&
+    !includesAllSegments(
+      marker.coordinate.header_path ?? [],
+      selector.header_path_includes,
+    )
+  ) {
+    return false;
+  }
+
+  if (
+    selector.column_key &&
+    normalizeText(marker.coordinate.column_key) !== normalizeText(selector.column_key)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function matchesTextAnchor(
+  _anchor: DocumentStructureTableTextAnchor,
+  _selector: TableSemanticSelector,
+): boolean {
+  return true;
+}
+
 function matchesFootnoteItem(
   item: DocumentStructureTableFootnoteItem,
   selector: TableSemanticSelector,
@@ -190,6 +284,25 @@ function matchesFootnoteItem(
     return false;
   }
 
+  return true;
+}
+
+function matchesNoteZone(
+  _noteZone: DocumentStructureTableNoteZone,
+  footnoteItems: DocumentStructureTableFootnoteItem[],
+  selector: TableSemanticSelector,
+): boolean {
+  if (!selector.note_kind) {
+    return true;
+  }
+
+  return footnoteItems.some((item) => matchesFootnoteItem(item, selector));
+}
+
+function matchesStyleProfile(
+  _styleProfile: DocumentStructureTableStyleProfile,
+  _selector: TableSemanticSelector,
+): boolean {
   return true;
 }
 

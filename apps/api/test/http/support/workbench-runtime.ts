@@ -506,6 +506,8 @@ export function createWorkbenchRuntime(input: {
           after: replacement.replacementText,
         })),
         tableInspectionFindings: [],
+        tablePatchPlans: [],
+        tablePatchResults: [],
       };
     },
   };
@@ -568,6 +570,8 @@ export function createWorkbenchRuntime(input: {
           after: replacement.replacementText,
         })),
         tableInspectionFindings: [],
+        tablePatchPlans: [],
+        tablePatchResults: [],
       };
     },
   };

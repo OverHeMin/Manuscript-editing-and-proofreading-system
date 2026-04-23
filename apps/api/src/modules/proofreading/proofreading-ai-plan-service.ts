@@ -1,4 +1,6 @@
 import type { EditorialTextBlock } from "../editorial-execution/types.ts";
+import type { AiGovernanceContext } from "../shared/ai-governance-context.ts";
+import { isAiGovernanceContextEmpty } from "../shared/ai-governance-context.ts";
 import type { MainlineAiRuntimeExecutor } from "../shared/mainline-ai-runtime-executor.ts";
 
 export type ProofreadingCorrectionCategory =
@@ -31,6 +33,7 @@ export interface CreateProofreadingAiPlanInput {
     severity?: string;
     explanation?: string;
   }>;
+  governanceContext?: AiGovernanceContext;
 }
 
 export class ProofreadingAiPlanService {
@@ -65,6 +68,8 @@ function buildProofreadingSystemPrompt(): string {
     "Return JSON only.",
     "Propose exact text corrections only when the target text exists in the manuscript excerpts.",
     "Prefer zero corrections over speculative rewriting.",
+    "If a governance payload is provided, treat its hard rules, forbidden operations, manual-review items, and knowledge hits as binding proofreading constraints.",
+    "Do not produce a correction that would bypass governance.manualReviewItems or violate governance.forbiddenOperations.",
     "Use this exact schema:",
     JSON.stringify({
       summary: "string",
@@ -81,6 +86,11 @@ function buildProofreadingSystemPrompt(): string {
 }
 
 function buildProofreadingUserPayload(input: CreateProofreadingAiPlanInput) {
+  const governance =
+    input.governanceContext && !isAiGovernanceContextEmpty(input.governanceContext)
+      ? input.governanceContext
+      : undefined;
+
   return {
     task: "proofreading_plan",
     manuscriptId: input.manuscriptId,
@@ -97,6 +107,11 @@ function buildProofreadingUserPayload(input: CreateProofreadingAiPlanInput) {
       severity: issue.severity ?? "info",
       explanation: issue.explanation ?? "",
     })),
+    ...(governance
+      ? {
+          governance,
+        }
+      : {}),
     contract: {
       summary: "string",
       corrections: [

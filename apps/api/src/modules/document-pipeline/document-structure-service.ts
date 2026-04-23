@@ -21,6 +21,8 @@ export interface DocumentStructureTableSemanticCoordinate {
     | "table_block"
     | "table_label"
     | "table_title"
+    | "note_zone"
+    | "style_profile"
     | "header_cell"
     | "stub_column"
     | "data_cell"
@@ -82,9 +84,41 @@ export interface DocumentStructureTableMergedRelation {
   axis: "row" | "column" | "block";
 }
 
+export interface DocumentStructureTableTextAnchor {
+  id: string;
+  text: string;
+  coordinate: DocumentStructureTableSemanticCoordinate;
+}
+
+export interface DocumentStructureTableCaptionFields {
+  text: string;
+  label_text?: string;
+  title_text?: string;
+}
+
+export interface DocumentStructureTableNoteZone {
+  text: string;
+  line_texts: string[];
+  footnote_ids: string[];
+  coordinate: DocumentStructureTableSemanticCoordinate;
+}
+
+export interface DocumentStructureTableStyleProfile {
+  has_top_rule: boolean;
+  has_header_rule: boolean;
+  has_bottom_rule: boolean;
+  has_vertical_rules: boolean;
+  coordinate: DocumentStructureTableSemanticCoordinate;
+}
+
 export interface DocumentStructureTableSnapshot {
   table_id: string;
   profile: DocumentStructureTableSemanticProfile;
+  table_label?: DocumentStructureTableTextAnchor;
+  table_title?: DocumentStructureTableTextAnchor;
+  caption_fields?: DocumentStructureTableCaptionFields;
+  note_zone?: DocumentStructureTableNoteZone;
+  style_profile?: DocumentStructureTableStyleProfile;
   header_cells: DocumentStructureTableHeaderCell[];
   data_cells: DocumentStructureTableDataCell[];
   footnote_items: DocumentStructureTableFootnoteItem[];
@@ -161,6 +195,37 @@ function cloneTableSnapshot(
   return {
     table_id: table.table_id,
     profile: { ...table.profile },
+    ...(table.table_label ? { table_label: cloneTextAnchor(table.table_label) } : {}),
+    ...(table.table_title ? { table_title: cloneTextAnchor(table.table_title) } : {}),
+    ...(table.caption_fields
+      ? { caption_fields: { ...table.caption_fields } }
+      : {}),
+    ...(table.note_zone
+      ? {
+          note_zone: {
+            ...table.note_zone,
+            line_texts: [...table.note_zone.line_texts],
+            footnote_ids: [...table.note_zone.footnote_ids],
+            coordinate: cloneCoordinateOrFallback(
+              table.note_zone.coordinate,
+              table.table_id,
+              "note_zone",
+            ),
+          },
+        }
+      : {}),
+    ...(table.style_profile
+      ? {
+          style_profile: {
+            ...table.style_profile,
+            coordinate: cloneCoordinateOrFallback(
+              table.style_profile.coordinate,
+              table.table_id,
+              "style_profile",
+            ),
+          },
+        }
+      : {}),
     header_cells: table.header_cells.map((cell) => ({
       ...cell,
       header_path: [...cell.header_path],
@@ -189,11 +254,35 @@ function cloneTableSnapshot(
   };
 }
 
+function cloneTextAnchor(
+  anchor: DocumentStructureTableTextAnchor,
+): DocumentStructureTableTextAnchor {
+  return {
+    ...anchor,
+    coordinate: cloneCoordinate(anchor.coordinate),
+  };
+}
+
 function cloneCoordinate(
   coordinate: DocumentStructureTableSemanticCoordinate,
 ): DocumentStructureTableSemanticCoordinate {
   return {
     ...coordinate,
     header_path: coordinate.header_path ? [...coordinate.header_path] : undefined,
+  };
+}
+
+function cloneCoordinateOrFallback(
+  coordinate: DocumentStructureTableSemanticCoordinate | undefined,
+  tableId: string,
+  target: "note_zone" | "style_profile",
+): DocumentStructureTableSemanticCoordinate {
+  if (coordinate) {
+    return cloneCoordinate(coordinate);
+  }
+
+  return {
+    table_id: tableId,
+    target,
   };
 }

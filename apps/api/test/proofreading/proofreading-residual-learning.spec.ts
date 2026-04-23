@@ -52,6 +52,17 @@ test("governed proofreading draft stores residual issues with snapshot and asset
                 suggestion: "Normalize the unit expression to mg/dL.",
                 rationale: "This is a repeatable formatting pattern.",
                 model_confidence: 0.86,
+                signal_breakdown: {
+                  semantic_context: {
+                    table_id: "table-1",
+                    semantic_target: "note_zone",
+                  },
+                  promotion_evidence: {
+                    source: "table_patch_result",
+                    patch_type: "replace_table_note_text",
+                    patch_status: "skipped_conflict",
+                  },
+                },
               },
             ],
           },
@@ -120,6 +131,17 @@ test("governed proofreading draft stores residual issues with snapshot and asset
     payload?.proofreadingManuscriptAssetId,
   );
   assert.equal(storedIssues[0]?.module, "proofreading");
+  assert.deepEqual(storedIssues[0]?.signal_breakdown, {
+    semantic_context: {
+      table_id: "table-1",
+      semantic_target: "note_zone",
+    },
+    promotion_evidence: {
+      source: "table_patch_result",
+      patch_type: "replace_table_note_text",
+      patch_status: "skipped_conflict",
+    },
+  });
 });
 
 test("human confirmation residuals preserve long-term routing truth for proofreading follow-up", async () => {
@@ -337,6 +359,20 @@ test("human confirmation residuals preserve long-term routing truth for proofrea
   assert.equal(rejectIssue?.recommended_route, "evidence_only");
   assert.equal(rejectIssue?.harness_validation_status, "not_required");
   assert.equal(rejectIssue?.status, "evidence_only");
+  assert.deepEqual(grammarIssue?.signal_breakdown, {
+    promotion_evidence: {
+      source: "proofreading_confirmation",
+      decision_action: "accept_and_edit",
+      correction_category: "grammar",
+    },
+  });
+  assert.deepEqual(rejectIssue?.signal_breakdown, {
+    promotion_evidence: {
+      source: "proofreading_confirmation",
+      decision_action: "reject",
+      correction_category: "style",
+    },
+  });
   assert.ok(
     storedIssues.every(
       (issue) =>

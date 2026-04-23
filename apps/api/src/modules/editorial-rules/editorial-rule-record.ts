@@ -36,6 +36,10 @@ export const EDITORIAL_RULE_ACTIVATION_METRIC_KEYS = [
   "routed_prompt_candidate_count",
   "writeback_created_count",
   "writeback_applied_count",
+  "table_patch_applied_count",
+  "table_patch_skipped_no_anchor_count",
+  "table_patch_skipped_conflict_count",
+  "table_patch_skipped_unsafe_count",
 ] as const;
 export type EditorialRuleActivationMetricKey =
   (typeof EDITORIAL_RULE_ACTIVATION_METRIC_KEYS)[number];
@@ -152,6 +156,10 @@ export interface EditorialRuleActivationMetricTotals {
   routed_prompt_candidate_count: number;
   writeback_created_count: number;
   writeback_applied_count: number;
+  table_patch_applied_count: number;
+  table_patch_skipped_no_anchor_count: number;
+  table_patch_skipped_conflict_count: number;
+  table_patch_skipped_unsafe_count: number;
 }
 
 export interface EditorialRuleActivationMetricRates {

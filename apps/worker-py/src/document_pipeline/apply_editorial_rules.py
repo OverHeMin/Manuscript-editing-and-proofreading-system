@@ -4,8 +4,13 @@ import argparse
 import json
 from pathlib import Path
 import shutil
+import sys
 from xml.etree import ElementTree as ET
 import zipfile
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from document_pipeline.table_patches import apply_table_patches
 
 
 WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -18,6 +23,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-path", required=True)
     parser.add_argument("--rules-json", required=True)
     parser.add_argument("--ai-replacements-json", default="[]")
+    parser.add_argument(
+        "--table-auto-apply-mode",
+        default="disabled",
+        choices=["disabled", "inspect_only", "editing_safe_apply"],
+    )
+    parser.add_argument("--table-patches-json", default="[]")
     return parser.parse_args()
 
 
@@ -57,8 +68,16 @@ def apply_rules_to_docx(
     source_path: Path,
     output_path: Path,
     rules: list[dict],
-    ai_replacements: list[dict],
+    ai_replacements: list[dict] | None = None,
+    table_auto_apply_mode: str = "disabled",
+    table_patches: list[dict] | None = None,
 ) -> dict:
+    resolved_ai_replacements = ai_replacements or []
+    resolved_table_patches = table_patches or []
+    enforce_table_auto_apply_guard(
+        table_auto_apply_mode=table_auto_apply_mode,
+        table_patches=resolved_table_patches,
+    )
     deterministic_rules = select_deterministic_format_rules(rules)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -74,13 +93,15 @@ def apply_rules_to_docx(
     inspection_findings = build_inspection_findings(rules, table_descriptors)
     applied_changes: list[dict] = []
     applied_rule_ids: list[str] = []
+    table_patch_results: list[dict] = []
 
-    if not deterministic_rules and not ai_replacements:
+    if not deterministic_rules and not resolved_ai_replacements and not resolved_table_patches:
         shutil.copyfile(source_path, output_path)
         return {
             "applied_rule_ids": [],
             "applied_changes": [],
             "inspection_findings": inspection_findings,
+            "table_patch_results": [],
         }
 
     for paragraph in root.findall(".//w:body/w:p", NS):
@@ -112,7 +133,7 @@ def apply_rules_to_docx(
             )
             break
 
-        for replacement_index, replacement in enumerate(ai_replacements):
+        for replacement_index, replacement in enumerate(resolved_ai_replacements):
             before_ai = next_text
             transformed = apply_ai_replacement(next_text, replacement)
             if transformed == next_text:
@@ -138,6 +159,9 @@ def apply_rules_to_docx(
         for node in text_nodes[1:]:
             node.text = ""
 
+    if resolved_table_patches:
+        table_patch_results = apply_table_patches(root, resolved_table_patches)
+
     entries["word/document.xml"] = ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
     with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -148,7 +172,21 @@ def apply_rules_to_docx(
         "applied_rule_ids": list(dict.fromkeys(applied_rule_ids)),
         "applied_changes": applied_changes,
         "inspection_findings": inspection_findings,
+        "table_patch_results": table_patch_results,
     }
+
+
+def enforce_table_auto_apply_guard(
+    table_auto_apply_mode: str,
+    table_patches: list[dict],
+) -> None:
+    if not table_patches:
+        return
+
+    if table_auto_apply_mode != "editing_safe_apply":
+        raise ValueError(
+            "Table patch payloads require table_auto_apply_mode=editing_safe_apply."
+        )
 
 
 def apply_ai_replacement(text: str, replacement: dict) -> str:
@@ -308,6 +346,8 @@ def main() -> None:
         Path(args.output_path),
         json.loads(args.rules_json),
         json.loads(args.ai_replacements_json),
+        table_auto_apply_mode=args.table_auto_apply_mode,
+        table_patches=json.loads(args.table_patches_json),
     )
     print(json.dumps(result, ensure_ascii=False))
 

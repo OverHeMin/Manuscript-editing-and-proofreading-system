@@ -10,6 +10,8 @@ import type { AiProviderRuntimeService } from "../ai-provider-runtime/ai-provide
 import type { AgentExecutionService } from "../agent-execution/agent-execution-service.ts";
 import type { AgentProfileService } from "../agent-profiles/agent-profile-service.ts";
 import type { AgentRuntimeService } from "../agent-runtime/agent-runtime-service.ts";
+import type { EditorialRuleRecord } from "../editorial-rules/editorial-rule-record.ts";
+import type { ResolvedEditorialRule } from "../editorial-rules/editorial-rule-resolution-service.ts";
 import type {
   DocumentStructureService,
   DocumentStructureTableSnapshot,
@@ -56,6 +58,7 @@ import {
   ScreeningAiReportService,
   type ScreeningAiReport,
 } from "./screening-ai-report-service.ts";
+import type { AiGovernanceContext } from "../shared/ai-governance-context.ts";
 
 export interface RunScreeningInput {
   manuscriptId: string;
@@ -253,6 +256,7 @@ export class ScreeningService {
         evaluationSuiteIds: string[];
         releaseCheckProfileId?: string;
         qualityPackageVersionIds?: string[];
+        governanceContext?: AiGovernanceContext;
         agentRuntimeId?: string;
         sandboxProfileId?: string;
         agentProfileId?: string;
@@ -340,6 +344,22 @@ export class ScreeningService {
             governedContext.verificationExpectations.release_check_profile_id,
           qualityPackageVersionIds:
             governedContext.runtimeBinding.quality_package_version_ids,
+          governanceContext: buildScreeningGovernanceContext({
+            promptHardRuleSummary:
+              governedContext.moduleContext.promptTemplate.hard_rule_summary,
+            ruleSetVersionNo: governedContext.moduleContext.ruleSet.version_no,
+            rules: governedContext.moduleContext.rules,
+            resolvedRules: governedContext.moduleContext.resolvedRules,
+            knowledgeSelections: governedContext.moduleContext.knowledgeSelections.map(
+              (selection) => ({
+                knowledgeItemId: selection.knowledgeItem.id,
+                matchSource: selection.matchSource,
+                bindingRuleId: selection.bindingRuleId,
+                matchSourceId: selection.matchSourceId,
+                matchReasons: selection.matchReasons,
+              }),
+            ),
+          }),
           agentRuntimeId: governedContext.runtime.id,
           sandboxProfileId: governedContext.sandboxProfile.id,
           agentProfileId: governedContext.agentProfile.id,
@@ -424,6 +444,11 @@ export class ScreeningService {
                 agentExecutionLogId: executionLog.id,
               }
             : {}),
+          ...(normalizedContext.governanceContext
+            ? {
+                governanceContext: normalizedContext.governanceContext,
+              }
+            : {}),
           parentAssetId: input.parentAssetId,
         },
         attempt_count: 0,
@@ -466,6 +491,7 @@ export class ScreeningService {
         tableCount: documentStructureSnapshot?.tables.length ?? 0,
         qualityIssues: qualityRun?.issues,
         qualitySummary: qualityRun?.quality_findings_summary,
+        governanceContext: normalizedContext.governanceContext,
       });
       const screeningReport = structuredClone(
         screeningReportResult.report,
@@ -629,6 +655,105 @@ export class ScreeningService {
       qualityPackageVersionIds: input.qualityPackageVersionIds,
     });
   }
+}
+
+function buildScreeningGovernanceContext(input: {
+  promptHardRuleSummary?: string;
+  ruleSetVersionNo: number;
+  rules: EditorialRuleRecord[];
+  resolvedRules: ResolvedEditorialRule[];
+  knowledgeSelections: Array<{
+    knowledgeItemId: string;
+    matchSource?: string;
+    bindingRuleId?: string;
+    matchSourceId?: string;
+    matchReasons: string[];
+  }>;
+}): AiGovernanceContext | undefined {
+  const enabledRules = input.rules
+    .filter((rule) => rule.enabled)
+    .sort((left, right) => left.order_no - right.order_no);
+  const hardRuleSummaryLines = enabledRules.map((rule) => {
+    const firstSection = Array.isArray(rule.scope.sections)
+      ? rule.scope.sections.find((section): section is string => typeof section === "string")
+      : undefined;
+    return `- ${firstSection ?? "document"}: ${rule.action.kind} (${rule.severity})`;
+  });
+  const requiredChecks = enabledRules.map((rule) => {
+    const firstSection = Array.isArray(rule.scope.sections)
+      ? rule.scope.sections.find((section): section is string => typeof section === "string")
+      : undefined;
+    return `${rule.id}: ${firstSection ?? "document"} / ${rule.action.kind} / ${rule.severity}`;
+  });
+  const manualReviewItems = enabledRules
+    .filter((rule) => rule.execution_mode === "inspect" || rule.confidence_policy === "manual_only")
+    .map((rule) => `${rule.id}: ${deriveScreeningReviewReason(rule)}`);
+  const resolvedRules = input.resolvedRules.map((entry) => ({
+    ruleId: entry.rule.id,
+    actionKind: entry.rule.action.kind,
+    ruleType: entry.rule.rule_type,
+    severity: entry.rule.severity,
+    confidencePolicy: entry.rule.confidence_policy,
+    executionMode: entry.rule.execution_mode,
+    sections: Array.isArray(entry.rule.scope.sections)
+      ? entry.rule.scope.sections.filter(
+          (section): section is string => typeof section === "string",
+        )
+      : [],
+    sourceLayer: entry.source_layer,
+  }));
+  const context: AiGovernanceContext = {
+    hardRuleSummary: [
+      input.promptHardRuleSummary?.trim(),
+      `Rule set v${input.ruleSetVersionNo}:`,
+      ...hardRuleSummaryLines,
+    ]
+      .filter((line): line is string => !!line && line.length > 0)
+      .join("\n"),
+    ...(manualReviewItems.length > 0
+      ? {
+          manualReviewItems,
+        }
+      : {}),
+    ...(requiredChecks.length > 0
+      ? {
+          requiredChecks,
+        }
+      : {}),
+    ...(resolvedRules.length > 0
+      ? {
+          resolvedRules,
+        }
+      : {}),
+    ...(input.knowledgeSelections.length > 0
+      ? {
+          knowledgeHits: input.knowledgeSelections.map((entry) => ({
+            knowledgeItemId: entry.knowledgeItemId,
+            matchSource: entry.matchSource,
+            bindingRuleId: entry.bindingRuleId,
+            matchSourceId: entry.matchSourceId,
+            matchReasons: [...entry.matchReasons],
+          })),
+        }
+      : {}),
+  };
+
+  return Object.keys(context).length > 0 ? context : undefined;
+}
+
+function deriveScreeningReviewReason(rule: EditorialRuleRecord): string {
+  if (
+    typeof rule.manual_review_reason_template === "string" &&
+    rule.manual_review_reason_template.trim().length > 0
+  ) {
+    return rule.manual_review_reason_template.trim();
+  }
+
+  if (rule.confidence_policy === "manual_only") {
+    return "manual_only_rule";
+  }
+
+  return `${rule.action.kind}_review`;
 }
 
 function buildMedicalReviewSignals(

@@ -15,7 +15,10 @@ import type { ResolvedEditorialRule } from "../editorial-rules/editorial-rule-re
 import {
   EditorialDocxTransformService,
 } from "../document-pipeline/editorial-docx-transform-service.ts";
-import type { DocumentStructureService } from "../document-pipeline/document-structure-service.ts";
+import type {
+  DocumentStructureService,
+  DocumentStructureTableSnapshot,
+} from "../document-pipeline/document-structure-service.ts";
 import type { AgentExecutionLogRecord } from "../agent-execution/agent-execution-record.ts";
 import {
   AgentExecutionLogNotFoundError,
@@ -26,6 +29,9 @@ import type { AgentRuntimeService } from "../agent-runtime/agent-runtime-service
 import {
   inspectProofreadingRules,
 } from "../editorial-execution/proofreading-rule-checker.ts";
+import {
+  assembleInstructionTemplate,
+} from "../editorial-execution/instruction-template-assembler.ts";
 import type {
   EditorialTextBlock,
   ManualReviewItem,
@@ -71,6 +77,7 @@ import {
   createWriteTransactionManager,
   type WriteTransactionManager,
 } from "../shared/write-transaction-manager.ts";
+import type { AiGovernanceContext } from "../shared/ai-governance-context.ts";
 import type {
   ObserveProofreadingResidualsInput,
   ProofreadingResidualSourceBlock,
@@ -473,6 +480,14 @@ export class ProofreadingService {
         finalJobPayload?.proofreadingPlan ??
           parentDraftJobPayload?.proofreadingPlan,
       );
+      const sourceRules =
+        extractEditorialRules(finalJobPayload?.rules) ??
+        extractEditorialRules(parentDraftJobPayload?.rules) ??
+        [];
+      const sourceResolvedRules =
+        extractResolvedEditorialRules(finalJobPayload?.resolvedRules) ??
+        extractResolvedEditorialRules(parentDraftJobPayload?.resolvedRules) ??
+        [];
       const sourceManuscriptAssetId =
         readOptionalString(finalJobPayload?.sourceManuscriptAssetId) ??
         readOptionalString(parentDraftJobPayload?.sourceManuscriptAssetId) ??
@@ -572,8 +587,9 @@ export class ProofreadingService {
         sourceAssetId: sourceManuscriptAssetId,
         outputStorageKey: input.storageKey,
         outputFileName: input.fileName,
-        rules: [],
-        resolvedRules: [],
+        tableAutoApplyMode: "disabled",
+        rules: sourceRules,
+        resolvedRules: sourceResolvedRules,
         tableSnapshots: [],
         aiReplacements: buildHumanFinalAiReplacements(normalizedDecisions),
       });
@@ -793,6 +809,28 @@ export class ProofreadingService {
                   sourceAsset?.file_name ?? input.fileName ?? input.parentAssetId,
                 sourceBlocks: proofreadingArtifacts?.sourceBlocks,
                 qualityIssues: proofreadingFindings?.qualityFindings,
+                governanceContext: buildAiGovernanceContext({
+                  hardRuleSummary:
+                    resolvedContext.instructionPayload?.hardRuleSummary,
+                  allowedContentOperations:
+                    resolvedContext.instructionPayload?.allowedContentOperations,
+                  forbiddenOperations:
+                    resolvedContext.instructionPayload?.forbiddenOperations,
+                  manualReviewPolicy:
+                    resolvedContext.instructionPayload?.manualReviewPolicy,
+                  promptSnippets:
+                    resolvedContext.instructionPayload?.promptSnippets,
+                  manualReviewItems:
+                    resolvedContext.instructionPayload?.manualReviewItems.map(
+                      (item) => `${item.ruleId}: ${item.reason}`,
+                    ),
+                  contentRuleCandidates:
+                    resolvedContext.instructionPayload?.contentRuleCandidates.map(
+                      (item) => `${item.ruleId}: ${item.actionKind}`,
+                    ),
+                  resolvedRules: resolvedContext.resolvedRules,
+                  knowledgeHits: resolvedContext.knowledgeHits,
+                }),
               }),
             ) as ProofreadingAiPlan)
           : undefined;
@@ -906,6 +944,34 @@ export class ProofreadingService {
                 ruleSetId: resolvedContext.ruleSetId,
               }
             : {}),
+          ...(resolvedContext.rules && resolvedContext.rules.length > 0
+            ? {
+                rules: resolvedContext.rules.map((rule) => structuredClone(rule)),
+              }
+            : {}),
+          ...(resolvedContext.resolvedRules && resolvedContext.resolvedRules.length > 0
+            ? {
+                resolvedRules: resolvedContext.resolvedRules.map((entry) =>
+                  structuredClone(entry)
+                ),
+              }
+            : {}),
+          ...(resolvedContext.instructionPayload
+            ? {
+                instructionPayload: {
+                  ...resolvedContext.instructionPayload,
+                  allowedContentOperations: [
+                    ...resolvedContext.instructionPayload.allowedContentOperations,
+                  ],
+                  forbiddenOperations: [
+                    ...resolvedContext.instructionPayload.forbiddenOperations,
+                  ],
+                  promptSnippets: [
+                    ...resolvedContext.instructionPayload.promptSnippets,
+                  ],
+                },
+              }
+            : {}),
           ...(proofreadingFindings
             ? {
                 proofreadingFindings,
@@ -958,6 +1024,9 @@ export class ProofreadingService {
               reportStorageKey: input.storageKey,
               reportFileName: input.fileName,
               proofreadingPlan,
+              rules: resolvedContext.rules,
+              resolvedRules: resolvedContext.resolvedRules,
+              tableSnapshots: proofreadingArtifacts?.tableSnapshots ?? [],
               documentAssetService,
             })
           : undefined;
@@ -1156,6 +1225,9 @@ export class ProofreadingService {
     reportStorageKey: string;
     reportFileName?: string;
     proofreadingPlan: ProofreadingAiPlan;
+    rules?: EditorialRuleRecord[];
+    resolvedRules?: ResolvedEditorialRule[];
+    tableSnapshots: DocumentStructureTableSnapshot[];
     documentAssetService: DocumentAssetService;
   }): Promise<DocumentAssetRecord> {
     const manuscriptTarget = deriveProofreadingManuscriptTarget({
@@ -1168,9 +1240,10 @@ export class ProofreadingService {
       sourceAssetId: input.sourceAssetId,
       outputStorageKey: manuscriptTarget.storageKey,
       outputFileName: manuscriptTarget.fileName,
-      rules: [],
-      resolvedRules: [],
-      tableSnapshots: [],
+      tableAutoApplyMode: "inspect_only",
+      rules: input.rules ?? [],
+      resolvedRules: input.resolvedRules ?? [],
+      tableSnapshots: input.tableSnapshots,
       aiReplacements: input.proofreadingPlan.corrections.map(
         (correction: ProofreadingAiPlan["corrections"][number]) => ({
         targetText: correction.targetText,
@@ -1288,6 +1361,13 @@ export class ProofreadingService {
           action: { ...entry.rule.action },
         },
       })),
+      instructionPayload: assembleInstructionTemplate({
+        promptTemplate: moduleContext.promptTemplate,
+        ruleSet: moduleContext.ruleSet,
+        rules: moduleContext.rules,
+        knowledgeSelections: moduleContext.knowledgeSelections,
+        manualReviewPolicy: moduleContext.manualReviewPolicy,
+      }),
       knowledgeHits: moduleContext.knowledgeSelections.map((selection) => ({
         knowledgeItemId: selection.knowledgeItem.id,
         matchSourceId: selection.matchSourceId,
@@ -1392,8 +1472,12 @@ export class ProofreadingService {
       moduleTemplateVersionNo: snapshot.module_template_version_no,
       promptTemplateId: snapshot.prompt_template_id,
       promptTemplateVersion: snapshot.prompt_template_version,
+      ruleSetId: readOptionalString(draftJobPayload?.ruleSetId),
+      rules: extractEditorialRules(draftJobPayload?.rules),
+      resolvedRules: extractResolvedEditorialRules(draftJobPayload?.resolvedRules),
       skillPackageIds: [...snapshot.skill_package_ids],
       skillPackageVersions: [...snapshot.skill_package_versions],
+      instructionPayload: extractInstructionPayload(draftJobPayload?.instructionPayload),
       knowledgeHits: hitLogs.map((hit) => ({
         knowledgeItemId: hit.knowledge_item_id,
         matchSourceId: hit.match_source_id,
@@ -1513,6 +1597,7 @@ export class ProofreadingService {
           : {}),
       },
       sourceBlocks,
+      tableSnapshots: documentStructureSnapshot?.tables ?? [],
     };
   }
 }
@@ -1708,6 +1793,14 @@ function buildHumanConfirmationResidualHint(
       suggestion: decision.replacementText,
       rationale: decision.note ?? "Human rejected the proofreading correction.",
       source_stage: "model_residual",
+      signal_breakdown: {
+        promotion_evidence: {
+          source: "proofreading_confirmation",
+          decision_action: "reject",
+          correction_category:
+            decision.category ?? "proofreading_confirmation",
+        },
+      },
     };
   }
 
@@ -1720,6 +1813,14 @@ function buildHumanConfirmationResidualHint(
         decision.note ??
         "Human adjusted the proofreading correction before final publication.",
       source_stage: "model_residual",
+      signal_breakdown: {
+        promotion_evidence: {
+          source: "proofreading_confirmation",
+          decision_action: "accept_and_edit",
+          correction_category:
+            decision.category ?? "proofreading_confirmation",
+        },
+      },
     };
   }
 
@@ -2134,6 +2235,7 @@ function cloneEvidencePack(
 interface ProofreadingRunArtifacts {
   inspectionResult: ProofreadingInspectionResult;
   sourceBlocks: ProofreadingResidualSourceBlock[];
+  tableSnapshots: DocumentStructureTableSnapshot[];
 }
 
 interface ResolvedProofreadingExecutionContext {
@@ -2150,6 +2252,7 @@ interface ResolvedProofreadingExecutionContext {
   skillPackageVersions: string[];
   knowledgeHits: RecordKnowledgeHitInput[];
   manualReviewPolicy?: Parameters<typeof inspectProofreadingRules>[0]["manualReviewPolicy"];
+  instructionPayload?: ReturnType<typeof assembleInstructionTemplate>;
   retrievalPresetId?: string;
   modelId: string;
   fallbackModelId?: string;
@@ -2239,6 +2342,149 @@ function extractStringPayloadValue(
 ): string | undefined {
   const value = job?.payload?.[key];
   return typeof value === "string" ? value : undefined;
+}
+
+function extractEditorialRules(value: unknown): EditorialRuleRecord[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  return value
+    .map((entry) => asObject(entry))
+    .filter(
+      (entry): entry is Record<string, unknown> =>
+        !!entry &&
+        typeof entry.id === "string" &&
+        typeof entry.rule_set_id === "string" &&
+        typeof entry.order_no === "number" &&
+        typeof entry.rule_type === "string" &&
+        typeof entry.execution_mode === "string" &&
+        typeof entry.confidence_policy === "string" &&
+        typeof entry.severity === "string" &&
+        typeof entry.enabled === "boolean" &&
+        isObjectRecord(entry.scope) &&
+        isObjectRecord(entry.selector) &&
+        isObjectRecord(entry.trigger) &&
+        isObjectRecord(entry.action) &&
+        isObjectRecord(entry.authoring_payload),
+    )
+    .map((entry) => structuredClone(entry) as unknown as EditorialRuleRecord);
+}
+
+function extractResolvedEditorialRules(
+  value: unknown,
+): ResolvedEditorialRule[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  return value
+    .map((entry) => asObject(entry))
+    .filter(
+      (entry): entry is Record<string, unknown> =>
+        !!entry &&
+        (entry.source_layer === "base" || entry.source_layer === "journal") &&
+        (extractEditorialRules([entry.rule])?.length ?? 0) === 1,
+    )
+    .map((entry) => structuredClone(entry) as unknown as ResolvedEditorialRule);
+}
+
+function extractInstructionPayload(
+  value: unknown,
+): ReturnType<typeof assembleInstructionTemplate> | undefined {
+  const payload = asObject(value);
+  if (!payload) {
+    return undefined;
+  }
+
+  return payload as unknown as ReturnType<typeof assembleInstructionTemplate>;
+}
+
+function buildAiGovernanceContext(input: {
+  hardRuleSummary?: string;
+  allowedContentOperations?: string[];
+  forbiddenOperations?: string[];
+  manualReviewPolicy?: string;
+  promptSnippets?: string[];
+  manualReviewItems?: string[];
+  contentRuleCandidates?: string[];
+  resolvedRules?: ResolvedEditorialRule[];
+  knowledgeHits?: RecordKnowledgeHitInput[];
+}): AiGovernanceContext | undefined {
+  const resolvedRules = (input.resolvedRules ?? []).map((entry) => ({
+    ruleId: entry.rule.id,
+    actionKind: entry.rule.action.kind,
+    ruleType: entry.rule.rule_type,
+    severity: entry.rule.severity,
+    confidencePolicy: entry.rule.confidence_policy,
+    executionMode: entry.rule.execution_mode,
+    sections: Array.isArray(entry.rule.scope.sections)
+      ? entry.rule.scope.sections.filter(
+          (section): section is string => typeof section === "string",
+        )
+      : [],
+    sourceLayer: entry.source_layer,
+  }));
+  const knowledgeHits = (input.knowledgeHits ?? []).map((entry) => ({
+    knowledgeItemId: entry.knowledgeItemId,
+    matchSource: entry.matchSource,
+    bindingRuleId: entry.bindingRuleId,
+    matchSourceId: entry.matchSourceId,
+    matchReasons: [...entry.matchReasons],
+  }));
+  const context: AiGovernanceContext = {
+    ...(input.hardRuleSummary
+      ? {
+          hardRuleSummary: input.hardRuleSummary,
+        }
+      : {}),
+    ...(input.allowedContentOperations && input.allowedContentOperations.length > 0
+      ? {
+          allowedContentOperations: [...input.allowedContentOperations],
+        }
+      : {}),
+    ...(input.forbiddenOperations && input.forbiddenOperations.length > 0
+      ? {
+          forbiddenOperations: [...input.forbiddenOperations],
+        }
+      : {}),
+    ...(input.manualReviewPolicy
+      ? {
+          manualReviewPolicy: input.manualReviewPolicy,
+        }
+      : {}),
+    ...(input.promptSnippets && input.promptSnippets.length > 0
+      ? {
+          promptSnippets: [...input.promptSnippets],
+        }
+      : {}),
+    ...(input.manualReviewItems && input.manualReviewItems.length > 0
+      ? {
+          manualReviewItems: [...input.manualReviewItems],
+        }
+      : {}),
+    ...(input.contentRuleCandidates && input.contentRuleCandidates.length > 0
+      ? {
+          contentRuleCandidates: [...input.contentRuleCandidates],
+        }
+      : {}),
+    ...(resolvedRules.length > 0
+      ? {
+          resolvedRules,
+        }
+      : {}),
+    ...(knowledgeHits.length > 0
+      ? {
+          knowledgeHits,
+        }
+      : {}),
+  };
+
+  return Object.keys(context).length > 0 ? context : undefined;
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function deriveProofreadingManuscriptTarget(input: {

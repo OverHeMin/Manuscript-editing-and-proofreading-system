@@ -15,6 +15,9 @@ import { seedMedicalQualityFixture } from "../shared/medical-quality-fixture.ts"
 test("proofreading bare mode draft succeeds without a current template family while governed mode still fails", async () => {
   const harness = await seedMedicalQualityFixture();
   const residualIssueRepository = new InMemoryResidualIssueRepository();
+  const transformCalls: Array<
+    Parameters<EditorialDocxTransformService["applyDeterministicRules"]>[0]
+  > = [];
   const residualLearningService = new ResidualLearningService({
     residualIssueRepository,
     createId: () => "residual-proofreading-bare-1",
@@ -72,7 +75,10 @@ test("proofreading bare mode draft succeeds without a current template family wh
     } as never,
     mainlineAiRuntimeExecutor: proofreadingExecutor,
     editorialDocxTransformService: {
-      async applyDeterministicRules() {
+      async applyDeterministicRules(
+        input: Parameters<EditorialDocxTransformService["applyDeterministicRules"]>[0],
+      ) {
+        transformCalls.push(input);
         return {
           appliedRuleIds: ["proofreading-correction-1"],
           appliedChanges: [
@@ -189,6 +195,8 @@ test("proofreading bare mode draft succeeds without a current template family wh
     updatedManuscript?.current_proofreading_asset_id,
     generatedProofreadingDocx?.id,
   );
+  assert.equal(transformCalls.length, 1);
+  assert.equal(transformCalls[0]?.tableAutoApplyMode, "inspect_only");
   assert.ok(result.snapshot_id);
   assert.equal(
     (await residualIssueRepository.listByExecutionSnapshotId(result.snapshot_id))
@@ -289,6 +297,63 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
       modelSource: "legacy_module_default",
       snapshotId: "snapshot-proof-final-1",
       knowledgeItemIds: ["knowledge-proof-1"],
+      rules: [
+        {
+          id: "rule-heading-proofreading-1",
+          rule_set_id: "rule-set-proofreading-1",
+          order_no: 10,
+          rule_object: "generic",
+          rule_type: "format",
+          execution_mode: "apply_and_inspect",
+          scope: {
+            sections: ["abstract"],
+            block_kind: "heading",
+          },
+          selector: {},
+          trigger: {
+            kind: "exact_text",
+            text: "摘要 目的",
+          },
+          action: {
+            kind: "replace_heading",
+            to: "摘要：目的",
+          },
+          authoring_payload: {},
+          confidence_policy: "always_auto",
+          severity: "warning",
+          enabled: true,
+        },
+      ],
+      resolvedRules: [
+        {
+          source_layer: "base",
+          rule: {
+            id: "rule-heading-proofreading-1",
+            rule_set_id: "rule-set-proofreading-1",
+            order_no: 10,
+            rule_object: "generic",
+            rule_type: "format",
+            execution_mode: "apply_and_inspect",
+            scope: {
+              sections: ["abstract"],
+              block_kind: "heading",
+            },
+            selector: {},
+            trigger: {
+              kind: "exact_text",
+              text: "摘要 目的",
+            },
+            action: {
+              kind: "replace_heading",
+              to: "摘要：目的",
+            },
+            authoring_payload: {},
+            confidence_policy: "always_auto",
+            severity: "warning",
+            enabled: true,
+          },
+        },
+      ],
     },
     attempt_count: 1,
     created_at: "2026-04-18T08:00:00.000Z",
@@ -432,6 +497,64 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
   assert.equal(result.asset.asset_type, "human_final_docx");
   assert.equal(transformCalls.length, 1);
   assert.equal(transformCalls[0]?.sourceAssetId, harness.originalAssetId);
+  assert.equal(transformCalls[0]?.tableAutoApplyMode, "disabled");
+  assert.deepEqual(transformCalls[0]?.rules, [
+    {
+      id: "rule-heading-proofreading-1",
+      rule_set_id: "rule-set-proofreading-1",
+      order_no: 10,
+      rule_object: "generic",
+      rule_type: "format",
+      execution_mode: "apply_and_inspect",
+      scope: {
+        sections: ["abstract"],
+        block_kind: "heading",
+      },
+      selector: {},
+      trigger: {
+        kind: "exact_text",
+        text: "摘要 目的",
+      },
+      action: {
+        kind: "replace_heading",
+        to: "摘要：目的",
+      },
+      authoring_payload: {},
+      confidence_policy: "always_auto",
+      severity: "warning",
+      enabled: true,
+    },
+  ]);
+  assert.deepEqual(transformCalls[0]?.resolvedRules, [
+    {
+      source_layer: "base",
+      rule: {
+        id: "rule-heading-proofreading-1",
+        rule_set_id: "rule-set-proofreading-1",
+        order_no: 10,
+        rule_object: "generic",
+        rule_type: "format",
+        execution_mode: "apply_and_inspect",
+        scope: {
+          sections: ["abstract"],
+          block_kind: "heading",
+        },
+        selector: {},
+        trigger: {
+          kind: "exact_text",
+          text: "摘要 目的",
+        },
+        action: {
+          kind: "replace_heading",
+          to: "摘要：目的",
+        },
+        authoring_payload: {},
+        confidence_policy: "always_auto",
+        severity: "warning",
+        enabled: true,
+      },
+    },
+  ]);
   assert.deepEqual(transformCalls[0]?.aiReplacements, [
     {
       targetText: "5 mg per dL",
@@ -540,6 +663,13 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
           rationale:
             "Human adjusted the proofreading correction before final publication.",
           source_stage: "model_residual",
+          signal_breakdown: {
+            promotion_evidence: {
+              source: "proofreading_confirmation",
+              decision_action: "accept_and_edit",
+              correction_category: "grammar",
+            },
+          },
         },
       ],
     },
@@ -554,6 +684,13 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
           rationale:
             "Human adjusted the proofreading correction before final publication.",
           source_stage: "model_residual",
+          signal_breakdown: {
+            promotion_evidence: {
+              source: "proofreading_confirmation",
+              decision_action: "accept_and_edit",
+              correction_category: "terminology",
+            },
+          },
         },
       ],
     },
@@ -568,6 +705,13 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
           rationale:
             "Human adjusted the proofreading correction before final publication.",
           source_stage: "model_residual",
+          signal_breakdown: {
+            promotion_evidence: {
+              source: "proofreading_confirmation",
+              decision_action: "accept_and_edit",
+              correction_category: "punctuation",
+            },
+          },
         },
       ],
     },
@@ -581,6 +725,13 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
           suggestion: "This correction should be rejected.",
           rationale: "Human rejected the proofreading correction.",
           source_stage: "model_residual",
+          signal_breakdown: {
+            promotion_evidence: {
+              source: "proofreading_confirmation",
+              decision_action: "reject",
+              correction_category: "style",
+            },
+          },
         },
       ],
     },

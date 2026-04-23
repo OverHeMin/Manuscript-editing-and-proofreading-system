@@ -15,6 +15,31 @@ import type {
 } from "../manuscripts/manuscript-record.ts";
 import type { TemplateModule } from "../templates/template-record.ts";
 
+export interface ResidualIssueSemanticContext {
+  table_id?: string;
+  semantic_target?: string;
+  header_path?: string[];
+  row_key?: string;
+  column_key?: string;
+  footnote_anchor?: string;
+  [key: string]: unknown;
+}
+
+export interface ResidualIssuePromotionEvidence {
+  source: string;
+  patch_type?: string;
+  patch_status?: string;
+  decision_action?: string;
+  correction_category?: string;
+  [key: string]: unknown;
+}
+
+export interface ResidualIssueSignalBreakdown {
+  semantic_context?: ResidualIssueSemanticContext;
+  promotion_evidence?: ResidualIssuePromotionEvidence;
+  [key: string]: unknown;
+}
+
 export interface ResidualIssueRecord {
   id: string;
   module: TemplateModule;
@@ -40,7 +65,7 @@ export interface ResidualIssueRecord {
   novelty_key: string;
   recurrence_count: number;
   model_confidence?: number;
-  signal_breakdown?: Record<string, unknown>;
+  signal_breakdown?: ResidualIssueSignalBreakdown;
   system_confidence_band: ResidualConfidenceBand;
   risk_level: ResidualIssueRiskLevel;
   recommended_route: ResidualIssueRoute;

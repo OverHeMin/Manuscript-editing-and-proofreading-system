@@ -269,10 +269,30 @@ function normalizeTables(value: unknown): DocumentStructureTableSnapshot[] {
       data_cells: normalizeDataCells(semantic.data_cells),
       footnote_items: normalizeFootnoteItems(semantic.footnote_items),
     };
+    const tableLabel = normalizeTextAnchor(semantic.table_label, tableId, "table_label");
+    const tableTitle = normalizeTextAnchor(semantic.table_title, tableId, "table_title");
+    const captionFields = normalizeCaptionFields(semantic.caption_fields);
+    const noteZone = normalizeNoteZone(semantic.note_zone, tableId);
+    const styleProfile = normalizeStyleProfile(semantic.style_profile, tableId);
     const stubColumns = normalizeStubColumns(semantic.stub_columns);
     const unitMarkers = normalizeUnitMarkers(semantic.unit_markers);
     const mergedRelations = normalizeMergedRelations(semantic.merged_relations);
 
+    if (tableLabel) {
+      snapshot.table_label = tableLabel;
+    }
+    if (tableTitle) {
+      snapshot.table_title = tableTitle;
+    }
+    if (captionFields) {
+      snapshot.caption_fields = captionFields;
+    }
+    if (noteZone) {
+      snapshot.note_zone = noteZone;
+    }
+    if (styleProfile) {
+      snapshot.style_profile = styleProfile;
+    }
     if (stubColumns?.length) {
       snapshot.stub_columns = stubColumns;
     }
@@ -302,6 +322,99 @@ function normalizeProfile(value: unknown): DocumentStructureTableSnapshot["profi
     profile.has_merged_headers = record.has_merged_headers;
   }
   return profile;
+}
+
+function normalizeTextAnchor(
+  value: unknown,
+  tableId: string,
+  target: "table_label" | "table_title",
+): DocumentStructureTableSnapshot["table_label"] | DocumentStructureTableSnapshot["table_title"] {
+  const record = isRecord(value) ? value : {};
+  const text = readOptionalString(record.text);
+  if (!text) {
+    return undefined;
+  }
+
+  return {
+    id: readOptionalString(record.id) ?? `${tableId}-${target === "table_label" ? "label" : "title"}`,
+    text,
+    coordinate: normalizeCoordinate(record.coordinate, {
+      tableId,
+      target,
+    }),
+  };
+}
+
+function normalizeCaptionFields(
+  value: unknown,
+): DocumentStructureTableSnapshot["caption_fields"] | undefined {
+  const record = isRecord(value) ? value : {};
+  const text = readOptionalString(record.text);
+  if (!text) {
+    return undefined;
+  }
+
+  const captionFields: NonNullable<DocumentStructureTableSnapshot["caption_fields"]> = {
+    text,
+  };
+  const labelText = readOptionalString(record.label_text);
+  const titleText = readOptionalString(record.title_text);
+
+  if (labelText !== undefined) {
+    captionFields.label_text = labelText;
+  }
+  if (titleText !== undefined) {
+    captionFields.title_text = titleText;
+  }
+
+  return captionFields;
+}
+
+function normalizeNoteZone(
+  value: unknown,
+  tableId?: string,
+): DocumentStructureTableSnapshot["note_zone"] | undefined {
+  const record = isRecord(value) ? value : {};
+  const text = readOptionalString(record.text);
+  if (!text) {
+    return undefined;
+  }
+
+  return {
+    text,
+    line_texts: normalizeStringArray(record.line_texts),
+    footnote_ids: normalizeStringArray(record.footnote_ids),
+    coordinate: normalizeCoordinate(record.coordinate, {
+      tableId,
+      target: "note_zone",
+    }),
+  };
+}
+
+function normalizeStyleProfile(
+  value: unknown,
+  tableId?: string,
+): DocumentStructureTableSnapshot["style_profile"] | undefined {
+  const record = isRecord(value) ? value : {};
+  if (
+    typeof record.has_top_rule !== "boolean" &&
+    typeof record.has_header_rule !== "boolean" &&
+    typeof record.has_bottom_rule !== "boolean" &&
+    typeof record.has_vertical_rules !== "boolean"
+  ) {
+    return undefined;
+  }
+
+  return {
+    has_top_rule: Boolean(record.has_top_rule),
+    has_header_rule: Boolean(record.has_header_rule),
+    has_bottom_rule: Boolean(record.has_bottom_rule),
+    has_vertical_rules: Boolean(record.has_vertical_rules),
+    coordinate: normalizeCoordinate(record.coordinate, {
+      tableId,
+      target: "style_profile",
+    }),
+  };
 }
 
 function normalizeHeaderCells(value: unknown): DocumentStructureTableHeaderCell[] {
@@ -533,6 +646,8 @@ function normalizeCoordinate(
       | "table_block"
       | "table_label"
       | "table_title"
+      | "note_zone"
+      | "style_profile"
       | "header_cell"
       | "stub_column"
       | "data_cell"
@@ -553,6 +668,8 @@ function normalizeCoordinate(
       target === "table_block" ||
       target === "table_label" ||
       target === "table_title" ||
+      target === "note_zone" ||
+      target === "style_profile" ||
       target === "header_cell" ||
       target === "stub_column" ||
       target === "data_cell" ||

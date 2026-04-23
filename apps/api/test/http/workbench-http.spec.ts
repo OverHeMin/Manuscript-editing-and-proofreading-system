@@ -1547,6 +1547,7 @@ test("default in-memory http runtime exposes resolvable package default-rule ass
     );
     const generalModules = (await generalModulesResponse.json()) as Array<{
       id: string;
+      status: string;
     }>;
     const medicalModulesResponse = await fetch(
       `${baseUrl}/api/v1/templates/content-modules?moduleClass=medical_specialized`,
@@ -1557,6 +1558,63 @@ test("default in-memory http runtime exposes resolvable package default-rule ass
       },
     );
     const medicalModules = (await medicalModulesResponse.json()) as Array<{
+      id: string;
+      status: string;
+    }>;
+    const templateCompositionsResponse = await fetch(
+      `${baseUrl}/api/v1/templates/template-compositions`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const templateCompositions = (await templateCompositionsResponse.json()) as Array<{
+      id: string;
+      general_module_ids: string[];
+      medical_module_ids: string[];
+      status: string;
+    }>;
+    const ruleSetsResponse = await fetch(`${baseUrl}/api/v1/editorial-rules/rule-sets`, {
+      headers: {
+        Cookie: cookie,
+      },
+    });
+    const ruleSets = (await ruleSetsResponse.json()) as Array<{
+      id: string;
+      status: string;
+    }>;
+    const screeningRulesResponse = await fetch(
+      `${baseUrl}/api/v1/editorial-rules/rule-sets/rule-set-screening-1/rules`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const screeningRules = (await screeningRulesResponse.json()) as Array<{
+      id: string;
+    }>;
+    const editingRulesResponse = await fetch(
+      `${baseUrl}/api/v1/editorial-rules/rule-sets/rule-set-editing-1/rules`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const editingRules = (await editingRulesResponse.json()) as Array<{
+      id: string;
+    }>;
+    const proofreadingRulesResponse = await fetch(
+      `${baseUrl}/api/v1/editorial-rules/rule-sets/rule-set-proofreading-1/rules`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const proofreadingRules = (await proofreadingRulesResponse.json()) as Array<{
       id: string;
     }>;
 
@@ -1569,6 +1627,23 @@ test("default in-memory http runtime exposes resolvable package default-rule ass
       },
     );
     const generalRuleDetail = (await generalRuleDetailResponse.json()) as {
+      selected_revision: {
+        id: string;
+        bindings: Array<{
+          binding_kind: string;
+          binding_target_id: string;
+        }>;
+      };
+    };
+    const generalStructureRuleDetailResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/assets/knowledge-general-structure-1`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const generalStructureRuleDetail = (await generalStructureRuleDetailResponse.json()) as {
       selected_revision: {
         id: string;
         bindings: Array<{
@@ -1594,6 +1669,23 @@ test("default in-memory http runtime exposes resolvable package default-rule ass
         }>;
       };
     };
+    const medicalStudyDesignRuleDetailResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/assets/knowledge-medical-study-design-1`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const medicalStudyDesignRuleDetail = (await medicalStudyDesignRuleDetailResponse.json()) as {
+      selected_revision: {
+        id: string;
+        bindings: Array<{
+          binding_kind: string;
+          binding_target_id: string;
+        }>;
+      };
+    };
 
     assert.equal(libraryResponse.status, 200);
     assert.equal(
@@ -1606,10 +1698,103 @@ test("default in-memory http runtime exposes resolvable package default-rule ass
         ?.selected_revision_id,
       "knowledge-general-reference-1-revision-1",
     );
+    assert.equal(
+      library.items.find((item) => item.asset_id === "knowledge-general-structure-1")
+        ?.selected_revision_id,
+      "knowledge-general-structure-1-revision-1",
+    );
+    assert.equal(
+      library.items.find((item) => item.asset_id === "knowledge-medical-study-design-1")
+        ?.selected_revision_id,
+      "knowledge-medical-study-design-1-revision-1",
+    );
     assert.equal(generalModulesResponse.status, 200);
     assert.equal(medicalModulesResponse.status, 200);
-    assert.equal(generalModules.length, 2);
-    assert.equal(medicalModules.length, 2);
+    assert.equal(generalModules.length, 6);
+    assert.deepEqual(
+      generalModules.map((item) => item.id).sort(),
+      [
+        "general-module-seeded-1",
+        "general-module-seeded-2",
+        "general-module-seeded-3",
+        "general-module-seeded-4",
+        "general-module-seeded-5",
+        "general-module-seeded-6",
+      ].sort(),
+    );
+    assert.equal(generalModules.every((item) => item.status === "published"), true);
+    assert.equal(medicalModules.length, 5);
+    assert.deepEqual(
+      medicalModules.map((item) => item.id).sort(),
+      [
+        "medical-module-seeded-1",
+        "medical-module-seeded-2",
+        "medical-module-seeded-3",
+        "medical-module-seeded-4",
+        "medical-module-seeded-5",
+      ].sort(),
+    );
+    assert.equal(medicalModules.every((item) => item.status === "published"), true);
+    assert.equal(templateCompositionsResponse.status, 200);
+    const clinicalStudyComposition = templateCompositions.find(
+      (item) => item.id === "template-composition-seeded-1",
+    );
+    assert.ok(clinicalStudyComposition);
+    assert.deepEqual(clinicalStudyComposition.general_module_ids, [
+      "general-module-seeded-1",
+      "general-module-seeded-2",
+      "general-module-seeded-3",
+      "general-module-seeded-4",
+      "general-module-seeded-5",
+      "general-module-seeded-6",
+    ]);
+    assert.deepEqual(clinicalStudyComposition.medical_module_ids, [
+      "medical-module-seeded-1",
+      "medical-module-seeded-2",
+      "medical-module-seeded-3",
+      "medical-module-seeded-4",
+      "medical-module-seeded-5",
+    ]);
+    assert.equal(clinicalStudyComposition.status, "published");
+    assert.equal(ruleSetsResponse.status, 200);
+    assert.deepEqual(
+      ruleSets.map((item) => item.id).sort(),
+      ["rule-set-editing-1", "rule-set-proofreading-1", "rule-set-screening-1"],
+    );
+    assert.equal(ruleSets.every((item) => item.status === "published"), true);
+    assert.equal(screeningRulesResponse.status, 200);
+    assert.deepEqual(
+      screeningRules.map((item) => item.id).sort(),
+      [
+        "rule-screening-design-1",
+        "rule-screening-endpoint-1",
+        "rule-screening-ethics-1",
+        "rule-screening-structure-1",
+      ].sort(),
+    );
+    assert.equal(editingRulesResponse.status, 200);
+    assert.deepEqual(
+      editingRules.map((item) => item.id).sort(),
+      [
+        "rule-editing-abstract-1",
+        "rule-editing-author-line-1",
+        "rule-editing-heading-1",
+        "rule-editing-reference-1",
+        "rule-editing-terminology-1",
+        "rule-table-editing-1",
+      ].sort(),
+    );
+    assert.equal(proofreadingRulesResponse.status, 200);
+    assert.deepEqual(
+      proofreadingRules.map((item) => item.id).sort(),
+      [
+        "rule-proofreading-baseline-table-1",
+        "rule-proofreading-reference-1",
+        "rule-proofreading-safety-1",
+        "rule-proofreading-statistics-1",
+        "rule-table-proofreading-1",
+      ].sort(),
+    );
     assert.equal(generalRuleDetailResponse.status, 200);
     assert.equal(generalRuleDetail.selected_revision.id, "knowledge-general-reference-1-revision-1");
     assert.equal(generalRuleDetail.selected_revision.bindings[0]?.binding_kind, "general_package");
@@ -1617,12 +1802,38 @@ test("default in-memory http runtime exposes resolvable package default-rule ass
       generalRuleDetail.selected_revision.bindings[0]?.binding_target_id,
       "general-module-seeded-1",
     );
+    assert.equal(generalStructureRuleDetailResponse.status, 200);
+    assert.equal(
+      generalStructureRuleDetail.selected_revision.id,
+      "knowledge-general-structure-1-revision-1",
+    );
+    assert.equal(
+      generalStructureRuleDetail.selected_revision.bindings[0]?.binding_kind,
+      "general_package",
+    );
+    assert.equal(
+      generalStructureRuleDetail.selected_revision.bindings[0]?.binding_target_id,
+      "general-module-seeded-5",
+    );
     assert.equal(medicalRuleDetailResponse.status, 200);
     assert.equal(medicalRuleDetail.selected_revision.id, "knowledge-medical-ethics-1-revision-1");
     assert.equal(medicalRuleDetail.selected_revision.bindings[0]?.binding_kind, "medical_package");
     assert.equal(
       medicalRuleDetail.selected_revision.bindings[0]?.binding_target_id,
       "medical-module-seeded-1",
+    );
+    assert.equal(medicalStudyDesignRuleDetailResponse.status, 200);
+    assert.equal(
+      medicalStudyDesignRuleDetail.selected_revision.id,
+      "knowledge-medical-study-design-1-revision-1",
+    );
+    assert.equal(
+      medicalStudyDesignRuleDetail.selected_revision.bindings[0]?.binding_kind,
+      "medical_package",
+    );
+    assert.equal(
+      medicalStudyDesignRuleDetail.selected_revision.bindings[0]?.binding_target_id,
+      "medical-module-seeded-3",
     );
   } finally {
     await stopServer(server);

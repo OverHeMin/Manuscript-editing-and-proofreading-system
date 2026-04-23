@@ -135,6 +135,13 @@ test("table preset serializes semantic table selectors as inspect-first rules", 
   assert.ok(serialized.authoringPayload);
   assert.equal(serialized.authoringPayload.table_kind, "three_line_table");
   assert.equal(serialized.authoringPayload.semantic_target, "header_cell");
+  assert.equal(serialized.authoringPayload.grade, "C");
+  assert.equal(serialized.authoringPayload.patch_type, "inspect_only");
+  assert.equal(serialized.authoringPayload.apply_scope, "inspect_only");
+  assert.deepEqual(
+    serialized.authoringPayload.required_snapshot_capabilities,
+    [],
+  );
   assert.deepEqual(serialized.authoringPayload.header_path_includes, [
     "Treatment group",
     "n (%)",
@@ -151,6 +158,55 @@ test("table preset serializes semantic table selectors as inspect-first rules", 
     serialized.manualReviewReasonTemplate,
     "\u4e09\u7ebf\u8868\u9700\u4eba\u5de5\u6838\u5bf9\u6392\u7248\u4e0e\u8868\u6ce8",
   );
+});
+
+test("legacy table rules hydrate with inspect-only auto-apply metadata defaults", () => {
+  const hydrated = hydrateRuleAuthoringDraft({
+    id: "rule-table-legacy-1",
+    rule_set_id: "rule-set-1",
+    order_no: 30,
+    rule_object: "table",
+    rule_type: "format",
+    execution_mode: "inspect",
+    scope: {
+      sections: ["results"],
+      block_kind: "table",
+    },
+    selector: {
+      semantic_target: "header_cell",
+      header_path_includes: ["Treatment group", "n (%)"],
+      column_key: "Treatment group > n (%)",
+    },
+    trigger: {
+      kind: "table_shape",
+      layout: "three_line_table",
+    },
+    action: {
+      kind: "inspect_table_rule",
+      caption_requirement: "\u8868\u9898\u7f6e\u4e8e\u8868\u4e0a",
+      layout_requirement: "\u7981\u7528\u7ad6\u7ebf",
+    },
+    authoring_payload: {
+      table_kind: "three_line_table",
+      semantic_target: "header_cell",
+      header_path_includes: ["Treatment group", "n (%)"],
+      column_key: "Treatment group > n (%)",
+      caption_requirement: "\u8868\u9898\u7f6e\u4e8e\u8868\u4e0a",
+      layout_requirement: "\u7981\u7528\u7ad6\u7ebf",
+      manual_review_reason_template:
+        "\u4e09\u7ebf\u8868\u9700\u4eba\u5de5\u6838\u5bf9\u6392\u7248\u4e0e\u8868\u6ce8",
+    },
+    confidence_policy: "manual_only",
+    severity: "warning",
+    enabled: true,
+    manual_review_reason_template:
+      "\u4e09\u7ebf\u8868\u9700\u4eba\u5de5\u6838\u5bf9\u6392\u7248\u4e0e\u8868\u6ce8",
+  } as never);
+
+  assert.equal(hydrated.payload.grade, "C");
+  assert.equal(hydrated.payload.patchType, "inspect_only");
+  assert.equal(hydrated.payload.applyScope, "inspect_only");
+  assert.deepEqual(hydrated.payload.requiredSnapshotCapabilities, []);
 });
 
 test("table preview explains semantic target and journal override scope", () => {
@@ -218,6 +274,10 @@ test("table authoring form renders semantic selector fields", () => {
   assert.match(markup, /表头路径/);
   assert.match(markup, /列标识/);
   assert.match(markup, /预期表格形态/);
+  assert.match(markup, /data-table-auto-apply-grade="field"/u);
+  assert.match(markup, /data-table-auto-apply-patch-type="field"/u);
+  assert.match(markup, /data-table-auto-apply-scope="field"/u);
+  assert.match(markup, /data-table-auto-apply-capabilities="field"/u);
 });
 
 test("rule authoring form renders platform scope and priority controls", () => {

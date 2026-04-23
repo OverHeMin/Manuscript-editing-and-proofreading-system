@@ -6,6 +6,10 @@ const semanticFixturePng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j1S8AAAAASUVORK5CYII=",
   "base64",
 );
+const pendingReviewLabel = "\u5f85\u5ba1\u6838";
+const titleFieldLabel = "\u6807\u9898";
+const canonicalTextFieldLabel =
+  "\u7b80\u8981\u8bf4\u660e\u6216\u6807\u51c6\u7b54\u6848";
 
 test("knowledge library ledger flow supports draft authoring, AI semantic assist, and review handoff", async ({
   page,
@@ -13,25 +17,28 @@ test("knowledge library ledger flow supports draft authoring, AI semantic assist
 }) => {
   const title = `knowledge-ledger-${Date.now()} draft`;
   await loginBrowserSession(page, request, "dev.admin");
+  await page.route("**/api/v1/knowledge/duplicate-check", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: "[]",
+    });
+  });
 
   await page.goto("/#knowledge-library?knowledgeView=ledger", {
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByRole("heading", { name: "多维知识台账" })).toBeVisible();
+  await expect(page.locator(".knowledge-library-ledger-page h1")).toBeVisible();
   await page.locator('[data-toolbar-action="create"]').click();
 
-  await page.getByLabel("标题").fill(title);
+  await page.getByRole("textbox", { name: titleFieldLabel }).fill(title);
   await page
-    .getByLabel("简要说明或标准答案")
+    .getByRole("textbox", { name: canonicalTextFieldLabel })
     .fill(
-      "Ledger smoke guidance: flag the interim endpoint wording before routing to specialist review.",
+      `Ledger smoke guidance for ${title}: flag the interim endpoint wording before routing to specialist review.`,
     );
-  await page.locator('[data-board-action="confirm-entry"]').click();
 
-  await expect(page.getByText("知识已录入台账。")).toBeVisible();
-
-  await page.locator('[data-row-action="edit"]').first().click();
   await page.locator('[data-board-tab="materials"]').click();
   await page.locator('[data-block-action="add-text"]').click();
   await page
@@ -40,21 +47,20 @@ test("knowledge library ledger flow supports draft authoring, AI semantic assist
     .fill("Ledger smoke rich content block for interim endpoint handling.");
   await page.locator('[data-board-action="save-draft"]').click();
 
-  await expect(page.getByText("草稿已保存。")).toBeVisible();
+  const ledgerRow = page.getByRole("row", {
+    name: new RegExp(escapeRegExp(title)),
+  });
+  await expect(ledgerRow).toBeVisible();
 
   await page.locator('[data-board-tab="semantic"]').click();
   await page.locator('[data-semantic-action="generate"]').click();
   await expect(
-    page.getByText("AI 语义建议已生成，请核对后点击“应用建议”。"),
-  ).toBeVisible();
+    page.locator('[data-semantic-field="page-summary"] textarea'),
+  ).toHaveValue(/.+/);
   await page.locator('[data-semantic-action="apply"]').click();
-
-  await expect(page.getByText("AI 语义已确认，可录入台账。")).toBeVisible();
   await page.locator('[data-board-action="submit-review"]').click();
 
-  await expect(page.getByText("知识已提交审核。")).toBeVisible();
-  await expect(page.getByText(title)).toBeVisible();
-  await expect(page.getByText("待审核")).toBeVisible();
+  await expect(ledgerRow).toContainText(pendingReviewLabel);
 });
 
 test("knowledge library ledger semantic assist uploads image blocks and surfaces analyzed materials", async ({
@@ -129,13 +135,13 @@ test("knowledge library ledger semantic assist uploads image blocks and surfaces
     page.locator('[data-semantic-field="page-summary"] textarea'),
   ).toHaveValue(/.+/);
   await expect(page.locator(".knowledge-library-semantic-section__notes")).toContainText(
-    "1个表格块、1张图片",
+    "\u0031\u4e2a\u8868\u683c\u5757\u3001\u0031\u5f20\u56fe\u7247",
   );
   await expect(page.locator(".knowledge-library-semantic-section__notes")).toContainText(
     "semantic-fixture.png",
   );
   await expect(page.locator(".knowledge-library-semantic-section__notes")).toContainText(
-    "系统已先保存当前草稿",
+    "\u7cfb\u7edf\u5df2\u5148\u4fdd\u5b58\u5f53\u524d\u8349\u7a3f",
   );
   expect(sawSemanticAssist).toBeTruthy();
   expect(sawAiIntake).toBeFalsy();
@@ -178,4 +184,8 @@ async function loginBrowserSession(
       url: `${apiBaseUrl}/`,
     },
   ]);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

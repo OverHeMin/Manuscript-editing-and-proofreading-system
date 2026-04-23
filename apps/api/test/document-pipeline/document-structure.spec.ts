@@ -47,6 +47,46 @@ test("docx structure extraction returns ordered headings and section spans", asy
               has_statistical_footnotes: true,
               has_unit_markers: true,
             },
+            table_label: {
+              id: "table-1-label",
+              text: "表1",
+              coordinate: {
+                table_id: "table-1",
+                target: "table_label",
+              },
+            },
+            table_title: {
+              id: "table-1-title",
+              text: "不同治疗组基线特征比较",
+              coordinate: {
+                table_id: "table-1",
+                target: "table_title",
+              },
+            },
+            caption_fields: {
+              text: "表1 不同治疗组基线特征比较",
+              label_text: "表1",
+              title_text: "不同治疗组基线特征比较",
+            },
+            note_zone: {
+              text: "*P<0.05 vs control",
+              line_texts: ["*P<0.05 vs control"],
+              footnote_ids: ["table-1-footnote-0"],
+              coordinate: {
+                table_id: "table-1",
+                target: "note_zone",
+              },
+            },
+            style_profile: {
+              has_top_rule: true,
+              has_header_rule: true,
+              has_bottom_rule: true,
+              has_vertical_rules: false,
+              coordinate: {
+                table_id: "table-1",
+                target: "style_profile",
+              },
+            },
             header_cells: [],
             data_cells: [],
             footnote_items: [],
@@ -71,6 +111,13 @@ test("docx structure extraction returns ordered headings and section spans", asy
   );
   assert.equal(structure.tables?.[0]?.table_id, "table-1");
   assert.equal(structure.tables?.[0]?.profile.header_depth, 2);
+  assert.equal(structure.tables?.[0]?.table_label?.text, "表1");
+  assert.equal(structure.tables?.[0]?.table_title?.coordinate.target, "table_title");
+  assert.equal(structure.tables?.[0]?.caption_fields?.label_text, "表1");
+  assert.deepEqual(structure.tables?.[0]?.note_zone?.line_texts, ["*P<0.05 vs control"]);
+  assert.equal(structure.tables?.[0]?.note_zone?.coordinate.target, "note_zone");
+  assert.equal(structure.tables?.[0]?.style_profile?.has_vertical_rules, false);
+  assert.equal(structure.tables?.[0]?.style_profile?.coordinate.target, "style_profile");
 });
 
 test("docx structure extraction marks malformed files for manual review", async () => {

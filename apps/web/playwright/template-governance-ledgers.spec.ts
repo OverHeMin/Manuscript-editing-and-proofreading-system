@@ -20,7 +20,7 @@ const largeTemplateSearchResultHeading = "\u5927\u6a21\u677f\u67e5\u627e\u7ed3\u
 const extractionLedgerTitle = "\u539f\u7a3f/\u7f16\u8f91\u7a3f\u63d0\u53d6\u53f0\u8d26";
 const extractionSearchLabel = "\u641c\u7d22\u4efb\u52a1\u6216\u5019\u9009";
 const createExtractionTaskLabel = "\u65b0\u5efa\u63d0\u53d6\u4efb\u52a1";
-const aiSemanticConfirmationHeading = "AI \u8bed\u4e49\u786e\u8ba4";
+const aiSemanticConfirmationHeading = "\u5019\u9009\u8bed\u4e49\u590d\u6838";
 const extractionSearchResultHeading =
   "\u539f\u7a3f/\u7f16\u8f91\u7a3f\u63d0\u53d6\u67e5\u627e\u7ed3\u679c";
 const batchProcessLabel = "\u6279\u91cf\u5904\u7406";
