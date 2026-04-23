@@ -53,7 +53,12 @@ import type {
   RecordExecutionGovernedHitInput,
   ReviewItemsService,
 } from "../review-items/review-items-service.ts";
+import {
+  compareReviewItems,
+  mapResidualIssueToReviewItem,
+} from "../review-items/review-item-mapper.ts";
 import type { ResidualReviewItemRecord } from "../review-items/review-item-record.ts";
+import type { ResidualIssueRecord } from "../residual-learning/residual-learning-record.ts";
 import type { SandboxProfileService } from "../sandbox-profiles/sandbox-profile-service.ts";
 import {
   resolveBareModuleContext,
@@ -68,10 +73,15 @@ import {
   resolveModuleExecutionMode,
 } from "../shared/module-run-support.ts";
 import {
+  ModuleExecutionConcurrencyController,
+  runControlledModuleJob,
+} from "../shared/module-execution-concurrency-controller.ts";
+import {
   createWriteTransactionManager,
   type WriteTransactionManager,
 } from "../shared/write-transaction-manager.ts";
 import type {
+  ProofreadingResidualHint,
   ObserveProofreadingResidualsInput,
   ProofreadingResidualSourceBlock,
   ResidualLearningService,
@@ -142,6 +152,12 @@ export interface ProofreadingConfirmationDecisionInput {
   note?: string;
 }
 
+type ProofreadingResidualLearningService = Pick<
+  ResidualLearningService,
+  "observeProofreadingResiduals"
+> &
+  Partial<Pick<ResidualLearningService, "listIssues">>;
+
 export interface ProofreadingServiceOptions {
   manuscriptRepository: ManuscriptRepository;
   assetRepository: DocumentAssetRepository;
@@ -189,11 +205,12 @@ export interface ProofreadingServiceOptions {
     ReviewItemsService,
     "listReviewItems" | "recordExecutionGovernedHits" | "submitGovernedHit" | "decideReviewItem"
   >;
-  learningService?: Pick<LearningService, "listLearningCandidates">;
-  residualLearningService?: Pick<
-    ResidualLearningService,
-    "observeProofreadingResiduals"
+  learningService?: Pick<
+    LearningService,
+    "listLearningCandidates" | "listLearningCandidateSourceLinksByCandidateId"
   >;
+  residualLearningService?: ProofreadingResidualLearningService;
+  moduleExecutionConcurrencyController?: ModuleExecutionConcurrencyController;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager;
   createId?: () => string;
@@ -305,11 +322,12 @@ export class ProofreadingService {
     ReviewItemsService,
     "listReviewItems" | "recordExecutionGovernedHits" | "submitGovernedHit" | "decideReviewItem"
   >;
-  private readonly learningService?: Pick<LearningService, "listLearningCandidates">;
-  private readonly residualLearningService?: Pick<
-    ResidualLearningService,
-    "observeProofreadingResiduals"
+  private readonly learningService?: Pick<
+    LearningService,
+    "listLearningCandidates" | "listLearningCandidateSourceLinksByCandidateId"
   >;
+  private readonly residualLearningService?: ProofreadingResidualLearningService;
+  private readonly moduleExecutionConcurrencyController: ModuleExecutionConcurrencyController;
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager;
   private readonly createId: () => string;
@@ -366,6 +384,9 @@ export class ProofreadingService {
     this.reviewItemsService = options.reviewItemsService;
     this.learningService = options.learningService;
     this.residualLearningService = options.residualLearningService;
+    this.moduleExecutionConcurrencyController =
+      options.moduleExecutionConcurrencyController ??
+      new ModuleExecutionConcurrencyController();
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
       options.transactionManager ??
@@ -715,11 +736,13 @@ export class ProofreadingService {
 
   async getGovernanceHandoff(input: {
     manuscriptId: string;
+    snapshotId?: string;
     actorRole: RoleKey;
   }): Promise<ProofreadingGovernanceHandoff> {
     this.permissionGuard.assert(input.actorRole, "workbench.proofreading");
 
     const manuscriptId = input.manuscriptId.trim();
+    const snapshotId = input.snapshotId?.trim() ?? "";
     if (manuscriptId.length === 0) {
       return {
         residualReviewItems: [],
@@ -727,20 +750,26 @@ export class ProofreadingService {
       };
     }
 
-    if (!this.reviewItemsService) {
-      throw new ProofreadingServiceDependencyRequiredError("reviewItemsService");
-    }
-
     if (!this.learningService) {
       throw new ProofreadingServiceDependencyRequiredError("learningService");
     }
+    if (
+      snapshotId.length > 0 &&
+      typeof this.learningService.listLearningCandidateSourceLinksByCandidateId !==
+        "function"
+    ) {
+      throw new ProofreadingServiceDependencyRequiredError(
+        "learningService.listLearningCandidateSourceLinksByCandidateId",
+      );
+    }
 
-    const [reviewItems, ruleCandidates] = await Promise.all([
-      this.reviewItemsService.listReviewItems({
-        sourceKind: "residual_issue",
-        module: "proofreading",
-        manuscriptId,
-      }),
+    const residualLearningService = this.residualLearningService;
+    if (!residualLearningService?.listIssues) {
+      throw new ProofreadingServiceDependencyRequiredError("residualLearningService");
+    }
+
+    const [residualIssues, ruleCandidates] = await Promise.all([
+      residualLearningService.listIssues(),
       this.learningService.listLearningCandidates({
         manuscriptId,
         module: "proofreading",
@@ -749,10 +778,38 @@ export class ProofreadingService {
         governedProvenanceKinds: ["residual_issue", "human_feedback"],
       }),
     ]);
+    const scopedRuleCandidates =
+      snapshotId.length > 0
+        ? (
+            await Promise.all(
+              ruleCandidates.map(async (candidate) => {
+                const sourceLinks =
+                  await this.learningService!.listLearningCandidateSourceLinksByCandidateId(
+                    candidate.id,
+                  );
+                return sourceLinks.some(
+                  (sourceLink) =>
+                    sourceLink.snapshot_kind === "execution_snapshot" &&
+                    sourceLink.snapshot_id === snapshotId,
+                )
+                  ? candidate
+                  : undefined;
+              }),
+            )
+          ).filter((candidate): candidate is LearningCandidateRecord => !!candidate)
+        : ruleCandidates;
 
     return {
-      residualReviewItems: reviewItems.filter(isResidualReviewItemRecord),
-      ruleCandidates,
+      residualReviewItems: residualIssues
+        .filter((issue) => issue.module === "proofreading")
+        .filter((issue) => issue.manuscript_id === manuscriptId)
+        .filter((issue) =>
+          snapshotId.length > 0 ? issue.execution_snapshot_id === snapshotId : true,
+        )
+        .filter(shouldIncludeProofreadingGovernanceHandoffIssue)
+        .map((issue) => mapResidualIssueToReviewItem(issue))
+        .sort(compareReviewItems),
+      ruleCandidates: scopedRuleCandidates,
     };
   }
 
@@ -770,18 +827,45 @@ export class ProofreadingService {
     executionMode?: ModuleExecutionMode;
     pinnedContext?: ResolvedProofreadingExecutionContext;
   }): Promise<ProofreadingRunResult> {
-    const committed = await this.transactionManager.withTransaction(async (context) => {
-      const { jobRepository } = context;
-      if (!jobRepository) {
-        throw new Error("Proofreading runs require a job repository.");
-      }
-      const documentAssetService = this.documentAssetService.createScoped({
-        manuscriptRepository: context.manuscriptRepository,
-        assetRepository: context.assetRepository,
-      });
+    const queuedTimestamp = this.now().toISOString();
+    const jobId = this.createId();
+    const queuedJob: JobRecord = {
+      id: jobId,
+      manuscript_id: input.manuscriptId,
+      module: "proofreading",
+      job_type: input.jobType,
+      status: "queued",
+      requested_by: input.requestedBy,
+      payload: {
+        parentAssetId: input.parentAssetId,
+        sourceManuscriptAssetId:
+          input.sourceManuscriptAssetId ?? input.parentAssetId,
+      },
+      attempt_count: 0,
+      started_at: undefined,
+      finished_at: undefined,
+      error_message: undefined,
+      created_at: queuedTimestamp,
+      updated_at: queuedTimestamp,
+    };
 
-      const timestamp = this.now().toISOString();
-      const jobId = this.createId();
+    const committed = await runControlledModuleJob({
+      controller: this.moduleExecutionConcurrencyController,
+      module: "proofreading",
+      jobRepository: this.jobRepository,
+      queuedJob,
+      now: this.now,
+      run: (runningJob) =>
+        this.transactionManager.withTransaction(async (context) => {
+          const { jobRepository } = context;
+          if (!jobRepository) {
+            throw new Error("Proofreading runs require a job repository.");
+          }
+          const documentAssetService = this.documentAssetService.createScoped({
+            manuscriptRepository: context.manuscriptRepository,
+            assetRepository: context.assetRepository,
+          });
+
       const manuscript = await context.manuscriptRepository.findById(
         input.manuscriptId,
       );
@@ -804,6 +888,47 @@ export class ProofreadingService {
             })
           : undefined;
       const proofreadingFindings = proofreadingArtifacts?.inspectionResult;
+      const proofreadingPromptTemplate =
+        input.jobType === "proofreading_draft_run"
+          ? await this.promptSkillRegistryRepository.findPromptTemplateById(
+              resolvedContext.promptTemplateId,
+            )
+          : undefined;
+      const proofreadingKnowledgeHits =
+        input.jobType === "proofreading_draft_run"
+          ? await Promise.all(
+              resolvedContext.knowledgeHits.map(async (hit) => {
+                const knowledgeItem =
+                  (await this.knowledgeRepository.findApprovedById(
+                    hit.knowledgeItemId,
+                  )) ??
+                  (await this.knowledgeRepository.findById(hit.knowledgeItemId));
+                return {
+                  knowledgeItemId: hit.knowledgeItemId,
+                  ...(knowledgeItem?.title
+                    ? {
+                        title: knowledgeItem.title,
+                      }
+                    : {}),
+                  ...(knowledgeItem?.summary
+                    ? {
+                        summary: knowledgeItem.summary,
+                      }
+                    : {}),
+                  ...(knowledgeItem?.canonical_text
+                    ? {
+                        canonicalText: knowledgeItem.canonical_text,
+                      }
+                    : {}),
+                  ...(hit.matchReasons.length > 0
+                    ? {
+                        matchReasons: [...hit.matchReasons],
+                      }
+                    : {}),
+                };
+              }),
+            )
+          : [];
       const proofreadingPlan =
         input.jobType === "proofreading_draft_run"
           ? (structuredClone(
@@ -812,7 +937,22 @@ export class ProofreadingService {
                 sourceFileName:
                   sourceAsset?.file_name ?? input.fileName ?? input.parentAssetId,
                 sourceBlocks: proofreadingArtifacts?.sourceBlocks,
+                governedFailedChecks: proofreadingFindings?.failedChecks,
+                governedManualReviewItems:
+                  proofreadingFindings?.manualReviewItems,
                 qualityIssues: proofreadingFindings?.qualityFindings,
+                knowledgeHits: proofreadingKnowledgeHits,
+                promptGuardrails: {
+                  roleLabel: "医学稿件终校审校员",
+                  systemInstructions:
+                    proofreadingPromptTemplate?.system_instructions,
+                  taskFrame: proofreadingPromptTemplate?.task_frame,
+                  manualReviewPolicy:
+                    proofreadingPromptTemplate?.manual_review_policy,
+                  forbiddenOperations:
+                    proofreadingPromptTemplate?.forbidden_operations,
+                  outputContract: proofreadingPromptTemplate?.output_contract,
+                },
               }),
             ) as ProofreadingAiPlan)
           : undefined;
@@ -864,105 +1004,6 @@ export class ProofreadingService {
           : undefined;
       const agentExecutionLogId =
         input.pinnedContext?.agentExecutionLogId ?? executionLog?.id;
-
-      const queuedJob: JobRecord = {
-        id: jobId,
-        manuscript_id: input.manuscriptId,
-        module: "proofreading",
-        job_type: input.jobType,
-        status: "queued",
-        requested_by: input.requestedBy,
-        payload: {
-          ...buildProofreadingExecutionTruthPayload({
-            executionMode: resolvedContext.executionMode,
-            executionProfileId: resolvedContext.executionProfileId,
-            retrievalPresetId: resolvedContext.retrievalPresetId,
-            runtimeBindingId: resolvedContext.runtimeBindingId,
-            routingPolicyVersionId: resolvedContext.routingPolicyVersionId,
-            modelId: resolvedContext.modelId,
-            modelSource: resolvedContext.modelSource,
-            runtimeBindingReadinessStatus:
-              resolvedContext.runtimeBindingReadinessStatus,
-          }),
-          templateId: resolvedContext.templateId,
-          promptTemplateId: resolvedContext.promptTemplateId,
-          skillPackageIds: resolvedContext.skillPackageIds,
-          knowledgeItemIds: resolvedContext.knowledgeHits.map(
-            (hit) => hit.knowledgeItemId,
-          ),
-          ...(resolvedContext.agentRuntimeId
-            ? {
-                agentRuntimeId: resolvedContext.agentRuntimeId,
-              }
-            : {}),
-          ...(resolvedContext.sandboxProfileId
-            ? {
-                sandboxProfileId: resolvedContext.sandboxProfileId,
-              }
-            : {}),
-          ...(resolvedContext.agentProfileId
-            ? {
-                agentProfileId: resolvedContext.agentProfileId,
-              }
-            : {}),
-          ...(resolvedContext.runtimeBindingId
-            ? {
-                runtimeBindingId: resolvedContext.runtimeBindingId,
-              }
-            : {}),
-          ...(resolvedContext.toolPermissionPolicyId
-            ? {
-                toolPermissionPolicyId: resolvedContext.toolPermissionPolicyId,
-              }
-            : {}),
-          ...(agentExecutionLogId
-            ? {
-                agentExecutionLogId,
-              }
-            : {}),
-          ...(resolvedContext.draftSnapshotId
-            ? { draftSnapshotId: resolvedContext.draftSnapshotId }
-            : {}),
-          parentAssetId: input.parentAssetId,
-          sourceManuscriptAssetId:
-            input.sourceManuscriptAssetId ?? input.parentAssetId,
-          ...(resolvedContext.ruleSetId
-            ? {
-                ruleSetId: resolvedContext.ruleSetId,
-              }
-            : {}),
-          ...(proofreadingFindings
-            ? {
-                proofreadingFindings,
-                manualReviewItems: proofreadingFindings.manualReviewItems.map(
-                  (item) => ({
-                    ...item,
-                  }),
-                ),
-              }
-            : {}),
-          ...(reportMarkdown
-            ? {
-                reportMarkdown,
-              }
-            : {}),
-          ...(storedProofreadingPlan
-            ? {
-                proofreadingPlan: storedProofreadingPlan,
-                proofreadingSourceBlocks: proofreadingArtifacts?.sourceBlocks.map(
-                  (block) => structuredClone(block),
-                ),
-              }
-            : {}),
-        },
-        attempt_count: 0,
-        started_at: undefined,
-        finished_at: undefined,
-        error_message: undefined,
-        created_at: timestamp,
-        updated_at: timestamp,
-      };
-      await jobRepository.save(queuedJob);
 
       const asset = await documentAssetService.createAsset({
         manuscriptId: input.manuscriptId,
@@ -1032,11 +1073,82 @@ export class ProofreadingService {
           )
         : undefined;
 
+      const finishedTimestamp = this.now().toISOString();
       const completedJob: JobRecord = {
-        ...queuedJob,
+        ...runningJob,
         status: "completed",
         payload: {
-          ...queuedJob.payload,
+          ...runningJob.payload,
+          ...buildProofreadingExecutionTruthPayload({
+            executionMode: resolvedContext.executionMode,
+            executionProfileId: resolvedContext.executionProfileId,
+            retrievalPresetId: resolvedContext.retrievalPresetId,
+            runtimeBindingId: resolvedContext.runtimeBindingId,
+            routingPolicyVersionId: resolvedContext.routingPolicyVersionId,
+            modelId: resolvedContext.modelId,
+            modelSource: resolvedContext.modelSource,
+            runtimeBindingReadinessStatus:
+              resolvedContext.runtimeBindingReadinessStatus,
+          }),
+          templateId: resolvedContext.templateId,
+          promptTemplateId: resolvedContext.promptTemplateId,
+          skillPackageIds: resolvedContext.skillPackageIds,
+          knowledgeItemIds: resolvedContext.knowledgeHits.map(
+            (hit) => hit.knowledgeItemId,
+          ),
+          ...(resolvedContext.agentRuntimeId
+            ? {
+                agentRuntimeId: resolvedContext.agentRuntimeId,
+              }
+            : {}),
+          ...(resolvedContext.sandboxProfileId
+            ? {
+                sandboxProfileId: resolvedContext.sandboxProfileId,
+              }
+            : {}),
+          ...(resolvedContext.agentProfileId
+            ? {
+                agentProfileId: resolvedContext.agentProfileId,
+              }
+            : {}),
+          ...(resolvedContext.runtimeBindingId
+            ? {
+                runtimeBindingId: resolvedContext.runtimeBindingId,
+              }
+            : {}),
+          ...(resolvedContext.toolPermissionPolicyId
+            ? {
+                toolPermissionPolicyId: resolvedContext.toolPermissionPolicyId,
+              }
+            : {}),
+          ...(agentExecutionLogId
+            ? {
+                agentExecutionLogId,
+              }
+            : {}),
+          ...(resolvedContext.draftSnapshotId
+            ? { draftSnapshotId: resolvedContext.draftSnapshotId }
+            : {}),
+          ...(resolvedContext.ruleSetId
+            ? {
+                ruleSetId: resolvedContext.ruleSetId,
+              }
+            : {}),
+          ...(proofreadingFindings
+            ? {
+                proofreadingFindings,
+                manualReviewItems: proofreadingFindings.manualReviewItems.map(
+                  (item) => ({
+                    ...item,
+                  }),
+                ),
+              }
+            : {}),
+          ...(reportMarkdown
+            ? {
+                reportMarkdown,
+              }
+            : {}),
           ...(completedProofreadingFindings
             ? {
                 proofreadingFindings: completedProofreadingFindings,
@@ -1062,9 +1174,9 @@ export class ProofreadingService {
             input.sourceManuscriptAssetId ?? input.parentAssetId,
         },
         attempt_count: 1,
-        started_at: timestamp,
-        finished_at: timestamp,
-        updated_at: timestamp,
+        started_at: runningJob.started_at,
+        finished_at: finishedTimestamp,
+        updated_at: finishedTimestamp,
       };
       await jobRepository.save(completedJob);
 
@@ -1101,7 +1213,10 @@ export class ProofreadingService {
                   (hit) => hit.knowledgeItemId,
                 ),
                 qualityIssues: completedProofreadingFindings?.qualityFindings,
-                sourceBlocks: proofreadingArtifacts!.sourceBlocks,
+                sourceBlocks: buildResidualObservationSourceBlocks({
+                  sourceBlocks: proofreadingArtifacts!.sourceBlocks,
+                  proofreadingPlan,
+                }),
               }
             : undefined,
         response: {
@@ -1133,6 +1248,7 @@ export class ProofreadingService {
             : {}),
         },
       };
+        }),
     });
 
     if (committed.residualObservationInput) {
@@ -2110,6 +2226,17 @@ function isResidualReviewItemRecord(
   return item.source_kind === "residual_issue";
 }
 
+function shouldIncludeProofreadingGovernanceHandoffIssue(
+  issue: ResidualIssueRecord,
+): boolean {
+  return (
+    issue.status !== "candidate_created" &&
+    issue.status !== "manual_only" &&
+    issue.status !== "archived" &&
+    issue.status !== "evidence_only"
+  );
+}
+
 function mapConfirmationDecisionToResidualIssueType(
   decision: NormalizedProofreadingConfirmationDecision,
 ): string {
@@ -2670,6 +2797,133 @@ function normalizeProofreadingSourceBlocks(
     ...(block.section != null ? { section: block.section } : {}),
     blockIndex,
   })) as ProofreadingResidualSourceBlock[];
+}
+
+function buildResidualObservationSourceBlocks(input: {
+  sourceBlocks: ProofreadingResidualSourceBlock[];
+  proofreadingPlan?: ProofreadingAiPlan;
+}): ProofreadingResidualSourceBlock[] {
+  const blocks = input.sourceBlocks.map((block) =>
+    structuredClone(block),
+  );
+
+  for (const issue of input.proofreadingPlan?.issues ?? []) {
+    if (issue.source !== "residual_ai") {
+      continue;
+    }
+
+    const hint = convertProofreadingPlanIssueToResidualHint(issue);
+    if (!hint) {
+      continue;
+    }
+
+    const blockIndex = resolveResidualObservationBlockIndex(blocks, issue);
+    if (blockIndex >= 0) {
+      const existing = blocks[blockIndex];
+      blocks[blockIndex] = {
+        ...existing,
+        residualHints: [...(existing.residualHints ?? []), hint],
+      };
+      continue;
+    }
+
+    blocks.push({
+      text: issue.anchor.quote,
+      ...(issue.anchor.sectionLabel
+        ? { section: issue.anchor.sectionLabel }
+        : {}),
+      ...(typeof issue.anchor.blockIndex === "number"
+        ? { blockIndex: issue.anchor.blockIndex }
+        : {}),
+      residualHints: [hint],
+    });
+  }
+
+  return blocks;
+}
+
+function resolveResidualObservationBlockIndex(
+  blocks: ProofreadingResidualSourceBlock[],
+  issue: ProofreadingIssue,
+): number {
+  if (
+    Number.isInteger(issue.anchor.blockIndex) &&
+    issue.anchor.blockIndex >= 0 &&
+    issue.anchor.blockIndex < blocks.length
+  ) {
+    return issue.anchor.blockIndex;
+  }
+
+  if (issue.anchor.sectionLabel) {
+    return blocks.findIndex((block) => block.section === issue.anchor.sectionLabel);
+  }
+
+  return -1;
+}
+
+function convertProofreadingPlanIssueToResidualHint(
+  issue: ProofreadingIssue,
+): ProofreadingResidualHint | undefined {
+  const excerpt = issue.anchor.quote.trim();
+  if (excerpt.length === 0) {
+    return undefined;
+  }
+
+  const suggestion = readResidualHintSuggestion(issue);
+  if (!suggestion) {
+    return undefined;
+  }
+
+  return {
+    issue_type: issue.issueType,
+    excerpt,
+    suggestion,
+    rationale: issue.description.trim() || issue.title.trim(),
+    source_stage: "model_residual",
+    risk_level: mapProofreadingIssueSeverityToResidualRisk(issue.severity),
+    location: {
+      ...(issue.anchor.sectionLabel
+        ? { section: issue.anchor.sectionLabel }
+        : {}),
+      block_index: issue.anchor.blockIndex,
+    },
+  };
+}
+
+function readResidualHintSuggestion(issue: ProofreadingIssue): string | undefined {
+  const replacementText = issue.suggestion?.replacementText?.trim();
+  if (replacementText) {
+    return replacementText;
+  }
+
+  const note = issue.suggestion?.note?.trim();
+  if (note) {
+    return note;
+  }
+
+  const description = issue.description.trim();
+  if (description) {
+    return description;
+  }
+
+  const title = issue.title.trim();
+  return title.length > 0 ? title : undefined;
+}
+
+function mapProofreadingIssueSeverityToResidualRisk(
+  severity: ProofreadingIssue["severity"],
+): "low" | "medium" | "high" | "critical" {
+  switch (severity) {
+    case "critical":
+      return "critical";
+    case "high":
+      return "high";
+    case "medium":
+      return "medium";
+    case "low":
+    default:
+      return "low";
+  }
 }
 
 function extractModuleExecutionMode(

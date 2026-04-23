@@ -11,14 +11,17 @@ test.use({
   },
 });
 
-test("screening intake keeps the upload button within the visible batch slab", async ({
+test("screening main page keeps upload controls inside the shared workspace stage", async ({
   page,
 }) => {
   await page.goto("/#screening", {
     waitUntil: "domcontentloaded",
   });
   await maybeLogin(page);
-  await page.waitForSelector('[data-layout="manuscript-desk-family"]');
+
+  await expect(page.locator('[data-layout="manuscript-desk-family"]')).toBeVisible();
+  await expect(page.locator('[data-pane="workspace-stage"]').first()).toBeVisible();
+  await expect(page.locator('[data-pane="result-stage"]').first()).toBeVisible();
 
   await page.getByLabel("标题").first().fill("Layout regression manuscript");
   await page.locator('input[type="file"]').first().setInputFiles({
@@ -35,98 +38,116 @@ test("screening intake keeps the upload button within the visible batch slab", a
     const uploadButtonElement = Array.from(document.querySelectorAll("button")).find(
       (element) => element.textContent?.trim() === "上传稿件",
     );
-    const batchSlab = document.querySelector('[data-pane="batch-slab"]');
+    const operationPanel = document.querySelector(".manuscript-workbench-operation-panel");
 
     if (
       !(uploadButtonElement instanceof HTMLElement) ||
-      !(batchSlab instanceof HTMLElement)
+      !(operationPanel instanceof HTMLElement)
     ) {
       return null;
     }
 
     const uploadButtonBox = uploadButtonElement.getBoundingClientRect();
-    const batchSlabBox = batchSlab.getBoundingClientRect();
+    const operationPanelBox = operationPanel.getBoundingClientRect();
     return {
       uploadButtonBottom: uploadButtonBox.bottom,
-      batchSlabBottom: batchSlabBox.bottom,
+      operationPanelBottom: operationPanelBox.bottom,
     };
   });
 
   expect(metrics).not.toBeNull();
   expect(metrics!.uploadButtonBottom).toBeLessThanOrEqual(
-    metrics!.batchSlabBottom,
+    metrics!.operationPanelBottom,
   );
 });
 
-test("screening primary canvas keeps the module action button within the visible focus panel", async ({
+test("screening workbench keeps the module action reachable inside the scrollable operation panel", async ({
   page,
   request,
 }) => {
-  const loginResponse = await request.post(`${apiBaseUrl}/api/v1/auth/local/login`, {
-    data: {
-      username: "dev.admin",
-      password: "demo-password",
-    },
-  });
-  expect(loginResponse.ok()).toBeTruthy();
-
-  const uploadResponse = await request.post(`${apiBaseUrl}/api/v1/manuscripts/upload`, {
-    data: {
-      title: "Layout regression manuscript",
-      fileName: "layout-regression.docx",
-      mimeType:
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      fileContentBase64: semanticTableDocxBase64,
-      storageKey: "",
-    },
-  });
-  expect(uploadResponse.ok()).toBeTruthy();
-  const uploadPayload = (await uploadResponse.json()) as {
-    manuscript: {
-      id: string;
-    };
-  };
+  const uploadPayload = await createUploadedManuscript(request, "Layout regression manuscript");
 
   await page.goto(`/#screening?manuscriptId=${uploadPayload.manuscript.id}`, {
     waitUntil: "domcontentloaded",
   });
   await maybeLogin(page);
-  await page.waitForSelector('[data-focus-canvas="manuscript-first"]');
+
+  await expect(page.locator(".manuscript-workbench-operation-panel")).toBeVisible();
+  await expect(page.locator(".manuscript-workbench-result-panel")).toBeVisible();
 
   const actionButton = page.getByRole("button", { name: "执行初筛" }).first();
+  await actionButton.scrollIntoViewIfNeeded();
   await expect(actionButton).toBeVisible();
 
   const metrics = await page.evaluate(() => {
     const actionButtonElement = Array.from(document.querySelectorAll("button")).find(
       (element) => element.textContent?.trim() === "执行初筛",
     );
-    const focusPanel = document.querySelector(".manuscript-workbench-focus-panel");
+    const operationPanel = document.querySelector(".manuscript-workbench-operation-panel");
 
     if (
       !(actionButtonElement instanceof HTMLElement) ||
-      !(focusPanel instanceof HTMLElement)
+      !(operationPanel instanceof HTMLElement)
     ) {
       return null;
     }
 
     const actionButtonBox = actionButtonElement.getBoundingClientRect();
-    const focusPanelBox = focusPanel.getBoundingClientRect();
+    const operationPanelBox = operationPanel.getBoundingClientRect();
     return {
+      actionButtonTop: actionButtonBox.top,
       actionButtonBottom: actionButtonBox.bottom,
-      focusPanelBottom: focusPanelBox.bottom,
+      operationPanelTop: operationPanelBox.top,
+      operationPanelBottom: operationPanelBox.bottom,
     };
   });
 
   expect(metrics).not.toBeNull();
+  expect(metrics!.actionButtonTop).toBeGreaterThanOrEqual(
+    metrics!.operationPanelTop,
+  );
   expect(metrics!.actionButtonBottom).toBeLessThanOrEqual(
-    metrics!.focusPanelBottom,
+    metrics!.operationPanelBottom,
   );
 });
 
-test("screening focus card exposes direct current asset shortcuts without requiring export first", async ({
+test("screening result panel exposes current manuscript shortcuts without requiring export first", async ({
   page,
   request,
 }) => {
+  const uploadPayload = await createUploadedManuscript(
+    request,
+    "Direct asset shortcut manuscript",
+  );
+
+  await page.goto(`/#screening?manuscriptId=${uploadPayload.manuscript.id}`, {
+    waitUntil: "domcontentloaded",
+  });
+  await maybeLogin(page);
+
+  await expect(page.locator(".manuscript-workbench-result-panel")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "稿件查找" })).toHaveValue(
+    "Direct asset shortcut manuscript",
+  );
+
+  const viewShortcut = page.getByRole("link", { name: "查看稿件" }).first();
+  const downloadShortcut = page.getByRole("link", { name: "下载稿件" }).first();
+  await expect(viewShortcut).toBeVisible();
+  await expect(downloadShortcut).toBeVisible();
+  await expect(viewShortcut).toHaveAttribute(
+    "href",
+    `#screening?manuscriptId=${uploadPayload.manuscript.id}&assetId=${uploadPayload.asset.id}`,
+  );
+  await expect(downloadShortcut).toHaveAttribute(
+    "href",
+    `${apiBaseUrl}/api/v1/document-assets/${uploadPayload.asset.id}/download`,
+  );
+});
+
+async function createUploadedManuscript(
+  request: Parameters<typeof test>[0]["request"],
+  title: string,
+) {
   const loginResponse = await request.post(`${apiBaseUrl}/api/v1/auth/local/login`, {
     data: {
       username: "dev.admin",
@@ -137,8 +158,8 @@ test("screening focus card exposes direct current asset shortcuts without requir
 
   const uploadResponse = await request.post(`${apiBaseUrl}/api/v1/manuscripts/upload`, {
     data: {
-      title: "Direct asset shortcut manuscript",
-      fileName: "direct-asset-shortcut.docx",
+      title,
+      fileName: `${title.replaceAll(" ", "-").toLowerCase()}.docx`,
       mimeType:
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       fileContentBase64: semanticTableDocxBase64,
@@ -146,7 +167,8 @@ test("screening focus card exposes direct current asset shortcuts without requir
     },
   });
   expect(uploadResponse.ok()).toBeTruthy();
-  const uploadPayload = (await uploadResponse.json()) as {
+
+  return (await uploadResponse.json()) as {
     manuscript: {
       id: string;
     };
@@ -154,26 +176,7 @@ test("screening focus card exposes direct current asset shortcuts without requir
       id: string;
     };
   };
-
-  await page.goto(`/#screening?manuscriptId=${uploadPayload.manuscript.id}`, {
-    waitUntil: "domcontentloaded",
-  });
-  await maybeLogin(page);
-  await page.waitForSelector('[data-focus-canvas="manuscript-first"]');
-
-  const viewShortcut = page.getByRole("link", { name: "查看当前稿件" }).first();
-  const downloadShortcut = page.getByRole("link", { name: "下载当前稿件" }).first();
-  await expect(viewShortcut).toBeVisible();
-  await expect(downloadShortcut).toBeVisible();
-  await expect(viewShortcut).toHaveAttribute(
-    "href",
-    `${apiBaseUrl}/api/v1/document-assets/${uploadPayload.asset.id}/download`,
-  );
-  await expect(downloadShortcut).toHaveAttribute(
-    "href",
-    `${apiBaseUrl}/api/v1/document-assets/${uploadPayload.asset.id}/download`,
-  );
-});
+}
 
 async function maybeLogin(page: Parameters<typeof test>[0]["page"]) {
   const username = page.locator('input[name="username"]');

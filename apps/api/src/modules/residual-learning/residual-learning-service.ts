@@ -336,7 +336,7 @@ function deriveResidualStatus(
   harnessValidationStatus: ResidualHarnessValidationStatus,
 ): ResidualIssueStatus {
   if (recommendedRoute === "manual_only") {
-    return "manual_only";
+    return "manual_review_pending";
   }
 
   if (recommendedRoute === "evidence_only") {
@@ -353,7 +353,7 @@ function deriveValidatedResidualStatus(input: {
   outcome: "passed" | "failed";
 }): ResidualIssueStatus {
   if (input.recommendedRoute === "manual_only") {
-    return "manual_only";
+    return "manual_review_pending";
   }
 
   if (input.recommendedRoute === "evidence_only") {

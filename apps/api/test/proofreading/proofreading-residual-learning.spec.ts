@@ -4,6 +4,10 @@ import { InMemoryResidualIssueRepository } from "../../src/modules/residual-lear
 import { ResidualLearningService } from "../../src/modules/residual-learning/residual-learning-service.ts";
 import { ProofreadingService } from "../../src/modules/proofreading/proofreading-service.ts";
 import type { EditorialDocxTransformService } from "../../src/modules/document-pipeline/editorial-docx-transform-service.ts";
+import type {
+  ExecuteMainlineAiInput,
+  MainlineAiRuntimeExecutor,
+} from "../../src/modules/shared/mainline-ai-runtime-executor.ts";
 import { seedMedicalQualityFixture } from "../shared/medical-quality-fixture.ts";
 
 test("governed proofreading draft stores residual issues with snapshot and asset lineage", async () => {
@@ -115,6 +119,530 @@ test("governed proofreading draft stores residual issues with snapshot and asset
   assert.equal(storedIssues[0]?.execution_snapshot_id, "snapshot-1");
   assert.equal(storedIssues[0]?.output_asset_id, result.asset.id);
   assert.equal(storedIssues[0]?.module, "proofreading");
+});
+
+test("governed proofreading draft persists AI residual issues from the proofreading plan", async () => {
+  const harness = await seedMedicalQualityFixture();
+  const residualIssueRepository = new InMemoryResidualIssueRepository();
+  const residualLearningService = new ResidualLearningService({
+    residualIssueRepository,
+    createId: () => "residual-proofreading-plan-1",
+    now: () => new Date("2026-04-18T10:15:00.000Z"),
+  });
+
+  const proofreadingExecutor: MainlineAiRuntimeExecutor = {
+    async executeJson<T>(_input: ExecuteMainlineAiInput): Promise<T> {
+      return {
+        role: "医学稿件终校审校员",
+        summary: "AI residual plan for governed proofreading.",
+        issues: [
+          {
+            itemId: "issue-plan-1",
+            title: "术语需要写全",
+            description: "首次出现 ALT 时应补足全称。",
+            severity: "medium",
+            source: "residual_ai",
+            issueType: "terminology_gap",
+            blocksFinal: false,
+            anchor: {
+              blockIndex: 0,
+              quote: "ALT remained stable.",
+              sectionLabel: "results",
+            },
+            suggestion: {
+              action: "replace_text",
+              replacementText: "Alanine aminotransferase remained stable.",
+            },
+          },
+        ],
+        manualReviewItems: [],
+      } as T;
+    },
+    async executeMarkdown() {
+      throw new Error("Proofreading runs should request structured JSON.");
+    },
+  };
+
+  const proofreadingService = new ProofreadingService({
+    manuscriptRepository: harness.manuscriptRepository,
+    assetRepository: harness.assetRepository,
+    moduleTemplateRepository: harness.moduleTemplateRepository,
+    promptSkillRegistryRepository: harness.promptSkillRegistryRepository,
+    knowledgeRepository: harness.knowledgeRepository,
+    executionGovernanceService: harness.executionGovernanceService,
+    executionTrackingService: harness.executionTrackingService,
+    jobRepository: harness.jobRepository,
+    documentAssetService: harness.documentAssetService,
+    aiGatewayService: harness.aiGatewayService,
+    sandboxProfileService: harness.sandboxProfileService,
+    agentProfileService: harness.agentProfileService,
+    agentRuntimeService: harness.agentRuntimeService,
+    runtimeBindingService: harness.runtimeBindingService,
+    toolPermissionPolicyService: harness.toolPermissionPolicyService,
+    agentExecutionService: harness.agentExecutionService,
+    agentExecutionOrchestrationService: {
+      async dispatchBestEffort() {
+        return undefined;
+      },
+    } as never,
+    mainlineAiRuntimeExecutor: proofreadingExecutor,
+    residualLearningService,
+    proofreadingSourceBlockResolver: {
+      async resolveBlocks() {
+        return [
+          {
+            section: "results",
+            block_kind: "paragraph",
+            text: "ALT remained stable throughout follow-up.",
+          },
+        ];
+      },
+    } as never,
+    manuscriptQualityService: {
+      async runChecks() {
+        return {
+          requested_scopes: ["general_proofreading", "medical_specialized"],
+          completed_scopes: ["general_proofreading", "medical_specialized"],
+          issues: [],
+          quality_findings_summary: {
+            total_issue_count: 0,
+            issue_count_by_scope: {},
+            issue_count_by_action: {},
+            issue_count_by_severity: {},
+            representative_issue_ids: [],
+          },
+          resolved_quality_packages: [],
+        };
+      },
+    } as never,
+    now: () => new Date("2026-04-18T10:15:00.000Z"),
+    createId: () => "job-proofreading-plan-1",
+  } as never);
+
+  const result = await proofreadingService.createDraft({
+    manuscriptId: "manuscript-1",
+    parentAssetId: harness.originalAssetId,
+    requestedBy: "proofreader-1",
+    actorRole: "proofreader",
+    storageKey: "proofreading/manuscript-1/plan-draft-report.md",
+    fileName: "plan-draft-report.md",
+  });
+
+  assert.ok(result.snapshot_id);
+  const storedIssues = await residualIssueRepository.listByExecutionSnapshotId(
+    result.snapshot_id,
+  );
+
+  assert.equal(storedIssues.length, 1);
+  assert.equal(storedIssues[0]?.excerpt, "ALT remained stable.");
+  assert.equal(
+    storedIssues[0]?.suggestion,
+    "Alanine aminotransferase remained stable.",
+  );
+  assert.equal(storedIssues[0]?.recommended_route, "knowledge_candidate");
+});
+
+test("proofreading governance handoff includes manual-only residual issues without relying on the rule-center queue", async () => {
+  const harness = await seedMedicalQualityFixture();
+
+  const proofreadingService = new ProofreadingService({
+    manuscriptRepository: harness.manuscriptRepository,
+    assetRepository: harness.assetRepository,
+    moduleTemplateRepository: harness.moduleTemplateRepository,
+    promptSkillRegistryRepository: harness.promptSkillRegistryRepository,
+    knowledgeRepository: harness.knowledgeRepository,
+    executionGovernanceService: harness.executionGovernanceService,
+    executionTrackingService: harness.executionTrackingService,
+    jobRepository: harness.jobRepository,
+    documentAssetService: harness.documentAssetService,
+    aiGatewayService: harness.aiGatewayService,
+    sandboxProfileService: harness.sandboxProfileService,
+    agentProfileService: harness.agentProfileService,
+    agentRuntimeService: harness.agentRuntimeService,
+    runtimeBindingService: harness.runtimeBindingService,
+    toolPermissionPolicyService: harness.toolPermissionPolicyService,
+    agentExecutionService: harness.agentExecutionService,
+    agentExecutionOrchestrationService: {
+      async dispatchBestEffort() {
+        return undefined;
+      },
+    } as never,
+    learningService: {
+      async listLearningCandidates() {
+        return [
+          {
+            id: "candidate-proof-1",
+            type: "rule_candidate",
+            status: "pending_review",
+            manuscript_id: "manuscript-1",
+            module: "proofreading",
+            manuscript_type: "clinical_study",
+            governed_provenance_kind: "residual_issue",
+            title: "Proofreading residual candidate",
+            proposal_text: "Promote the validated proofreading residual to a rule.",
+            created_by: "reviewer-1",
+            created_at: "2026-04-18T10:35:00.000Z",
+            updated_at: "2026-04-18T10:35:00.000Z",
+            review_actions: [],
+          },
+        ];
+      },
+    } as never,
+    residualLearningService: {
+      async observeProofreadingResiduals() {
+        return [];
+      },
+      async listIssues() {
+        return [
+          {
+            id: "residual-manual-1",
+            module: "proofreading",
+            manuscript_id: "manuscript-1",
+            manuscript_type: "clinical_study",
+            execution_snapshot_id: "snapshot-manual-1",
+            issue_type: "medical_meaning_risk",
+            source_stage: "model_residual",
+            excerpt: "The conclusion reverses the adverse-event trend.",
+            novelty_key: "medical_meaning_risk:trend",
+            recurrence_count: 1,
+            system_confidence_band: "L1_review_pending",
+            risk_level: "high",
+            recommended_route: "manual_only",
+            status: "manual_review_pending",
+            harness_validation_status: "not_required",
+            created_at: "2026-04-18T10:30:00.000Z",
+            updated_at: "2026-04-18T10:31:00.000Z",
+          },
+          {
+            id: "residual-validate-1",
+            module: "proofreading",
+            manuscript_id: "manuscript-1",
+            manuscript_type: "clinical_study",
+            execution_snapshot_id: "snapshot-validate-1",
+            issue_type: "terminology_gap",
+            source_stage: "model_residual",
+            excerpt: "ALT remained stable.",
+            novelty_key: "terminology_gap:alt",
+            recurrence_count: 1,
+            system_confidence_band: "L1_review_pending",
+            risk_level: "medium",
+            recommended_route: "rule_candidate",
+            status: "validation_failed",
+            harness_validation_status: "failed",
+            created_at: "2026-04-18T10:20:00.000Z",
+            updated_at: "2026-04-18T10:21:00.000Z",
+          },
+          {
+            id: "residual-created-1",
+            module: "proofreading",
+            manuscript_id: "manuscript-1",
+            manuscript_type: "clinical_study",
+            execution_snapshot_id: "snapshot-created-1",
+            issue_type: "unit_expression_gap",
+            source_stage: "model_residual",
+            excerpt: "5 mg per dL",
+            novelty_key: "unit_expression_gap:5mg",
+            recurrence_count: 1,
+            system_confidence_band: "L2_candidate_ready",
+            risk_level: "low",
+            recommended_route: "rule_candidate",
+            status: "candidate_created",
+            harness_validation_status: "passed",
+            learning_candidate_id: "candidate-proof-1",
+            created_at: "2026-04-18T10:10:00.000Z",
+            updated_at: "2026-04-18T10:11:00.000Z",
+          },
+          {
+            id: "residual-archived-1",
+            module: "proofreading",
+            manuscript_id: "manuscript-1",
+            manuscript_type: "clinical_study",
+            execution_snapshot_id: "snapshot-archived-1",
+            issue_type: "style_consistency_gap",
+            source_stage: "model_residual",
+            excerpt: "Spacing drift.",
+            novelty_key: "style_consistency_gap:spacing",
+            recurrence_count: 1,
+            system_confidence_band: "L1_review_pending",
+            risk_level: "low",
+            recommended_route: "evidence_only",
+            status: "archived",
+            harness_validation_status: "not_required",
+            created_at: "2026-04-18T10:05:00.000Z",
+            updated_at: "2026-04-18T10:06:00.000Z",
+          },
+          {
+            id: "residual-other-manuscript-1",
+            module: "proofreading",
+            manuscript_id: "manuscript-2",
+            manuscript_type: "clinical_study",
+            execution_snapshot_id: "snapshot-other-1",
+            issue_type: "terminology_gap",
+            source_stage: "model_residual",
+            excerpt: "AST remained stable.",
+            novelty_key: "terminology_gap:ast",
+            recurrence_count: 1,
+            system_confidence_band: "L1_review_pending",
+            risk_level: "medium",
+            recommended_route: "manual_only",
+            status: "manual_only",
+            harness_validation_status: "not_required",
+            created_at: "2026-04-18T10:25:00.000Z",
+            updated_at: "2026-04-18T10:26:00.000Z",
+          },
+        ];
+      },
+    } as never,
+    now: () => new Date("2026-04-18T10:40:00.000Z"),
+    createId: () => "job-proofreading-handoff-1",
+  } as never);
+
+  const handoff = await proofreadingService.getGovernanceHandoff({
+    manuscriptId: "manuscript-1",
+    actorRole: "proofreader",
+  });
+
+  assert.deepEqual(
+    handoff.residualReviewItems.map((item) => ({
+      id: item.id,
+      source_status: item.source_status,
+      review_status: item.review_status,
+      available_actions: item.available_actions,
+      recommended_route: item.recommended_route,
+    })),
+    [
+      {
+        id: "residual-manual-1",
+        source_status: "manual_review_pending",
+        review_status: "pending",
+        available_actions: [
+          "accept_change_only",
+          "reject_as_false_positive",
+          "archive_as_evidence_only",
+        ],
+        recommended_route: "manual_only",
+      },
+      {
+        id: "residual-validate-1",
+        source_status: "validation_failed",
+        review_status: "pending",
+        available_actions: [
+          "validate",
+          "accept_change_only",
+          "reject_as_false_positive",
+          "archive_as_evidence_only",
+        ],
+        recommended_route: "rule_candidate",
+      },
+    ],
+  );
+  assert.deepEqual(handoff.ruleCandidates.map((item) => item.id), ["candidate-proof-1"]);
+});
+
+test("proofreading governance handoff scopes residual items and rule candidates to the current proofreading snapshot", async () => {
+  const harness = await seedMedicalQualityFixture();
+
+  const sourceLinksByCandidateId = new Map([
+    [
+      "candidate-current-residual",
+      [
+        {
+          id: "link-current-residual",
+          learning_candidate_id: "candidate-current-residual",
+          source_kind: "residual_issue",
+          snapshot_kind: "execution_snapshot",
+          snapshot_id: "snapshot-proof-current",
+          source_asset_id: "asset-proof-current",
+          created_at: "2026-04-23T10:00:00.000Z",
+        },
+      ],
+    ],
+    [
+      "candidate-current-human",
+      [
+        {
+          id: "link-current-human",
+          learning_candidate_id: "candidate-current-human",
+          source_kind: "human_feedback",
+          snapshot_kind: "execution_snapshot",
+          snapshot_id: "snapshot-proof-current",
+          feedback_record_id: "feedback-proof-current",
+          source_asset_id: "asset-proof-current",
+          created_at: "2026-04-23T10:01:00.000Z",
+        },
+      ],
+    ],
+    [
+      "candidate-stale",
+      [
+        {
+          id: "link-stale",
+          learning_candidate_id: "candidate-stale",
+          source_kind: "residual_issue",
+          snapshot_kind: "execution_snapshot",
+          snapshot_id: "snapshot-proof-stale",
+          source_asset_id: "asset-proof-stale",
+          created_at: "2026-04-23T09:00:00.000Z",
+        },
+      ],
+    ],
+  ]);
+
+  const proofreadingService = new ProofreadingService({
+    manuscriptRepository: harness.manuscriptRepository,
+    assetRepository: harness.assetRepository,
+    moduleTemplateRepository: harness.moduleTemplateRepository,
+    promptSkillRegistryRepository: harness.promptSkillRegistryRepository,
+    knowledgeRepository: harness.knowledgeRepository,
+    executionGovernanceService: harness.executionGovernanceService,
+    executionTrackingService: harness.executionTrackingService,
+    jobRepository: harness.jobRepository,
+    documentAssetService: harness.documentAssetService,
+    aiGatewayService: harness.aiGatewayService,
+    sandboxProfileService: harness.sandboxProfileService,
+    agentProfileService: harness.agentProfileService,
+    agentRuntimeService: harness.agentRuntimeService,
+    runtimeBindingService: harness.runtimeBindingService,
+    toolPermissionPolicyService: harness.toolPermissionPolicyService,
+    agentExecutionService: harness.agentExecutionService,
+    agentExecutionOrchestrationService: {
+      async dispatchBestEffort() {
+        return undefined;
+      },
+    } as never,
+    learningService: {
+      async listLearningCandidates() {
+        return [
+          {
+            id: "candidate-current-residual",
+            type: "rule_candidate",
+            status: "pending_review",
+            manuscript_id: "manuscript-1",
+            module: "proofreading",
+            manuscript_type: "clinical_study",
+            governed_provenance_kind: "residual_issue",
+            title: "Current proofreading residual candidate",
+            created_by: "reviewer-1",
+            created_at: "2026-04-23T10:00:00.000Z",
+            updated_at: "2026-04-23T10:00:00.000Z",
+            review_actions: [],
+          },
+          {
+            id: "candidate-current-human",
+            type: "rule_candidate",
+            status: "pending_review",
+            manuscript_id: "manuscript-1",
+            module: "proofreading",
+            manuscript_type: "clinical_study",
+            governed_provenance_kind: "human_feedback",
+            title: "Current proofreading human candidate",
+            created_by: "reviewer-1",
+            created_at: "2026-04-23T10:01:00.000Z",
+            updated_at: "2026-04-23T10:01:00.000Z",
+            review_actions: [],
+          },
+          {
+            id: "candidate-stale",
+            type: "rule_candidate",
+            status: "pending_review",
+            manuscript_id: "manuscript-1",
+            module: "proofreading",
+            manuscript_type: "clinical_study",
+            governed_provenance_kind: "residual_issue",
+            title: "Stale proofreading residual candidate",
+            created_by: "reviewer-1",
+            created_at: "2026-04-23T09:00:00.000Z",
+            updated_at: "2026-04-23T09:00:00.000Z",
+            review_actions: [],
+          },
+        ];
+      },
+      async listLearningCandidateSourceLinksByCandidateId(candidateId: string) {
+        return sourceLinksByCandidateId.get(candidateId) ?? [];
+      },
+    } as never,
+    residualLearningService: {
+      async observeProofreadingResiduals() {
+        return [];
+      },
+      async listIssues() {
+        return [
+          {
+            id: "residual-current-manual",
+            module: "proofreading",
+            manuscript_id: "manuscript-1",
+            manuscript_type: "clinical_study",
+            execution_snapshot_id: "snapshot-proof-current",
+            issue_type: "cross_section_contradiction",
+            source_stage: "model_residual",
+            excerpt: "Methods mention 124 patients but results mention 132.",
+            novelty_key: "cross_section_contradiction:population",
+            recurrence_count: 1,
+            system_confidence_band: "L1_review_pending",
+            risk_level: "high",
+            recommended_route: "manual_only",
+            status: "manual_review_pending",
+            harness_validation_status: "not_required",
+            created_at: "2026-04-23T10:00:00.000Z",
+            updated_at: "2026-04-23T10:02:00.000Z",
+          },
+          {
+            id: "residual-current-knowledge",
+            module: "proofreading",
+            manuscript_id: "manuscript-1",
+            manuscript_type: "clinical_study",
+            execution_snapshot_id: "snapshot-proof-current",
+            issue_type: "terminology_consistency",
+            source_stage: "model_residual",
+            excerpt: "ALT remained stable.",
+            novelty_key: "terminology_consistency:alt",
+            recurrence_count: 1,
+            system_confidence_band: "L1_review_pending",
+            risk_level: "medium",
+            recommended_route: "knowledge_candidate",
+            status: "validation_pending",
+            harness_validation_status: "queued",
+            created_at: "2026-04-23T10:03:00.000Z",
+            updated_at: "2026-04-23T10:04:00.000Z",
+          },
+          {
+            id: "residual-stale",
+            module: "proofreading",
+            manuscript_id: "manuscript-1",
+            manuscript_type: "clinical_study",
+            execution_snapshot_id: "snapshot-proof-stale",
+            issue_type: "conclusion_overclaim",
+            source_stage: "model_residual",
+            excerpt: "The treatment is definitively curative.",
+            novelty_key: "conclusion_overclaim:curative",
+            recurrence_count: 1,
+            system_confidence_band: "L1_review_pending",
+            risk_level: "high",
+            recommended_route: "manual_only",
+            status: "manual_review_pending",
+            harness_validation_status: "not_required",
+            created_at: "2026-04-23T09:00:00.000Z",
+            updated_at: "2026-04-23T09:01:00.000Z",
+          },
+        ];
+      },
+    } as never,
+  } as never);
+
+  const handoff = await proofreadingService.getGovernanceHandoff({
+    manuscriptId: "manuscript-1",
+    actorRole: "proofreader",
+    snapshotId: "snapshot-proof-current",
+  });
+
+  assert.deepEqual(
+    handoff.residualReviewItems.map((item) => item.id),
+    ["residual-current-knowledge", "residual-current-manual"],
+  );
+  assert.deepEqual(
+    handoff.ruleCandidates.map((item) => item.id).sort(),
+    ["candidate-current-human", "candidate-current-residual"],
+  );
 });
 
 test("human confirmation residuals preserve long-term routing truth for proofreading follow-up", async () => {

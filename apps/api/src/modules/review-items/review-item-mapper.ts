@@ -180,8 +180,17 @@ function deriveResidualIssueActions(
     ];
   }
 
-  if (issue.status === "candidate_created" || issue.status === "archived") {
+  if (
+    issue.status === "candidate_created" ||
+    issue.status === "manual_only" ||
+    issue.status === "evidence_only" ||
+    issue.status === "archived"
+  ) {
     return [];
+  }
+
+  if (issue.status === "manual_review_pending") {
+    return resolutionActions;
   }
 
   return ["validate", ...resolutionActions];

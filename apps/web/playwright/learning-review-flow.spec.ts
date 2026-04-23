@@ -9,9 +9,9 @@ const apiBaseUrl =
   process.env.PLAYWRIGHT_API_BASE_URL ?? "http://127.0.0.1:3001";
 const abstractObjectiveSource = "\u6458\u8981 \u76ee\u7684";
 const abstractObjectiveNormalized = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09";
-const screeningHeading = "当前稿件初筛判断";
-const editingHeading = "当前稿件编辑工作区";
-const proofreadingHeading = "当前稿件校对工作区";
+const screeningHeading = /当前稿件初筛判断|初筛工作区/;
+const editingHeading = /编辑工作区/;
+const proofreadingHeading = /校对工作区/;
 const runScreeningLabel = "\u6267\u884c\u521d\u7b5b";
 const runEditingLabel = "\u6267\u884c\u7f16\u8f91";
 const createDraftLabel = "生成校对草稿";
@@ -59,11 +59,13 @@ test("admin can complete the governed learning review flow from manuscript hando
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
     timeout: 10_000,
   });
-  await expect(page.locator("body")).toContainText(`已自动带入稿件 ${manuscriptId}`);
+  await expect(page.locator("body")).toContainText("已自动带入稿件");
+  await expect(page.getByRole("textbox", { name: "稿件查找" })).toHaveValue(manuscriptId);
 
   await page.getByRole("button", { name: runScreeningLabel }).click();
   await expect(page.locator("body")).toContainText("操作已完成");
-  const editingLink = page.locator(`a[href*="#editing?manuscriptId=${manuscriptId}"]`).first();
+  await page.getByText("展开完整处理详情").click();
+  const editingLink = page.getByRole("link", { name: "前往编辑工作台" });
   await expect(editingLink).toBeVisible();
 
   await navigateViaHashLink(page, editingLink);
@@ -82,9 +84,8 @@ test("admin can complete the governed learning review flow from manuscript hando
   expect(
     editingJob.payload?.tableInspectionFindings?.[0]?.semantic_hit?.column_key,
   ).toBe(semanticTableColumnKey);
-  const proofreadingLink = page
-    .locator(`a[href*="#proofreading?manuscriptId=${manuscriptId}"]`)
-    .first();
+  await page.getByText("展开完整处理详情").click();
+  const proofreadingLink = page.getByRole("link", { name: "前往校对工作台" });
   await expect(proofreadingLink).toBeVisible();
 
   await navigateViaHashLink(page, proofreadingLink);

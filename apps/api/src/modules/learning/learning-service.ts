@@ -790,6 +790,14 @@ export class LearningService {
     );
   }
 
+  listLearningCandidateSourceLinksByCandidateId(
+    learningCandidateId: string,
+  ): Promise<LearningCandidateSourceLinkRecord[]> {
+    return this.feedbackGovernanceService.listLearningCandidateSourceLinksByCandidateId(
+      learningCandidateId,
+    );
+  }
+
   listPendingReviewCandidates(): Promise<LearningCandidateRecord[]> {
     return this.candidateRepository.listByStatus("pending_review");
   }

@@ -366,6 +366,10 @@ import {
 } from "../modules/screening/index.ts";
 import { ModuleTemplateFamilyNotConfiguredError } from "../modules/shared/module-run-support.ts";
 import {
+  ModuleExecutionConcurrencyController,
+  resolveModuleExecutionConcurrencyLimitsFromEnv,
+} from "../modules/shared/module-execution-concurrency-controller.ts";
+import {
   createTemplateApi,
   ExtractionCandidateIntakeStateError,
   GovernedContentModuleNotFoundError,
@@ -536,6 +540,9 @@ type HttpRouteMatch =
   | {
       route: "manuscripts-list-assets";
       manuscriptId: string;
+    }
+  | {
+      route: "module-execution-concurrency";
     }
   | {
       route: "jobs-get";
@@ -1962,6 +1969,13 @@ export function createInMemoryApiRuntime(input: {
     });
   }
 
+  const moduleExecutionConcurrencyLimits =
+    resolveModuleExecutionConcurrencyLimitsFromEnv(process.env);
+  const moduleExecutionConcurrencyController =
+    new ModuleExecutionConcurrencyController({
+      limits: moduleExecutionConcurrencyLimits,
+    });
+
   const screeningService = new ScreeningService({
     manuscriptRepository,
     assetRepository,
@@ -1985,6 +1999,7 @@ export function createInMemoryApiRuntime(input: {
     textAssetRootDir: input.uploadRootDir,
     manuscriptQualitySourceBlockResolver: docxSourceBlockResolver,
     documentStructureService,
+    moduleExecutionConcurrencyController,
   });
   const editingService = new EditingService({
     manuscriptRepository,
@@ -2010,6 +2025,7 @@ export function createInMemoryApiRuntime(input: {
     documentStructureService,
     editorialDocxTransformService,
     reviewItemsService,
+    moduleExecutionConcurrencyController,
   });
   const proofreadingService = new ProofreadingService({
     manuscriptRepository,
@@ -2038,6 +2054,7 @@ export function createInMemoryApiRuntime(input: {
     reviewItemsService,
     learningService,
     residualLearningService,
+    moduleExecutionConcurrencyController,
   });
 
   return {
@@ -2070,6 +2087,7 @@ export function createInMemoryApiRuntime(input: {
       executionResolutionService,
       runtimeBindingReadinessService,
       agentExecutionService,
+      moduleExecutionConcurrencyController,
     }),
     proofreadingApi: createProofreadingApi({
       proofreadingService,
@@ -4257,6 +4275,9 @@ async function handleRoute(
       return runtime.manuscriptApi.listAssets({
         manuscriptId: routeMatch.manuscriptId,
       });
+    case "module-execution-concurrency":
+      await requireManuscriptSurfaceSession(req, runtime, "manuscript workbench");
+      return runtime.manuscriptApi.getModuleExecutionConcurrency();
     case "jobs-get":
       await requireManuscriptSurfaceSession(req, runtime, "manuscript workbench");
       return runtime.manuscriptApi.getJob({
@@ -4430,11 +4451,15 @@ async function handleRoute(
     }
     case "modules-proofreading-governance-handoff": {
       const session = await requirePermission(req, runtime, "workbench.proofreading");
+      const snapshotId = coalesceOptionalString(
+        readRequestUrl(req).searchParams.get("snapshotId") ?? undefined,
+      );
       return runtime.proofreadingApi.getGovernanceHandoff({
         manuscriptId:
           coalesceOptionalString(
             readRequestUrl(req).searchParams.get("manuscriptId") ?? undefined,
           ) ?? "",
+        ...(snapshotId ? { snapshotId } : {}),
         actorRole: session.user.role,
       });
     }
@@ -7111,6 +7136,12 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return {
       route: "manuscripts-get",
       manuscriptId: manuscriptGetMatch[1],
+    };
+  }
+
+  if (method === "GET" && path === "/api/v1/module-execution/concurrency") {
+    return {
+      route: "module-execution-concurrency",
     };
   }
 

@@ -208,6 +208,10 @@ test("editing keeps medical terminology and statistics findings advisory instead
   assert.deepEqual(result.job.payload?.appliedChanges, []);
   assert.deepEqual(result.job.payload?.manualReviewItems, [
     {
+      candidate_posture: "candidate_change",
+      evidence_pack: {
+        rationale: "medical_meaning_risk",
+      },
       ruleId: "rule-discussion-reshape-editing",
       reason: "medical_meaning_risk",
     },

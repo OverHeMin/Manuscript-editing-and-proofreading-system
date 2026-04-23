@@ -7,6 +7,7 @@ import type {
 } from "../manuscripts/index.ts";
 import type { ProofreadingConfirmationDecisionAction } from "../proofreading/types.ts";
 import {
+  buildWorkbenchAssetDisplayName,
   formatWorkbenchAssetTypeLabel,
   resolveWorkbenchAssetDownloadLabel,
 } from "./manuscript-workbench-asset-labels.ts";
@@ -415,6 +416,7 @@ export function ManuscriptWorkbenchAssetDetailPage({
   onFinalize,
 }: ManuscriptWorkbenchAssetDetailPageProps) {
   const assetRoleLabel = formatWorkbenchAssetTypeLabel(asset.asset_type);
+  const assetDisplayName = buildWorkbenchAssetDisplayName(manuscriptTitle, asset);
   const previewOperationalState = resolvePreviewOperationalState({
     asset,
     previewSession,
@@ -475,7 +477,7 @@ export function ManuscriptWorkbenchAssetDetailPage({
             <div className="manuscript-workbench-detail-card-header">
               <div>
                 <h4>稿件原文</h4>
-                <p>{asset.file_name ?? asset.id}</p>
+                <p>{assetDisplayName}</p>
                 <small>{assetRoleLabel}</small>
               </div>
             </div>
@@ -678,12 +680,12 @@ export function ManuscriptWorkbenchAssetDetailPage({
           <div className="manuscript-workbench-detail-card-header">
             <div>
               <h4>{resolvePreviewPanelTitle(detailKind)}</h4>
-              <p>{asset.file_name ?? asset.id}</p>
+              <p>{assetDisplayName}</p>
               <small>{assetRoleLabel}</small>
             </div>
             {previewSession ? (
               <div className="manuscript-workbench-detail-session-metrics">
-                <span>{previewSession.viewer}</span>
+                <span>{formatPreviewViewerLabel(previewSession.viewer)}</span>
                 <strong>
                   {formatPreviewStatusLabel(
                     previewOperationalState?.status ?? previewSession.status,
@@ -696,20 +698,16 @@ export function ManuscriptWorkbenchAssetDetailPage({
           {previewSession ? (
             <dl className="manuscript-workbench-detail-metadata">
               <div>
-                <dt>预览模式</dt>
-                <dd>{previewSession.mode}</dd>
+                <dt>查看方式</dt>
+                <dd>{formatPreviewModeLabel(previewSession.mode)}</dd>
               </div>
               <div>
                 <dt>批注数量</dt>
                 <dd>{String(previewSession.comments.length)}</dd>
               </div>
               <div>
-                <dt>评论来源</dt>
-                <dd>{previewSession.comment_source}</dd>
-              </div>
-              <div>
-                <dt>资产类型</dt>
-                <dd>{asset.asset_type}</dd>
+                <dt>批注来源</dt>
+                <dd>{formatPreviewCommentSourceLabel(previewSession.comment_source)}</dd>
               </div>
             </dl>
           ) : null}
@@ -813,7 +811,7 @@ function resolveDetailTitle(
 }
 
 function resolvePreviewPanelTitle(detailKind: ManuscriptAssetDetailKind): string {
-  return detailKind === "report_preview" ? "报告正文" : "预览会话";
+  return detailKind === "report_preview" ? "报告正文" : "稿件预览";
 }
 
 function resolveDetailDownloadLabel(asset: DocumentAssetViewModel): string {
@@ -861,6 +859,36 @@ function formatPreviewStatusLabel(
   }
 
   return status;
+}
+
+function formatPreviewViewerLabel(
+  viewer: DocumentPreviewSessionViewModel["viewer"],
+): string {
+  if (viewer === "onlyoffice") {
+    return "文档预览";
+  }
+
+  return "稿件预览";
+}
+
+function formatPreviewModeLabel(
+  mode: DocumentPreviewSessionViewModel["mode"],
+): string {
+  if (mode === "view") {
+    return "只读查看";
+  }
+
+  return mode;
+}
+
+function formatPreviewCommentSourceLabel(
+  commentSource: DocumentPreviewSessionViewModel["comment_source"],
+): string {
+  if (commentSource === "onlyoffice") {
+    return "文档批注";
+  }
+
+  return "系统批注";
 }
 
 function isLegacyDocAsset(asset: DocumentAssetViewModel): boolean {

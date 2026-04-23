@@ -1094,6 +1094,57 @@ test("summary surfaces proofreading residual progression without duplicating the
   assert.doesNotMatch(markup, /\u7edf\u4e00\u590d\u6838\u961f\u5217/u);
 });
 
+test("summary still surfaces proofreading follow-up when only manual review residuals remain", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      mode="proofreading"
+      workspace={createProofreadingWorkspace()}
+      latestJob={null}
+      latestExport={null}
+      latestActionResult={null}
+      canOpenLearningReview
+      proofreadingGovernanceHandoff={{
+        residualReviewItems: [
+          {
+            id: "residual-manual-review-1",
+            source_kind: "residual_issue",
+            source_status: "manual_review_pending",
+            review_status: "pending",
+            module: "proofreading",
+            manuscript_id: "manuscript-proof-1",
+            manuscript_type: "clinical_study",
+            snapshot_id: "snapshot-proofreading-manual-1",
+            title: "Residual issue awaiting manual review",
+            created_at: "2026-04-21T09:08:00.000Z",
+            updated_at: "2026-04-21T09:09:00.000Z",
+            available_actions: [
+              "accept_change_only",
+              "reject_as_false_positive",
+              "archive_as_evidence_only",
+            ],
+            issue_type: "cross_section_contradiction",
+            execution_snapshot_id: "snapshot-proofreading-manual-1",
+            recommended_route: "manual_only",
+            harness_validation_status: "not_required",
+          } as never,
+        ],
+        ruleCandidates: [],
+      }}
+    />,
+  );
+
+  assert.match(markup, /\u6821\u5bf9\u56de\u6d41\u8fdb\u5ea6/u);
+  assert.match(markup, /\u5f85\u4eba\u5de5\u590d\u6838/u);
+  assert.match(
+    markup,
+    /<span>\u5f85\u4eba\u5de5\u590d\u6838<\/span>\s*<strong>1<\/strong>/u,
+  );
+  assert.match(
+    markup,
+    /href="#template-governance\?[^"]*reviewItemId=residual-manual-review-1/u,
+  );
+});
+
 test("job review evidence details include editing table inspection hits and nested proofreading quality reasons", () => {
   const editingDetails = buildJobReviewEvidenceDetails({
     id: "job-editing-1",

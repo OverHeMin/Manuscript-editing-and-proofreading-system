@@ -32,6 +32,7 @@ import {
   formatHighRiskReviewPostureLabel,
 } from "./manuscript-workbench-high-risk-review.ts";
 import {
+  buildWorkbenchAssetDisplayName,
   formatWorkbenchAssetTypeLabel,
   resolveWorkbenchAssetDownloadLabel,
 } from "./manuscript-workbench-asset-labels.ts";
@@ -44,8 +45,6 @@ import type {
   ManuscriptWorkbenchWorkspace,
 } from "./manuscript-workbench-controller.ts";
 import {
-  formatWorkbenchExecutionModelSourceLabel,
-  formatWorkbenchExecutionTrustModeLabel,
   formatWorkbenchProviderReadinessLabel,
   formatWorkbenchRuntimeBindingReadinessLabel,
 } from "./manuscript-workbench-execution-labels.ts";
@@ -121,8 +120,6 @@ export function buildJobReviewEvidenceDetails(
       : undefined;
   const knowledgeItemIds =
     snapshot?.knowledge_item_ids ?? getPayloadStringArray(payload, "knowledgeItemIds");
-  const modelId = snapshot?.model_id ?? getPayloadStringValue(payload, "modelId");
-  const modelVersion = snapshot?.model_version;
   const highRiskReviewItems = buildHighRiskReviewItemsFromJob(latestJob);
   const highRiskEvidence = collectHighRiskEvidenceFromJob(latestJob);
   const highRiskEvidenceSummary = uniqueValues(
@@ -163,13 +160,6 @@ export function buildJobReviewEvidenceDetails(
     details.push({
       label: "知识引用",
       value: formatKnowledgeReferenceValue(knowledgeItemIds, knowledgeReferences),
-    });
-  }
-
-  if (modelId) {
-    details.push({
-      label: "模型版本",
-      value: modelVersion ? `${modelId} / ${modelVersion}` : modelId,
     });
   }
 
@@ -221,91 +211,74 @@ export function buildGovernedExecutionTrustDetails(input: {
     return [];
   }
 
-  const showFallbacks = executionContext != null;
-  const details: WorkbenchActionResultDetail[] = [
-    {
-      label: "\u6267\u884c\u65b9\u5f0f",
-      value: formatWorkbenchExecutionTrustModeLabel(executionMode),
-    },
-  ];
-  const pushDetail = (
-    label: string,
-    value: string | undefined,
-    fallbackValue?: string,
-  ): void => {
-    if (value) {
-      details.push({ label, value });
-      return;
-    }
-
-    if (showFallbacks && fallbackValue) {
-      details.push({ label, value: fallbackValue });
-    }
-  };
-
-  if (latestJobTruth.snapshotId) {
-    details.push({
-      label: "\u5feb\u7167",
-      value: latestJobTruth.snapshotId,
-    });
-  }
-
-  pushDetail(
-    "\u89e3\u6790\u6a21\u578b",
-    latestJobTruth.resolvedModelId ?? executionContext?.resolvedModelId,
-    "\u672a\u89e3\u6790",
-  );
-  pushDetail(
-    "\u8def\u7531\u7b56\u7565",
-    latestJobTruth.modelRoutingPolicyVersionId ??
-      executionContext?.modelRoutingPolicyVersionId,
-    "\u672a\u7ed1\u5b9a",
-  );
-  pushDetail(
-    "\u6267\u884c\u753b\u50cf",
-    latestJobTruth.executionProfileId ?? executionContext?.executionProfileId,
-    "\u672a\u7ed1\u5b9a",
-  );
-  pushDetail(
-    "\u68c0\u7d22\u9884\u8bbe",
-    latestJobTruth.retrievalPresetId ?? executionContext?.retrievalPresetId,
-    "\u672a\u7ed1\u5b9a",
-  );
-  pushDetail(
-    "\u8fd0\u884c\u65f6\u7ed1\u5b9a",
-    latestJobTruth.runtimeBindingId ?? executionContext?.runtimeBindingId,
-    "\u672a\u7ed1\u5b9a",
-  );
-
-  const modelSource = latestJobTruth.modelSource ?? executionContext?.modelSource;
-  if (modelSource || showFallbacks) {
-    details.push({
-      label: "\u6a21\u578b\u6765\u6e90",
-      value: formatWorkbenchExecutionModelSourceLabel(modelSource),
-    });
-  }
-
   const providerReadinessStatus = executionContext?.providerReadinessStatus;
-  if (providerReadinessStatus || showFallbacks) {
-    details.push({
-      label: "\u670d\u52a1\u5546\u5c31\u7eea",
-      value: formatWorkbenchProviderReadinessLabel(providerReadinessStatus),
-    });
-  }
-
   const runtimeBindingReadinessStatus =
     latestJobTruth.runtimeBindingReadinessStatus ??
     executionContext?.runtimeBindingReadinessStatus;
-  if (runtimeBindingReadinessStatus || showFallbacks) {
-    details.push({
-      label: "\u8fd0\u884c\u65f6\u5c31\u7eea",
-      value: formatWorkbenchRuntimeBindingReadinessLabel(
+  const hasResolvedPreparation = Boolean(
+    latestJobTruth.resolvedModelId ??
+      latestJobTruth.modelRoutingPolicyVersionId ??
+      latestJobTruth.executionProfileId ??
+      latestJobTruth.retrievalPresetId ??
+      latestJobTruth.runtimeBindingId ??
+      executionContext?.resolvedModelId ??
+      executionContext?.modelRoutingPolicyVersionId ??
+      executionContext?.executionProfileId ??
+      executionContext?.retrievalPresetId ??
+      executionContext?.runtimeBindingId,
+  );
+
+  return [
+    {
+      label: "当前方式",
+      value: formatOperatorFacingExecutionMode(executionMode),
+    },
+    {
+      label: "当前模板",
+      value: hasResolvedPreparation ? "已按当前模板装载" : "待补充模板设置",
+    },
+    {
+      label: "AI 状态",
+      value: formatOperatorFacingExecutionReadiness(
+        providerReadinessStatus,
         runtimeBindingReadinessStatus,
       ),
-    });
+    },
+  ];
+}
+
+function formatOperatorFacingExecutionMode(
+  executionMode: "governed" | "bare" | undefined,
+): string {
+  if (executionMode === "bare") {
+    return "单次 AI 识别";
   }
 
-  return details;
+  if (executionMode === "governed") {
+    return "受控处理";
+  }
+
+  return "待确认";
+}
+
+function formatOperatorFacingExecutionReadiness(
+  providerReadinessStatus: string | undefined,
+  runtimeBindingReadinessStatus: string | undefined,
+): string {
+  const providerStatus = formatWorkbenchProviderReadinessLabel(providerReadinessStatus);
+  const runtimeStatus = formatWorkbenchRuntimeBindingReadinessLabel(
+    runtimeBindingReadinessStatus,
+  );
+
+  if (providerStatus === "就绪" && runtimeStatus === "就绪") {
+    return "已就绪";
+  }
+
+  if (providerReadinessStatus || runtimeBindingReadinessStatus) {
+    return "需检查";
+  }
+
+  return "待确认";
 }
 
 function resolveLatestJobExecutionTruth(
@@ -488,6 +461,7 @@ export function buildJobPostureDetails(
 }
 
 function buildResultAssetMatrixDetails(
+  manuscriptTitle: string,
   matrix: DocumentResultAssetMatrixViewModel | undefined,
   selection: DocumentCurrentExportSelectionViewModel | undefined,
 ): WorkbenchActionResultDetail[] {
@@ -517,7 +491,7 @@ function buildResultAssetMatrixDetails(
   for (const slot of slots) {
     details.push({
       label: slot.label,
-      value: slot.asset ? renderAssetMatrixValue(slot.asset) : "未生成",
+      value: slot.asset ? renderAssetMatrixValue(manuscriptTitle, slot.asset) : "未生成",
     });
   }
 
@@ -525,7 +499,7 @@ function buildResultAssetMatrixDetails(
     details.push({
       label: "当前导出选择",
       value: selection.asset
-        ? `${selection.label} / ${renderAssetMatrixValue(selection.asset)}`
+        ? `${selection.label} / ${renderAssetMatrixValue(manuscriptTitle, selection.asset)}`
         : selection.label,
     });
     details.push({
@@ -832,7 +806,9 @@ export function ManuscriptWorkbenchSummary({
         asset: latestExport.asset,
       }
     : workspace.manuscript.current_export_selection;
+  const manuscriptTitle = workspace.manuscript.title;
   const resultAssetMatrixDetails = buildResultAssetMatrixDetails(
+    manuscriptTitle,
     resultAssetMatrix,
     currentExportSelection,
   );
@@ -850,6 +826,11 @@ export function ManuscriptWorkbenchSummary({
       ? workspace.currentAsset
       : null;
   const displayedCurrentAsset = currentManuscriptAsset ?? workspace.currentAsset;
+  const latestActionResultDetails = latestActionResult
+    ? latestActionResult.details.filter((detail) =>
+        shouldDisplayActionResultDetail(detail.label),
+      )
+    : [];
 
   return (
     <section
@@ -879,11 +860,17 @@ export function ManuscriptWorkbenchSummary({
                 label="结果说明"
                 value={formatWorkbenchActionResultMessage(latestActionResult.message)}
               />
-              {latestActionResult.details.map((detail) => (
+              {latestActionResultDetails.map((detail) => (
                 <SummaryMetric
                   key={`${detail.label}:${detail.value}`}
                   label={formatActionResultDetailLabel(detail.label)}
-                  value={formatActionResultDetailValue(detail.label, detail.value)}
+                  value={formatSummaryActionResultDetailValue({
+                    label: detail.label,
+                    value: detail.value,
+                    manuscriptTitle,
+                    assets: workspace.assets,
+                    latestJob,
+                  })}
                 />
               ))}
             </>
@@ -927,7 +914,7 @@ export function ManuscriptWorkbenchSummary({
         </SummaryCard>
 
         {governedExecutionTrustDetails.length > 0 ? (
-          <SummaryCard title="治理执行">
+          <SummaryCard title="AI 处理准备">
             {governedExecutionTrustDetails.map((detail) => (
               <SummaryMetric
                 key={`${detail.label}:${detail.value}`}
@@ -992,7 +979,7 @@ export function ManuscriptWorkbenchSummary({
             <SummaryCard title="人工反馈">
               <div className="manuscript-workbench-manual-feedback">
                 <p className="manuscript-workbench-manual-feedback-copy">
-                  这一步会把当前模块结果作为可治理证据提交到治理中心待审核，不会直接改动线上规则或知识。
+                  这一步会把当前模块结果记录到待审核队列，方便后续人工确认，不会直接改动线上规则或知识。
                 </p>
                 <div className="manuscript-workbench-manual-feedback-options">
                   {(
@@ -1041,7 +1028,7 @@ export function ManuscriptWorkbenchSummary({
                 </button>
                 {manualFeedback.lastSubmitted ? (
                   <div className="manuscript-workbench-manual-feedback-result">
-                    <p>已提交复核项 {manualFeedback.lastSubmitted.reviewItemId}</p>
+                    <p>已记录到待审核队列</p>
                     {manualFeedback.lastSubmitted.recommendedRoute ? (
                       <p>
                         建议去向：
@@ -1089,6 +1076,10 @@ export function ManuscriptWorkbenchSummary({
               value={String(proofreadingGovernanceLoop.observedCount)}
             />
             <SummaryMetric
+              label="待人工复核"
+              value={String(proofreadingGovernanceLoop.manualReviewPendingCount)}
+            />
+            <SummaryMetric
               label="Harness 待复验"
               value={String(proofreadingGovernanceLoop.harnessPendingCount)}
             />
@@ -1101,14 +1092,14 @@ export function ManuscriptWorkbenchSummary({
               value={String(proofreadingGovernanceLoop.candidateCreatedCount)}
             />
             <p className="manuscript-workbench-manual-feedback-copy">
-              只显示校对主线需要关注的关键进度，具体复验、候选审核与规则写回仍在规则中心继续完成。
+              只显示校对主线需要关注的关键进度，详细复验和候选处理请到后续审核继续完成。
             </p>
             {proofreadingGovernanceLoop.targetHref ? (
               <a
                 className="manuscript-workbench-shortcut"
                 href={proofreadingGovernanceLoop.targetHref}
               >
-                前往规则中心继续复验与候选处理
+                前往后续审核
               </a>
             ) : null}
           </SummaryCard>
@@ -1116,7 +1107,6 @@ export function ManuscriptWorkbenchSummary({
 
         <SummaryCard title="稿件概览">
           <SummaryMetric label="标题" value={workspace.manuscript.title} />
-          <SummaryMetric label="稿件编号" value={workspace.manuscript.id} />
           <SummaryMetric
             label="稿件类型"
             value={formatManuscriptTypeLabel(workspace.manuscript.manuscript_type)}
@@ -1242,7 +1232,7 @@ export function ManuscriptWorkbenchSummary({
             <>
               <SummaryMetric
                 label="当前资产"
-                value={renderAssetIdentity(displayedCurrentAsset)}
+                value={renderAssetIdentity(manuscriptTitle, displayedCurrentAsset)}
               />
               <SummaryMetric
                 label="快速操作"
@@ -1261,7 +1251,7 @@ export function ManuscriptWorkbenchSummary({
               {currentResultAsset ? (
                 <SummaryMetric
                   label="\u5f53\u524d\u7ed3\u679c"
-                  value={renderAssetIdentity(currentResultAsset)}
+                  value={renderAssetIdentity(manuscriptTitle, currentResultAsset)}
                 />
               ) : null}
               {currentResultAsset ? (
@@ -1281,19 +1271,10 @@ export function ManuscriptWorkbenchSummary({
                 />
               ) : null}
               <SummaryMetric
-                label="存储键"
-                value={
-                  <code>
-                    {(currentResultAsset ?? currentManuscriptAsset ?? workspace.currentAsset)
-                      ?.storage_key}
-                  </code>
-                }
-              />
-              <SummaryMetric
                 label="推荐父资产"
                 value={
                   workspace.suggestedParentAsset
-                    ? renderAssetIdentity(workspace.suggestedParentAsset)
+                    ? renderAssetIdentity(manuscriptTitle, workspace.suggestedParentAsset)
                     : "暂无推荐父资产"
                 }
               />
@@ -1301,7 +1282,10 @@ export function ManuscriptWorkbenchSummary({
                 label="最近校对草稿"
                 value={
                   workspace.latestProofreadingDraftAsset
-                    ? renderAssetIdentity(workspace.latestProofreadingDraftAsset)
+                    ? renderAssetIdentity(
+                        manuscriptTitle,
+                        workspace.latestProofreadingDraftAsset,
+                      )
                     : "暂无校对草稿"
                 }
               />
@@ -1316,7 +1300,6 @@ export function ManuscriptWorkbenchSummary({
         <SummaryCard title="最近任务">
           {latestJob ? (
             <>
-              <SummaryMetric label="任务 ID" value={<code>{latestJob.id}</code>} />
               <SummaryMetric label="模块" value={formatSourceModuleLabel(latestJob.module)} />
               <SummaryMetric label="任务类型" value={formatJobTypeLabel(latestJob.job_type)} />
               <SummaryMetric
@@ -1383,16 +1366,12 @@ export function ManuscriptWorkbenchSummary({
           {latestExport ? (
             <>
               <SummaryMetric
-                label="导出存储键"
-                value={<code>{latestExport.download.storage_key}</code>}
+                label="导出稿件"
+                value={buildWorkbenchAssetDisplayName(manuscriptTitle, latestExport.asset)}
               />
               <SummaryMetric
                 label="导出文件名"
-                value={
-                  latestExport.download.file_name ??
-                  latestExport.asset.file_name ??
-                  "未提供"
-                }
+                value={buildWorkbenchAssetDisplayName(manuscriptTitle, latestExport.asset)}
               />
               <SummaryMetric
                 label="下载 MIME 类型"
@@ -1400,7 +1379,7 @@ export function ManuscriptWorkbenchSummary({
               />
               <SummaryMetric
                 label="来源资产"
-                value={renderAssetIdentity(latestExport.asset)}
+                value={renderAssetIdentity(manuscriptTitle, latestExport.asset)}
               />
               <SummaryMetric
                 label="下载"
@@ -1459,8 +1438,7 @@ export function ManuscriptWorkbenchSummary({
                 <th>类型</th>
                 <th>版本</th>
                 <th>状态</th>
-                <th>来源</th>
-                <th>存储</th>
+                <th>最近更新</th>
               </tr>
             </thead>
             <tbody>
@@ -1468,8 +1446,9 @@ export function ManuscriptWorkbenchSummary({
                 <tr key={asset.id}>
                   <td>
                     <div className="manuscript-workbench-asset-cell">
-                      <strong>{asset.file_name ?? asset.id}</strong>
-                      <code>{asset.id}</code>
+                      <strong>
+                        {buildWorkbenchAssetDisplayName(manuscriptTitle, asset)}
+                      </strong>
                     </div>
                   </td>
                   <td>{formatAssetTypeLabel(asset.asset_type)}</td>
@@ -1479,32 +1458,13 @@ export function ManuscriptWorkbenchSummary({
                       {asset.is_current ? "当前版本" : formatAssetStatusLabel(asset.status)}
                     </StatusPill>
                   </td>
-                  <td>{formatSourceModuleLabel(asset.source_module)}</td>
-                  <td>
-                    <code>{asset.storage_key}</code>
-                  </td>
+                  <td>{formatTimestamp(asset.updated_at)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </article>
-
-      <details className="manuscript-workbench-debug-panel">
-        <summary>调试快照</summary>
-        <pre>
-          {JSON.stringify(
-            {
-              workspace,
-              mode,
-              latestJob,
-              latestExport,
-            },
-            null,
-            2,
-          )}
-        </pre>
-      </details>
     </section>
   );
 }
@@ -1517,6 +1477,7 @@ interface SummaryCardProps {
 interface ProofreadingGovernanceLoopSummaryViewModel {
   currentStageLabel: string;
   observedCount: number;
+  manualReviewPendingCount: number;
   harnessPendingCount: number;
   candidateReadyCount: number;
   candidateCreatedCount: number;
@@ -1608,12 +1569,13 @@ function renderMainlineAttentionItemsSection(
   );
 }
 
-function renderAssetIdentity(asset: DocumentAssetViewModel): ReactNode {
+function renderAssetIdentity(
+  manuscriptTitle: string,
+  asset: DocumentAssetViewModel,
+): ReactNode {
   return (
     <span className="manuscript-workbench-asset-identity">
-      <span>{asset.file_name ?? formatAssetTypeLabel(asset.asset_type)}</span>
-      <small>{formatAssetTypeLabel(asset.asset_type)}</small>
-      <code>{asset.id}</code>
+      <span>{buildWorkbenchAssetDisplayName(manuscriptTitle, asset)}</span>
     </span>
   );
 }
@@ -1691,8 +1653,11 @@ function resolveCurrentResultDownloadLabel(asset: DocumentAssetViewModel): strin
   );
 }
 
-function renderAssetMatrixValue(asset: DocumentAssetViewModel): string {
-  return `${asset.file_name ?? formatAssetTypeLabel(asset.asset_type)} / ${formatAssetTypeLabel(asset.asset_type)} / ${asset.id}`;
+function renderAssetMatrixValue(
+  manuscriptTitle: string,
+  asset: DocumentAssetViewModel,
+): string {
+  return buildWorkbenchAssetDisplayName(manuscriptTitle, asset);
 }
 
 function renderBatchProgressItems(
@@ -2147,12 +2112,12 @@ function buildMainlineReadinessRecommendedNextStep(
   const details = [
     {
       label: "稿件",
-      value: workspace.manuscript.id,
+      value: resolveManuscriptDisplayTitle(workspace.manuscript.title),
     },
     ...buildManuscriptMainlineReadinessDetails(summary),
     {
       label: "当前资产",
-      value: describeAsset(workspace.currentAsset),
+      value: describeAsset(workspace.currentAsset, workspace.manuscript.title),
     },
   ];
   const localizedReason = summary.reason
@@ -2169,7 +2134,10 @@ function buildMainlineReadinessRecommendedNextStep(
             ...details,
             {
               label: "推荐父资产",
-              value: describeAsset(workspace.suggestedParentAsset),
+              value: describeAsset(
+                workspace.suggestedParentAsset,
+                workspace.manuscript.title,
+              ),
             },
           ],
         };
@@ -2183,7 +2151,10 @@ function buildMainlineReadinessRecommendedNextStep(
             ...details,
             {
               label: "推荐父资产",
-              value: describeAsset(workspace.suggestedParentAsset),
+              value: describeAsset(
+                workspace.suggestedParentAsset,
+                workspace.manuscript.title,
+              ),
             },
           ],
         };
@@ -2196,7 +2167,10 @@ function buildMainlineReadinessRecommendedNextStep(
           ...details,
           {
             label: "推荐父资产",
-            value: describeAsset(workspace.suggestedParentAsset),
+            value: describeAsset(
+              workspace.suggestedParentAsset,
+              workspace.manuscript.title,
+            ),
           },
         ],
       };
@@ -2278,6 +2252,9 @@ function buildProofreadingGovernanceLoopSummary(input: {
   const observedCount = residualReviewItems.filter(
     (item) => item.source_status === "observed",
   ).length;
+  const manualReviewPendingCount = residualReviewItems.filter(
+    (item) => item.source_status === "manual_review_pending",
+  ).length;
   const harnessPendingCount = residualReviewItems.filter(
     (item) => item.source_status === "validation_pending",
   ).length;
@@ -2288,6 +2265,7 @@ function buildProofreadingGovernanceLoopSummary(input: {
 
   if (
     observedCount === 0 &&
+    manualReviewPendingCount === 0 &&
     harnessPendingCount === 0 &&
     candidateReadyCount === 0 &&
     candidateCreatedCount === 0
@@ -2306,11 +2284,14 @@ function buildProofreadingGovernanceLoopSummary(input: {
         ? formatResidualReviewSourceStatusLabel("candidate_ready")
         : harnessPendingCount > 0
           ? formatResidualReviewSourceStatusLabel("validation_pending")
-          : formatResidualReviewSourceStatusLabel("observed");
+          : manualReviewPendingCount > 0
+            ? formatResidualReviewSourceStatusLabel("manual_review_pending")
+            : formatResidualReviewSourceStatusLabel("observed");
 
   return {
     currentStageLabel,
     observedCount,
+    manualReviewPendingCount,
     harnessPendingCount,
     candidateReadyCount,
     candidateCreatedCount,
@@ -2348,11 +2329,14 @@ function buildRecommendedNextStep(
         details: [
           {
             label: "稿件",
-            value: workspace.manuscript.id,
+            value: resolveManuscriptDisplayTitle(workspace.manuscript.title),
           },
           {
             label: "导出",
-            value: latestExport.download.storage_key,
+            value: buildWorkbenchAssetDisplayName(
+              workspace.manuscript.title,
+              latestExport.asset,
+            ),
           },
         ],
       };
@@ -2360,15 +2344,15 @@ function buildRecommendedNextStep(
 
     return {
       focus: "推进稿件进入初筛",
-      guidance: "可在初筛工作台使用稿件编号继续处理，或先准备导出后再交接。",
+      guidance: "可继续进入初筛工作台处理当前稿件，或先准备导出后再交接。",
       details: [
         {
           label: "稿件",
-          value: workspace.manuscript.id,
+          value: resolveManuscriptDisplayTitle(workspace.manuscript.title),
         },
         {
           label: "当前资产",
-          value: describeAsset(workspace.currentAsset),
+          value: describeAsset(workspace.currentAsset, workspace.manuscript.title),
         },
       ],
     };
@@ -2404,11 +2388,11 @@ function buildRecommendedNextStep(
         details: [
           {
             label: "稿件",
-            value: workspace.manuscript.id,
+            value: resolveManuscriptDisplayTitle(workspace.manuscript.title),
           },
           {
             label: "当前资产",
-            value: describeAsset(workspace.currentAsset),
+            value: describeAsset(workspace.currentAsset, workspace.manuscript.title),
           },
         ],
         targetMode: "editing",
@@ -2422,11 +2406,14 @@ function buildRecommendedNextStep(
       details: [
         {
           label: "推荐父资产",
-          value: describeAsset(workspace.suggestedParentAsset),
+          value: describeAsset(
+            workspace.suggestedParentAsset,
+            workspace.manuscript.title,
+          ),
         },
         {
           label: "当前资产",
-          value: describeAsset(workspace.currentAsset),
+          value: describeAsset(workspace.currentAsset, workspace.manuscript.title),
         },
       ],
     };
@@ -2462,11 +2449,11 @@ function buildRecommendedNextStep(
         details: [
           {
             label: "稿件",
-            value: workspace.manuscript.id,
+            value: resolveManuscriptDisplayTitle(workspace.manuscript.title),
           },
           {
             label: "当前资产",
-            value: describeAsset(workspace.currentAsset),
+            value: describeAsset(workspace.currentAsset, workspace.manuscript.title),
           },
         ],
         targetMode: "proofreading",
@@ -2480,11 +2467,14 @@ function buildRecommendedNextStep(
       details: [
         {
           label: "推荐父资产",
-          value: describeAsset(workspace.suggestedParentAsset),
+          value: describeAsset(
+            workspace.suggestedParentAsset,
+            workspace.manuscript.title,
+          ),
         },
         {
           label: "当前资产",
-          value: describeAsset(workspace.currentAsset),
+          value: describeAsset(workspace.currentAsset, workspace.manuscript.title),
         },
       ],
     };
@@ -2492,19 +2482,19 @@ function buildRecommendedNextStep(
 
   if (workspace.currentAsset?.asset_type === "human_final_docx") {
     return {
-      focus: "前往规则中心",
-      guidance: "当前阶段：审核。下一步：前往规则中心完成审核，并继续转成规则草稿。",
+      focus: "前往后续审核",
+      guidance: "当前阶段：审核。下一步：前往后续审核完成确认，并继续处理候选项。",
       details: [
         {
           label: "稿件",
-          value: workspace.manuscript.id,
+          value: resolveManuscriptDisplayTitle(workspace.manuscript.title),
         },
         {
           label: "当前资产",
-          value: describeAsset(workspace.currentAsset),
+          value: describeAsset(workspace.currentAsset, workspace.manuscript.title),
         },
       ],
-      targetLabel: canOpenLearningReview ? "前往规则中心" : undefined,
+      targetLabel: canOpenLearningReview ? "前往后续审核" : undefined,
       targetHref: canOpenLearningReview
         ? formatWorkbenchHash("template-governance", {
             manuscriptId: workspace.manuscript.id,
@@ -2523,11 +2513,17 @@ function buildRecommendedNextStep(
       details: [
         {
           label: "当前资产",
-          value: describeAsset(currentFinalProofAsset),
+          value: describeAsset(currentFinalProofAsset, workspace.manuscript.title),
         },
           {
             label: "导出",
-            value: latestExport?.download.storage_key ?? "请先在工作台工具区准备导出",
+            value:
+              latestExport?.asset
+                ? buildWorkbenchAssetDisplayName(
+                    workspace.manuscript.title,
+                    latestExport.asset,
+                  )
+                : "请先在工作台工具区准备导出",
           },
         ],
       };
@@ -2540,11 +2536,14 @@ function buildRecommendedNextStep(
       details: [
         {
           label: "草稿资产",
-          value: describeAsset(workspace.latestProofreadingDraftAsset),
+          value: describeAsset(
+            workspace.latestProofreadingDraftAsset,
+            workspace.manuscript.title,
+          ),
         },
         {
           label: "当前资产",
-          value: describeAsset(workspace.currentAsset),
+          value: describeAsset(workspace.currentAsset, workspace.manuscript.title),
         },
       ],
     };
@@ -2556,11 +2555,14 @@ function buildRecommendedNextStep(
     details: [
       {
         label: "推荐父资产",
-        value: describeAsset(workspace.suggestedParentAsset),
+        value: describeAsset(
+          workspace.suggestedParentAsset,
+          workspace.manuscript.title,
+        ),
       },
       {
         label: "当前资产",
-        value: describeAsset(workspace.currentAsset),
+        value: describeAsset(workspace.currentAsset, workspace.manuscript.title),
       },
     ],
   };
@@ -2577,7 +2579,11 @@ function buildModuleSettlementRecommendedNextStep(input: {
     return undefined;
   }
 
-  const details = buildSettlementDetails(overview, input.workspace.currentAsset);
+  const details = buildSettlementDetails(
+    overview,
+    input.workspace.currentAsset,
+    input.workspace.manuscript.title,
+  );
 
   switch (overview.settlement.derived_status) {
     case "business_completed_settled":
@@ -2587,7 +2593,7 @@ function buildModuleSettlementRecommendedNextStep(input: {
         details: [
           {
             label: "稿件",
-            value: input.workspace.manuscript.id,
+            value: resolveManuscriptDisplayTitle(input.workspace.manuscript.title),
           },
           ...details,
         ],
@@ -2659,6 +2665,7 @@ function buildLatestJobExecutionTrackingRecommendedNextStep(input: {
   const details = buildLatestJobExecutionTrackingSettlementDetails(
     executionTracking,
     input.workspace.currentAsset,
+    input.workspace.manuscript.title,
   );
 
   switch (executionTracking.settlement.derived_status) {
@@ -2669,7 +2676,7 @@ function buildLatestJobExecutionTrackingRecommendedNextStep(input: {
         details: [
           {
             label: "稿件",
-            value: input.workspace.manuscript.id,
+            value: resolveManuscriptDisplayTitle(input.workspace.manuscript.title),
           },
           ...details,
         ],
@@ -2721,6 +2728,7 @@ function buildLatestJobExecutionTrackingRecommendedNextStep(input: {
 function buildSettlementDetails(
   overview: ModuleExecutionOverviewViewModel,
   currentAsset: DocumentAssetViewModel | null,
+  manuscriptTitle: string,
 ): WorkbenchActionResultDetail[] {
   const details: WorkbenchActionResultDetail[] = [
     {
@@ -2763,7 +2771,7 @@ function buildSettlementDetails(
   if (currentAsset) {
     details.push({
       label: "当前资产",
-      value: describeAsset(currentAsset),
+      value: describeAsset(currentAsset, manuscriptTitle),
     });
   }
 
@@ -2773,6 +2781,7 @@ function buildSettlementDetails(
 function buildLatestJobExecutionTrackingSettlementDetails(
   executionTracking: JobExecutionTrackingObservationViewModel,
   currentAsset: DocumentAssetViewModel | null,
+  manuscriptTitle: string,
 ): WorkbenchActionResultDetail[] {
   const details: WorkbenchActionResultDetail[] = [
     {
@@ -2817,7 +2826,7 @@ function buildLatestJobExecutionTrackingSettlementDetails(
   if (currentAsset) {
     details.push({
       label: "当前资产",
-      value: describeAsset(currentAsset),
+      value: describeAsset(currentAsset, manuscriptTitle),
     });
   }
 
@@ -3591,12 +3600,24 @@ function formatKnowledgeReferenceValue(
     .join("; ");
 }
 
-function describeAsset(asset: DocumentAssetViewModel | null): string {
+function describeAsset(
+  asset: DocumentAssetViewModel | null,
+  manuscriptTitle?: string,
+): string {
   if (!asset) {
     return "暂无";
   }
 
-  return `${asset.file_name ?? formatAssetTypeLabel(asset.asset_type)} / ${formatAssetTypeLabel(asset.asset_type)} / ${asset.id}`;
+  if (manuscriptTitle) {
+    return buildWorkbenchAssetDisplayName(manuscriptTitle, asset);
+  }
+
+  return asset.file_name ?? formatAssetTypeLabel(asset.asset_type);
+}
+
+function resolveManuscriptDisplayTitle(title: string): string {
+  const normalizedTitle = title.trim();
+  return normalizedTitle.length > 0 ? normalizedTitle : "当前稿件";
 }
 
 function isFinalProofAsset(asset: DocumentAssetViewModel | null): boolean {
@@ -3787,48 +3808,48 @@ export function formatWorkbenchActionResultMessage(message: string): string {
 
   const createdAssetMatch = /^Created asset (.+)$/u.exec(message);
   if (createdAssetMatch) {
-    return `已生成资产 ${createdAssetMatch[1]}`;
+    return "已生成处理结果";
   }
 
   const finalizedAssetMatch = /^Finalized asset (.+)$/u.exec(message);
   if (finalizedAssetMatch) {
-    return `已完成终稿资产 ${finalizedAssetMatch[1]}`;
+    return "已完成终稿生成";
   }
 
   const preparedExportMatch = /^Prepared export (.+)$/u.exec(message);
   if (preparedExportMatch) {
-    return `已准备导出 ${preparedExportMatch[1]}`;
+    return "已准备导出文件";
   }
 
   const openedProofreadingConfirmationMatch =
     /^Opened proofreading confirmation (.+)$/u.exec(message);
   if (openedProofreadingConfirmationMatch) {
-    return `已打开校对确认页 ${openedProofreadingConfirmationMatch[1]}`;
+    return "已打开校对确认页";
   }
 
   const publishedHumanFinalMatch = /^Published human-final asset (.+)$/u.exec(message);
   if (publishedHumanFinalMatch) {
-    return `已发布人工终稿资产 ${publishedHumanFinalMatch[1]}`;
+    return "已发布人工终稿";
   }
 
   const uploadedManuscriptMatch = /^Uploaded manuscript (.+)$/u.exec(message);
   if (uploadedManuscriptMatch) {
-    return `已上传稿件 ${uploadedManuscriptMatch[1]}`;
+    return "已上传稿件";
   }
 
   const loadedManuscriptMatch = /^Loaded manuscript (.+)$/u.exec(message);
   if (loadedManuscriptMatch) {
-    return `已加载稿件 ${loadedManuscriptMatch[1]}`;
+    return "已打开稿件";
   }
 
   const autoLoadedManuscriptMatch = /^Auto-loaded manuscript (.+)$/u.exec(message);
   if (autoLoadedManuscriptMatch) {
-    return `已自动带入稿件 ${autoLoadedManuscriptMatch[1]}`;
+    return "已自动带入稿件";
   }
 
   const refreshedJobMatch = /^Refreshed job (.+)$/u.exec(message);
   if (refreshedJobMatch) {
-    return `已刷新任务 ${refreshedJobMatch[1]}`;
+    return "已刷新任务状态";
   }
 
   const attachedFileMatch = /^Attached file (.+)$/u.exec(message);
@@ -3974,6 +3995,37 @@ function formatActionResultDetailValue(label: string, value: string): string {
   }
 
   return formatWorkbenchActionResultMessage(value);
+}
+
+function shouldDisplayActionResultDetail(label: string): boolean {
+  return label !== "Job" && label !== "Storage Key";
+}
+
+function formatSummaryActionResultDetailValue(input: {
+  label: string;
+  value: string;
+  manuscriptTitle: string;
+  assets: readonly DocumentAssetViewModel[];
+  latestJob: AnyWorkbenchJob | null;
+}): string {
+  if (input.label === "Asset") {
+    const matchedAsset = input.assets.find((asset) => asset.id === input.value);
+    return matchedAsset
+      ? buildWorkbenchAssetDisplayName(input.manuscriptTitle, matchedAsset)
+      : "已生成处理资产";
+  }
+
+  if (input.label === "Manuscript") {
+    return resolveManuscriptDisplayTitle(input.manuscriptTitle);
+  }
+
+  if (input.label === "Job") {
+    return input.latestJob
+      ? formatJobTypeLabel(input.latestJob.job_type)
+      : "已更新任务记录";
+  }
+
+  return formatActionResultDetailValue(input.label, input.value);
 }
 
 function formatAssetTypeLabel(assetType: string): string {

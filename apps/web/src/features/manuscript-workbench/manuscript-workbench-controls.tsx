@@ -137,8 +137,8 @@ export function ManuscriptWorkbenchControls({
         <header className="manuscript-workbench-controls-intro">
           <div className="manuscript-workbench-controls-copy">
             <span className="manuscript-workbench-section-eyebrow">操作台</span>
-            <h3>同屏完成接入、检索与治理动作</h3>
-            <p>让稿件接入、工作台检索和治理动作保持在同一张轻量工作桌面上。</p>
+            <h3>同屏完成接入、检索与处理动作</h3>
+            <p>让稿件接入、工作台检索和处理动作保持在同一张轻量工作桌面上。</p>
           </div>
           <div className="manuscript-workbench-desk-stat">
             <span>当前工作线</span>
@@ -155,12 +155,12 @@ export function ManuscriptWorkbenchControls({
             <div className="manuscript-workbench-panel-heading">
               <div>
                 <h3>工作区检索</h3>
-                <p>按稿件 ID 打开工作区，然后继续执行当前工作线动作。</p>
+                <p>按稿件编号打开工作区，然后继续执行当前工作线动作。</p>
               </div>
             </div>
             <div className="manuscript-workbench-panel-body">
               <label className={resolveFieldClassName(!canLoadWorkspace)}>
-                <span>稿件 ID</span>
+                <span>稿件编号</span>
                 <input
                   value={lookup.manuscriptId}
                   onChange={(event) => lookup.onChange(event.target.value)}
@@ -168,7 +168,7 @@ export function ManuscriptWorkbenchControls({
               </label>
               {!canLoadWorkspace ? (
                 <p className="manuscript-workbench-help is-warning">
-                  请先输入稿件 ID 再加载工作区。
+                  请先输入稿件编号再加载工作区。
                 </p>
               ) : null}
               <div className="manuscript-workbench-button-row manuscript-workbench-button-row--sticky">
@@ -260,6 +260,9 @@ function ExecutionContextPanel({
 }: {
   executionContext: ManuscriptWorkbenchExecutionContextPanelProps;
 }) {
+  const templateStatusLabel = resolveExecutionTemplateStatusLabel(executionContext);
+  const aiStatusLabel = resolveExecutionAiStatusLabel(executionContext);
+
   return (
     <article
       className="manuscript-workbench-panel"
@@ -268,55 +271,24 @@ function ExecutionContextPanel({
     >
       <div className="manuscript-workbench-panel-heading">
         <div>
-          <h3>执行上下文</h3>
-          <p>AI 接入已在系统设置统一治理，这里只展示当前工作线的只读解析结果。</p>
+          <h3>AI 准备情况</h3>
+          <p>当前模块会按已确认模板和系统设置执行，这里不展示内部参数。</p>
         </div>
       </div>
       <div className="manuscript-workbench-panel-body">
         <div className="manuscript-workbench-selection-context">
-          <span>AI 接入</span>
-          <strong>集中默认</strong>
+          <span>当前方式</span>
+          <strong>{resolveOperatorFacingExecutionModeLabel(executionContext.mode)}</strong>
         </div>
         <div className="manuscript-workbench-selection-context">
-          <span>执行方式</span>
-          <strong>{formatWorkbenchExecutionTrustModeLabel("governed")}</strong>
+          <span>当前模板</span>
+          <strong>{templateStatusLabel}</strong>
         </div>
         <div className="manuscript-workbench-selection-context">
-          <span>模型 ID</span>
-          <strong>{executionContext.resolvedModelId ?? "未解析"}</strong>
+          <span>AI 状态</span>
+          <strong>{aiStatusLabel}</strong>
         </div>
-        <div className="manuscript-workbench-selection-context">
-          <span>路由策略</span>
-          <strong>{executionContext.modelRoutingPolicyVersionId ?? "未解析"}</strong>
-        </div>
-        <div className="manuscript-workbench-selection-context">
-          <span>执行画像</span>
-          <strong>{executionContext.executionProfileId ?? "未解析"}</strong>
-        </div>
-        <div className="manuscript-workbench-selection-context">
-          <span>检索预设</span>
-          <strong>{executionContext.retrievalPresetId ?? "未绑定"}</strong>
-        </div>
-        <div className="manuscript-workbench-selection-context">
-          <span>模型来源</span>
-          <strong>{formatExecutionModelSourceLabel(executionContext.modelSource)}</strong>
-        </div>
-        <div className="manuscript-workbench-selection-context">
-          <span>运行时绑定</span>
-          <strong>{executionContext.runtimeBindingId ?? "未绑定"}</strong>
-        </div>
-        <div className="manuscript-workbench-selection-context">
-          <span>服务商就绪</span>
-          <strong>{formatProviderReadinessLabel(executionContext.providerReadinessStatus)}</strong>
-        </div>
-        <div className="manuscript-workbench-selection-context">
-          <span>运行时就绪</span>
-          <strong>
-            {formatExecutionRuntimeBindingReadinessLabel(
-              executionContext.runtimeBindingReadinessStatus,
-            )}
-          </strong>
-        </div>
+        <p className="manuscript-workbench-help">需要调整时前往系统设置。</p>
       </div>
     </article>
   );
@@ -359,7 +331,7 @@ function IntakePanel({
       <div className="manuscript-workbench-panel-heading">
         <div>
           <h3>稿件接入</h3>
-          <p>支持本地上传和存储键接入，稿件类型默认交给 AI 在上传时识别。</p>
+          <p>优先直接上传稿件，稿件类型默认交给 AI 在上传时识别。</p>
         </div>
       </div>
       <div className="manuscript-workbench-panel-body">
@@ -370,14 +342,6 @@ function IntakePanel({
           <input
             value={intake.uploadForm.title}
             onChange={(event) => intake.onTitleChange(event.target.value)}
-          />
-        </label>
-        <label className={resolveFieldClassName(requiresUploadPayload)}>
-          <span>存储键</span>
-          <input
-            value={intake.uploadForm.storageKey ?? ""}
-            placeholder="选择本地文件后可不填写"
-            onChange={(event) => intake.onStorageKeyChange(event.target.value)}
           />
         </label>
         <div
@@ -420,10 +384,21 @@ function IntakePanel({
           一次最多 {MAX_MANUSCRIPT_BATCH_UPLOAD_COUNT} 个稿件，超出后提交按钮会自动停用。
         </p>
         <p className="manuscript-workbench-help">{selectedFileSummary}</p>
+        <details className="manuscript-workbench-upload-advanced">
+          <summary>高级导入</summary>
+          <label className={resolveFieldClassName(requiresUploadPayload)}>
+            <span>远程稿件地址（可选）</span>
+            <input
+              value={intake.uploadForm.storageKey ?? ""}
+              placeholder="仅在需要远程导入时填写"
+              onChange={(event) => intake.onStorageKeyChange(event.target.value)}
+            />
+          </label>
+        </details>
         {intake.attachedFileNames.length > 0 ? (
           <div className="manuscript-workbench-selection-context">
-            <span>已附加文件</span>
-            <strong>{intake.attachedFileNames.join("、")}</strong>
+            <span>已附加稿件</span>
+            <strong>{`已附加 ${intake.attachedFileCount} 个稿件`}</strong>
           </div>
         ) : null}
         {validationMessages.length > 0 ? (
@@ -548,7 +523,7 @@ function TemplateSelectionPanel({
         </label>
         {templateSelection.hasPendingChange ? (
           <p className="manuscript-workbench-help is-warning">
-            已有未保存的模板切换，请先保存，再触发新的治理动作。
+            已有未保存的模板切换，请先保存，再继续处理。
           </p>
         ) : null}
         {templateSelection.requiresOperatorReview ? (
@@ -683,7 +658,7 @@ function buildIntakeValidationMessages(
     (input.fileContentBase64?.trim().length ?? 0) === 0 &&
     (input.storageKey?.trim().length ?? 0) === 0
   ) {
-    messages.push("请先选择本地文件或填写存储键。");
+    messages.push("请先选择本地稿件，或在高级导入中填写远程稿件地址。");
   }
 
   if (attachedFileCount > MAX_MANUSCRIPT_BATCH_UPLOAD_COUNT) {
@@ -699,18 +674,18 @@ function buildSelectedFileSummary(
   intake: ManuscriptWorkbenchIntakePanelProps,
 ): string {
   if (intake.attachedFileCount > 1) {
-    return `已选择 ${intake.attachedFileCount} 个文件，提交后会按批量任务处理。`;
+    return `已选择 ${intake.attachedFileCount} 个稿件，提交后会按批量任务处理。`;
   }
 
   if (intake.attachedFileNames[0]) {
-    return `已选择文件：${intake.attachedFileNames[0]}`;
+    return "已选择 1 个稿件，提交后会直接开始处理。";
   }
 
   if (intake.uploadForm.fileContentBase64?.trim()) {
-    return `已附加内联文件：${intake.uploadForm.fileName}`;
+    return "已附加 1 个稿件，提交后会直接开始处理。";
   }
 
-  return "尚未选择本地文件，可直接上传，也可以只填写存储键。";
+  return "尚未选择稿件，可直接上传；如需远程导入，可展开高级导入。";
 }
 
 function formatWorkbenchPanelTitle(title: string): string {
@@ -752,27 +727,6 @@ function formatSelectionContextLabel(label: string | undefined): string {
   return label ?? "已选资产";
 }
 
-function formatExecutionModelSourceLabel(source: string | undefined): string {
-  switch (source) {
-    case "template_family_policy":
-      return "模板族策略";
-    case "module_policy":
-      return "模块策略";
-    case "legacy_template_override":
-      return "历史模板覆写";
-    case "legacy_module_default":
-      return "历史模块默认";
-    case "legacy_system_default":
-      return "历史系统默认";
-    case "task_override":
-      return "任务覆写";
-    case undefined:
-      return "集中默认";
-    default:
-      return source;
-  }
-}
-
 function formatProviderReadinessLabel(status: string | undefined): string {
   if (status === "ok") {
     return "就绪";
@@ -783,6 +737,45 @@ function formatProviderReadinessLabel(status: string | undefined): string {
   }
 
   return "未报告";
+}
+
+function resolveOperatorFacingExecutionModeLabel(mode: ManuscriptWorkbenchMode): string {
+  if (mode === "proofreading") {
+    return "受控校对";
+  }
+
+  return "受控处理";
+}
+
+function resolveExecutionTemplateStatusLabel(
+  executionContext: ManuscriptWorkbenchExecutionContextPanelProps,
+): string {
+  const hasResolvedContext = Boolean(
+    executionContext.resolvedModelId ||
+      executionContext.modelRoutingPolicyVersionId ||
+      executionContext.executionProfileId ||
+      executionContext.retrievalPresetId ||
+      executionContext.runtimeBindingId,
+  );
+
+  return hasResolvedContext ? "已按当前模板装载" : "待补充模板设置";
+}
+
+function resolveExecutionAiStatusLabel(
+  executionContext: ManuscriptWorkbenchExecutionContextPanelProps,
+): string {
+  const providerStatus = formatProviderReadinessLabel(
+    executionContext.providerReadinessStatus,
+  );
+  const runtimeStatus = formatExecutionRuntimeBindingReadinessLabel(
+    executionContext.runtimeBindingReadinessStatus,
+  );
+
+  if (providerStatus === "就绪" && runtimeStatus === "就绪") {
+    return "已就绪";
+  }
+
+  return "需检查";
 }
 
 function formatExecutionRuntimeBindingReadinessLabel(

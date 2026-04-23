@@ -64,6 +64,10 @@ import {
   resolveModuleExecutionMode,
 } from "../shared/module-run-support.ts";
 import {
+  ModuleExecutionConcurrencyController,
+  runControlledModuleJob,
+} from "../shared/module-execution-concurrency-controller.ts";
+import {
   createWriteTransactionManager,
   type WriteTransactionManager,
 } from "../shared/write-transaction-manager.ts";
@@ -127,6 +131,7 @@ export interface EditingServiceOptions {
   manuscriptQualityService?: Pick<ManuscriptQualityService, "runChecks">;
   documentStructureService?: Pick<DocumentStructureService, "extract">;
   reviewItemsService?: Pick<ReviewItemsService, "recordExecutionGovernedHits">;
+  moduleExecutionConcurrencyController?: ModuleExecutionConcurrencyController;
   permissionGuard?: PermissionGuard;
   transactionManager?: WriteTransactionManager;
   createId?: () => string;
@@ -190,6 +195,7 @@ export class EditingService {
     ReviewItemsService,
     "recordExecutionGovernedHits"
   >;
+  private readonly moduleExecutionConcurrencyController: ModuleExecutionConcurrencyController;
   private readonly permissionGuard: PermissionGuard;
   private readonly transactionManager: WriteTransactionManager;
   private readonly createId: () => string;
@@ -238,6 +244,9 @@ export class EditingService {
     this.manuscriptQualityService = options.manuscriptQualityService;
     this.documentStructureService = options.documentStructureService;
     this.reviewItemsService = options.reviewItemsService;
+    this.moduleExecutionConcurrencyController =
+      options.moduleExecutionConcurrencyController ??
+      new ModuleExecutionConcurrencyController();
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.transactionManager =
       options.transactionManager ??
@@ -253,25 +262,50 @@ export class EditingService {
   async run(input: RunEditingInput): Promise<EditingRunResult> {
     this.permissionGuard.assert(input.actorRole, "workbench.editing");
     const executionMode = resolveModuleExecutionMode(input.executionMode);
+    const queuedTimestamp = this.now().toISOString();
+    const jobId = this.createId();
+    const queuedJob: JobRecord = {
+      id: jobId,
+      manuscript_id: input.manuscriptId,
+      module: "editing",
+      job_type: "editing_run",
+      status: "queued",
+      requested_by: input.requestedBy,
+      payload: {
+        parentAssetId: input.parentAssetId,
+        ...(executionMode === "bare" ? { executionMode } : {}),
+      },
+      attempt_count: 0,
+      started_at: undefined,
+      finished_at: undefined,
+      error_message: undefined,
+      created_at: queuedTimestamp,
+      updated_at: queuedTimestamp,
+    };
 
-    const committed = await this.transactionManager.withTransaction(async (context) => {
-      const { jobRepository } = context;
-      if (!jobRepository) {
-        throw new Error("Editing runs require a job repository.");
-      }
-      const documentAssetService = this.documentAssetService.createScoped({
-        manuscriptRepository: context.manuscriptRepository,
-        assetRepository: context.assetRepository,
-      });
-      const manuscript = await context.manuscriptRepository.findById(
-        input.manuscriptId,
-      );
-      if (!manuscript) {
-        throw new Error(`Manuscript ${input.manuscriptId} was not found.`);
-      }
+    const committed = await runControlledModuleJob({
+      controller: this.moduleExecutionConcurrencyController,
+      module: "editing",
+      jobRepository: this.jobRepository,
+      queuedJob,
+      now: this.now,
+      run: (runningJob) =>
+        this.transactionManager.withTransaction(async (context) => {
+          const { jobRepository } = context;
+          if (!jobRepository) {
+            throw new Error("Editing runs require a job repository.");
+          }
+          const documentAssetService = this.documentAssetService.createScoped({
+            manuscriptRepository: context.manuscriptRepository,
+            assetRepository: context.assetRepository,
+          });
+          const manuscript = await context.manuscriptRepository.findById(
+            input.manuscriptId,
+          );
+          if (!manuscript) {
+            throw new Error(`Manuscript ${input.manuscriptId} was not found.`);
+          }
 
-      const timestamp = this.now().toISOString();
-      const jobId = this.createId();
       let normalizedContext: {
         executionProfileId: string;
         templateId: string;
@@ -455,105 +489,6 @@ export class EditingService {
         }),
       ) as EditingAiPlan;
 
-      const queuedJob: JobRecord = {
-        id: jobId,
-        manuscript_id: input.manuscriptId,
-        module: "editing",
-        job_type: "editing_run",
-        status: "queued",
-        requested_by: input.requestedBy,
-        payload: {
-          templateId: normalizedContext.templateId,
-          executionProfileId: normalizedContext.executionProfileId,
-          promptTemplateId: normalizedContext.promptTemplateId,
-          skillPackageIds: normalizedContext.skillPackageIds,
-          knowledgeItemIds: normalizedContext.knowledgeHits.map(
-            (selection) => selection.knowledgeItemId,
-          ),
-          modelId: normalizedContext.modelSelection.model.id,
-          ...(executionMode === "bare" ? { executionMode } : {}),
-          ...(normalizedContext.agentRuntimeId
-            ? {
-                agentRuntimeId: normalizedContext.agentRuntimeId,
-              }
-            : {}),
-          ...(normalizedContext.sandboxProfileId
-            ? {
-                sandboxProfileId: normalizedContext.sandboxProfileId,
-              }
-            : {}),
-          ...(normalizedContext.agentProfileId
-            ? {
-                agentProfileId: normalizedContext.agentProfileId,
-              }
-            : {}),
-          ...(normalizedContext.runtimeBindingId
-            ? {
-                runtimeBindingId: normalizedContext.runtimeBindingId,
-              }
-            : {}),
-          ...(normalizedContext.toolPermissionPolicyId
-            ? {
-                toolPermissionPolicyId: normalizedContext.toolPermissionPolicyId,
-              }
-            : {}),
-          ...(executionLog
-            ? {
-                agentExecutionLogId: executionLog.id,
-              }
-            : {}),
-          parentAssetId: input.parentAssetId,
-          ...(normalizedContext.instructionPayload
-            ? {
-                instructionTemplateId: normalizedContext.promptTemplateId,
-                instructionPayload: {
-                  ...normalizedContext.instructionPayload,
-                  allowedContentOperations: [
-                    ...normalizedContext.instructionPayload
-                      .allowedContentOperations,
-                  ],
-                  forbiddenOperations: [
-                    ...normalizedContext.instructionPayload.forbiddenOperations,
-                  ],
-                  promptSnippets: [
-                    ...normalizedContext.instructionPayload.promptSnippets,
-                  ],
-                },
-                manualReviewItems:
-                  normalizedContext.instructionPayload.manualReviewItems.map(
-                    (item) => ({
-                      ...item,
-                    }),
-                  ),
-                contentRuleCandidates:
-                  normalizedContext.instructionPayload.contentRuleCandidates.map(
-                    (candidate) => ({
-                      ...candidate,
-                    }),
-                  ),
-              }
-            : {}),
-          ...(qualityRun
-            ? {
-                qualityFindings: qualityRun.issues.map((issue) =>
-                  structuredClone(issue),
-                ),
-                qualityFindingSummary: structuredClone(
-                  qualityRun.quality_findings_summary,
-                ),
-              }
-            : {}),
-          editingPlan,
-        },
-        attempt_count: 0,
-        started_at: undefined,
-        finished_at: undefined,
-        error_message: undefined,
-        created_at: timestamp,
-        updated_at: timestamp,
-      };
-      await jobRepository.save(queuedJob);
-
       const deterministicTransform =
         await this.editorialDocxTransformService.applyDeterministicRules({
           manuscriptId: input.manuscriptId,
@@ -652,11 +587,90 @@ export class EditingService {
         reviewItemIdBySourceKey,
       );
 
+      const finishedTimestamp = this.now().toISOString();
       const completedJob: JobRecord = {
-        ...queuedJob,
+        ...runningJob,
         status: "completed",
         payload: {
-          ...queuedJob.payload,
+          ...runningJob.payload,
+          templateId: normalizedContext.templateId,
+          executionProfileId: normalizedContext.executionProfileId,
+          promptTemplateId: normalizedContext.promptTemplateId,
+          skillPackageIds: normalizedContext.skillPackageIds,
+          knowledgeItemIds: normalizedContext.knowledgeHits.map(
+            (selection) => selection.knowledgeItemId,
+          ),
+          modelId: normalizedContext.modelSelection.model.id,
+          ...(normalizedContext.agentRuntimeId
+            ? {
+                agentRuntimeId: normalizedContext.agentRuntimeId,
+              }
+            : {}),
+          ...(normalizedContext.sandboxProfileId
+            ? {
+                sandboxProfileId: normalizedContext.sandboxProfileId,
+              }
+            : {}),
+          ...(normalizedContext.agentProfileId
+            ? {
+                agentProfileId: normalizedContext.agentProfileId,
+              }
+            : {}),
+          ...(normalizedContext.runtimeBindingId
+            ? {
+                runtimeBindingId: normalizedContext.runtimeBindingId,
+              }
+            : {}),
+          ...(normalizedContext.toolPermissionPolicyId
+            ? {
+                toolPermissionPolicyId: normalizedContext.toolPermissionPolicyId,
+              }
+            : {}),
+          ...(executionLog
+            ? {
+                agentExecutionLogId: executionLog.id,
+              }
+            : {}),
+          ...(normalizedContext.instructionPayload
+            ? {
+                instructionTemplateId: normalizedContext.promptTemplateId,
+                instructionPayload: {
+                  ...normalizedContext.instructionPayload,
+                  allowedContentOperations: [
+                    ...normalizedContext.instructionPayload
+                      .allowedContentOperations,
+                  ],
+                  forbiddenOperations: [
+                    ...normalizedContext.instructionPayload.forbiddenOperations,
+                  ],
+                  promptSnippets: [
+                    ...normalizedContext.instructionPayload.promptSnippets,
+                  ],
+                },
+                manualReviewItems:
+                  normalizedContext.instructionPayload.manualReviewItems.map(
+                    (item) => ({
+                      ...item,
+                    }),
+                  ),
+                contentRuleCandidates:
+                  normalizedContext.instructionPayload.contentRuleCandidates.map(
+                    (candidate) => ({
+                      ...candidate,
+                    }),
+                  ),
+              }
+            : {}),
+          ...(qualityRun
+            ? {
+                qualityFindings: qualityRun.issues.map((issue) =>
+                  structuredClone(issue),
+                ),
+                qualityFindingSummary: structuredClone(
+                  qualityRun.quality_findings_summary,
+                ),
+              }
+            : {}),
           snapshotId: snapshot.id,
           outputAssetId: asset.id,
           outputAssetType: "edited_docx",
@@ -701,9 +715,9 @@ export class EditingService {
             })),
         },
         attempt_count: 1,
-        started_at: timestamp,
-        finished_at: timestamp,
-        updated_at: timestamp,
+        started_at: runningJob.started_at,
+        finished_at: finishedTimestamp,
+        updated_at: finishedTimestamp,
       };
       await jobRepository.save(completedJob);
 
@@ -738,6 +752,7 @@ export class EditingService {
             : {}),
         },
       };
+        }),
     });
 
     await dispatchGovernedOrchestrationBestEffort({

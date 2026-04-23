@@ -8,6 +8,7 @@ import { InMemoryDocumentAssetRepository } from "../../src/modules/assets/in-mem
 import { InMemoryJobRepository } from "../../src/modules/jobs/in-memory-job-repository.ts";
 import { InMemoryExecutionTrackingRepository } from "../../src/modules/execution-tracking/in-memory-execution-tracking-repository.ts";
 import { ExecutionTrackingService } from "../../src/modules/execution-tracking/execution-tracking-service.ts";
+import { ModuleExecutionConcurrencyController } from "../../src/modules/shared/module-execution-concurrency-controller.ts";
 import { createWriteTransactionManager } from "../../src/modules/shared/write-transaction-manager.ts";
 import { InMemoryTemplateFamilyRepository } from "../../src/modules/templates/in-memory-template-family-repository.ts";
 import type { AgentExecutionLogRecord } from "../../src/modules/agent-execution/agent-execution-record.ts";
@@ -186,6 +187,50 @@ function createSettlementLifecycleHarness(options?: {
     executionLogs,
   };
 }
+
+test("manuscript api exposes the shared module execution concurrency snapshot", async () => {
+  const { manuscriptService, assetService } = createLifecycleHarness();
+  const moduleExecutionConcurrencyController =
+    new ModuleExecutionConcurrencyController({
+      limits: {
+        global: 2,
+        screening: 2,
+        editing: 1,
+        proofreading: 1,
+      },
+    });
+  const api = createManuscriptApi({
+    manuscriptService,
+    assetService,
+    moduleExecutionConcurrencyController,
+  });
+
+  await moduleExecutionConcurrencyController.run({
+    module: "screening",
+    task: async () => {
+      const snapshot = await api.getModuleExecutionConcurrency();
+      assert.equal(snapshot.status, 200);
+      assert.deepEqual(snapshot.body.active, {
+        global: 1,
+        screening: 1,
+        editing: 0,
+        proofreading: 0,
+      });
+      assert.deepEqual(snapshot.body.queued, {
+        global: 0,
+        screening: 0,
+        editing: 0,
+        proofreading: 0,
+      });
+      assert.deepEqual(snapshot.body.limits, {
+        global: 2,
+        screening: 2,
+        editing: 1,
+        proofreading: 1,
+      });
+    },
+  });
+});
 
 test("upload creates manuscript, original asset, and queued upload job records", async () => {
   const { api } = createLifecycleHarness();

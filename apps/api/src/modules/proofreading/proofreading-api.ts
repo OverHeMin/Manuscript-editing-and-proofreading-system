@@ -50,6 +50,7 @@ export function createProofreadingApi(options: CreateProofreadingApiOptions) {
 
     async getGovernanceHandoff(input: {
       manuscriptId: string;
+      snapshotId?: string;
       actorRole: CreateProofreadingDraftInput["actorRole"];
     }): Promise<RouteResponse<ProofreadingGovernanceHandoff>> {
       return {

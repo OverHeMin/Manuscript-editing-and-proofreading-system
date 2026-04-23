@@ -28,6 +28,7 @@ export type ResidualIssueStatus =
   | "validation_pending"
   | "candidate_ready"
   | "validation_failed"
+  | "manual_review_pending"
   | "manual_only"
   | "evidence_only"
   | "candidate_created"

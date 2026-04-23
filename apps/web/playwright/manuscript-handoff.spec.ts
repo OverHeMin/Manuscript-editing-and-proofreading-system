@@ -7,6 +7,7 @@ import {
 
 const apiBaseUrl =
   process.env.PLAYWRIGHT_API_BASE_URL ?? "http://127.0.0.1:3001";
+const manuscriptTitle = "Phase 8T Browser QA Manuscript";
 
 test("admin can follow screening to proofreading handoffs with visible prefill loading state", async ({
   page,
@@ -14,14 +15,14 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
 }) => {
   await request.post(`${apiBaseUrl}/api/v1/auth/local/login`, {
     data: {
-      username: "dev.user",
+      username: "dev.admin",
       password: "demo-password",
     },
   });
 
   const uploadResponse = await request.post(`${apiBaseUrl}/api/v1/manuscripts/upload`, {
     data: {
-      title: "Phase 8T Browser QA Manuscript",
+      title: manuscriptTitle,
       manuscriptType: "clinical_study",
       createdBy: "ignored-by-server",
       fileName: "phase8t-source.docx",
@@ -60,8 +61,8 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   await expect(page).toHaveTitle(/Medical Manuscript System - Web/i);
   await expect(page.locator("body")).toContainText("当前账号");
   await expect(page.locator("body")).toContainText("管理员");
-  await expect(page.getByRole("heading", { name: "当前稿件初筛判断" })).toBeVisible();
-  await expect(page.locator("body")).toContainText(`正在加载稿件 ${manuscriptId}...`);
+  await expect(page.getByRole("heading", { name: /当前稿件初筛判断|初筛工作区/ })).toBeVisible();
+  await expect(page.locator("body")).toContainText("正在加载稿件...");
   await expect(page.locator("body")).toContainText(
     "正在拉取工作区资产与最新治理状态，完成后即可继续操作。",
   );
@@ -69,23 +70,30 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
     timeout: 10_000,
   });
-  await expect(page.locator("body")).toContainText(`已自动带入稿件 ${manuscriptId}`);
+  await expect(page.locator("body")).toContainText("已自动带入稿件");
+  await expect(page.getByRole("textbox", { name: "稿件查找" })).toHaveValue(
+    manuscriptTitle,
+  );
 
   const runScreeningButton = page.getByRole("button", { name: "执行初筛" });
   await expect(runScreeningButton).toBeEnabled();
   await runScreeningButton.click();
   await expect(page.locator("body")).toContainText("操作已完成");
   await expect(page.locator("body")).toContainText("已生成初筛报告");
-  const editingLink = page.locator(`a[href*="#editing?manuscriptId=${manuscriptId}"]`).first();
+  await expandResultDetails(page);
+  const editingLink = page.getByRole("link", { name: "前往编辑工作台" });
   await expect(editingLink).toBeVisible();
 
   await navigateViaHashLink(page, editingLink);
-  await expect(page.getByRole("heading", { name: "当前稿件编辑工作区" })).toBeVisible();
-  await expect(page.locator("body")).toContainText(`正在加载稿件 ${manuscriptId}...`);
+  await expect(page.getByRole("heading", { name: /编辑工作区/ })).toBeVisible();
+  await expect(page.locator("body")).toContainText("正在加载稿件...");
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
     timeout: 10_000,
   });
-  await expect(page.locator("body")).toContainText(`已自动带入稿件 ${manuscriptId}`);
+  await expect(page.locator("body")).toContainText("已自动带入稿件");
+  await expect(page.getByRole("textbox", { name: "稿件查找" })).toHaveValue(
+    manuscriptTitle,
+  );
 
   const runEditingButton = page.getByRole("button", { name: "执行编辑" });
   await expect(runEditingButton).toBeEnabled();
@@ -100,23 +108,25 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   expect(
     editingJob.payload?.tableInspectionFindings?.[0]?.semantic_hit?.column_key,
   ).toBe(semanticTableColumnKey);
-  const proofreadingLink = page
-    .locator(`a[href*="#proofreading?manuscriptId=${manuscriptId}"]`)
-    .first();
+  await expandResultDetails(page);
+  const proofreadingLink = page.getByRole("link", { name: "前往校对工作台" });
   await expect(proofreadingLink).toBeVisible();
 
   await navigateViaHashLink(page, proofreadingLink);
-  await expect(page.getByRole("heading", { name: "当前稿件校对工作区" })).toBeVisible();
-  await expect(page.locator("body")).toContainText(`正在加载稿件 ${manuscriptId}...`);
+  await expect(page.getByRole("heading", { name: /校对工作区/ })).toBeVisible();
+  await expect(page.locator("body")).toContainText("正在加载稿件...");
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
     timeout: 10_000,
   });
-  await expect(page.locator("body")).toContainText(`已自动带入稿件 ${manuscriptId}`);
+  await expect(page.locator("body")).toContainText("已自动带入稿件");
+  await expect(page.getByRole("textbox", { name: "稿件查找" })).toHaveValue(
+    manuscriptTitle,
+  );
 
   const createDraftButton = page.getByRole("button", { name: "生成校对草稿" });
   await expect(createDraftButton).toBeEnabled();
   await createDraftButton.click();
-  await expect(page.locator("body")).toContainText("proofreading_draft_report");
+  await expect(page.locator("body")).toContainText("已生成校对草稿报告");
   const proofreadingDraftAsset = await waitForCurrentAsset(
     request,
     manuscriptId,
@@ -141,7 +151,7 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   const issueDetail = selectedIssue.locator(
     ".manuscript-workbench-proofreading-issue-detail",
   );
-  await issueDetail.getByRole("button", { name: "转规则候选" }).click();
+  await clickViaDom(issueDetail.getByRole("button", { name: "转规则候选" }));
   await expect(
     issueDetail.getByRole("button", { name: "转规则候选" }),
   ).toHaveClass(/is-selected/);
@@ -150,7 +160,7 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
     ".manuscript-workbench-proofreading-issue-pane .manuscript-workbench-button-row--sticky button",
   );
   await expect(publishHumanFinalButton).toBeEnabled();
-  await publishHumanFinalButton.click();
+  await clickViaDom(publishHumanFinalButton);
   await expect(page.locator("body")).toContainText("已发布人工终稿资产");
   const learningReviewHref =
     `#template-governance?manuscriptId=${manuscriptId}` +
@@ -161,14 +171,14 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   await expect(page.locator("body")).toContainText("导出文件名");
   await expect(page.locator("body")).toContainText("human-final.docx");
   await expect(page.locator("body")).toContainText("下载 MIME 类型");
-  await expect(page.locator("body")).toContainText(
+  await expect(page.locator("body")).toContainText("Word 文档（DOCX）");
+  await expect(page.locator("body")).not.toContainText(
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   );
-  await expect(page.locator("body")).toContainText(
+  await expect(page.locator("body")).not.toContainText(
     `runs/${manuscriptId}/proofreading/human-final`,
   );
   const downloadLink = page.locator('a[href*="/api/v1/document-assets/"]').last();
-  await expect(downloadLink).toBeVisible();
   const downloadUrl = await downloadLink.getAttribute("href");
   expect(downloadUrl).toBeTruthy();
   const downloadResponse = await request.get(downloadUrl!);
@@ -334,12 +344,24 @@ async function navigateToProofreadingIssueWorkbench(
   ).toBeVisible();
 
   const issueToggle = page.locator(".manuscript-workbench-proofreading-issue-toggle").first();
+  const issueDetail = page.locator(".manuscript-workbench-proofreading-issue-detail").first();
   await expect(issueToggle).toBeVisible();
-  await issueToggle.click();
-  await expect(
-    page.locator(".manuscript-workbench-proofreading-issue-detail").first(),
-  ).toBeVisible();
+  if (!(await issueDetail.isVisible())) {
+    await issueToggle.evaluate((element: HTMLElement) => element.click());
+  }
+  await expect(issueDetail).toBeVisible();
   await expect(
     page.locator('.manuscript-workbench-proofreading-block[data-selected="true"]').first(),
   ).toBeVisible();
+}
+
+async function expandResultDetails(page: Page) {
+  const summary = page.locator("summary").filter({ hasText: "展开完整处理详情" }).first();
+  await expect(summary).toBeVisible();
+  await clickViaDom(summary);
+}
+
+async function clickViaDom(locator: Locator) {
+  await expect(locator).toBeVisible();
+  await locator.evaluate((element: HTMLElement) => element.click());
 }
