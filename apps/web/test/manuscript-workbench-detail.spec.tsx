@@ -4,6 +4,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   buildEditingChangeLedgerEntries,
+  buildEditingGuardrailEntries,
   buildProofreadingConfirmationItems,
   buildProofreadingDocumentBlocks,
   buildWorkbenchAssetDetailHref,
@@ -157,6 +158,59 @@ test("editing detail helpers surface a visible change ledger from appliedChanges
       before: "Background",
       after: "Objective",
       locationText: "段落 4",
+    },
+  ]);
+});
+
+test("editing guardrail helpers extract planning and DOCX-stage downgrade reasons", () => {
+  const entries = buildEditingGuardrailEntries({
+    payload: {
+      editingPlan: {
+        manualReviewItems: [
+          "editing_guardrail:anchor_not_precise:摘要 目的",
+          "editing_guardrail:insufficient_style_evidence:Introduction",
+          "Verify the rewritten heading against the journal template.",
+        ],
+      },
+      skippedAiReplacements: [
+        {
+          replacementId: "ai-replacement-1",
+          reason: "anchor_not_precise",
+          targetText: "摘要 目的",
+        },
+        {
+          replacementId: "ai-replacement-2",
+          reason: "insufficient_style_evidence",
+          targetText: "Table 1",
+        },
+      ],
+    },
+  } as never);
+
+  assert.deepEqual(entries, [
+    {
+      id: "editing-guardrail-plan:anchor_not_precise:摘要 目的",
+      sourceStage: "planning",
+      reasonCode: "anchor_not_precise",
+      excerpt: "摘要 目的",
+    },
+    {
+      id: "editing-guardrail-plan:insufficient_style_evidence:Introduction",
+      sourceStage: "planning",
+      reasonCode: "insufficient_style_evidence",
+      excerpt: "Introduction",
+    },
+    {
+      id: "editing-guardrail-docx-1",
+      sourceStage: "docx_transform",
+      reasonCode: "anchor_not_precise",
+      excerpt: "摘要 目的",
+    },
+    {
+      id: "editing-guardrail-docx-2",
+      sourceStage: "docx_transform",
+      reasonCode: "insufficient_style_evidence",
+      excerpt: "Table 1",
     },
   ]);
 });
@@ -409,4 +463,164 @@ test("proofreading report detail keeps draft reports labeled as reports instead 
   assert.match(markup, /校对报告稿件 - 校对草稿报告/u);
   assert.match(markup, /下载校对草稿报告/u);
   assert.doesNotMatch(markup, /proofreading-draft\.md/u);
+});
+
+test("detail page exposes real governance evidence for why this fired", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchAssetDetailPage
+      mode="editing"
+      manuscriptTitle="三线表稿件"
+      asset={{
+        id: "asset-edited-1",
+        manuscript_id: "manuscript-1",
+        asset_type: "edited_docx",
+        status: "active",
+        storage_key: "runs/editing/output.docx",
+        mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        source_module: "editing",
+        created_by: "editor-1",
+        version_no: 2,
+        is_current: true,
+        file_name: "editing-output.docx",
+        created_at: "2026-04-24T09:00:00.000Z",
+        updated_at: "2026-04-24T09:05:00.000Z",
+      }}
+      detailKind="document_preview"
+      backHref="#editing?manuscriptId=manuscript-1"
+      downloadHref="http://localhost/api/v1/document-assets/asset-edited-1/download"
+      executionSnapshot={{
+        id: "snapshot-editing-1",
+        manuscript_id: "manuscript-1",
+        module: "editing",
+        job_id: "job-editing-1",
+        execution_profile_id: "execution-profile-editing-1",
+        module_template_id: "template-editing-1",
+        module_template_version_no: 2,
+        prompt_template_id: "prompt-editing-1",
+        prompt_template_version: "2026-04-24",
+        skill_package_ids: [],
+        skill_package_versions: [],
+        model_id: "gpt-5.4",
+        quality_packages: [
+          {
+            package_id: "package-general-v3",
+            package_name: "通用样式包",
+            package_kind: "general_style_package",
+            target_scopes: ["general_proofreading"],
+            version: 3,
+          },
+        ],
+        knowledge_item_ids: ["knowledge-table-1"],
+        created_asset_ids: ["asset-edited-1"],
+        quality_findings_summary: {
+          total_issue_count: 2,
+          issue_count_by_scope: {
+            general_proofreading: 2,
+          },
+          issue_count_by_action: {
+            manual_review: 2,
+          },
+          issue_count_by_severity: {
+            high: 1,
+            medium: 1,
+          },
+          highest_action: "manual_review",
+          representative_issue_ids: ["issue-1"],
+        },
+        created_at: "2026-04-24T09:00:00.000Z",
+        agent_execution: {
+          observation_status: "not_linked",
+        },
+        runtime_binding_readiness: {
+          observation_status: "failed_open",
+          error: "not used",
+        },
+      }}
+      knowledgeHitLogs={[
+        {
+          id: "hit-1",
+          snapshot_id: "snapshot-editing-1",
+          knowledge_item_id: "knowledge-table-1",
+          match_source_id:
+            "general_package_kind:general_style_package:package-general-v3",
+          binding_rule_id: "rule-table-1",
+          match_source: "knowledge_item_binding",
+          match_reasons: ["命中期刊表格格式说明", "由通用包绑定激活"],
+          score: 0.97,
+          section: "结果",
+          created_at: "2026-04-24T09:01:00.000Z",
+        },
+      ]}
+      knowledgeReferences={{
+        "knowledge-table-1": {
+          id: "knowledge-table-1",
+          title: "三线表格式要求",
+          revisionId: "revision-1",
+          status: "approved",
+        },
+      }}
+    />,
+  );
+
+  assert.match(markup, /治理命中依据/u);
+  assert.match(markup, /snapshot-editing-1/);
+  assert.match(markup, /通用样式包 v3 · 通用包/u);
+  assert.match(markup, /人工复核/u);
+  assert.match(markup, /三线表格式要求/u);
+  assert.match(markup, /知识项绑定/u);
+  assert.match(markup, /激活链路/u);
+  assert.match(markup, /按通用包类型激活/u);
+  assert.match(markup, /package-general-v3/);
+  assert.match(markup, /命中期刊表格格式说明/u);
+  assert.match(markup, /rule-table-1/);
+  assert.match(markup, /结果/u);
+});
+
+test("editing detail page shows explicit editing guardrail downgrade reasons", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchAssetDetailPage
+      mode="editing"
+      manuscriptTitle="编辑守门稿件"
+      asset={{
+        id: "asset-edited-guardrail-1",
+        manuscript_id: "manuscript-1",
+        asset_type: "edited_docx",
+        status: "active",
+        storage_key: "runs/editing/guardrail.docx",
+        mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        source_module: "editing",
+        created_by: "editor-1",
+        version_no: 2,
+        is_current: true,
+        file_name: "editing-guardrail.docx",
+        created_at: "2026-04-24T09:00:00.000Z",
+        updated_at: "2026-04-24T09:05:00.000Z",
+      }}
+      detailKind="document_preview"
+      backHref="#editing?manuscriptId=manuscript-1"
+      downloadHref="http://localhost/api/v1/document-assets/asset-edited-guardrail-1/download"
+      editingGuardrails={[
+        {
+          id: "guardrail-1",
+          sourceStage: "planning",
+          reasonCode: "anchor_not_precise",
+          excerpt: "摘要 目的",
+        },
+        {
+          id: "guardrail-2",
+          sourceStage: "docx_transform",
+          reasonCode: "insufficient_style_evidence",
+          excerpt: "Table 1",
+        },
+      ]}
+    />,
+  );
+
+  assert.match(markup, /自动改动被拦截/u);
+  assert.match(markup, /锚点不够精确（anchor_not_precise）/u);
+  assert.match(markup, /样式证据不足（insufficient_style_evidence）/u);
+  assert.match(markup, /AI 规划拦截/u);
+  assert.match(markup, /DOCX 落稿拦截/u);
+  assert.match(markup, /摘要 目的/u);
+  assert.match(markup, /Table 1/u);
 });

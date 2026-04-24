@@ -22,6 +22,10 @@ import {
   type UpdateKnowledgeDraftInput,
 } from "../knowledge/index.ts";
 import {
+  buildKnowledgeBindingSummaries,
+  formatKnowledgeBindingSummary,
+} from "../knowledge/knowledge-binding-presenter.ts";
+import {
   listLearningCandidates,
   type LearningCandidateViewModel,
   type LearningReviewHttpClient,
@@ -1565,6 +1569,11 @@ function filterKnowledgeItems(
       ...(item.routing.risk_tags ?? []),
       ...(item.routing.discipline_tags ?? []),
       ...(item.aliases ?? []),
+      ...buildKnowledgeBindingSummaries(item).flatMap((summary) => [
+        summary.label,
+        ...summary.values,
+        formatKnowledgeBindingSummary(summary),
+      ]),
       ...(item.template_bindings ?? []),
     ];
 
@@ -1580,6 +1589,23 @@ function isKnowledgeItemBoundToFamily(
 ): boolean {
   if (selectedTemplateFamilyId == null) {
     return false;
+  }
+
+  if (item.binding_targets?.template_family_ids?.includes(selectedTemplateFamilyId)) {
+    return true;
+  }
+  if (
+    selectedJournalTemplateId != null &&
+    item.binding_targets?.journal_template_ids?.includes(selectedJournalTemplateId)
+  ) {
+    return true;
+  }
+  if (
+    item.binding_targets?.module_template_ids?.some((bindingTargetId) =>
+      moduleTemplates.some((template) => template.id === bindingTargetId),
+    )
+  ) {
+    return true;
   }
 
   const bindings = new Set(item.template_bindings ?? []);

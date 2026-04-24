@@ -16,7 +16,9 @@ export default defineConfig(({ mode }) => {
       .map(([key, value]) => [`import.meta.env.${key}`, JSON.stringify(value)]),
   );
   const rawWebPort = env.WEB_PORT;
+  const rawWebHost = env.WEB_HOST?.trim();
   let webPort = 4173;
+  const webHost = rawWebHost && rawWebHost.length > 0 ? rawWebHost : "0.0.0.0";
 
   if (rawWebPort) {
     const parsedWebPort = Number(rawWebPort);
@@ -43,6 +45,15 @@ export default defineConfig(({ mode }) => {
         ),
       },
     },
-    server: { port: webPort, strictPort: true },
+    server: {
+      host: webHost,
+      port: webPort,
+      strictPort: true,
+    },
+    preview: {
+      host: webHost,
+      port: webPort,
+      strictPort: true,
+    },
   };
 });

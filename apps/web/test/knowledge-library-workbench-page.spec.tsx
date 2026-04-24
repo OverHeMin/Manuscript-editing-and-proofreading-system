@@ -652,6 +652,138 @@ test("legacy knowledge workbench uses business-friendly labels for controlled fi
   assert.doesNotMatch(markup, />guideline</);
 });
 
+test("legacy knowledge workbench renders high-fidelity evidence gate from the saved revision content", () => {
+  const markup = renderToStaticMarkup(
+    <KnowledgeLibraryWorkbenchPage
+      initialViewModel={{
+        library: [
+          {
+            id: "knowledge-1",
+            title: "Table formatting evidence",
+            summary: "Evidence gate render test.",
+            knowledge_kind: "reference",
+            status: "draft",
+            module_scope: "editing",
+            manuscript_types: ["clinical_study"],
+            selected_revision_id: "knowledge-1-revision-2",
+            semantic_status: "confirmed",
+            content_block_count: 1,
+            updated_at: "2026-04-24T08:30:00.000Z",
+            contributor_label: "editor.zh",
+          },
+        ],
+        visibleLibrary: [
+          {
+            id: "knowledge-1",
+            title: "Table formatting evidence",
+            summary: "Evidence gate render test.",
+            knowledge_kind: "reference",
+            status: "draft",
+            module_scope: "editing",
+            manuscript_types: ["clinical_study"],
+            selected_revision_id: "knowledge-1-revision-2",
+            semantic_status: "confirmed",
+            content_block_count: 1,
+            updated_at: "2026-04-24T08:30:00.000Z",
+            contributor_label: "editor.zh",
+          },
+        ],
+        filters: {
+          searchText: "",
+          queryMode: "keyword",
+        },
+        selectedAssetId: "knowledge-1",
+        selectedRevisionId: "knowledge-1-revision-2",
+        selectedSummary: {
+          id: "knowledge-1",
+          title: "Table formatting evidence",
+          summary: "Evidence gate render test.",
+          knowledge_kind: "reference",
+          status: "draft",
+          module_scope: "editing",
+          manuscript_types: ["clinical_study"],
+          selected_revision_id: "knowledge-1-revision-2",
+          semantic_status: "confirmed",
+          content_block_count: 1,
+          updated_at: "2026-04-24T08:30:00.000Z",
+          contributor_label: "editor.zh",
+        },
+        detail: {
+          asset: {
+            id: "knowledge-1",
+            status: "active",
+            current_revision_id: "knowledge-1-revision-2",
+            current_approved_revision_id: "knowledge-1-revision-1",
+            created_at: "2026-04-24T08:00:00.000Z",
+            updated_at: "2026-04-24T08:30:00.000Z",
+            contributor_label: "editor.zh",
+          },
+          selected_revision: {
+            id: "knowledge-1-revision-2",
+            asset_id: "knowledge-1",
+            revision_no: 2,
+            status: "draft",
+            title: "Table formatting evidence draft",
+            canonical_text: "Tables must preserve authoritative formatting evidence.",
+            summary: "Evidence gate render test.",
+            knowledge_kind: "reference",
+            routing: {
+              module_scope: "editing",
+              manuscript_types: ["clinical_study"],
+            },
+            content_blocks: [
+              {
+                id: "knowledge-1-revision-2-block-1",
+                revision_id: "knowledge-1-revision-2",
+                block_type: "table_block",
+                order_no: 0,
+                status: "active",
+                content_payload: {
+                  capture_mode: "word_html_exact",
+                  exact_capture_failure_codes: ["run_style_incomplete"],
+                },
+                table_semantics: {
+                  exact_capture_authoritative: false,
+                  exact_capture_failure_codes: ["run_style_incomplete"],
+                },
+              },
+            ],
+            bindings: [],
+            created_at: "2026-04-24T08:15:00.000Z",
+            updated_at: "2026-04-24T08:30:00.000Z",
+            contributor_label: "editor.zh",
+          },
+          current_approved_revision: {
+            id: "knowledge-1-revision-1",
+            asset_id: "knowledge-1",
+            revision_no: 1,
+            status: "approved",
+            title: "Table formatting evidence",
+            canonical_text: "Tables must preserve authoritative formatting evidence.",
+            summary: "Approved evidence.",
+            knowledge_kind: "reference",
+            routing: {
+              module_scope: "editing",
+              manuscript_types: ["clinical_study"],
+            },
+            content_blocks: [],
+            bindings: [],
+            created_at: "2026-04-24T08:00:00.000Z",
+            updated_at: "2026-04-24T08:10:00.000Z",
+            contributor_label: "reviewer.zh",
+          },
+          revisions: [],
+        },
+      }}
+    />,
+  );
+
+  assert.match(markup, /高精度证据预检/u);
+  assert.match(markup, /按当前已保存富文本版本计算/u);
+  assert.match(markup, /表格块 #1/u);
+  assert.match(markup, /阻断提交审核/u);
+});
+
 test("knowledge library duplicate status row renders all inline states", () => {
   const notCheckedMarkup = renderToStaticMarkup(
     <KnowledgeLibraryDuplicateStatusRow

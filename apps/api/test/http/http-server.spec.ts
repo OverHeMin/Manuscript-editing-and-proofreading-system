@@ -582,6 +582,43 @@ test("http server grants knowledge reviewers scoped rule-center access without g
   }
 });
 
+test("http server lets knowledge reviewers read published quality packages without opening admin-only package governance", async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const reviewerCookie = await loginAsDemoUser(baseUrl, "dev.knowledge-reviewer");
+
+    const publishedResponse = await fetch(
+      `${baseUrl}/api/v1/manuscript-quality-packages?packageKind=general_style_package&status=published`,
+      {
+        headers: {
+          Cookie: reviewerCookie,
+        },
+      },
+    );
+    const publishedPackages = (await publishedResponse.json()) as unknown[];
+
+    const unrestrictedResponse = await fetch(
+      `${baseUrl}/api/v1/manuscript-quality-packages?packageKind=general_style_package`,
+      {
+        headers: {
+          Cookie: reviewerCookie,
+        },
+      },
+    );
+    const unrestrictedBody = (await unrestrictedResponse.json()) as {
+      error?: string;
+    };
+
+    assert.equal(publishedResponse.status, 200);
+    assert.ok(Array.isArray(publishedPackages));
+    assert.equal(unrestrictedResponse.status, 403);
+    assert.equal(unrestrictedBody.error, "forbidden");
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("http server returns 401 for invalid login credentials", async () => {
   const { server, baseUrl } = await startServer();
 

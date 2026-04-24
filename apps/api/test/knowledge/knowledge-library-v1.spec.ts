@@ -7,6 +7,7 @@ import {
 import {
   KnowledgeService,
   type KnowledgeAssetDetailRecord,
+  KnowledgeRevisionReviewGateError,
 } from "../../src/modules/knowledge/knowledge-service.ts";
 
 function createKnowledgeLibraryHarness() {
@@ -37,6 +38,114 @@ function createKnowledgeLibraryHarness() {
     repository,
     reviewActionRepository,
     service,
+  };
+}
+
+const NON_AUTHORITATIVE_TABLE_FAILURE_CODES = [
+  "missing_required_clipboard_flavor",
+  "merged_cell_map_incomplete",
+  "caption_or_note_position_unknown",
+  "border_profile_incomplete",
+  "alignment_profile_incomplete",
+  "run_style_incomplete",
+  "exact_capture_not_authoritative",
+];
+
+function buildNonAuthoritativeTableBlock() {
+  return {
+    blockType: "table_block" as const,
+    orderNo: 1,
+    contentPayload: {
+      rows: [
+        ["指标", "值"],
+        ["年龄", "12"],
+      ],
+      capture_mode: "plain_text_grid",
+      clipboard_types: ["text/plain"],
+      exact_capture_failure_codes: NON_AUTHORITATIVE_TABLE_FAILURE_CODES,
+    },
+    tableSemantics: {
+      snapshot_type: "table_style_snapshot",
+      capture_mode: "plain_text_grid",
+      exact_capture_authoritative: false,
+      exact_capture_failure_codes: NON_AUTHORITATIVE_TABLE_FAILURE_CODES,
+      row_count: 2,
+      column_count: 2,
+    },
+  };
+}
+
+function buildAuthoritativeTableBlock() {
+  return {
+    blockType: "table_block" as const,
+    orderNo: 1,
+    contentPayload: {
+      rows: [
+        ["指标", "值"],
+        ["年龄", "12"],
+      ],
+      capture_mode: "html_table_clipboard",
+      capture_environment: "windows_chromium",
+      source_application: "word",
+      clipboard_types: ["text/html", "text/plain", "text/rtf"],
+      merged_cell_state: "none",
+      caption_position: "above",
+      note_position: "below",
+      border_profile: "顶线，表头分隔线，底线，无竖线",
+      alignment_profile: "表头居中，正文左对齐/右对齐",
+      run_style_signals: "斜体, 上标",
+      exact_capture_failure_codes: [],
+    },
+    tableSemantics: {
+      snapshot_type: "table_style_snapshot",
+      capture_mode: "html_table_clipboard",
+      capture_environment: "windows_chromium",
+      source_application: "word",
+      exact_capture_authoritative: true,
+      exact_capture_failure_codes: [],
+      row_count: 2,
+      column_count: 2,
+      merged_cell_state: "none",
+      caption: {
+        text: "表 1 基线特征",
+        position: "above",
+      },
+      note: {
+        text: "注：年龄单位为岁。",
+        position: "below",
+      },
+      header_depth: "1",
+      stub_column_count: "0",
+      border_profile: "顶线，表头分隔线，底线，无竖线",
+      alignment_profile: "表头居中，正文左对齐/右对齐",
+      run_style_signals: ["斜体", "上标"],
+    },
+  };
+}
+
+function buildVisualSymbolImageBlock(reviewState: "pending_review" | "confirmed") {
+  return {
+    blockType: "image_block" as const,
+    orderNo: 1,
+    contentPayload: {
+      upload_id: "upload-chi-square",
+      storage_key: "knowledge/rich-space/chi-square.png",
+      file_name: "chi-square.png",
+      source_kind: "inline_symbol_image",
+      normalized_candidate_symbol: "χ²",
+      local_context: "统计方法段落",
+      nearby_text: "采用 χ² 检验比较组间差异。",
+      review_state: reviewState,
+    },
+    imageUnderstanding: {
+      snapshot_type: "visual_symbol_snapshot",
+      source_kind: "inline_symbol_image",
+      normalized_candidate_symbol: "χ²",
+      local_context: "统计方法段落",
+      nearby_text: "采用 χ² 检验比较组间差异。",
+      review_state: reviewState,
+      image_id: "upload-chi-square",
+    },
   };
 }
 
@@ -457,4 +566,118 @@ test("archive and restore actions are recorded for recycle-bin visibility", asyn
       },
     ],
   );
+});
+
+test("non-authoritative table exact-capture evidence cannot be submitted for review", async () => {
+  const { service } = createKnowledgeLibraryHarness();
+
+  const created = await service.createLibraryDraft({
+    title: "Table exact-capture gate",
+    canonicalText: "Runtime table guidance must carry authoritative exact-capture evidence.",
+    knowledgeKind: "reference",
+    moduleScope: "editing",
+    manuscriptTypes: ["review"],
+  });
+
+  await service.replaceRevisionContentBlocks(created.selected_revision.id, {
+    blocks: [buildNonAuthoritativeTableBlock()],
+  });
+
+  await assert.rejects(
+    () => service.submitRevisionForReview(created.selected_revision.id),
+    (error) => {
+      assert.ok(error instanceof KnowledgeRevisionReviewGateError);
+      assert.match(error.message, /exact_capture_not_authoritative/);
+      return true;
+    },
+  );
+
+  const detail = await service.getKnowledgeAsset(
+    created.asset.id,
+    created.selected_revision.id,
+  );
+  assert.equal(detail.selected_revision.status, "draft");
+});
+
+test("authoritative table exact-capture evidence completes the review lifecycle", async () => {
+  const { service } = createKnowledgeLibraryHarness();
+
+  const created = await service.createLibraryDraft({
+    title: "Authoritative table exact-capture",
+    canonicalText: "Approved table knowledge must preserve exact formatting evidence.",
+    knowledgeKind: "reference",
+    moduleScope: "editing",
+    manuscriptTypes: ["review"],
+  });
+
+  await service.replaceRevisionContentBlocks(created.selected_revision.id, {
+    blocks: [buildAuthoritativeTableBlock()],
+  });
+
+  const submitted = await service.submitRevisionForReview(created.selected_revision.id);
+  const approved = await service.approveRevision(
+    created.selected_revision.id,
+    "knowledge_reviewer",
+  );
+
+  assert.equal(submitted.selected_revision.status, "pending_review");
+  assert.equal(approved.selected_revision.status, "approved");
+});
+
+test("pending visual-symbol evidence can be submitted but cannot be approved", async () => {
+  const { service } = createKnowledgeLibraryHarness();
+
+  const created = await service.createLibraryDraft({
+    title: "Visual symbol gate",
+    canonicalText: "Image-based symbol evidence must be reviewed before approval.",
+    knowledgeKind: "reference",
+    moduleScope: "proofreading",
+    manuscriptTypes: ["clinical_study"],
+  });
+
+  await service.replaceRevisionContentBlocks(created.selected_revision.id, {
+    blocks: [buildVisualSymbolImageBlock("pending_review")],
+  });
+
+  const submitted = await service.submitRevisionForReview(created.selected_revision.id);
+  assert.equal(submitted.selected_revision.status, "pending_review");
+
+  await assert.rejects(
+    () => service.approveRevision(created.selected_revision.id, "knowledge_reviewer"),
+    (error) => {
+      assert.ok(error instanceof KnowledgeRevisionReviewGateError);
+      assert.match(error.message, /review_state must be confirmed before approval/);
+      return true;
+    },
+  );
+
+  const detail = await service.getKnowledgeAsset(
+    created.asset.id,
+    created.selected_revision.id,
+  );
+  assert.equal(detail.selected_revision.status, "pending_review");
+});
+
+test("confirmed visual-symbol evidence can be approved", async () => {
+  const { service } = createKnowledgeLibraryHarness();
+
+  const created = await service.createLibraryDraft({
+    title: "Confirmed visual symbol evidence",
+    canonicalText: "Confirmed object-type symbol evidence may become runtime knowledge.",
+    knowledgeKind: "reference",
+    moduleScope: "proofreading",
+    manuscriptTypes: ["clinical_study"],
+  });
+
+  await service.replaceRevisionContentBlocks(created.selected_revision.id, {
+    blocks: [buildVisualSymbolImageBlock("confirmed")],
+  });
+
+  await service.submitRevisionForReview(created.selected_revision.id);
+  const approved = await service.approveRevision(
+    created.selected_revision.id,
+    "knowledge_reviewer",
+  );
+
+  assert.equal(approved.selected_revision.status, "approved");
 });

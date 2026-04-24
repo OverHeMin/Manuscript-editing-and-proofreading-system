@@ -12,6 +12,9 @@ import {
   type KnowledgeReviewActionViewModel,
   type KnowledgeReviewQueueItemViewModel,
 } from "../knowledge/index.ts";
+import {
+  createKnowledgeBindingTargetsFromRevisionBindings,
+} from "../knowledge/knowledge-binding-presenter.ts";
 import { getKnowledgeAssetDetail } from "../knowledge-library/knowledge-library-api.ts";
 import {
   applyKnowledgeReviewSuccess,
@@ -268,6 +271,7 @@ function mapKnowledgeReviewDetailToQueueItem(
   detail: Awaited<ReturnType<typeof getKnowledgeAssetDetail>>["body"],
 ): KnowledgeReviewQueueItemViewModel {
   const revision = detail.selected_revision;
+  const bindingTargets = createKnowledgeBindingTargetsFromRevisionBindings(revision.bindings);
 
   return {
     id: revision.id,
@@ -285,6 +289,7 @@ function mapKnowledgeReviewDetailToQueueItem(
     effective_at: revision.effective_at,
     expires_at: revision.expires_at,
     aliases: revision.aliases,
+    ...(bindingTargets ? { binding_targets: bindingTargets } : {}),
     template_bindings: revision.bindings.map((binding) => binding.binding_target_id),
   };
 }

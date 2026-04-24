@@ -508,6 +508,7 @@ export function createWorkbenchRuntime(input: {
         tableInspectionFindings: [],
         tablePatchPlans: [],
         tablePatchResults: [],
+        skippedAiReplacements: [],
       };
     },
   };
@@ -572,6 +573,7 @@ export function createWorkbenchRuntime(input: {
         tableInspectionFindings: [],
         tablePatchPlans: [],
         tablePatchResults: [],
+        skippedAiReplacements: [],
       };
     },
   };

@@ -1,15 +1,20 @@
-import type { TemplateModule } from "../templates/types.ts";
+import type {
+  ManuscriptQualityFindingSummary,
+  ManuscriptQualityPackageVersionRef,
+} from "@medical/contracts";
+import type { ManuscriptModule } from "../manuscripts/types.ts";
 
 export type KnowledgeHitMatchSource =
   | "binding_rule"
   | "template_binding"
   | "dynamic_routing"
+  | "knowledge_item_binding"
   | "draft_snapshot_reuse";
 
 export interface ModuleExecutionSnapshotViewModel {
   id: string;
   manuscript_id: string;
-  module: TemplateModule;
+  module: ManuscriptModule;
   job_id: string;
   execution_profile_id: string;
   module_template_id: string;
@@ -20,9 +25,11 @@ export interface ModuleExecutionSnapshotViewModel {
   skill_package_versions: string[];
   model_id: string;
   model_version?: string;
+  quality_packages?: ManuscriptQualityPackageVersionRef[];
   knowledge_item_ids: string[];
   created_asset_ids: string[];
   draft_snapshot_id?: string;
+  quality_findings_summary?: ManuscriptQualityFindingSummary;
   created_at: string;
 }
 
@@ -51,7 +58,7 @@ export interface RecordKnowledgeHitInput {
 
 export interface RecordExecutionSnapshotInput {
   manuscriptId: string;
-  module: TemplateModule;
+  module: ManuscriptModule;
   jobId: string;
   executionProfileId: string;
   moduleTemplateId: string;

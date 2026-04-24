@@ -21,13 +21,29 @@ import type {
   KnowledgeSemanticLayerViewModel,
   UpdateKnowledgeLibraryDraftInput,
 } from "../knowledge-library/types.ts";
-import { listContentModules, listTemplateFamilies } from "../templates/index.ts";
+import {
+  listJournalTemplateProfilesByTemplateFamilyId,
+  listTemplateFamilies,
+} from "../templates/index.ts";
 import type { KnowledgeSourceType } from "../knowledge/index.ts";
 import type { ManuscriptModule, ManuscriptType } from "../manuscripts/types.ts";
 import {
   EDITORIAL_MANUSCRIPT_TYPE_OPTIONS,
   formatEditorialManuscriptTypeLabel,
 } from "../shared/editorial-taxonomy.ts";
+import {
+  listManuscriptQualityPackages,
+} from "../manuscript-quality-packages/manuscript-quality-packages-api.ts";
+import type {
+  ManuscriptQualityPackageKind,
+  ManuscriptQualityPackageViewModel,
+} from "../manuscript-quality-packages/types.ts";
+import {
+  formatQualityPackageBindingDisplayLabel,
+  formatQualityPackageExactBindingLabel,
+  formatQualityPackageKindBindingLabel,
+  isQualityPackageKindBindingId,
+} from "../manuscript-quality-packages/binding-kind-options.ts";
 
 type RuleWizardStructuredManuscriptTypes = ManuscriptType[] | "any";
 type RuleWizardStringListInput = readonly string[] | string;
@@ -153,10 +169,17 @@ export interface RuleWizardTemplateFamilyOption {
   manuscriptType: ManuscriptType;
 }
 
+export interface RuleWizardJournalTemplateOption extends RuleWizardBindingOption {
+  familyId: string;
+  familyName: string;
+  journalKey: string;
+}
+
 export interface RuleWizardBindingOptions {
   generalPackages: RuleWizardBindingOption[];
   medicalPackages: RuleWizardBindingOption[];
   templateFamilies: RuleWizardTemplateFamilyOption[];
+  journalTemplates: RuleWizardJournalTemplateOption[];
   knowledgeItems: RuleWizardKnowledgeItemOption[];
 }
 
@@ -166,6 +189,10 @@ export interface RuleWizardBindingFormState {
   selectedPackageLabel: string;
   reuseStrategy: "reuse_existing" | "new_binding";
   selectedTemplateFamilies: Array<{
+    id: string;
+    name: string;
+  }>;
+  selectedJournalTemplates: Array<{
     id: string;
     name: string;
   }>;
@@ -185,6 +212,25 @@ export interface RuleWizardPublishFormState {
 export interface RuleWizardBindingDraftResult {
   detail: KnowledgeAssetDetailViewModel;
   bindingInputs: KnowledgeRevisionBindingInput[];
+}
+
+export interface RuleWizardEvidenceGateItem {
+  blockId: string;
+  blockType: KnowledgeContentBlockViewModel["block_type"];
+  orderNo: number;
+  title: string;
+  statusLabel: string;
+  detail: string;
+  blocking: boolean;
+}
+
+export interface RuleWizardEvidenceGateSummary {
+  itemCount: number;
+  readyItemCount: number;
+  blockingItemCount: number;
+  items: RuleWizardEvidenceGateItem[];
+  hasBlockingIssues: boolean;
+  blockingMessage: string | null;
 }
 
 export function createRuleWizardEntryFormState(
@@ -346,13 +392,24 @@ export function createRuleWizardBindingFormState(input: {
     resolvedPackageKind === "medical_package"
       ? input.options?.medicalPackages ?? []
       : input.options?.generalPackages ?? [];
-  const selectedPackage = packageOptions[0];
+  const selectedPackage = pickDefaultRuleWizardPackageOption(packageOptions);
   const selectedTemplateFamilies = detailBindings
     .filter((binding) => binding.binding_kind === "template_family")
     .map((binding) => ({
       id: binding.binding_target_id,
       name: binding.binding_target_label,
     }));
+  const selectedJournalTemplates = detailBindings
+    .filter((binding) => binding.binding_kind === "journal_template")
+    .map((binding) => {
+      const matched =
+        input.options?.journalTemplates.find((item) => item.id === binding.binding_target_id) ??
+        null;
+      return {
+        id: binding.binding_target_id,
+        name: matched?.label ?? binding.binding_target_label,
+      };
+    });
   const selectedKnowledgeItems = detailBindings
     .filter((binding) => binding.binding_kind === "knowledge_item")
     .map((binding) => {
@@ -368,6 +425,7 @@ export function createRuleWizardBindingFormState(input: {
   if (
     selectedPackageBinding ||
     selectedTemplateFamilies.length > 0 ||
+    selectedJournalTemplates.length > 0 ||
     selectedKnowledgeItems.length > 0
   ) {
     return {
@@ -375,7 +433,13 @@ export function createRuleWizardBindingFormState(input: {
       selectedPackageId:
         selectedPackageBinding?.binding_target_id ?? selectedPackage?.id ?? "",
       selectedPackageLabel:
-        selectedPackageBinding?.binding_target_label ?? selectedPackage?.label ?? "",
+        selectedPackageBinding == null
+          ? selectedPackage?.label ?? ""
+          : formatQualityPackageBindingDisplayLabel({
+              bindingKind: resolvedPackageKind,
+              bindingTargetId: selectedPackageBinding.binding_target_id,
+              bindingTargetLabel: selectedPackageBinding.binding_target_label,
+            }),
       reuseStrategy: selectedPackageBinding ? "reuse_existing" : "new_binding",
       selectedTemplateFamilies:
         selectedTemplateFamilies.length > 0
@@ -384,6 +448,7 @@ export function createRuleWizardBindingFormState(input: {
               input.options?.templateFamilies ?? [],
               input.semanticViewModel?.manuscriptTypes,
             ),
+      selectedJournalTemplates,
       selectedKnowledgeItems,
     };
   }
@@ -398,6 +463,7 @@ export function createRuleWizardBindingFormState(input: {
       input.options?.templateFamilies ?? [],
       input.semanticViewModel?.manuscriptTypes,
     ),
+    selectedJournalTemplates: [],
     selectedKnowledgeItems: [],
   };
 }
@@ -420,7 +486,11 @@ export function createRuleWizardBindingInputs(
     bindings.push({
       bindingKind: form.selectedPackageKind,
       bindingTargetId: form.selectedPackageId.trim(),
-      bindingTargetLabel: form.selectedPackageLabel.trim(),
+      bindingTargetLabel: formatQualityPackageBindingDisplayLabel({
+        bindingKind: form.selectedPackageKind,
+        bindingTargetId: form.selectedPackageId.trim(),
+        bindingTargetLabel: form.selectedPackageLabel.trim(),
+      }),
     });
   }
 
@@ -434,6 +504,17 @@ export function createRuleWizardBindingInputs(
           bindingKind: "template_family" as const,
           bindingTargetId: family.id.trim(),
           bindingTargetLabel: family.name.trim(),
+        })),
+    )
+    .concat(
+      (form.selectedJournalTemplates ?? [])
+        .filter(
+          (template) => template.id.trim().length > 0 && template.name.trim().length > 0,
+        )
+        .map((template) => ({
+          bindingKind: "journal_template" as const,
+          bindingTargetId: template.id.trim(),
+          bindingTargetLabel: template.name.trim(),
         })),
     )
     .concat(
@@ -458,6 +539,33 @@ export function confirmSemanticLayerInput(
     ...(splitLineSeparated(form.retrievalSnippets)
       ? { retrievalSnippets: splitLineSeparated(form.retrievalSnippets) }
       : {}),
+  };
+}
+
+export function createRuleWizardEvidenceGateSummary(input: {
+  blocks?: readonly KnowledgeContentBlockViewModel[];
+  releaseAction: RuleWizardReleaseAction;
+}): RuleWizardEvidenceGateSummary {
+  const items = (input.blocks ?? []).flatMap((block) =>
+    createRuleWizardEvidenceGateItems(block, input.releaseAction),
+  );
+  const blockingItems = items.filter((item) => item.blocking);
+  const actionLabel = formatRuleWizardReleaseActionLabel(input.releaseAction);
+
+  return {
+    itemCount: items.length,
+    readyItemCount: items.length - blockingItems.length,
+    blockingItemCount: blockingItems.length,
+    items,
+    hasBlockingIssues: blockingItems.length > 0,
+    blockingMessage:
+      input.releaseAction === "save_draft" || blockingItems.length === 0
+        ? null
+        : blockingItems.length === 1
+          ? `${blockingItems[0]?.title}未满足${actionLabel}条件：${blockingItems[0]?.detail}`
+          : `当前有 ${blockingItems.length} 条高精度证据未满足${actionLabel}条件：${blockingItems
+              .map((item) => item.title)
+              .join("、")}`,
   };
 }
 
@@ -549,26 +657,52 @@ export async function loadRuleWizardBindingOptions(
   client: KnowledgeLibraryHttpClient,
 ): Promise<RuleWizardBindingOptions> {
   const [generalPackages, medicalPackages, templateFamilies, knowledgeItems] = await Promise.all([
-    listContentModules(client, "general"),
-    listContentModules(client, "medical_specialized"),
+    listManuscriptQualityPackages(client, {
+      packageKind: "general_style_package",
+      status: "published",
+    }),
+    listManuscriptQualityPackages(client, {
+      packageKind: "medical_analyzer_package",
+      status: "published",
+    }),
     listTemplateFamilies(client),
     listKnowledgeLibraryAssets(client),
   ]);
+  const availableTemplateFamilies = templateFamilies.body.filter(
+    (family) => family.status !== "archived",
+  );
+  const journalTemplatesByFamily = await Promise.all(
+    availableTemplateFamilies.map(async (family) => ({
+      family,
+      templates: (
+        await listJournalTemplateProfilesByTemplateFamilyId(client, family.id)
+      ).body.filter((template) => template.status === "active"),
+    })),
+  );
 
   return {
-    generalPackages: generalPackages.body.map((module) => ({
-      id: module.id,
-      label: module.name,
-    })),
-    medicalPackages: medicalPackages.body.map((module) => ({
-      id: module.id,
-      label: module.name,
-    })),
-    templateFamilies: templateFamilies.body.map((family) => ({
+    generalPackages: createRuleWizardQualityPackageOptions(
+      "general_style_package",
+      generalPackages.body,
+    ),
+    medicalPackages: createRuleWizardQualityPackageOptions(
+      "medical_analyzer_package",
+      medicalPackages.body,
+    ),
+    templateFamilies: availableTemplateFamilies.map((family) => ({
       id: family.id,
       name: family.name,
       manuscriptType: family.manuscript_type,
     })),
+    journalTemplates: journalTemplatesByFamily.flatMap(({ family, templates }) =>
+      templates.map((template) => ({
+        id: template.id,
+        label: template.journal_name,
+        familyId: family.id,
+        familyName: family.name,
+        journalKey: template.journal_key,
+      })),
+    ),
     knowledgeItems: knowledgeItems.body.items
       .filter((item) => item.status === "approved" && item.knowledge_kind !== "rule")
       .map((item) => ({
@@ -580,6 +714,55 @@ export async function loadRuleWizardBindingOptions(
         manuscriptTypes: item.manuscript_types,
       })),
   };
+}
+
+function isRuleWizardCompatibleQualityPackage(
+  record: ManuscriptQualityPackageViewModel,
+): boolean {
+  if (record.package_kind === "general_style_package") {
+    return record.target_scopes.every((scope) => scope === "general_proofreading");
+  }
+
+  if (record.package_kind === "medical_analyzer_package") {
+    return record.target_scopes.every((scope) => scope === "medical_specialized");
+  }
+
+  return false;
+}
+
+function formatRuleWizardQualityPackageLabel(
+  record: ManuscriptQualityPackageViewModel,
+): string {
+  return formatQualityPackageExactBindingLabel({
+    packageName: record.package_name,
+    version: record.version,
+    packageKind: record.package_kind,
+  });
+}
+
+function createRuleWizardQualityPackageOptions(
+  packageKind: ManuscriptQualityPackageKind,
+  records: readonly ManuscriptQualityPackageViewModel[],
+): RuleWizardBindingOption[] {
+  const exactPackages = records
+    .filter((record) => isRuleWizardCompatibleQualityPackage(record))
+    .map((record) => ({
+      id: record.id,
+      label: formatRuleWizardQualityPackageLabel(record),
+    }));
+
+  return exactPackages.concat({
+    id: packageKind,
+    label: formatQualityPackageKindBindingLabel(packageKind),
+  });
+}
+
+function pickDefaultRuleWizardPackageOption(
+  options: readonly RuleWizardBindingOption[],
+): RuleWizardBindingOption | undefined {
+  return (
+    options.find((option) => !isQualityPackageKindBindingId(option.id)) ?? options[0]
+  );
 }
 
 export async function saveRuleWizardBindingDraft(
@@ -1284,4 +1467,299 @@ function deriveDefaultTemplateFamilies(
       name: matchedFamily.name,
     },
   ];
+}
+
+function createRuleWizardEvidenceGateItems(
+  block: KnowledgeContentBlockViewModel,
+  releaseAction: RuleWizardReleaseAction,
+): RuleWizardEvidenceGateItem[] {
+  if (block.block_type === "table_block") {
+    const item = createRuleWizardTableEvidenceGateItem(block, releaseAction);
+    return item ? [item] : [];
+  }
+
+  if (block.block_type === "image_block") {
+    const item = createRuleWizardImageEvidenceGateItem(block, releaseAction);
+    return item ? [item] : [];
+  }
+
+  return [];
+}
+
+function createRuleWizardTableEvidenceGateItem(
+  block: KnowledgeContentBlockViewModel,
+  releaseAction: RuleWizardReleaseAction,
+): RuleWizardEvidenceGateItem | null {
+  if (!requiresRuleWizardTableEvidenceGate(block)) {
+    return null;
+  }
+
+  const tableSemantics = asRuleWizardOptionalRecord(block.table_semantics);
+  const payload = asRuleWizardOptionalRecord(block.content_payload) ?? {};
+  const exactCaptureAuthoritative =
+    readRuleWizardRecordBoolean(tableSemantics, "exact_capture_authoritative") === true;
+  const failureCodes = uniqueRuleWizardStrings([
+    ...readRuleWizardRecordStringArray(tableSemantics, "exact_capture_failure_codes"),
+    ...readRuleWizardRecordStringArray(payload, "exact_capture_failure_codes"),
+  ]);
+  const hasFailureMetadata =
+    hasRuleWizardRecordKey(tableSemantics, "exact_capture_failure_codes") ||
+    hasRuleWizardRecordKey(payload, "exact_capture_failure_codes");
+  const isReady =
+    exactCaptureAuthoritative || (hasFailureMetadata && failureCodes.length === 0);
+  const blocking = releaseAction !== "save_draft" && !isReady;
+  const statusLabel = blocking
+    ? releaseAction === "publish_now"
+      ? "阻断直接发布"
+      : "阻断提交审核"
+    : releaseAction === "save_draft"
+      ? "草稿可保存"
+      : releaseAction === "publish_now"
+        ? "可直接发布"
+        : "可提交审核";
+  const detail =
+    failureCodes.length > 0
+      ? failureCodes.map(formatRuleWizardTableFailureCodeLabel).join(" / ")
+      : isReady
+        ? "已满足权威 exact-capture。"
+        : "缺少 exact-capture 确认。";
+
+  return {
+    blockId: block.id,
+    blockType: block.block_type,
+    orderNo: block.order_no,
+    title: `表格块 #${block.order_no + 1}`,
+    statusLabel,
+    detail:
+      releaseAction === "save_draft" && !isReady
+        ? `当前可先存草稿，正式提交前仍需补齐：${detail}`
+        : detail,
+    blocking,
+  };
+}
+
+function createRuleWizardImageEvidenceGateItem(
+  block: KnowledgeContentBlockViewModel,
+  releaseAction: RuleWizardReleaseAction,
+): RuleWizardEvidenceGateItem | null {
+  if (!requiresRuleWizardVisualSymbolEvidenceGate(block)) {
+    return null;
+  }
+
+  const payload = asRuleWizardOptionalRecord(block.content_payload) ?? {};
+  const understanding = asRuleWizardOptionalRecord(block.image_understanding);
+  const failures = collectRuleWizardImageEvidenceFailures(
+    payload,
+    understanding,
+    releaseAction,
+  );
+  const blocking = releaseAction !== "save_draft" && failures.length > 0;
+  const statusLabel = blocking
+    ? releaseAction === "publish_now"
+      ? "阻断直接发布"
+      : "阻断提交审核"
+    : releaseAction === "save_draft"
+      ? "草稿可保存"
+      : releaseAction === "publish_now"
+        ? "可直接发布"
+        : "可提交审核";
+  const detail =
+    failures.length > 0
+      ? failures.join(" / ")
+      : releaseAction === "publish_now"
+        ? "视觉符号证据已确认，可直接发布。"
+        : "视觉符号证据已结构化，可提交审核。";
+
+  return {
+    blockId: block.id,
+    blockType: block.block_type,
+    orderNo: block.order_no,
+    title: `图片块 #${block.order_no + 1}`,
+    statusLabel,
+    detail:
+      releaseAction === "save_draft" && failures.length > 0
+        ? `当前可先存草稿，正式提交前仍需补齐：${detail}`
+        : detail,
+    blocking,
+  };
+}
+
+function requiresRuleWizardTableEvidenceGate(
+  block: KnowledgeContentBlockViewModel,
+): boolean {
+  if (block.block_type !== "table_block") {
+    return false;
+  }
+
+  const payload = asRuleWizardOptionalRecord(block.content_payload);
+  const tableSemantics = asRuleWizardOptionalRecord(block.table_semantics);
+
+  return (
+    hasRuleWizardRecordKey(payload, "capture_mode") ||
+    hasRuleWizardRecordKey(payload, "capture_environment") ||
+    hasRuleWizardRecordKey(payload, "source_application") ||
+    hasRuleWizardRecordKey(payload, "exact_capture_failure_codes") ||
+    hasRuleWizardRecordKey(tableSemantics, "capture_mode") ||
+    hasRuleWizardRecordKey(tableSemantics, "exact_capture_authoritative") ||
+    hasRuleWizardRecordKey(tableSemantics, "exact_capture_failure_codes")
+  );
+}
+
+function requiresRuleWizardVisualSymbolEvidenceGate(
+  block: KnowledgeContentBlockViewModel,
+): boolean {
+  if (block.block_type !== "image_block") {
+    return false;
+  }
+
+  const payload = asRuleWizardOptionalRecord(block.content_payload);
+  const understanding = asRuleWizardOptionalRecord(block.image_understanding);
+  const sourceKind =
+    readRuleWizardRecordString(understanding, "source_kind") ||
+    readRuleWizardRecordString(payload, "source_kind");
+
+  return (
+    readRuleWizardRecordString(understanding, "snapshot_type") === "visual_symbol_snapshot" ||
+    isRuleWizardStructuredVisualSymbolSourceKind(sourceKind)
+  );
+}
+
+function collectRuleWizardImageEvidenceFailures(
+  payload: Record<string, unknown>,
+  understanding: Record<string, unknown> | undefined,
+  releaseAction: RuleWizardReleaseAction,
+): string[] {
+  if (!understanding) {
+    return ["缺少结构化视觉符号证据"];
+  }
+
+  const failures: string[] = [];
+  const snapshotType = readRuleWizardRecordString(understanding, "snapshot_type");
+  const sourceKind =
+    readRuleWizardRecordString(understanding, "source_kind") ||
+    readRuleWizardRecordString(payload, "source_kind");
+  const reviewState = readRuleWizardRecordString(understanding, "review_state");
+  const localContext = readRuleWizardRecordString(understanding, "local_context");
+  const nearbyText = readRuleWizardRecordString(understanding, "nearby_text");
+  const imageId =
+    readRuleWizardRecordString(understanding, "image_id") ||
+    readRuleWizardRecordString(payload, "upload_id") ||
+    readRuleWizardRecordString(payload, "storage_key") ||
+    readRuleWizardRecordString(payload, "file_name");
+
+  if (snapshotType !== "visual_symbol_snapshot") {
+    failures.push("未标记为视觉符号快照");
+  }
+  if (!isRuleWizardStructuredVisualSymbolSourceKind(sourceKind)) {
+    failures.push("证据类型未确认");
+  }
+  if (imageId.length === 0) {
+    failures.push("缺少图片文件");
+  }
+  if (localContext.length === 0 && nearbyText.length === 0) {
+    failures.push("缺少局部上下文或邻近文本");
+  }
+  if (releaseAction === "publish_now") {
+    if (reviewState !== "confirmed") {
+      failures.push("审核状态未确认");
+    }
+  } else if (
+    releaseAction === "submit_review" &&
+    reviewState !== "pending_review" &&
+    reviewState !== "confirmed"
+  ) {
+    failures.push("审核状态无效");
+  }
+
+  return failures;
+}
+
+function isRuleWizardStructuredVisualSymbolSourceKind(value: string): boolean {
+  return (
+    value === "inline_symbol_image" ||
+    value === "equation_fragment_image" ||
+    value === "table_embedded_symbol"
+  );
+}
+
+function formatRuleWizardReleaseActionLabel(value: RuleWizardReleaseAction): string {
+  switch (value) {
+    case "publish_now":
+      return "直接发布";
+    case "submit_review":
+      return "提交审核";
+    case "save_draft":
+    default:
+      return "保存草稿";
+  }
+}
+
+function formatRuleWizardTableFailureCodeLabel(value: string): string {
+  switch (value) {
+    case "unsupported_capture_environment":
+      return "不在受支持的 exact-capture 环境";
+    case "missing_required_clipboard_flavor":
+      return "缺少 HTML 剪贴板";
+    case "table_structure_incomplete":
+      return "表格结构不完整";
+    case "merged_cell_map_incomplete":
+      return "合并单元格信息不完整";
+    case "caption_or_note_position_unknown":
+      return "表题或表注位置不明确";
+    case "border_profile_incomplete":
+      return "边框轮廓不完整";
+    case "alignment_profile_incomplete":
+      return "对齐轮廓不完整";
+    case "run_style_incomplete":
+      return "字形强调信息不完整";
+    case "exact_capture_not_authoritative":
+      return "不是权威 exact-capture";
+    default:
+      return value;
+  }
+}
+
+function asRuleWizardOptionalRecord(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  return value != null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function hasRuleWizardRecordKey(
+  value: Record<string, unknown> | undefined,
+  key: string,
+): boolean {
+  return value != null && Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function readRuleWizardRecordString(
+  value: Record<string, unknown> | undefined,
+  key: string,
+): string {
+  const candidate = value?.[key];
+  return typeof candidate === "string" ? candidate : "";
+}
+
+function readRuleWizardRecordBoolean(
+  value: Record<string, unknown> | undefined,
+  key: string,
+): boolean | undefined {
+  const candidate = value?.[key];
+  return typeof candidate === "boolean" ? candidate : undefined;
+}
+
+function readRuleWizardRecordStringArray(
+  value: Record<string, unknown> | undefined,
+  key: string,
+): string[] {
+  const candidate = value?.[key];
+  return Array.isArray(candidate)
+    ? candidate.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function uniqueRuleWizardStrings(values: readonly string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter((value) => value.length > 0))];
 }

@@ -61,7 +61,10 @@ import {
   mapResidualIssueToReviewItem,
 } from "../review-items/review-item-mapper.ts";
 import type { ResidualReviewItemRecord } from "../review-items/review-item-record.ts";
-import type { ResidualIssueRecord } from "../residual-learning/residual-learning-record.ts";
+import type {
+  ResidualIssueRecord,
+  ResidualIssueSignalBreakdown,
+} from "../residual-learning/residual-learning-record.ts";
 import type { SandboxProfileService } from "../sandbox-profiles/sandbox-profile-service.ts";
 import {
   resolveBareModuleContext,
@@ -2254,6 +2257,7 @@ function buildHumanConfirmationResidualHint(
       suggestion: decision.replacementText,
       rationale: decision.note ?? "Human rejected the proofreading issue.",
       source_stage: "model_residual",
+      signal_breakdown: buildProofreadingConfirmationSignalBreakdown(decision),
     };
   }
 
@@ -2266,6 +2270,7 @@ function buildHumanConfirmationResidualHint(
         decision.note ??
         "Human adjusted the proofreading issue before final publication.",
       source_stage: "model_residual",
+      signal_breakdown: buildProofreadingConfirmationSignalBreakdown(decision),
     };
   }
 
@@ -2277,6 +2282,7 @@ function buildHumanConfirmationResidualHint(
       rationale:
         decision.note ?? "The issue still requires manual confirmation.",
       source_stage: "model_residual",
+      signal_breakdown: buildProofreadingConfirmationSignalBreakdown(decision),
     };
   }
 
@@ -2316,6 +2322,53 @@ function mapConfirmationDecisionToResidualIssueType(
   }
 
   return "style_consistency_gap";
+}
+
+function buildProofreadingConfirmationSignalBreakdown(
+  decision: NormalizedProofreadingConfirmationDecision,
+): ResidualIssueSignalBreakdown {
+  return {
+    promotion_evidence: {
+      source: "proofreading_confirmation",
+      decision_action: mapProofreadingConfirmationPromotionAction(decision.action),
+      correction_category:
+        normalizeProofreadingCorrectionCategory(decision.category) ?? "style",
+    },
+  };
+}
+
+function mapProofreadingConfirmationPromotionAction(
+  action: NormalizedProofreadingConfirmationDecision["action"],
+): string {
+  switch (action) {
+    case "accepted":
+      return "accept";
+    case "accepted_with_manual_edit":
+      return "accept_and_edit";
+    case "rejected":
+      return "reject";
+    case "manual_only":
+      return "manual_only";
+    case "escalated":
+      return "escalated";
+    case "route_to_rule_candidate":
+      return "route_to_rule_candidate";
+    case "route_to_knowledge_candidate":
+      return "route_to_knowledge_candidate";
+    default:
+      return action;
+  }
+}
+
+function normalizeProofreadingCorrectionCategory(
+  value: string | undefined,
+): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : undefined;
 }
 
 function buildStoredProofreadingPlan(

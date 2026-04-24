@@ -66,6 +66,13 @@ test("editing bare mode succeeds without a current template family while governe
           appliedRuleIds: [],
           appliedChanges: [],
           tableInspectionFindings: [],
+          skippedAiReplacements: [
+            {
+              replacementId: "ai-replacement-1",
+              reason: "anchor_not_precise",
+              targetText: "摘要 目的",
+            },
+          ],
         };
       },
     } as never,
@@ -113,6 +120,11 @@ test("editing bare mode succeeds without a current template family while governe
           }>;
           manualReviewItems?: unknown[];
         };
+        skippedAiReplacements?: Array<{
+          replacementId?: string;
+          reason?: string;
+          targetText?: string;
+        }>;
       }
     | undefined;
 
@@ -133,5 +145,12 @@ test("editing bare mode succeeds without a current template family while governe
   ]);
   assert.deepEqual(editingPayload.editingPlan?.manualReviewItems, [
     "Verify the rewritten heading against the journal template.",
+  ]);
+  assert.deepEqual(editingPayload.skippedAiReplacements, [
+    {
+      replacementId: "ai-replacement-1",
+      reason: "anchor_not_precise",
+      targetText: "摘要 目的",
+    },
   ]);
 });

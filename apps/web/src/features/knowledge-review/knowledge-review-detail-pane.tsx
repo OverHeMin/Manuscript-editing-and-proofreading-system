@@ -2,6 +2,10 @@ import type {
   KnowledgeReviewActionViewModel,
   KnowledgeReviewQueueItemViewModel,
 } from "../knowledge/index.ts";
+import {
+  buildKnowledgeBindingSummaries,
+  formatKnowledgeBindingSummary,
+} from "../knowledge/knowledge-binding-presenter.ts";
 
 export interface KnowledgeReviewHistoryViewState {
   revisionId: string | null;
@@ -25,6 +29,8 @@ export function KnowledgeReviewDetailPane({
   historyScopeNote,
   onRetryHistory,
 }: KnowledgeReviewDetailPaneProps) {
+  const bindingSummary = item ? renderBindingSummary(item) : "无";
+
   return (
     <section className="knowledge-review-panel knowledge-review-detail-pane">
       <header className="knowledge-review-pane-header knowledge-review-pane-header-compact">
@@ -82,8 +88,8 @@ export function KnowledgeReviewDetailPane({
                 <dd>{renderRoutingScope(item)}</dd>
               </div>
               <div>
-                <dt>模板绑定</dt>
-                <dd>{item.template_bindings?.length ? item.template_bindings.join("、") : "无"}</dd>
+                <dt>结构化绑定</dt>
+                <dd>{bindingSummary}</dd>
               </div>
               <div className="knowledge-review-detail-span-full">
                 <dt>规范文本</dt>
@@ -178,6 +184,15 @@ function renderEvidenceLevel(
   }
 
   return renderEvidenceLevelValue(evidenceLevel);
+}
+
+function renderBindingSummary(item: KnowledgeReviewQueueItemViewModel): string {
+  const summaries = buildKnowledgeBindingSummaries(item);
+  if (summaries.length === 0) {
+    return "无";
+  }
+
+  return summaries.map(formatKnowledgeBindingSummary).join("；");
 }
 
 function renderRoutingScope(item: KnowledgeReviewQueueItemViewModel): string {

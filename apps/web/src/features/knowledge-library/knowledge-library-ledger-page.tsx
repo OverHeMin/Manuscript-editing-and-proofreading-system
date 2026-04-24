@@ -1,7 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserHttpClient } from "../../lib/browser-http-client.ts";
+import {
+  SearchableMultiSelectField,
+  type SearchableMultiSelectOption,
+} from "../../lib/searchable-multi-select.tsx";
 import type { ManuscriptType } from "../manuscripts/types.ts";
-import { formatEditorialKnowledgeKindLabel } from "../shared/editorial-taxonomy.ts";
+import {
+  EDITORIAL_SECTION_OPTIONS,
+  formatEditorialKnowledgeKindLabel,
+  formatEditorialManuscriptTypeLabel,
+  formatEditorialModuleLabel,
+  formatEditorialSectionLabel,
+} from "../shared/editorial-taxonomy.ts";
+import {
+  listJournalTemplateProfilesByTemplateFamilyId,
+  listModuleTemplatesByTemplateFamilyId,
+  listTemplateFamilies,
+} from "../templates/template-api.ts";
+import { listManuscriptQualityPackages } from "../manuscript-quality-packages/manuscript-quality-packages-api.ts";
+import {
+  buildQualityPackageKindBindingKeywords,
+  formatQualityPackageBindingDisplayLabel,
+  formatQualityPackageExactBindingLabel,
+  formatQualityPackageKindBindingLabel,
+  formatQualityPackageKindBindingMeta,
+} from "../manuscript-quality-packages/binding-kind-options.ts";
 import {
   applyAiIntakeSuggestion,
   buildCreateDraftInput,
@@ -23,6 +46,7 @@ import {
   KnowledgeLibraryEntryForm,
   type KnowledgeLibraryEntryAiAssistMode,
 } from "./knowledge-library-entry-form.tsx";
+import { createKnowledgeLibraryEvidenceGateSummary } from "./knowledge-library-evidence-gate.ts";
 import {
   KnowledgeLibraryLedgerGrid,
   KNOWLEDGE_LIBRARY_LEDGER_COLUMNS,
@@ -42,6 +66,8 @@ import type {
   KnowledgeLibraryQueryMode,
   KnowledgeLibrarySummaryViewModel,
   KnowledgeLibraryWorkbenchViewModel,
+  KnowledgeRevisionBindingInput,
+  KnowledgeRevisionBindingKind,
   KnowledgeRevisionViewModel,
   KnowledgeSemanticLayerInput,
   KnowledgeSemanticLayerViewModel,
@@ -55,6 +81,74 @@ if (typeof document !== "undefined") {
 const defaultController = createKnowledgeLibraryWorkbenchController(
   createBrowserHttpClient(),
 );
+
+interface LedgerBindingCatalog {
+  templateFamilyOptions: SearchableMultiSelectOption[];
+  moduleTemplateOptions: SearchableMultiSelectOption[];
+  journalTemplateOptions: SearchableMultiSelectOption[];
+  generalPackageOptions: SearchableMultiSelectOption[];
+  medicalPackageOptions: SearchableMultiSelectOption[];
+  knowledgeItemOptions: SearchableMultiSelectOption[];
+  sectionOptions: SearchableMultiSelectOption[];
+}
+
+const LEDGER_BINDING_FIELD_DEFINITIONS: ReadonlyArray<{
+  kind: KnowledgeRevisionBindingKind;
+  label: string;
+  helpText: string;
+  dataKey: string;
+  getOptions(catalog: LedgerBindingCatalog): SearchableMultiSelectOption[];
+}> = [
+  {
+    kind: "template_family",
+    label: "模板族",
+    helpText: "决定哪些模板族会默认命中这条知识。",
+    dataKey: "binding-template-families",
+    getOptions: (catalog) => catalog.templateFamilyOptions,
+  },
+  {
+    kind: "module_template",
+    label: "模块模板",
+    helpText: "把知识直接挂到具体执行模块模板上。",
+    dataKey: "binding-module-templates",
+    getOptions: (catalog) => catalog.moduleTemplateOptions,
+  },
+  {
+    kind: "journal_template",
+    label: "期刊模板",
+    helpText: "把知识绑定到具体期刊格式模板。",
+    dataKey: "binding-journal-templates",
+    getOptions: (catalog) => catalog.journalTemplateOptions,
+  },
+  {
+    kind: "general_package",
+    label: "通用包",
+    helpText: "校对和编辑通用规则会从这里按包复用。",
+    dataKey: "binding-general-packages",
+    getOptions: (catalog) => catalog.generalPackageOptions,
+  },
+  {
+    kind: "medical_package",
+    label: "医学专用包",
+    helpText: "医学专用规则和知识会从这里按包复用。",
+    dataKey: "binding-medical-packages",
+    getOptions: (catalog) => catalog.medicalPackageOptions,
+  },
+  {
+    kind: "knowledge_item",
+    label: "关联知识项",
+    helpText: "把这条知识和其他已批准知识建立复用关系。",
+    dataKey: "binding-knowledge-items",
+    getOptions: (catalog) => catalog.knowledgeItemOptions,
+  },
+  {
+    kind: "section",
+    label: "绑定章节",
+    helpText: "这里是复用命中章节，不等于上面的章节标签。",
+    dataKey: "binding-sections",
+    getOptions: (catalog) => catalog.sectionOptions,
+  },
+];
 
 type EntryFormMode = "closed" | "create" | "edit";
 type KnowledgeLibraryDuplicateCheckState =
@@ -186,6 +280,13 @@ export function KnowledgeLibraryLedgerPage({
     string | null
   >(null);
   const [semanticNotes, setSemanticNotes] = useState<string[]>([]);
+  const [bindingCatalog, setBindingCatalog] = useState<LedgerBindingCatalog>(() =>
+    createInitialLedgerBindingCatalog(),
+  );
+  const [bindingCatalogStatus, setBindingCatalogStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [bindingCatalogError, setBindingCatalogError] = useState<string | null>(null);
   const [priorityOrder, setPriorityOrder] = useState<string[]>(() =>
     initialPriorityOrder ?? readKnowledgeLibraryPriorityOrder(),
   );
@@ -236,6 +337,36 @@ export function KnowledgeLibraryLedgerPage({
     assetStatusFilter,
     contributorQuery,
   ]);
+
+  useEffect(() => {
+    let isActive = true;
+    setBindingCatalogStatus("loading");
+    setBindingCatalogError(null);
+
+    void loadLedgerBindingCatalog()
+      .then((catalog) => {
+        if (!isActive) {
+          return;
+        }
+
+        setBindingCatalog(catalog);
+        setBindingCatalogStatus("ready");
+      })
+      .catch((error) => {
+        if (!isActive) {
+          return;
+        }
+
+        setBindingCatalogStatus("error");
+        setBindingCatalogError(
+          error instanceof Error ? error.message : "绑定目录加载失败。",
+        );
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -332,6 +463,20 @@ export function KnowledgeLibraryLedgerPage({
     () => extractAttachments(composer?.contentBlocksDraft ?? []),
     [composer?.contentBlocksDraft],
   );
+  const resolvedBindingCatalog = useMemo(
+    () =>
+      resolveLedgerBindingCatalog({
+        catalog: bindingCatalog,
+        bindings: composer?.draft.bindings ?? [],
+        libraryItems: viewModel?.library ?? [],
+        selectedAssetId: selectedRowId,
+      }),
+    [bindingCatalog, composer?.draft.bindings, selectedRowId, viewModel?.library],
+  );
+  const normalizedStructuredBindings = useMemo(
+    () => normalizeLedgerBindings(composer?.draft.bindings) ?? [],
+    [composer?.draft.bindings],
+  );
   const duplicateCheckInput = useMemo(
     () => createDuplicateCheckInput(composer),
     [composer],
@@ -366,6 +511,14 @@ export function KnowledgeLibraryLedgerPage({
     duplicateCheckState,
     strongDuplicateMatches.length,
   ]);
+  const evidenceGateSummary = useMemo(
+    () =>
+      createKnowledgeLibraryEvidenceGateSummary({
+        blocks: composer?.contentBlocksDraft,
+        releaseAction: "submit_review",
+      }),
+    [composer?.contentBlocksDraft],
+  );
   const semanticStatusLabel = formatSemanticStatusLabel(
     composer?.semanticLayerDraft?.status ?? "not_generated",
   );
@@ -739,6 +892,7 @@ export function KnowledgeLibraryLedgerPage({
             contentBlocks={composer.contentBlocksDraft}
             aiIntakeSourceText={composer.aiIntakeSourceText}
             duplicateSummary={duplicateSummary}
+            evidenceGateSummary={evidenceGateSummary}
             semanticStatusLabel={semanticStatusLabel}
             semanticNotes={semanticNotes}
             isBusy={isBusy}
@@ -1036,6 +1190,83 @@ export function KnowledgeLibraryLedgerPage({
                 : undefined
             }
           />
+            <section
+              className="knowledge-library-entry-form__section knowledge-library-ledger-bindings-panel"
+              data-knowledge-binding-panel="structured"
+            >
+              <div className="knowledge-library-entry-form__section-header">
+                <h3>结构化绑定</h3>
+                <p>直接绑定真实模板、规则包、章节和知识项，不再手填伪绑定文本。</p>
+              </div>
+
+              {bindingCatalogStatus === "loading" ? (
+                <p className="knowledge-library-entry-form__structured-empty">
+                  正在加载绑定目录…
+                </p>
+              ) : null}
+              {bindingCatalogError ? (
+                <p className="knowledge-library-entry-form__structured-empty">
+                  {bindingCatalogError}
+                </p>
+              ) : null}
+
+              <div className="knowledge-library-entry-form__grid">
+                {LEDGER_BINDING_FIELD_DEFINITIONS.map((definition) => {
+                  const options = definition.getOptions(resolvedBindingCatalog);
+                  return (
+                    <KnowledgeLibraryLedgerBindingField
+                      key={definition.kind}
+                      label={definition.label}
+                      helpText={definition.helpText}
+                      value={getLedgerBindingSelectionValues(
+                        composer.draft.bindings ?? [],
+                        definition.kind,
+                      )}
+                      options={options}
+                      dataKey={definition.dataKey}
+                      onToggleValue={(value) =>
+                        setComposer((current) =>
+                          current
+                            ? {
+                                ...current,
+                                draft: {
+                                  ...current.draft,
+                                  bindings: toggleLedgerBindingSelection(
+                                    current.draft.bindings ?? [],
+                                    definition.kind,
+                                    resolveLedgerBindingOptionByValue(options, value),
+                                  ),
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                    />
+                  );
+                })}
+              </div>
+
+              {normalizedStructuredBindings.length > 0 ? (
+                <ul
+                  className="knowledge-library-entry-form__selected-summary"
+                  data-knowledge-binding-summary="structured"
+                >
+                  {normalizedStructuredBindings.map((binding) => (
+                    <li
+                      key={`${binding.bindingKind}:${binding.bindingTargetId}`}
+                      className="knowledge-library-entry-form__selected-chip"
+                    >
+                      {binding.bindingTargetLabel}
+                      <small>{formatLedgerBindingKindLabel(binding.bindingKind)}</small>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="knowledge-library-entry-form__structured-empty">
+                  尚未添加结构化绑定。
+                </p>
+              )}
+            </section>
           </aside>
         ) : null}
       </section>
@@ -1534,6 +1765,13 @@ export function KnowledgeLibraryLedgerPage({
 
     if (input.submitReview && strongDuplicateMatches.length > 0) {
       setErrorMessage("存在高风险重复项，请先核对后再提交审核。");
+      return;
+    }
+
+    if (input.submitReview && evidenceGateSummary.hasBlockingIssues) {
+      setErrorMessage(
+        evidenceGateSummary.blockingMessage ?? "高精度证据未满足提交审核条件。",
+      );
       return;
     }
 
@@ -2662,6 +2900,422 @@ function moveKnowledgeLibraryPriority(
   ];
 
   return nextOrder;
+}
+
+function KnowledgeLibraryLedgerBindingField(props: {
+  label: string;
+  helpText: string;
+  value: readonly string[];
+  options: readonly SearchableMultiSelectOption[];
+  dataKey: string;
+  onToggleValue(value: string): void;
+}) {
+  return (
+    <SearchableMultiSelectField
+      label={props.label}
+      helpText={props.helpText}
+      value={props.value}
+      options={props.options}
+      dataKey={props.dataKey}
+      inputDataKey={`ledger-${props.dataKey}`}
+      rootDataAttributeName="data-knowledge-binding-multi-select"
+      className="knowledge-library-entry-form__multi-select"
+      headerClassName="knowledge-library-entry-form__multi-select-header"
+      searchFieldClassName="knowledge-library-entry-form__search-field"
+      searchPlaceholder={`搜索${props.label}`}
+      optionsClassName="knowledge-library-entry-form__multi-select-options"
+      optionClassName="knowledge-library-entry-form__multi-select-option"
+      emptyClassName="knowledge-library-entry-form__structured-empty"
+      showSelectedSummary
+      selectedListClassName="knowledge-library-entry-form__selected-summary"
+      selectedChipClassName="knowledge-library-entry-form__selected-chip"
+      selectedEmptyText={`当前未绑定${props.label}。`}
+      emptyOptionsText="当前没有可用绑定项。"
+      noResultsText="未找到匹配的绑定项。"
+      onToggleValue={props.onToggleValue}
+    />
+  );
+}
+
+function createInitialLedgerBindingCatalog(): LedgerBindingCatalog {
+  return {
+    templateFamilyOptions: [],
+    moduleTemplateOptions: [],
+    journalTemplateOptions: [],
+    generalPackageOptions: [],
+    medicalPackageOptions: [],
+    knowledgeItemOptions: [],
+    sectionOptions: EDITORIAL_SECTION_OPTIONS.map((section) => ({
+      value: section,
+      label: formatEditorialSectionLabel(section),
+      keywords: [section, formatEditorialSectionLabel(section)],
+    })),
+  };
+}
+
+async function loadLedgerBindingCatalog(
+  client = createBrowserHttpClient(),
+): Promise<LedgerBindingCatalog> {
+  const templateFamiliesResponse = await listTemplateFamilies(client);
+  const templateFamilies = templateFamiliesResponse.body.filter(
+    (family) => family.status !== "archived",
+  );
+
+  const [
+    moduleTemplatesByFamily,
+    journalTemplatesByFamily,
+    generalPackagesResponse,
+    medicalPackagesResponse,
+  ] = await Promise.all([
+    Promise.all(
+      templateFamilies.map(async (family) => ({
+        family,
+        templates: (
+          await listModuleTemplatesByTemplateFamilyId(client, family.id)
+        ).body.filter((template) => template.status === "published"),
+      })),
+    ),
+    Promise.all(
+      templateFamilies.map(async (family) => ({
+        family,
+        templates: (
+          await listJournalTemplateProfilesByTemplateFamilyId(client, family.id)
+        ).body.filter((template) => template.status === "active"),
+      })),
+    ),
+    listManuscriptQualityPackages(client, {
+      packageKind: "general_style_package",
+      status: "published",
+    }),
+    listManuscriptQualityPackages(client, {
+      packageKind: "medical_analyzer_package",
+      status: "published",
+    }),
+  ]);
+
+  return {
+    templateFamilyOptions: sortLedgerBindingOptions(
+      templateFamilies.map((family) => ({
+        value: family.id,
+        label: family.name,
+        meta: `${formatEditorialManuscriptTypeLabel(family.manuscript_type)} · ${formatLedgerTemplateFamilyStatus(family.status)}`,
+        group: formatEditorialManuscriptTypeLabel(family.manuscript_type),
+        keywords: [family.name, family.id, family.manuscript_type],
+      })),
+    ),
+    moduleTemplateOptions: sortLedgerBindingOptions(
+      moduleTemplatesByFamily.flatMap(({ family, templates }) =>
+        templates.map((template) => ({
+          value: template.id,
+          label: `${formatEditorialModuleLabel(template.module)} v${template.version_no}`,
+          meta: `${family.name} · ${formatEditorialManuscriptTypeLabel(template.manuscript_type)}`,
+          group: family.name,
+          keywords: [
+            template.id,
+            family.name,
+            template.module,
+            template.manuscript_type,
+            `${template.version_no}`,
+          ],
+        })),
+      ),
+    ),
+    journalTemplateOptions: sortLedgerBindingOptions(
+      journalTemplatesByFamily.flatMap(({ family, templates }) =>
+        templates.map((template) => ({
+          value: template.id,
+          label: template.journal_name,
+          meta: `${family.name} · ${template.journal_key}`,
+          group: family.name,
+          keywords: [
+            template.id,
+            template.journal_name,
+            template.journal_key,
+            family.name,
+          ],
+        })),
+      ),
+    ),
+    generalPackageOptions: sortLedgerBindingOptions(
+      generalPackagesResponse.body
+        .map((record) => ({
+          value: record.id,
+          label: formatQualityPackageExactBindingLabel({
+            packageName: record.package_name,
+            version: record.version,
+            packageKind: record.package_kind,
+          }),
+          meta: "通用包 · 锁定具体版本",
+          keywords: [
+            record.id,
+            record.package_name,
+            `${record.version}`,
+            "通用包",
+            "锁定具体版本",
+          ],
+        }))
+        .concat({
+          value: "general_style_package",
+          label: formatQualityPackageKindBindingLabel("general_style_package"),
+          meta: formatQualityPackageKindBindingMeta("general_style_package"),
+          keywords: buildQualityPackageKindBindingKeywords("general_style_package"),
+        }),
+    ),
+    medicalPackageOptions: sortLedgerBindingOptions(
+      medicalPackagesResponse.body
+        .map((record) => ({
+          value: record.id,
+          label: formatQualityPackageExactBindingLabel({
+            packageName: record.package_name,
+            version: record.version,
+            packageKind: record.package_kind,
+          }),
+          meta: "医学专用包 · 锁定具体版本",
+          keywords: [
+            record.id,
+            record.package_name,
+            `${record.version}`,
+            "医学专用包",
+            "锁定具体版本",
+          ],
+        }))
+        .concat({
+          value: "medical_analyzer_package",
+          label: formatQualityPackageKindBindingLabel("medical_analyzer_package"),
+          meta: formatQualityPackageKindBindingMeta("medical_analyzer_package"),
+          keywords: buildQualityPackageKindBindingKeywords("medical_analyzer_package"),
+        }),
+    ),
+    knowledgeItemOptions: [],
+    sectionOptions: createInitialLedgerBindingCatalog().sectionOptions,
+  };
+}
+
+function resolveLedgerBindingCatalog(input: {
+  catalog: LedgerBindingCatalog;
+  bindings: readonly KnowledgeRevisionBindingInput[];
+  libraryItems: readonly KnowledgeLibraryWorkbenchViewModel["library"][number][];
+  selectedAssetId: string | null;
+}): LedgerBindingCatalog {
+  const knowledgeItemOptions = sortLedgerBindingOptions(
+    input.libraryItems
+      .filter((item) => item.status === "approved" && item.id !== input.selectedAssetId)
+      .map((item) => ({
+        value: item.id,
+        label: item.title,
+        meta: `${formatKnowledgeKind(item.knowledge_kind)} · ${formatModuleScopeLabel(item.module_scope)}`,
+        keywords: [
+          item.id,
+          item.title,
+          item.knowledge_kind,
+          item.module_scope,
+          ...(item.manuscript_types === "any" ? ["any"] : item.manuscript_types),
+        ],
+      })),
+  );
+
+  return {
+    templateFamilyOptions: mergeLedgerBindingOptions(
+      input.catalog.templateFamilyOptions,
+      input.bindings,
+      "template_family",
+    ),
+    moduleTemplateOptions: mergeLedgerBindingOptions(
+      input.catalog.moduleTemplateOptions,
+      input.bindings,
+      "module_template",
+    ),
+    journalTemplateOptions: mergeLedgerBindingOptions(
+      input.catalog.journalTemplateOptions,
+      input.bindings,
+      "journal_template",
+    ),
+    generalPackageOptions: mergeLedgerBindingOptions(
+      input.catalog.generalPackageOptions,
+      input.bindings,
+      "general_package",
+    ),
+    medicalPackageOptions: mergeLedgerBindingOptions(
+      input.catalog.medicalPackageOptions,
+      input.bindings,
+      "medical_package",
+    ),
+    knowledgeItemOptions: mergeLedgerBindingOptions(
+      knowledgeItemOptions,
+      input.bindings,
+      "knowledge_item",
+    ),
+    sectionOptions: mergeLedgerBindingOptions(
+      input.catalog.sectionOptions,
+      input.bindings,
+      "section",
+    ),
+  };
+}
+
+function mergeLedgerBindingOptions(
+  options: readonly SearchableMultiSelectOption[],
+  bindings: readonly KnowledgeRevisionBindingInput[],
+  kind: KnowledgeRevisionBindingKind,
+): SearchableMultiSelectOption[] {
+  const merged = new Map<string, SearchableMultiSelectOption>();
+  for (const option of options) {
+    merged.set(option.value, option);
+  }
+
+  for (const binding of bindings) {
+    if (binding.bindingKind !== kind || merged.has(binding.bindingTargetId)) {
+      continue;
+    }
+
+    const label = formatLedgerBindingTargetLabel(binding);
+    merged.set(binding.bindingTargetId, {
+      value: binding.bindingTargetId,
+      label,
+      meta: "已绑定但当前目录未返回",
+      keywords: [binding.bindingTargetId, label],
+    });
+  }
+
+  return sortLedgerBindingOptions([...merged.values()]);
+}
+
+function sortLedgerBindingOptions(
+  options: readonly SearchableMultiSelectOption[],
+): SearchableMultiSelectOption[] {
+  return [...options].sort((left, right) => left.label.localeCompare(right.label, "zh-CN"));
+}
+
+function getLedgerBindingSelectionValues(
+  bindings: readonly KnowledgeRevisionBindingInput[],
+  kind: KnowledgeRevisionBindingKind,
+): string[] {
+  return (normalizeLedgerBindings(bindings) ?? [])
+    .filter((binding) => binding.bindingKind === kind)
+    .map((binding) => binding.bindingTargetId);
+}
+
+function resolveLedgerBindingOptionByValue(
+  options: readonly SearchableMultiSelectOption[],
+  value: string,
+): SearchableMultiSelectOption {
+  return options.find((option) => option.value === value) ?? { value, label: value };
+}
+
+function toggleLedgerBindingSelection(
+  bindings: readonly KnowledgeRevisionBindingInput[],
+  kind: KnowledgeRevisionBindingKind,
+  option: SearchableMultiSelectOption,
+): KnowledgeRevisionBindingInput[] {
+  const normalized = normalizeLedgerBindings(bindings) ?? [];
+  const exists = normalized.some(
+    (binding) =>
+      binding.bindingKind === kind && binding.bindingTargetId === option.value,
+  );
+  if (exists) {
+    return normalized.filter(
+      (binding) =>
+        binding.bindingKind !== kind || binding.bindingTargetId !== option.value,
+    );
+  }
+
+  return [
+    ...normalized,
+    {
+      bindingKind: kind,
+      bindingTargetId: option.value,
+      bindingTargetLabel: option.label,
+    },
+  ];
+}
+
+function normalizeLedgerBindings(
+  bindings: readonly KnowledgeRevisionBindingInput[] | undefined,
+): KnowledgeRevisionBindingInput[] | undefined {
+  if (!bindings) {
+    return undefined;
+  }
+
+  const deduped = new Map<string, KnowledgeRevisionBindingInput>();
+  for (const binding of bindings) {
+    const bindingTargetId = binding.bindingTargetId.trim();
+    if (bindingTargetId.length === 0) {
+      continue;
+    }
+
+    const normalizedBinding: KnowledgeRevisionBindingInput = {
+      bindingKind: binding.bindingKind,
+      bindingTargetId,
+      bindingTargetLabel: formatLedgerBindingTargetLabel({
+        bindingKind: binding.bindingKind,
+        bindingTargetId,
+        bindingTargetLabel: binding.bindingTargetLabel,
+      }),
+    };
+    const key = `${normalizedBinding.bindingKind}:${normalizedBinding.bindingTargetId}`;
+    if (!deduped.has(key)) {
+      deduped.set(key, normalizedBinding);
+    }
+  }
+
+  return deduped.size > 0 ? [...deduped.values()] : undefined;
+}
+
+function formatLedgerBindingTargetLabel(input: {
+  bindingKind: KnowledgeRevisionBindingKind;
+  bindingTargetId: string;
+  bindingTargetLabel: string;
+}): string {
+  const bindingTargetId = input.bindingTargetId.trim();
+  const bindingTargetLabel = input.bindingTargetLabel.trim();
+
+  if (
+    input.bindingKind === "general_package" ||
+    input.bindingKind === "medical_package"
+  ) {
+    return formatQualityPackageBindingDisplayLabel({
+      bindingKind: input.bindingKind,
+      bindingTargetId,
+      bindingTargetLabel,
+    });
+  }
+
+  return bindingTargetLabel || bindingTargetId;
+}
+
+function formatLedgerBindingKindLabel(value: KnowledgeRevisionBindingKind): string {
+  switch (value) {
+    case "template_family":
+      return "模板族";
+    case "module_template":
+      return "模块模板";
+    case "journal_template":
+      return "期刊模板";
+    case "general_package":
+      return "通用包";
+    case "medical_package":
+      return "医学专用包";
+    case "knowledge_item":
+      return "关联知识项";
+    case "section":
+      return "绑定章节";
+    default:
+      return value;
+  }
+}
+
+function formatLedgerTemplateFamilyStatus(
+  status: "draft" | "active" | "archived",
+): string {
+  switch (status) {
+    case "active":
+      return "已启用";
+    case "draft":
+      return "草稿";
+    case "archived":
+    default:
+      return "已归档";
+  }
 }
 
 function areStringArraysEqual(

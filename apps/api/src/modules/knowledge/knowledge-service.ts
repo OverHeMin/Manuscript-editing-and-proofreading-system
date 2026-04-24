@@ -302,6 +302,30 @@ export class KnowledgeContentBlockOrderError extends Error {
   }
 }
 
+type KnowledgeRevisionReviewGatePhase = "submit_for_review" | "approve";
+
+export class KnowledgeRevisionReviewGateError extends Error {
+  readonly revisionId: string;
+  readonly phase: KnowledgeRevisionReviewGatePhase;
+  readonly reasons: readonly string[];
+
+  constructor(
+    revisionId: string,
+    phase: KnowledgeRevisionReviewGatePhase,
+    reasons: readonly string[],
+  ) {
+    const action =
+      phase === "submit_for_review" ? "submitted for review" : "approved";
+    super(
+      `Knowledge revision ${revisionId} cannot be ${action}: ${reasons.join("; ")}.`,
+    );
+    this.name = "KnowledgeRevisionReviewGateError";
+    this.revisionId = revisionId;
+    this.phase = phase;
+    this.reasons = [...reasons];
+  }
+}
+
 type RichSpaceKnowledgeRepository = KnowledgeRepository & {
   replaceRevisionContentBlocks: NonNullable<
     KnowledgeRepository["replaceRevisionContentBlocks"]
@@ -790,6 +814,11 @@ export class KnowledgeService {
             "pending_review",
           );
         }
+        await this.assertRevisionPassesReviewGate(
+          revision,
+          "submit_for_review",
+          repository,
+        );
 
         const timestamp = this.now().toISOString();
         const asset = await this.requireKnowledgeAsset(revision.asset_id, repository);
@@ -894,6 +923,7 @@ export class KnowledgeService {
             "approved",
           );
         }
+        await this.assertRevisionPassesReviewGate(revision, "approve", repository);
 
         const currentTime = this.now();
         const timestamp = currentTime.toISOString();
@@ -1577,6 +1607,21 @@ export class KnowledgeService {
     });
   }
 
+  private async assertRevisionPassesReviewGate(
+    revision: KnowledgeRevisionRecord,
+    phase: KnowledgeRevisionReviewGatePhase,
+    repository: KnowledgeRepository,
+  ): Promise<void> {
+    const detail = await this.buildKnowledgeRevisionDetailFromRecord(
+      revision,
+      repository,
+    );
+    const failures = collectKnowledgeRevisionReviewGateFailures(detail, phase);
+    if (failures.length > 0) {
+      throw new KnowledgeRevisionReviewGateError(revision.id, phase, failures);
+    }
+  }
+
   private async findKnowledgeAssetIfSupported(
     assetId: string,
     repository: KnowledgeRepository = this.repository,
@@ -1964,4 +2009,195 @@ function compareDuplicateCandidateGroupRecords(
     left.asset.id.localeCompare(right.asset.id) ||
     left.representative_revision.id.localeCompare(right.representative_revision.id)
   );
+}
+
+function collectKnowledgeRevisionReviewGateFailures(
+  detail: KnowledgeRevisionDetailRecord,
+  phase: KnowledgeRevisionReviewGatePhase,
+): string[] {
+  return detail.content_blocks.flatMap((block) => [
+    ...collectTableReviewGateFailures(block),
+    ...collectImageReviewGateFailures(block, phase),
+  ]);
+}
+
+function collectTableReviewGateFailures(
+  block: KnowledgeContentBlockRecord,
+): string[] {
+  if (!requiresTableReviewGate(block)) {
+    return [];
+  }
+
+  const payload = block.content_payload;
+  const tableSemantics = asOptionalRecord(block.table_semantics);
+  const exactCaptureAuthoritative =
+    readRecordBoolean(tableSemantics, "exact_capture_authoritative") === true;
+  const failureCodes = uniqueDefinedStrings([
+    ...readRecordStringArray(tableSemantics, "exact_capture_failure_codes"),
+    ...readRecordStringArray(payload, "exact_capture_failure_codes"),
+  ]);
+  const hasFailureCodeMetadata =
+    hasRecordKey(tableSemantics, "exact_capture_failure_codes") ||
+    hasRecordKey(payload, "exact_capture_failure_codes");
+
+  if (exactCaptureAuthoritative || (hasFailureCodeMetadata && failureCodes.length === 0)) {
+    return [];
+  }
+
+  const detailSuffix =
+    failureCodes.length > 0
+      ? ` (${failureCodes.join(", ")})`
+      : " (missing exact-capture confirmation)";
+  return [
+    `Table block #${block.order_no} is not authoritative exact capture${detailSuffix}`,
+  ];
+}
+
+function collectImageReviewGateFailures(
+  block: KnowledgeContentBlockRecord,
+  phase: KnowledgeRevisionReviewGatePhase,
+): string[] {
+  if (!requiresVisualSymbolReviewGate(block)) {
+    return [];
+  }
+
+  const payload = block.content_payload;
+  const understanding = asOptionalRecord(block.image_understanding);
+  if (!understanding) {
+    return [
+      `Image block #${block.order_no} is missing structured visual-symbol evidence`,
+    ];
+  }
+
+  const failures: string[] = [];
+  const snapshotType = readRecordString(understanding, "snapshot_type");
+  const sourceKind =
+    readRecordString(understanding, "source_kind") ||
+    readRecordString(payload, "source_kind");
+  const reviewState = readRecordString(understanding, "review_state");
+  const localContext = readRecordString(understanding, "local_context");
+  const nearbyText = readRecordString(understanding, "nearby_text");
+  const imageId =
+    readRecordString(understanding, "image_id") ||
+    readRecordString(payload, "upload_id") ||
+    readRecordString(payload, "storage_key") ||
+    readRecordString(payload, "file_name");
+
+  if (snapshotType !== "visual_symbol_snapshot") {
+    failures.push("snapshot_type must be visual_symbol_snapshot");
+  }
+  if (!isStructuredVisualSymbolSourceKind(sourceKind)) {
+    failures.push("source_kind is not confirmed");
+  }
+  if (imageId.length === 0) {
+    failures.push("image_id is missing");
+  }
+  if (localContext.length === 0 && nearbyText.length === 0) {
+    failures.push("local_context or nearby_text is required");
+  }
+  if (phase === "approve") {
+    if (reviewState !== "confirmed") {
+      failures.push("review_state must be confirmed before approval");
+    }
+  } else if (
+    reviewState !== "pending_review" &&
+    reviewState !== "confirmed"
+  ) {
+    failures.push("review_state must be pending_review or confirmed");
+  }
+
+  if (failures.length === 0) {
+    return [];
+  }
+
+  return [
+    `Image block #${block.order_no} visual-symbol evidence is incomplete (${failures.join(
+      ", ",
+    )})`,
+  ];
+}
+
+function requiresTableReviewGate(block: KnowledgeContentBlockRecord): boolean {
+  if (block.block_type !== "table_block") {
+    return false;
+  }
+
+  const payload = block.content_payload;
+  const tableSemantics = asOptionalRecord(block.table_semantics);
+
+  return (
+    hasRecordKey(payload, "capture_mode") ||
+    hasRecordKey(payload, "capture_environment") ||
+    hasRecordKey(payload, "source_application") ||
+    hasRecordKey(payload, "exact_capture_failure_codes") ||
+    hasRecordKey(tableSemantics, "capture_mode") ||
+    hasRecordKey(tableSemantics, "exact_capture_authoritative") ||
+    hasRecordKey(tableSemantics, "exact_capture_failure_codes")
+  );
+}
+
+function requiresVisualSymbolReviewGate(block: KnowledgeContentBlockRecord): boolean {
+  if (block.block_type !== "image_block") {
+    return false;
+  }
+
+  const payload = block.content_payload;
+  const understanding = asOptionalRecord(block.image_understanding);
+  const sourceKind =
+    readRecordString(understanding, "source_kind") ||
+    readRecordString(payload, "source_kind");
+
+  return (
+    readRecordString(understanding, "snapshot_type") === "visual_symbol_snapshot" ||
+    isStructuredVisualSymbolSourceKind(sourceKind)
+  );
+}
+
+function isStructuredVisualSymbolSourceKind(value: string): boolean {
+  return (
+    value === "inline_symbol_image" ||
+    value === "equation_fragment_image" ||
+    value === "table_embedded_symbol"
+  );
+}
+
+function asOptionalRecord(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  return value != null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function hasRecordKey(
+  value: Record<string, unknown> | undefined,
+  key: string,
+): boolean {
+  return value != null && Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function readRecordString(
+  value: Record<string, unknown> | undefined,
+  key: string,
+): string {
+  const candidate = value?.[key];
+  return typeof candidate === "string" ? candidate : "";
+}
+
+function readRecordBoolean(
+  value: Record<string, unknown> | undefined,
+  key: string,
+): boolean | undefined {
+  const candidate = value?.[key];
+  return typeof candidate === "boolean" ? candidate : undefined;
+}
+
+function readRecordStringArray(
+  value: Record<string, unknown> | undefined,
+  key: string,
+): string[] {
+  const candidate = value?.[key];
+  return Array.isArray(candidate)
+    ? candidate.filter((entry): entry is string => typeof entry === "string")
+    : [];
 }

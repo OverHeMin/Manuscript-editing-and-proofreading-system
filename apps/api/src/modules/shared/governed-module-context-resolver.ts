@@ -37,6 +37,7 @@ import {
 import type { RetrievalPresetRecord } from "../retrieval-presets/retrieval-preset-record.ts";
 import type { RetrievalPresetService } from "../retrieval-presets/retrieval-preset-service.ts";
 import {
+  type ActiveQualityPackageBindingContext,
   ModuleManuscriptNotFoundError,
   ModuleTemplateFamilyNotConfiguredError,
   selectApprovedDynamicKnowledge,
@@ -86,6 +87,8 @@ export interface ResolveGovernedModuleContextInput {
   promptSkillRegistryRepository: PromptSkillRegistryRepository;
   knowledgeRepository: KnowledgeRepository;
   aiGatewayService: AiGatewayService;
+  qualityPackageVersionIds?: string[];
+  activeQualityPackages?: readonly ActiveQualityPackageBindingContext[];
   retrievalPresetService?: Pick<RetrievalPresetService, "getActivePresetForScope">;
   manualReviewPolicyService?: Pick<
     ManualReviewPolicyService,
@@ -229,6 +232,8 @@ export async function resolveGovernedModuleContext(
       module: input.module,
       template: moduleTemplate,
       knowledgeItems: await input.knowledgeRepository.listApproved(),
+      qualityPackageVersionIds: input.qualityPackageVersionIds,
+      activeQualityPackages: input.activeQualityPackages,
       retrievalPreset,
     });
 

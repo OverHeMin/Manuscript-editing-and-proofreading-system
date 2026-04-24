@@ -6,6 +6,7 @@ import type { KnowledgeAssetDetailViewModel } from "../knowledge-library/types.t
 import {
   createRuleWizardBindingFormState,
   createRuleWizardConfirmFormState,
+  createRuleWizardEvidenceGateSummary,
   createRuleWizardEntryFormState,
   createRuleWizardPublishFormState,
   createRuleWizardSemanticViewModel,
@@ -109,6 +110,7 @@ export function TemplateGovernanceRuleWizard({
   const [bindingOptions, setBindingOptions] = useState<RuleWizardBindingOptions | undefined>(
     providedBindingOptions,
   );
+  const [resolvedBindingDetail, setResolvedBindingDetail] = useState(bindingDetail);
   const [bindingDirty, setBindingDirty] = useState(false);
   const [bindingFormState, setBindingFormState] = useState<RuleWizardBindingFormState>(
     () =>
@@ -129,6 +131,10 @@ export function TemplateGovernanceRuleWizard({
     revision: semanticRevision,
     suggestion: semanticSuggestion,
   });
+  const evidenceGateSummary = createRuleWizardEvidenceGateSummary({
+    blocks: entryFormState.supplementalBlocks ?? [],
+    releaseAction: publishFormState.releaseAction,
+  });
 
   useEffect(() => {
     setSemanticRevision(undefined);
@@ -137,6 +143,7 @@ export function TemplateGovernanceRuleWizard({
     setAwaitingSemanticDraft(false);
     setConfirmDirty(false);
     setConfirmFormState(createRuleWizardConfirmFormState({ form: entryFormState }));
+    setResolvedBindingDetail(bindingDetail);
     setBindingOptions(providedBindingOptions);
     setBindingDirty(false);
     setBindingFormState(
@@ -180,18 +187,39 @@ export function TemplateGovernanceRuleWizard({
               suggestion: semanticSuggestion,
             }),
             options: bindingOptions,
-            detail: bindingDetail,
+            detail: resolvedBindingDetail,
           }),
       );
     }
   }, [
-    bindingDetail,
     bindingDirty,
     bindingOptions,
     entryFormState,
     providedBindingFormState,
+    resolvedBindingDetail,
     semanticRevision,
     semanticSuggestion,
+  ]);
+
+  useEffect(() => {
+    if (
+      state.step !== "semantic" ||
+      state.draftRevisionId ||
+      awaitingSemanticDraft ||
+      isSemanticBusy
+    ) {
+      return;
+    }
+
+    setAwaitingSemanticDraft(true);
+    setSemanticErrorMessage(null);
+    onSaveDraft?.();
+  }, [
+    awaitingSemanticDraft,
+    isSemanticBusy,
+    onSaveDraft,
+    state.draftRevisionId,
+    state.step,
   ]);
 
   useEffect(() => {
@@ -236,7 +264,7 @@ export function TemplateGovernanceRuleWizard({
           createRuleWizardBindingFormState({
             semanticViewModel,
             options,
-            detail: bindingDetail,
+            detail: resolvedBindingDetail,
           }),
       );
     } catch (error) {
@@ -316,6 +344,7 @@ export function TemplateGovernanceRuleWizard({
         },
         warnings: [],
       });
+      setResolvedBindingDetail(result.detail);
       setConfirmDirty(false);
       return true;
     } catch (error) {
@@ -337,11 +366,12 @@ export function TemplateGovernanceRuleWizard({
     setBindingErrorMessage(null);
 
     try {
-      await saveRuleWizardBindingDraft(
+      const result = await saveRuleWizardBindingDraft(
         defaultRuleWizardClient,
         state.draftRevisionId,
         bindingFormState,
       );
+      setResolvedBindingDetail(result.detail);
       setBindingDirty(false);
       return true;
     } catch (error) {
@@ -387,7 +417,6 @@ export function TemplateGovernanceRuleWizard({
 
   async function handleNextClick() {
     if (state.step === "semantic" && !state.draftRevisionId) {
-      setSemanticErrorMessage("请先保存基础录入草稿，再继续到人工确认。");
       setAwaitingSemanticDraft(true);
       onSaveDraft?.();
       return;
@@ -413,6 +442,16 @@ export function TemplateGovernanceRuleWizard({
   async function handleCompleteClick() {
     if (state.step !== "publish") {
       onComplete?.({ releaseAction: publishFormState.releaseAction });
+      return;
+    }
+
+    if (
+      publishFormState.releaseAction !== "save_draft" &&
+      evidenceGateSummary.hasBlockingIssues
+    ) {
+      setBindingErrorMessage(
+        evidenceGateSummary.blockingMessage ?? "高精度证据未满足当前发布方式",
+      );
       return;
     }
 
@@ -581,6 +620,7 @@ export function TemplateGovernanceRuleWizard({
         bindingOptions,
         bindingFormState,
         publishFormState,
+        evidenceGateSummary,
         isSemanticBusy,
         isBindingBusy,
         semanticErrorMessage,
@@ -635,6 +675,7 @@ function renderWizardBody(input: {
   bindingOptions?: RuleWizardBindingOptions;
   bindingFormState: RuleWizardBindingFormState;
   publishFormState: RuleWizardPublishFormState;
+  evidenceGateSummary: ReturnType<typeof createRuleWizardEvidenceGateSummary>;
   isSemanticBusy: boolean;
   isBindingBusy: boolean;
   semanticErrorMessage: string | null;
@@ -699,6 +740,7 @@ function renderWizardBody(input: {
           entryState={input.entryFormState}
           confirmState={input.confirmFormState}
           bindingState={input.bindingFormState}
+          evidenceGateSummary={input.evidenceGateSummary}
           isBusy={input.isBindingBusy}
           errorMessage={input.bindingErrorMessage}
           onChange={input.onPublishFormChange}

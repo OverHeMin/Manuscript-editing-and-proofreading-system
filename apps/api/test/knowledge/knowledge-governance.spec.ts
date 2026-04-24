@@ -141,6 +141,9 @@ test("create knowledge draft keeps routing fields editable before review", async
     source_type: "guideline",
     source_link: "https://example.org/guideline",
     aliases: ["统计学完整性"],
+    binding_targets: {
+      module_template_ids: ["clinical-study-screening-core"],
+    },
     template_bindings: ["clinical-study-screening-core"],
   });
 });

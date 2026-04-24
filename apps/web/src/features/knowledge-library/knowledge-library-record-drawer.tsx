@@ -52,7 +52,7 @@ export function KnowledgeLibraryRecordDrawer({
               已发布版本：<strong>{approvedRevision?.id ?? "暂无"}</strong>
             </span>
             <span>
-              贡献账号：<strong>{contributorLabel ?? "待接入贡献账号"}</strong>
+              贡献账号：<strong>{contributorLabel ?? "未记录贡献账号"}</strong>
             </span>
           </div>
 

@@ -323,6 +323,33 @@ The first supported primary environment should be explicitly narrowed to:
 
 Inside this supported path, the product requirement is exact capture of the approved key formatting fields. Outside this path, the feature may fall back to non-authoritative evidence intake, but it must not pretend that the capture is exact.
 
+For the supported exact-capture path, the minimum mandatory field set is:
+
+- row and column topology
+- merged-cell topology
+- caption text and caption position
+- note text and note position
+- header depth and stub-column structure where present
+- top, header, bottom, and vertical border profile
+- cell alignment profile
+- run-level emphasis signals where present, including italic, bold, superscript, and subscript
+
+The intake layer must classify exact-capture failure explicitly rather than silently degrade.
+
+The minimum first-version failure codes are:
+
+- `unsupported_capture_environment`
+- `missing_required_clipboard_flavor`
+- `table_structure_incomplete`
+- `merged_cell_map_incomplete`
+- `caption_or_note_position_unknown`
+- `border_profile_incomplete`
+- `alignment_profile_incomplete`
+- `run_style_incomplete`
+- `exact_capture_not_authoritative`
+
+When any exact-capture failure code is present, the record may be stored only as non-authoritative reference evidence and must not publish as an executable rule or runtime-eligible knowledge item.
+
 ### 4.3 Runtime truth path
 
 Manuscript runtime checking should continue to trust parsed DOCX structure and style more than clipboard intake. Intake solves authoritative rule and knowledge authoring inside the supported path. DOCX parsing solves governed runtime truth.
@@ -432,6 +459,24 @@ Visible operator copy may still use `通用包` and `医用包`, but their under
 
 The rule-center package selector must therefore load from the real runtime quality-package inventory or from a strict compatibility projection of that inventory. It must not continue to use unrelated content-module ledgers as the package source of truth.
 
+Package bindings must resolve to real runtime target ids.
+
+The minimum first-version package-binding contract is:
+
+- `general_package` targets may only reference quality-package records or quality-package version records whose runtime kind is `general_style_package`
+- `medical_package` targets may only reference quality-package records or quality-package version records whose runtime kind is `medical_analyzer_package`
+- display labels, content-module ids, and free-text names are not valid package binding targets
+
+When package-scoped variants overlap, runtime specificity priority must be:
+
+- exact active package version match
+- active package kind match without version pin
+- journal-template-scoped rule or knowledge
+- module-template-scoped rule or knowledge
+- template-family-scoped rule or knowledge
+
+This priority must be shared by both rule resolution and runtime-eligible knowledge retrieval.
+
 ### 7.3 Required UI behavior
 
 The UI must provide real, inspectable controls rather than raw text input.
@@ -518,6 +563,8 @@ At minimum:
 
 Editing defaults must be stricter than proofreading defaults.
 
+No editing rule may enter `safe_auto_apply` unless the editing safety guardrails in section 10.4 pass.
+
 ## 9. Knowledge Release Model
 
 Knowledge should move through:
@@ -591,6 +638,38 @@ Produces:
 - controlled format-only output changes
 - explicit skipped reasons where safety is not high enough
 
+### 10.4 Editing safety guardrails
+
+Editing runtime must enforce hard guardrails before any AI or automatic patch stage.
+
+The following classes are auto-change forbidden by default:
+
+- numeric values, percentages, p values, confidence intervals, sample sizes, dates, dosages, and other data-bearing spans
+- medical conclusions, diagnosis terms, treatment terms, and clinically meaningful assertions
+- figure or table data content
+- image-based symbols and equation objects
+- citations where the change affects substance rather than typography
+- any span whose anchor precision or style evidence is below the release threshold
+
+Automatic editing may proceed only when all of the following are true:
+
+- the change is format-only and reversible
+- deterministic anchors identify the exact object and boundary
+- the affected span does not include protected numeric or medical entities
+- the governing rule posture is `confirm_then_apply` or `safe_auto_apply`
+- available style evidence is sufficient to prove the target formatting change without AI guessing
+
+If any guardrail fails, the system must downgrade the candidate action to `inspect_only` and emit an explicit reason code.
+
+The minimum first-version editing guardrail reason codes are:
+
+- `meaning_risk`
+- `numeric_entity_present`
+- `medical_entity_present`
+- `anchor_not_precise`
+- `object_type_not_safe`
+- `insufficient_style_evidence`
+
 ## 11. Interaction Model
 
 ### 11.1 Rule intake
@@ -641,7 +720,9 @@ This design is not complete unless the following end-to-end checks are part of i
 
 - bind one rule and one knowledge item to a general package
 - bind one rule and one knowledge item to a medical package
+- verify package-binding selectors only allow real runtime quality-package ids or version ids
 - verify module runtime picks the correct package-scoped content only when the active runtime binding resolves the corresponding quality package
+- verify an exact package-version match outranks a kind-only package binding when both are eligible
 - verify UI can explain why each item is active
 - verify changing only journal template does not silently activate package-scoped content when the runtime binding package context is unchanged
 - verify changing the active runtime binding package context changes package-scoped activation even when the journal template stays the same
@@ -651,6 +732,7 @@ This design is not complete unless the following end-to-end checks are part of i
 - paste a Word/WPS table into rule intake and verify structured extraction appears before AI drafting
 - confirm that critical fields such as caption position, border profile, italic markers, and run-level style facts are fully inspectable
 - verify that missing key formatting facts cause intake failure rather than guessed completion
+- verify intake exposes a concrete exact-capture failure code when publication is blocked
 - run the same journal rule on a manuscript DOCX and verify the runtime hit uses the same underlying snapshot vocabulary
 
 ### 12.4 Image-symbol checks
@@ -658,6 +740,13 @@ This design is not complete unless the following end-to-end checks are part of i
 - add image evidence for a symbol replacement case
 - verify the system classifies it as an object-type issue
 - verify it does not silently pass as valid text formatting
+
+### 12.5 Editing-safety checks
+
+- attempt an editing action on a span containing numeric results and verify the action downgrades to `inspect_only`
+- attempt an editing action on a span containing a medical conclusion and verify the action downgrades to `inspect_only`
+- verify format-only punctuation or typography normalization can still proceed when anchors and style evidence are sufficient
+- verify every downgraded action exposes an explicit guardrail reason code
 
 ## 13. Phased Delivery
 
@@ -667,6 +756,7 @@ This design is not complete unless the following end-to-end checks are part of i
 - establish role boundaries across journal templates, knowledge, and rules
 - add binding-center design and real binding controls
 - preserve binding kind semantics in runtime selection
+- lock package-binding target id domain and runtime specificity priority
 
 ### Phase 2: High-fidelity intake
 
@@ -674,6 +764,7 @@ This design is not complete unless the following end-to-end checks are part of i
 - add richer table style snapshot extraction
 - add visual symbol snapshot intake
 - align knowledge and rule intake on the same evidence model
+- enforce mandatory exact-capture fields and explicit failure codes
 
 ### Phase 3: Runtime integration
 
@@ -685,6 +776,7 @@ This design is not complete unless the following end-to-end checks are part of i
 
 - permit only deterministic, high-confidence format actions
 - keep complex style reconstruction inspect-first until proven stable
+- enforce editing hard guardrails and `inspect_only` downgrade reasons
 
 ## 14. Non-Goals For The First Implementation Plan
 
@@ -695,6 +787,7 @@ The first implementation plan should explicitly avoid:
 - making knowledge bindings look real before runtime can honor them
 - enabling broad automatic table reconstruction from day one
 - silently converting image-based symbol evidence into accepted formatted text
+- creating a dedicated old advanced-workbench migration or retirement program inside this first implementation plan
 
 ## 15. Final Decision
 

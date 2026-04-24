@@ -1,5 +1,7 @@
 import type {
   GovernedExecutionContextSummary,
+  ManuscriptQualityFindingSummary,
+  ManuscriptQualityPackageVersionRef,
   ManuscriptType as SharedManuscriptType,
   ManuscriptTypeDetectionSummary,
 } from "@medical/contracts";
@@ -184,10 +186,12 @@ export interface ModuleExecutionSnapshotViewModel {
   skill_package_versions: string[];
   model_id: string;
   model_version?: string;
+  quality_packages?: ManuscriptQualityPackageVersionRef[];
   knowledge_item_ids: string[];
   created_asset_ids: string[];
   agent_execution_log_id?: string;
   draft_snapshot_id?: string;
+  quality_findings_summary?: ManuscriptQualityFindingSummary;
   created_at: string;
   agent_execution: ExecutionTrackingAgentExecutionObservationViewModel;
   runtime_binding_readiness: ExecutionTrackingRuntimeBindingReadinessObservationViewModel;
