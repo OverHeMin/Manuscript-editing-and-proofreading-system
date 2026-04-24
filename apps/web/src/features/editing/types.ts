@@ -1,5 +1,10 @@
 import type { AuthRole } from "../auth/roles.ts";
-import type { ModuleExecutionMode } from "@medical/contracts";
+import type {
+  EditingCompletionGateSummary,
+  EditingSlotGovernanceSummary,
+  EditingSlotManualResolutionKind,
+  ModuleExecutionMode,
+} from "@medical/contracts";
 import type {
   DocumentAssetViewModel,
   ModuleJobViewModel,
@@ -21,4 +26,19 @@ export interface RunEditingInput {
   storageKey: string;
   fileName?: string;
   executionMode?: ModuleExecutionMode;
+}
+
+export interface SaveEditingSlotManualResolutionInput {
+  manuscriptId: string;
+  slotKey: string;
+  resolutionKind: EditingSlotManualResolutionKind;
+  resolvedText?: string;
+  selectedCandidateId?: string;
+  note?: string;
+}
+
+export interface SaveEditingSlotManualResolutionResultViewModel {
+  manuscript_id: string;
+  summary: EditingSlotGovernanceSummary;
+  completion_gate_summary?: EditingCompletionGateSummary;
 }

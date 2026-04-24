@@ -85,11 +85,31 @@ function buildAdvancedTableSnapshot(): DocumentStructureTableSnapshot {
       text: "Table 1 Baseline characteristics",
       label_text: "Table 1",
       title_text: "Baseline characteristics",
+      paragraphs: [
+        buildParagraphSnapshot("caption-paragraph-1", "Table 1 Baseline characteristics", {
+          alignment: "center",
+          fragments: [
+            buildFragment("caption-fragment-1", "Table 1 ", {
+              fontFamily: "Times New Roman",
+              fontSizePt: 12,
+              bold: true,
+            }),
+            buildFragment("caption-fragment-2", "Baseline characteristics", {
+              fontFamily: "Times New Roman",
+              fontSizePt: 12,
+              italic: true,
+            }),
+          ],
+        }),
+      ],
     },
     note_zone: {
       text: "Note: P<0.05 vs control",
       line_texts: ["Note: P<0.05 vs control"],
       footnote_ids: ["table-1-footnote-1"],
+      paragraphs: [
+        buildParagraphSnapshot("note-paragraph-1", "Note: P<0.05 vs control"),
+      ],
       coordinate: {
         table_id: "table-1",
         target: "note_zone",
@@ -100,11 +120,146 @@ function buildAdvancedTableSnapshot(): DocumentStructureTableSnapshot {
       has_header_rule: true,
       has_bottom_rule: true,
       has_vertical_rules: false,
-      coordinate: {
-        table_id: "table-1",
-        target: "style_profile",
+        coordinate: {
+          table_id: "table-1",
+          target: "style_profile",
+        },
       },
+    grid_cells: [
+      buildGridCell({
+        id: "table-1-grid-1",
+        text: "Item",
+        rowIndex: 0,
+        columnIndex: 0,
+        inferredRole: "header",
+        paragraphs: [buildParagraphSnapshot("grid-paragraph-1", "Item", { alignment: "center" })],
+      }),
+      buildGridCell({
+        id: "table-1-grid-2",
+        text: "Value",
+        rowIndex: 0,
+        columnIndex: 1,
+        inferredRole: "header",
+        paragraphs: [buildParagraphSnapshot("grid-paragraph-2", "Value", { alignment: "center" })],
+      }),
+      buildGridCell({
+        id: "table-1-grid-3",
+        text: "Age",
+        rowIndex: 1,
+        columnIndex: 0,
+        inferredRole: "data",
+        paragraphs: [buildParagraphSnapshot("grid-paragraph-3", "Age")],
+      }),
+      buildGridCell({
+        id: "table-1-grid-4",
+        text: "54.2",
+        rowIndex: 1,
+        columnIndex: 1,
+        inferredRole: "data",
+        paragraphs: [buildParagraphSnapshot("grid-paragraph-4", "54.2", { alignment: "right" })],
+      }),
+    ],
+  };
+}
+
+function buildStyleInsufficientTableSnapshot(): DocumentStructureTableSnapshot {
+  const advanced = buildAdvancedTableSnapshot();
+  const { grid_cells, ...rest } = advanced;
+  return rest;
+}
+
+function styleFact<T>(value: T) {
+  return {
+    availability: "authoritative" as const,
+    value,
+  };
+}
+
+function buildParagraphSnapshot(
+  id: string,
+  text: string,
+  input: {
+    alignment?: string;
+    fragments?: Array<ReturnType<typeof buildFragment>>;
+  } = {},
+) {
+  return {
+    id,
+    text,
+    style: {
+      alignment: styleFact(input.alignment ?? "left"),
+      spacing_before_pt: styleFact(0),
+      spacing_after_pt: styleFact(0),
+      line_spacing: styleFact(1),
+      line_spacing_mode: styleFact("multiple"),
+      left_indent_pt: styleFact(0),
+      right_indent_pt: styleFact(0),
+      first_line_indent_pt: styleFact(0),
+      hanging_indent_pt: styleFact(0),
     },
+    fragments: input.fragments ?? [buildFragment(`${id}-fragment-1`, text)],
+  };
+}
+
+function buildFragment(
+  id: string,
+  text: string,
+  input: {
+    fontFamily?: string;
+    fontSizePt?: number;
+    bold?: boolean;
+    italic?: boolean;
+    scriptPosition?: string;
+  } = {},
+) {
+  return {
+    id,
+    kind: "text" as const,
+    text,
+    style: {
+      font_family: styleFact(input.fontFamily ?? "Times New Roman"),
+      font_size_pt: styleFact(input.fontSizePt ?? 10.5),
+      bold: styleFact(input.bold ?? false),
+      italic: styleFact(input.italic ?? false),
+      script_position: styleFact(input.scriptPosition ?? "baseline"),
+    },
+  };
+}
+
+function buildGridCell(input: {
+  id: string;
+  text: string;
+  rowIndex: number;
+  columnIndex: number;
+  inferredRole: "header" | "stub" | "data" | "unknown";
+  paragraphs: Array<ReturnType<typeof buildParagraphSnapshot>>;
+}) {
+  return {
+    id: input.id,
+    text: input.text,
+    row_index: input.rowIndex,
+    column_index: input.columnIndex,
+    row_span: 1,
+    column_span: 1,
+    inferred_role: input.inferredRole,
+    style_evidence: {
+      font_family: styleFact("Times New Roman"),
+      font_size_pt: styleFact(10.5),
+      bold: styleFact(false),
+      italic: styleFact(false),
+      script_position: styleFact("baseline"),
+      alignment: styleFact("center"),
+      spacing_before_pt: styleFact(0),
+      spacing_after_pt: styleFact(0),
+      line_spacing: styleFact(1),
+      line_spacing_mode: styleFact("multiple"),
+      left_indent_pt: styleFact(0),
+      right_indent_pt: styleFact(0),
+      first_line_indent_pt: styleFact(0),
+      hanging_indent_pt: styleFact(0),
+      vertical_alignment: styleFact("center"),
+    },
+    paragraphs: input.paragraphs,
   };
 }
 
@@ -303,12 +458,12 @@ test("table patch planner marks otherwise-eligible editing patches unsafe on ins
   assert.equal(result.results[0]?.status, "skipped_unsafe");
 });
 
-test("table patch planner enables caption and note families only when their anchors exist and keeps style patches guarded", () => {
+test("table patch planner enables caption and note families and routes style rebuilds only when evidence is sufficient", () => {
   const planner = new TableDocxPatchPlanner({
     tableHitService: new EditorialRuleTableHitService(),
   });
 
-  const result = planner.plan({
+  const controlledResult = planner.plan({
     tableAutoApplyMode: "editing_safe_apply",
     resolvedRules: [
       buildResolvedRule({
@@ -332,7 +487,7 @@ test("table patch planner enables caption and note families only when their anch
         exampleAfter: "Note: P<0.05 compared with control",
       }),
       buildResolvedRule({
-        id: "rule-style-guarded",
+        id: "rule-style-rebuild",
         orderNo: 30,
         semanticTarget: "style_profile",
         patchType: "apply_three_line_table_style",
@@ -346,14 +501,51 @@ test("table patch planner enables caption and note families only when their anch
   });
 
   assert.deepEqual(
-    result.plans.map((plan) => plan.patch_type),
-    ["replace_table_caption_text", "replace_table_note_text"],
+    controlledResult.plans.map((plan) => plan.patch_type),
+    [
+      "replace_table_caption_text",
+      "replace_table_note_text",
+      "apply_three_line_table_style",
+    ],
   );
-  assert.equal(result.plans[0]?.semantic_target, "table_title");
-  assert.equal(result.plans[0]?.proposed_before, "Table 1 Baseline characteristics");
-  assert.equal(result.plans[1]?.semantic_target, "note_zone");
-  assert.equal(result.plans[1]?.proposed_before, "Note: P<0.05 vs control");
+  assert.equal(controlledResult.plans[0]?.semantic_target, "table_title");
+  assert.equal(controlledResult.plans[0]?.proposed_before, "Table 1 Baseline characteristics");
+  assert.equal(controlledResult.plans[1]?.semantic_target, "note_zone");
+  assert.equal(controlledResult.plans[1]?.proposed_before, "Note: P<0.05 vs control");
 
-  const styleResult = result.results.find((entry) => entry.rule_id === "rule-style-guarded");
+  const stylePlan = controlledResult.plans.find((plan) => plan.rule_id === "rule-style-rebuild");
+  assert.equal(stylePlan?.execution_path, "controlled_rebuild");
+  assert.equal(stylePlan?.proposed_before, "three_line_table");
+  assert.deepEqual(
+    (stylePlan?.rebuild_payload as { objectives?: string[] } | undefined)?.objectives,
+    [
+      "preserve_table_content_and_merged_structure",
+      "normalize_caption_above_table",
+      "normalize_note_zone_below_table",
+      "normalize_intra_cell_rich_text_runs",
+      "enforce_three_line_table_borders",
+    ],
+  );
+
+  const downgradedResult = planner.plan({
+    tableAutoApplyMode: "editing_safe_apply",
+    resolvedRules: [
+      buildResolvedRule({
+        id: "rule-style-downgrade",
+        orderNo: 10,
+        semanticTarget: "style_profile",
+        patchType: "apply_three_line_table_style",
+        grade: "A",
+        applyScope: "editing_only",
+        requiredSnapshotCapabilities: ["style_profile"],
+        exampleAfter: "three_line_table",
+      }),
+    ],
+    tableSnapshots: [buildStyleInsufficientTableSnapshot()],
+  });
+
+  assert.deepEqual(downgradedResult.plans, []);
+  const styleResult = downgradedResult.results.find((entry) => entry.rule_id === "rule-style-downgrade");
   assert.equal(styleResult?.status, "skipped_unsafe");
+  assert.equal(styleResult?.execution_path, "manual_downgrade");
 });

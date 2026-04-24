@@ -50,6 +50,16 @@ def main() -> None:
     try:
         with zipfile.ZipFile(source_path, "r") as archive:
             document_xml = archive.read("word/document.xml")
+            header_xml_parts = [
+                (name, archive.read(name))
+                for name in archive.namelist()
+                if name.startswith("word/header") and name.endswith(".xml")
+            ]
+            footer_xml_parts = [
+                (name, archive.read(name))
+                for name in archive.namelist()
+                if name.startswith("word/footer") and name.endswith(".xml")
+            ]
     except KeyError:
         emit_json(
             build_manual_review_result(
@@ -63,7 +73,11 @@ def main() -> None:
         )
         return
 
-    result = extract_structure_from_document_xml(document_xml)
+    result = extract_structure_from_document_xml(
+        document_xml,
+        header_xml_parts=header_xml_parts,
+        footer_xml_parts=footer_xml_parts,
+    )
     emit_json(result)
 
 

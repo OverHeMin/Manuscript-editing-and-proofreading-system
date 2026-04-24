@@ -38,6 +38,7 @@ import type { RetrievalPresetRecord } from "../retrieval-presets/retrieval-prese
 import type { RetrievalPresetService } from "../retrieval-presets/retrieval-preset-service.ts";
 import {
   type ActiveQualityPackageBindingContext,
+  type KnowledgeBindingMatchDetail,
   ModuleManuscriptNotFoundError,
   ModuleTemplateFamilyNotConfiguredError,
   selectApprovedDynamicKnowledge,
@@ -55,6 +56,9 @@ export interface GovernedKnowledgeSelection {
   matchSourceId?: string;
   bindingRuleId?: string;
   matchReasons: string[];
+  bindingPriority?: number;
+  primaryBinding?: KnowledgeBindingMatchDetail;
+  bindingMatches?: KnowledgeBindingMatchDetail[];
   retrievalScore?: number;
 }
 
@@ -223,6 +227,19 @@ export async function resolveGovernedModuleContext(
         ...(rule.sections && rule.sections.length > 0 ? ["section"] : []),
         ...(rule.risk_tags && rule.risk_tags.length > 0 ? ["risk_tag"] : []),
       ],
+      bindingPriority: 8,
+      primaryBinding: {
+        reason: "binding_rule",
+        sourceId: rule.id,
+        priority: 8,
+      },
+      bindingMatches: [
+        {
+          reason: "binding_rule",
+          sourceId: rule.id,
+          priority: 8,
+        },
+      ],
     });
   }
 
@@ -302,6 +319,10 @@ async function expandLinkedKnowledgeSelections(input: {
           ...existingSelection.matchReasons,
           "knowledge_item_binding",
         ]);
+        existingSelection.bindingMatches = dedupeBindingMatches([
+          ...(existingSelection.bindingMatches ?? []),
+          createLinkedKnowledgeBindingDetail(parentSelection),
+        ]);
         continue;
       }
 
@@ -316,6 +337,9 @@ async function expandLinkedKnowledgeSelections(input: {
         matchSource: "knowledge_item_binding",
         matchSourceId: `knowledge_item:${parentSelection.knowledgeItem.id}`,
         matchReasons: ["knowledge_item_binding"],
+        bindingPriority: parentSelection.bindingPriority ?? 1,
+        primaryBinding: createLinkedKnowledgeBindingDetail(parentSelection),
+        bindingMatches: [createLinkedKnowledgeBindingDetail(parentSelection)],
       };
       input.knowledgeSelectionsById.set(linkedKnowledgeItem.id, linkedSelection);
 
@@ -364,6 +388,35 @@ function dedupeMatchReasons(reasons: readonly string[]): string[] {
   }
 
   return result;
+}
+
+function dedupeBindingMatches(
+  matches: readonly KnowledgeBindingMatchDetail[],
+): KnowledgeBindingMatchDetail[] {
+  const seen = new Set<string>();
+  const result: KnowledgeBindingMatchDetail[] = [];
+
+  for (const match of matches) {
+    const key = `${match.reason}:${match.sourceId}`;
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push(match);
+  }
+
+  return result;
+}
+
+function createLinkedKnowledgeBindingDetail(
+  parentSelection: GovernedKnowledgeSelection,
+): KnowledgeBindingMatchDetail {
+  return {
+    reason: "knowledge_item_binding",
+    sourceId: `knowledge_item:${parentSelection.knowledgeItem.id}`,
+    priority: parentSelection.bindingPriority ?? 1,
+  };
 }
 
 async function resolveActiveManualReviewPolicy(

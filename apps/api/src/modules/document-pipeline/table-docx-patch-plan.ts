@@ -6,7 +6,8 @@ export type TableDocxSnapshotCapability =
   | "table_title"
   | "caption_fields"
   | "note_zone"
-  | "style_profile";
+  | "style_profile"
+  | "grid_cells";
 
 export type TableDocxPatchType =
   | "replace_header_cell_text"
@@ -18,6 +19,10 @@ export type TableDocxPatchType =
 
 export type TableDocxPatchGrade = "A" | "B" | "C";
 export type TableDocxPatchApplyScope = "inspect_only" | "editing_only";
+export type TableDocxExecutionPath =
+  | "safe_patch"
+  | "controlled_rebuild"
+  | "manual_downgrade";
 
 export interface TableDocxPatchAnchor {
   table_id: string;
@@ -42,6 +47,8 @@ export interface TableDocxPatchPlan {
   proposed_after: string;
   rationale: string;
   evidence_pack: Record<string, unknown>;
+  execution_path?: TableDocxExecutionPath;
+  rebuild_payload?: Record<string, unknown>;
 }
 
 export type TableDocxPatchResultStatus =
@@ -60,6 +67,7 @@ export interface TableDocxPatchResult {
   semantic_target?: string;
   anchor?: TableDocxPatchAnchor;
   required_snapshot_capabilities: TableDocxSnapshotCapability[];
+  execution_path?: TableDocxExecutionPath;
 }
 
 export const TABLE_DOCX_PATCH_RESULT_STATUSES: TableDocxPatchResultStatus[] = [

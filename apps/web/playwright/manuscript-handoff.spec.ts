@@ -80,6 +80,19 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   await runScreeningButton.click();
   await expect(page.locator("body")).toContainText("操作已完成");
   await expect(page.locator("body")).toContainText("已生成初筛报告");
+  const screeningAsset = await waitForCurrentAsset(
+    request,
+    manuscriptId,
+    "screening_report",
+  );
+  await navigateToScreeningSharedReview(page, manuscriptId, screeningAsset.id);
+  await page.goto(`/#screening?manuscriptId=${manuscriptId}`, {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(page.getByRole("heading", { name: /当前稿件初筛判断|初筛工作区/ })).toBeVisible();
+  await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
+    timeout: 10_000,
+  });
   await expandResultDetails(page);
   const editingLink = page.getByRole("link", { name: "前往编辑工作台" });
   await expect(editingLink).toBeVisible();
@@ -94,6 +107,16 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   await expect(
     page.getByRole("textbox", { name: /稿件查找|搜索稿件 ID/ }),
   ).toHaveValue(manuscriptTitle);
+  const journalTemplateSelect = page
+    .locator(".manuscript-workbench-field")
+    .filter({ hasText: "期刊模板（小期刊/场景）" })
+    .locator("select");
+  await expect(journalTemplateSelect).toBeVisible();
+  await journalTemplateSelect.selectOption({ label: "Seeded Clinical Journal Overlay" });
+  const saveTemplateContextButton = page.getByRole("button", { name: "保存模板上下文" });
+  await expect(saveTemplateContextButton).toBeEnabled();
+  await clickViaDom(saveTemplateContextButton);
+  await expect(page.locator("body")).toContainText(`已保存 ${manuscriptId} 的人工模板修正`);
 
   const runEditingButton = page.getByRole("button", { name: "执行编辑" });
   await expect(runEditingButton).toBeEnabled();
@@ -108,11 +131,17 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   expect(
     editingJob.payload?.tableInspectionFindings?.[0]?.semantic_hit?.column_key,
   ).toBe(semanticTableColumnKey);
-  await expandResultDetails(page);
-  const proofreadingLink = page.getByRole("link", { name: "前往校对工作台" });
-  await expect(proofreadingLink).toBeVisible();
-
-  await navigateViaHashLink(page, proofreadingLink);
+  await navigateToEditingSharedReview(page, manuscriptId, editedAsset.id);
+  await page.goto(`/#editing?manuscriptId=${manuscriptId}`, {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(page.getByRole("heading", { name: /编辑工作区/ })).toBeVisible();
+  await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
+    timeout: 10_000,
+  });
+  await page.goto(`/#proofreading?manuscriptId=${manuscriptId}`, {
+    waitUntil: "domcontentloaded",
+  });
   await expect(page.getByRole("heading", { name: /校对工作区/ })).toBeVisible();
   await expect(page.locator("body")).toContainText("正在加载稿件");
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
@@ -352,6 +381,54 @@ async function navigateToProofreadingIssueWorkbench(
   await expect(issueDetail).toBeVisible();
   await expect(
     page.locator('.manuscript-workbench-proofreading-block[data-selected="true"]').first(),
+  ).toBeVisible();
+}
+
+async function navigateToEditingSharedReview(
+  page: Page,
+  manuscriptId: string,
+  assetId: string,
+) {
+  await page.goto(`/#editing?manuscriptId=${manuscriptId}&assetId=${assetId}`, {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(page).toHaveURL(
+    new RegExp(`#editing\\?manuscriptId=${manuscriptId}&assetId=${assetId}$`),
+  );
+  const sharedReview = page.locator('[data-editing-layout="shared-review"]');
+  await expect(sharedReview).toBeVisible();
+  await expect(sharedReview).toContainText("稿件全文");
+  await expect(sharedReview).toContainText("问题与台账");
+  await expect(sharedReview.locator(".manuscript-workbench-proofreading-block").first()).toBeVisible();
+  const focusToggle = sharedReview.locator(".manuscript-workbench-proofreading-issue-toggle").first();
+  await expect(focusToggle).toBeVisible();
+  await clickViaDom(focusToggle);
+  await expect(
+    sharedReview.locator('.manuscript-workbench-proofreading-block[data-selected="true"]').first(),
+  ).toBeVisible();
+  await expect(page.locator("body")).toContainText("前置信息槽位");
+  await expect(page.locator("body")).toContainText("编辑完成门禁");
+}
+
+async function navigateToScreeningSharedReview(
+  page: Page,
+  manuscriptId: string,
+  assetId: string,
+) {
+  await page.goto(`/#screening?manuscriptId=${manuscriptId}&assetId=${assetId}`, {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(page).toHaveURL(
+    new RegExp(`#screening\\?manuscriptId=${manuscriptId}&assetId=${assetId}$`),
+  );
+  const sharedReview = page.locator('[data-screening-layout="shared-review"]');
+  await expect(sharedReview).toBeVisible();
+  await expect(sharedReview).toContainText("稿件全文");
+  await expect(sharedReview).toContainText("风险与建议");
+  await expect(sharedReview).toContainText("风险等级");
+  await expect(sharedReview).toContainText("建议结论");
+  await expect(
+    sharedReview.locator(".manuscript-workbench-proofreading-block").first(),
   ).toBeVisible();
 }
 

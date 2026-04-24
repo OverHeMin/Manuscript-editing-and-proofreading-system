@@ -37,11 +37,10 @@ test("rule wizard entry step explains high-frequency parameters and advanced tag
   );
 
   assert.match(markup, /这版向导只开放高频治理参数/u);
-  assert.match(markup, /低频运行参数继续放在旧工作台/u);
+  assert.match(markup, /低频高级项也在当前规则中心完成/u);
   assert.match(markup, /适用模块决定规则在哪个执行环节被调用/u);
   assert.match(markup, /章节标签和风险标签放到高级标签里补充/u);
-  assert.match(markup, /打开旧版高级工作台/u);
-  assert.match(markup, /templateGovernanceView=classic/u);
+  assert.doesNotMatch(markup, /打开旧版高级工作台/u);
 });
 
 test("rule wizard confirm step explains semantic confirmation parameters", () => {

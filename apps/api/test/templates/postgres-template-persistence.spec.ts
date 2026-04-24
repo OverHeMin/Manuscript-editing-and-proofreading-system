@@ -147,6 +147,199 @@ test("postgres template repositories persist template families, versions, and pr
   });
 });
 
+test("postgres template repository round-trips journal target models and version history", async () => {
+  await withMigratedTemplatePool(async (pool) => {
+    const templateFamilyRepository = new PostgresTemplateFamilyRepository({
+      client: pool,
+    });
+
+    await templateFamilyRepository.save({
+      id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      manuscript_type: "review",
+      name: "Review family",
+      status: "active",
+    });
+
+    await templateFamilyRepository.saveJournalTemplateProfile({
+      id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      template_family_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      journal_key: "nejm",
+      journal_name: "NEJM",
+      status: "draft",
+      target_model_version_id: "cccccccc-cccc-cccc-cccc-cccccccccccc-v2",
+      target_model_version_no: 2,
+      journal_format_target_model: {
+        skeleton: [
+          "front_matter",
+          "title",
+          "abstract",
+          "keywords",
+          "body",
+          "figures_tables",
+          "references",
+        ],
+        target_blocks: [
+          {
+            block_key: "author_bio",
+            label: "作者简介",
+            zone: "front_matter",
+            anchor: "before_title",
+            order: 10,
+            required: false,
+            repeatable: true,
+            enabled: true,
+            format_policy: {
+              display_label: "作者简介",
+              prefix: "作者简介：",
+              target_position: "标题上方",
+              style_requirements: ["独立成段"],
+              allow_auto_reorder: true,
+            },
+            content_source_policy: "prefer_existing_with_manual_fill",
+            completion_gate: "warn_only",
+          },
+          {
+            block_key: "classification_code",
+            label: "中图分类号",
+            zone: "keywords",
+            anchor: "after_keywords",
+            order: 20,
+            required: true,
+            repeatable: false,
+            enabled: true,
+            format_policy: {
+              display_label: "中图分类号",
+              prefix: "中图分类号：",
+              target_position: "关键词下方",
+              style_requirements: ["允许与文献标志码并列"],
+              allow_auto_reorder: true,
+            },
+            content_source_policy: "must_harvest_existing",
+            completion_gate: "block_on_missing",
+          },
+        ],
+      },
+      target_model_versions: [
+        {
+          version_id: "cccccccc-cccc-cccc-cccc-cccccccccccc-v1",
+          version_no: 1,
+          created_at: "2026-04-24T08:00:00.000Z",
+          journal_format_target_model: {
+            skeleton: [
+              "front_matter",
+              "title",
+              "abstract",
+              "keywords",
+              "body",
+              "figures_tables",
+              "references",
+            ],
+            target_blocks: [
+              {
+                block_key: "author_bio",
+                label: "作者简介",
+                zone: "front_matter",
+                anchor: "before_title",
+                order: 10,
+                required: false,
+                repeatable: true,
+                enabled: true,
+                format_policy: {
+                  display_label: "作者简介",
+                  prefix: "作者简介：",
+                  target_position: "标题上方",
+                  style_requirements: ["独立成段"],
+                  allow_auto_reorder: true,
+                },
+                content_source_policy: "prefer_existing_with_manual_fill",
+                completion_gate: "warn_only",
+              },
+            ],
+          },
+        },
+        {
+          version_id: "cccccccc-cccc-cccc-cccc-cccccccccccc-v2",
+          version_no: 2,
+          created_at: "2026-04-24T08:10:00.000Z",
+          journal_format_target_model: {
+            skeleton: [
+              "front_matter",
+              "title",
+              "abstract",
+              "keywords",
+              "body",
+              "figures_tables",
+              "references",
+            ],
+            target_blocks: [
+              {
+                block_key: "author_bio",
+                label: "作者简介",
+                zone: "front_matter",
+                anchor: "before_title",
+                order: 10,
+                required: false,
+                repeatable: true,
+                enabled: true,
+                format_policy: {
+                  display_label: "作者简介",
+                  prefix: "作者简介：",
+                  target_position: "标题上方",
+                  style_requirements: ["独立成段"],
+                  allow_auto_reorder: true,
+                },
+                content_source_policy: "prefer_existing_with_manual_fill",
+                completion_gate: "warn_only",
+              },
+              {
+                block_key: "classification_code",
+                label: "中图分类号",
+                zone: "keywords",
+                anchor: "after_keywords",
+                order: 20,
+                required: true,
+                repeatable: false,
+                enabled: true,
+                format_policy: {
+                  display_label: "中图分类号",
+                  prefix: "中图分类号：",
+                  target_position: "关键词下方",
+                  style_requirements: ["允许与文献标志码并列"],
+                  allow_auto_reorder: true,
+                },
+                content_source_policy: "must_harvest_existing",
+                completion_gate: "block_on_missing",
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const stored = await templateFamilyRepository.findJournalTemplateProfileById(
+      "cccccccc-cccc-cccc-cccc-cccccccccccc",
+    );
+    const listed =
+      await templateFamilyRepository.listJournalTemplateProfilesByTemplateFamilyId(
+        "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      );
+
+    assert.equal(stored?.target_model_version_id, "cccccccc-cccc-cccc-cccc-cccccccccccc-v2");
+    assert.equal(stored?.target_model_version_no, 2);
+    assert.equal(stored?.journal_format_target_model?.target_blocks.length, 2);
+    assert.equal(
+      stored?.journal_format_target_model?.target_blocks[1]?.block_key,
+      "classification_code",
+    );
+    assert.equal(stored?.target_model_versions?.length, 2);
+    assert.equal(
+      listed[0]?.target_model_versions?.[0]?.journal_format_target_model.target_blocks[0]
+        ?.label,
+      "作者简介",
+    );
+  });
+});
+
 test("postgres template repository translates duplicate journal template keys into a domain error", async () => {
   await withMigratedTemplatePool(async (pool) => {
     const templateFamilyRepository = new PostgresTemplateFamilyRepository({

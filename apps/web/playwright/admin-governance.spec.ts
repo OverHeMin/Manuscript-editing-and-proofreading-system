@@ -131,6 +131,18 @@ test("editing workbench saves a journal template context before running editing"
   );
   await expect(page.locator("body")).toContainText(prepared.journalName);
   await expect(page.locator("body")).toContainText("期刊覆写");
+  const resultDetails = page.locator(".manuscript-workbench-result-details");
+  await expect(resultDetails).toBeVisible();
+  await resultDetails
+    .locator("summary")
+    .evaluate((element: HTMLElement) => element.click());
+  const governanceTraceCard = page.locator(".manuscript-workbench-summary-card", {
+    has: page.getByRole("heading", { name: "治理链路" }),
+  });
+  await expect(governanceTraceCard).toContainText("目标模型版本");
+  await expect(governanceTraceCard).toContainText("质量包");
+  await expect(governanceTraceCard).toContainText("规则层栈");
+  await expect(governanceTraceCard).toContainText("知识激活");
 
   const inputAssetSelect = page.getByLabel(/输入稿件资产|父资产/);
   await expect(inputAssetSelect).toBeVisible();

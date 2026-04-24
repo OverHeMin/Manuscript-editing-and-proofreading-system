@@ -28,6 +28,10 @@ import type {
   GovernedContentModuleEvidenceLevel,
   GovernedContentModuleRecord,
   GovernedContentModuleRiskLevel,
+  JournalFormatTargetBlock,
+  JournalFormatTargetModel,
+  JournalFormatTargetModelVersionRecord,
+  JournalFormatTargetZone,
   JournalTemplateProfileRecord,
   ModuleTemplateRecord,
   TemplateCompositionRecord,
@@ -138,6 +142,12 @@ export interface CreateJournalTemplateProfileInput {
   journalName: string;
 }
 
+export interface UpdateJournalTemplateProfileInput {
+  journalKey?: string;
+  journalName?: string;
+  journalFormatTargetModel?: JournalFormatTargetModel;
+}
+
 export interface CreateTemplateRetrievalQualityRunInput {
   module: TemplateModule;
   goldSetVersionId: string;
@@ -203,6 +213,345 @@ interface TemplateWriteContext {
   moduleTemplateRepository: ModuleTemplateRepository;
   contentModuleRepository: GovernedContentModuleRepository;
   templateCompositionRepository: TemplateCompositionRepository;
+}
+
+const journalFormatTargetSkeleton: JournalFormatTargetZone[] = [
+  "front_matter",
+  "title",
+  "abstract",
+  "keywords",
+  "body",
+  "figures_tables",
+  "references",
+];
+
+function createDefaultJournalFormatTargetBlocks(): JournalFormatTargetBlock[] {
+  return [
+    {
+      block_key: "author_line",
+      label: "作者署名",
+      zone: "front_matter",
+      anchor: "after_title",
+      order: 10,
+      required: true,
+      repeatable: false,
+      enabled: true,
+      format_policy: {
+        display_label: "作者",
+        target_position: "标题下方",
+        style_requirements: ["保留作者顺序", "与单位行分离"],
+        allow_auto_reorder: false,
+      },
+      content_source_policy: "must_harvest_existing",
+      completion_gate: "block_on_unresolved",
+    },
+    {
+      block_key: "affiliation_line",
+      label: "作者单位",
+      zone: "front_matter",
+      anchor: "after_author_line",
+      order: 20,
+      required: true,
+      repeatable: true,
+      enabled: true,
+      format_policy: {
+        display_label: "单位",
+        target_position: "作者署名下方",
+        style_requirements: ["机构信息独立成行"],
+        allow_auto_reorder: true,
+      },
+      content_source_policy: "must_harvest_existing",
+      completion_gate: "block_on_unresolved",
+    },
+    {
+      block_key: "author_bio",
+      label: "作者简介",
+      zone: "front_matter",
+      anchor: "before_title",
+      order: 30,
+      required: false,
+      repeatable: true,
+      enabled: true,
+      format_policy: {
+        display_label: "作者简介",
+        prefix: "作者简介：",
+        target_position: "标题上方",
+        style_requirements: ["使用期刊要求的前缀标签"],
+        allow_auto_reorder: true,
+      },
+      content_source_policy: "prefer_existing_with_manual_fill",
+      completion_gate: "warn_only",
+    },
+    {
+      block_key: "corresponding_author_bio",
+      label: "通信作者简介",
+      zone: "front_matter",
+      anchor: "before_title",
+      order: 40,
+      required: false,
+      repeatable: true,
+      enabled: true,
+      format_policy: {
+        display_label: "通信作者简介",
+        prefix: "通信作者简介：",
+        target_position: "标题上方",
+        style_requirements: ["与作者简介分行展示"],
+        allow_auto_reorder: true,
+      },
+      content_source_policy: "prefer_existing_with_manual_fill",
+      completion_gate: "warn_only",
+    },
+    {
+      block_key: "funding_statement",
+      label: "基金项目",
+      zone: "front_matter",
+      anchor: "before_title",
+      order: 50,
+      required: false,
+      repeatable: true,
+      enabled: true,
+      format_policy: {
+        display_label: "基金项目",
+        prefix: "基金项目：",
+        target_position: "标题上方",
+        style_requirements: ["项目编号完整保留"],
+        allow_auto_reorder: true,
+      },
+      content_source_policy: "prefer_existing_with_manual_fill",
+      completion_gate: "warn_only",
+    },
+    {
+      block_key: "title",
+      label: "标题",
+      zone: "title",
+      anchor: "before_body",
+      order: 60,
+      required: true,
+      repeatable: false,
+      enabled: true,
+      format_policy: {
+        display_label: "标题",
+        target_position: "正文前部",
+        style_requirements: ["保留标题层级"],
+        allow_auto_reorder: false,
+      },
+      content_source_policy: "must_harvest_existing",
+      completion_gate: "block_on_missing",
+    },
+    {
+      block_key: "abstract",
+      label: "摘要",
+      zone: "abstract",
+      anchor: "before_body",
+      order: 70,
+      required: true,
+      repeatable: false,
+      enabled: true,
+      format_policy: {
+        display_label: "摘要",
+        target_position: "正文前部",
+        style_requirements: ["与关键词保持邻接"],
+        allow_auto_reorder: false,
+      },
+      content_source_policy: "must_harvest_existing",
+      completion_gate: "block_on_missing",
+    },
+    {
+      block_key: "keywords",
+      label: "关键词",
+      zone: "keywords",
+      anchor: "after_abstract",
+      order: 80,
+      required: true,
+      repeatable: false,
+      enabled: true,
+      format_policy: {
+        display_label: "关键词",
+        prefix: "关键词：",
+        separator: "；",
+        target_position: "摘要后",
+        style_requirements: ["采用期刊关键词分隔符"],
+        allow_auto_reorder: true,
+      },
+      content_source_policy: "must_harvest_existing",
+      completion_gate: "block_on_unresolved",
+    },
+    {
+      block_key: "classification_code",
+      label: "中图分类号",
+      zone: "keywords",
+      anchor: "after_keywords",
+      order: 90,
+      required: false,
+      repeatable: false,
+      enabled: true,
+      format_policy: {
+        display_label: "中图分类号",
+        prefix: "中图分类号：",
+        target_position: "关键词下方",
+        style_requirements: ["允许与文献标志码相邻"],
+        allow_auto_reorder: true,
+      },
+      content_source_policy: "prefer_existing_with_manual_fill",
+      completion_gate: "warn_only",
+    },
+    {
+      block_key: "document_code",
+      label: "文献标志码",
+      zone: "keywords",
+      anchor: "after_keywords",
+      order: 100,
+      required: false,
+      repeatable: false,
+      enabled: true,
+      format_policy: {
+        display_label: "文献标志码",
+        prefix: "文献标志码：",
+        target_position: "关键词下方",
+        style_requirements: ["允许与中图分类号同区域展示"],
+        allow_auto_reorder: true,
+      },
+      content_source_policy: "prefer_existing_with_manual_fill",
+      completion_gate: "warn_only",
+    },
+    {
+      block_key: "body",
+      label: "正文",
+      zone: "body",
+      anchor: "before_reference",
+      order: 110,
+      required: true,
+      repeatable: false,
+      enabled: true,
+      format_policy: {
+        display_label: "正文",
+        target_position: "参考文献前",
+        style_requirements: ["保留结构层级"],
+        allow_auto_reorder: false,
+      },
+      content_source_policy: "must_harvest_existing",
+      completion_gate: "block_on_missing",
+    },
+    {
+      block_key: "figures_tables",
+      label: "图表区",
+      zone: "figures_tables",
+      anchor: "before_reference",
+      order: 120,
+      required: true,
+      repeatable: true,
+      enabled: true,
+      format_policy: {
+        display_label: "图表",
+        target_position: "参考文献前",
+        style_requirements: ["图题表题与对象绑定"],
+        allow_auto_reorder: true,
+      },
+      content_source_policy: "must_harvest_existing",
+      completion_gate: "block_on_unresolved",
+    },
+    {
+      block_key: "references",
+      label: "参考文献",
+      zone: "references",
+      anchor: "before_reference",
+      order: 130,
+      required: true,
+      repeatable: false,
+      enabled: true,
+      format_policy: {
+        display_label: "参考文献",
+        target_position: "文末",
+        style_requirements: ["保持著录顺序与编号体系"],
+        allow_auto_reorder: false,
+      },
+      content_source_policy: "must_harvest_existing",
+      completion_gate: "block_on_missing",
+    },
+  ];
+}
+
+function createDefaultJournalFormatTargetModel(): JournalFormatTargetModel {
+  return {
+    skeleton: [...journalFormatTargetSkeleton],
+    target_blocks: createDefaultJournalFormatTargetBlocks(),
+  };
+}
+
+function cloneJournalFormatTargetModel(
+  model: JournalFormatTargetModel,
+): JournalFormatTargetModel {
+  return {
+    skeleton: [...model.skeleton],
+    target_blocks: model.target_blocks.map((block) => ({
+      ...block,
+      format_policy: {
+        ...block.format_policy,
+        style_requirements: block.format_policy.style_requirements
+          ? [...block.format_policy.style_requirements]
+          : undefined,
+      },
+    })),
+  };
+}
+
+function createJournalFormatTargetModelVersionRecord(input: {
+  journalTemplateProfileId: string;
+  versionNo: number;
+  now: Date;
+  model: JournalFormatTargetModel;
+}): JournalFormatTargetModelVersionRecord {
+  return {
+    version_id: `${input.journalTemplateProfileId}-v${input.versionNo}`,
+    version_no: input.versionNo,
+    created_at: input.now.toISOString(),
+    journal_format_target_model: cloneJournalFormatTargetModel(input.model),
+  };
+}
+
+function normalizeJournalFormatTargetModel(
+  model: JournalFormatTargetModel | undefined,
+  fallback: JournalFormatTargetModel,
+): JournalFormatTargetModel {
+  const normalizedBlocks = (model?.target_blocks ?? fallback.target_blocks)
+    .map((block, index) => ({
+      ...block,
+      order: Number.isFinite(block.order) ? block.order : (index + 1) * 10,
+      enabled: block.enabled !== false,
+      format_policy: {
+        ...block.format_policy,
+        allow_auto_reorder: block.format_policy.allow_auto_reorder === true,
+        style_requirements: block.format_policy.style_requirements
+          ? [...block.format_policy.style_requirements]
+          : undefined,
+      },
+    }))
+    .sort((left, right) => left.order - right.order);
+  const blockKeys = new Set<string>();
+  for (const block of normalizedBlocks) {
+    if (block.block_key.trim().length === 0) {
+      throw new Error("Journal format target block key cannot be empty.");
+    }
+    if (blockKeys.has(block.block_key)) {
+      throw new Error(
+        `Journal format target block key ${block.block_key} must be unique within one target model.`,
+      );
+    }
+    blockKeys.add(block.block_key);
+  }
+
+  return {
+    skeleton: [...journalFormatTargetSkeleton],
+    target_blocks: normalizedBlocks.map((block) => ({
+      ...block,
+      format_policy: {
+        ...block.format_policy,
+        style_requirements: block.format_policy.style_requirements
+          ? [...block.format_policy.style_requirements]
+          : undefined,
+      },
+    })),
+  };
 }
 
 function isGovernedContentModuleRepository(
@@ -472,16 +821,90 @@ export class TemplateGovernanceService {
           );
         }
 
+        const profileId = this.createId();
+        const targetModel = createDefaultJournalFormatTargetModel();
+        const versionRecord = createJournalFormatTargetModelVersionRecord({
+          journalTemplateProfileId: profileId,
+          versionNo: 1,
+          now: this.now(),
+          model: targetModel,
+        });
         const record: JournalTemplateProfileRecord = {
-          id: this.createId(),
+          id: profileId,
           template_family_id: input.templateFamilyId,
           journal_key: input.journalKey,
           journal_name: input.journalName,
           status: "draft",
+          target_model_version_id: versionRecord.version_id,
+          target_model_version_no: versionRecord.version_no,
+          journal_format_target_model: versionRecord.journal_format_target_model,
+          target_model_versions: [versionRecord],
         };
 
         await templateFamilyRepository.saveJournalTemplateProfile(record);
         return record;
+      },
+    );
+  }
+
+  async updateJournalTemplateProfile(
+    journalTemplateProfileId: string,
+    input: UpdateJournalTemplateProfileInput,
+  ): Promise<JournalTemplateProfileRecord> {
+    return this.transactionManager.withTransaction(
+      async ({ templateFamilyRepository }) => {
+        const template =
+          await templateFamilyRepository.findJournalTemplateProfileById(
+            journalTemplateProfileId,
+          );
+
+        if (!template) {
+          throw new JournalTemplateProfileNotFoundError(journalTemplateProfileId);
+        }
+
+        const nextJournalKey = input.journalKey?.trim() || template.journal_key;
+        if (nextJournalKey !== template.journal_key) {
+          const existingTemplate =
+            await templateFamilyRepository.findJournalTemplateProfileByTemplateFamilyIdAndJournalKey(
+              template.template_family_id,
+              nextJournalKey,
+            );
+          if (existingTemplate && existingTemplate.id !== journalTemplateProfileId) {
+            throw new JournalTemplateProfileKeyConflictError(
+              template.template_family_id,
+              nextJournalKey,
+            );
+          }
+        }
+
+        const baseModel =
+          template.journal_format_target_model ?? createDefaultJournalFormatTargetModel();
+        const nextModel = normalizeJournalFormatTargetModel(
+          input.journalFormatTargetModel,
+          baseModel,
+        );
+        const nextVersionNo = (template.target_model_version_no ?? 0) + 1;
+        const nextVersion = createJournalFormatTargetModelVersionRecord({
+          journalTemplateProfileId,
+          versionNo: nextVersionNo,
+          now: this.now(),
+          model: nextModel,
+        });
+        const updatedTemplate: JournalTemplateProfileRecord = {
+          ...template,
+          journal_key: nextJournalKey,
+          journal_name: input.journalName?.trim() || template.journal_name,
+          target_model_version_id: nextVersion.version_id,
+          target_model_version_no: nextVersion.version_no,
+          journal_format_target_model: nextVersion.journal_format_target_model,
+          target_model_versions: [
+            ...(template.target_model_versions ?? []),
+            nextVersion,
+          ],
+        };
+
+        await templateFamilyRepository.saveJournalTemplateProfile(updatedTemplate);
+        return updatedTemplate;
       },
     );
   }

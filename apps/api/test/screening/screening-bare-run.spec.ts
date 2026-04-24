@@ -55,6 +55,17 @@ test("screening bare mode succeeds without a current template family while gover
         return undefined;
       },
     } as never,
+    manuscriptQualitySourceBlockResolver: {
+      async resolveBlocks() {
+        return [
+          {
+            section: "abstract",
+            block_kind: "paragraph",
+            text: "Primary endpoint definition is missing.",
+          },
+        ];
+      },
+    } as never,
     mainlineAiRuntimeExecutor: screeningExecutor,
     createId: () => `job-screening-bare-${++nextJobId}`,
     now: () => new Date("2026-04-16T10:30:00.000Z"),
@@ -97,6 +108,12 @@ test("screening bare mode succeeds without a current template family while gover
           riskLevel?: string;
           recommendedDecision?: string;
         };
+        screeningSourceBlocks?: Array<{
+          text?: string;
+          section?: string;
+          block_kind?: string;
+          source_locator?: string;
+        }>;
       }
     | undefined;
 
@@ -118,5 +135,14 @@ test("screening bare mode succeeds without a current template family while gover
   assert.equal(
     screeningPayload.screeningReport?.recommendedDecision,
     "major_revision",
+  );
+  assert.ok(
+    Array.isArray(screeningPayload.screeningSourceBlocks) &&
+      screeningPayload.screeningSourceBlocks.length > 0,
+    "Expected screening runs to persist source blocks for the shared review workspace.",
+  );
+  assert.equal(
+    typeof screeningPayload.screeningSourceBlocks?.[0]?.text,
+    "string",
   );
 });

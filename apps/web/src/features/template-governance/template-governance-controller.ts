@@ -109,6 +109,7 @@ import {
   listTemplateFamilies,
   publishModuleTemplate,
   updateContentModuleDraft,
+  updateJournalTemplateProfile,
   updateModuleTemplateDraft,
   updateTemplateCompositionDraft,
   updateTemplateFamily,
@@ -127,6 +128,7 @@ import {
   type TemplateFamilyViewModel,
   type TemplateHttpClient,
   type UpdateContentModuleDraftInput,
+  type UpdateJournalTemplateProfileInput,
   type UpdateModuleTemplateDraftInput,
   type UpdateTemplateCompositionDraftInput,
   type UpdateTemplateFamilyInput,
@@ -325,6 +327,13 @@ export interface TemplateGovernanceWorkbenchController {
   createJournalTemplateProfileAndReload(
     input: CreateJournalTemplateProfileInput & TemplateGovernanceReloadContext,
   ): Promise<{
+    journalTemplateProfile: JournalTemplateProfileViewModel;
+    overview: TemplateGovernanceWorkbenchOverview;
+  }>;
+  updateJournalTemplateProfileAndReload(input: {
+    journalTemplateProfileId: string;
+    input: UpdateJournalTemplateProfileInput;
+  } & TemplateGovernanceReloadContext): Promise<{
     journalTemplateProfile: JournalTemplateProfileViewModel;
     overview: TemplateGovernanceWorkbenchOverview;
   }>;
@@ -736,6 +745,29 @@ export function createTemplateGovernanceWorkbenchController(
           selectedInstructionTemplateId,
           selectedKnowledgeItemId,
           filters,
+        }),
+      };
+    },
+    async updateJournalTemplateProfileAndReload(input) {
+      const journalTemplateProfile = (
+        await updateJournalTemplateProfile(
+          client,
+          input.journalTemplateProfileId,
+          input.input,
+        )
+      ).body;
+
+      return {
+        journalTemplateProfile,
+        overview: await loadTemplateGovernanceOverview(client, {
+          selectedTemplateFamilyId:
+            input.selectedTemplateFamilyId ?? journalTemplateProfile.template_family_id,
+          selectedJournalTemplateId:
+            input.selectedJournalTemplateId ?? journalTemplateProfile.id,
+          selectedRuleSetId: input.selectedRuleSetId,
+          selectedInstructionTemplateId: input.selectedInstructionTemplateId,
+          selectedKnowledgeItemId: input.selectedKnowledgeItemId,
+          filters: input.filters,
         }),
       };
     },

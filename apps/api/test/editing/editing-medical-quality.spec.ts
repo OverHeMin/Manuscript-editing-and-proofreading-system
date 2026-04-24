@@ -138,6 +138,8 @@ test("editing keeps medical terminology and statistics findings advisory instead
           tables: [
             {
               table_id: "Table 1",
+              row_count: 1,
+              column_count: 1,
               profile: {
                 is_three_line_table: true,
                 header_depth: 1,
@@ -163,6 +165,80 @@ test("editing keeps medical terminology and statistics findings advisory instead
                 },
               ],
               footnote_items: [],
+              grid_cells: [
+                {
+                  id: "Table 1-cell-0-0",
+                  text: "18.2 ± 1.3",
+                  row_index: 0,
+                  column_index: 0,
+                  row_span: 1,
+                  column_span: 1,
+                  inferred_role: "data",
+                  style_evidence: {
+                    font_family: {
+                      availability: "authoritative",
+                      value: "Times New Roman",
+                    },
+                    font_size_pt: {
+                      availability: "authoritative",
+                      value: 10.5,
+                    },
+                    bold: {
+                      availability: "authoritative",
+                      value: false,
+                    },
+                    italic: {
+                      availability: "authoritative",
+                      value: false,
+                    },
+                    script_position: {
+                      availability: "authoritative",
+                      value: "baseline",
+                    },
+                    alignment: {
+                      availability: "authoritative",
+                      value: "center",
+                    },
+                    spacing_before_pt: {
+                      availability: "authoritative",
+                      value: 0,
+                    },
+                    spacing_after_pt: {
+                      availability: "authoritative",
+                      value: 0,
+                    },
+                    line_spacing: {
+                      availability: "authoritative",
+                      value: 1,
+                    },
+                    line_spacing_mode: {
+                      availability: "authoritative",
+                      value: "multiple",
+                    },
+                    left_indent_pt: {
+                      availability: "authoritative",
+                      value: 0,
+                    },
+                    right_indent_pt: {
+                      availability: "authoritative",
+                      value: 0,
+                    },
+                    first_line_indent_pt: {
+                      availability: "authoritative",
+                      value: 0,
+                    },
+                    hanging_indent_pt: {
+                      availability: "authoritative",
+                      value: 0,
+                    },
+                    vertical_alignment: {
+                      availability: "authoritative",
+                      value: "center",
+                    },
+                  },
+                  paragraphs: [],
+                },
+              ],
             },
           ],
           warnings: [],
@@ -189,10 +265,31 @@ test("editing keeps medical terminology and statistics findings advisory instead
   assert.equal(
     (
       recordedQualityInput as {
-        tableSnapshots?: Array<{ table_id: string }>;
+        tableSnapshots?: Array<{
+          table_id: string;
+          grid_cells?: Array<{
+            style_evidence?: {
+              font_family?: { value?: string };
+            };
+          }>;
+        }>;
       }
     )?.tableSnapshots?.[0]?.table_id,
     "Table 1",
+  );
+  assert.equal(
+    (
+      recordedQualityInput as {
+        tableSnapshots?: Array<{
+          grid_cells?: Array<{
+            style_evidence?: {
+              font_family?: { value?: string };
+            };
+          }>;
+        }>;
+      }
+    )?.tableSnapshots?.[0]?.grid_cells?.[0]?.style_evidence?.font_family?.value,
+    "Times New Roman",
   );
   assert.equal(recordedQualityInput?.targetModule, "editing");
   assert.deepEqual(recordedQualityInput?.qualityPackageVersionIds, [

@@ -1,5 +1,5 @@
 import type { AuthRole } from "../auth/index.ts";
-import type { ModuleExecutionMode } from "@medical/contracts";
+import type { EditingSlotManualResolutionKind, ModuleExecutionMode } from "@medical/contracts";
 import {
   getExecutionSnapshot,
   listKnowledgeHitLogsBySnapshotId,
@@ -46,7 +46,9 @@ import {
 } from "../templates/index.ts";
 import {
   runEditing,
+  saveEditingSlotManualResolution,
   type EditingRunResultViewModel,
+  type SaveEditingSlotManualResolutionResultViewModel,
 } from "../editing/index.ts";
 import {
   confirmProofreadingFinal,
@@ -223,6 +225,21 @@ export interface PublishHumanFinalAndLoadResult {
   workspace: ManuscriptWorkbenchWorkspace;
 }
 
+export interface SaveEditingSlotResolutionAndLoadInput {
+  manuscriptId: string;
+  actorRole: AuthRole;
+  slotKey: string;
+  resolutionKind: EditingSlotManualResolutionKind;
+  resolvedText?: string;
+  selectedCandidateId?: string;
+  note?: string;
+}
+
+export interface SaveEditingSlotResolutionAndLoadResult {
+  resolution: SaveEditingSlotManualResolutionResultViewModel;
+  workspace: ManuscriptWorkbenchWorkspace;
+}
+
 export interface ManuscriptWorkbenchProofreadingGovernanceHandoffOptions {
   snapshotId?: string;
 }
@@ -268,6 +285,9 @@ export interface ManuscriptWorkbenchController {
   publishHumanFinalAndLoad(
     input: PublishHumanFinalAndLoadInput,
   ): Promise<PublishHumanFinalAndLoadResult>;
+  saveEditingSlotResolutionAndLoad(
+    input: SaveEditingSlotResolutionAndLoadInput,
+  ): Promise<SaveEditingSlotResolutionAndLoadResult>;
   submitManualFeedbackForReview(
     input: SubmitManualFeedbackForReviewInput,
   ): Promise<SubmitManualFeedbackForReviewResult>;
@@ -444,6 +464,26 @@ export function createManuscriptWorkbenchController(
           job,
         },
         workspace,
+      };
+    },
+    async saveEditingSlotResolutionAndLoad(input) {
+      const response = await saveEditingSlotManualResolution(client, {
+        manuscriptId: input.manuscriptId,
+        slotKey: input.slotKey,
+        resolutionKind: input.resolutionKind,
+        ...(input.resolvedText ? { resolvedText: input.resolvedText } : {}),
+        ...(input.selectedCandidateId
+          ? { selectedCandidateId: input.selectedCandidateId }
+          : {}),
+        ...(input.note ? { note: input.note } : {}),
+      });
+
+      return {
+        resolution: response.body,
+        workspace: await loadWorkspaceWithKnowledge(input.manuscriptId, {
+          actorRole: input.actorRole,
+          mode: "editing",
+        }),
       };
     },
     async submitManualFeedbackForReview(input) {

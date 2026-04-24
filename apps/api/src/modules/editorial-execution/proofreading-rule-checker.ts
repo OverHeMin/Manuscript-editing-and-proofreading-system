@@ -38,10 +38,7 @@ export function inspectProofreadingRules(input: {
       ? input.resolvedRules
       : input.rules
           .filter((record) => record.enabled)
-          .map((rule) => ({
-            rule,
-            source_layer: "base" as const,
-          }));
+          .map((rule) => createFallbackResolvedRule(rule));
 
   if (input.blocks.length === 0 && !(input.tableSnapshots?.length)) {
     riskItems.push({
@@ -175,6 +172,24 @@ export function inspectProofreadingRules(input: {
     riskItems,
     manualReviewItems: uniqueManualReviewItems(manualReviewItems),
     appliedChanges: [],
+  };
+}
+
+function createFallbackResolvedRule(
+  rule: EditorialRuleRecord,
+): ResolvedEditorialRule {
+  return {
+    rule,
+    coverage_key: rule.id,
+    source_layer: "base",
+    overridden_rule_ids: [],
+    resolution_reason: "proofreading runtime fallback",
+    execution_posture: "guarded",
+    activation_source: {
+      kind: "template_family_rule_set",
+      id: rule.rule_set_id,
+    },
+    overridden_sources: [],
   };
 }
 

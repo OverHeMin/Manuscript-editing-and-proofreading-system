@@ -1,6 +1,9 @@
 import type {
   GovernedExecutionContextSummary,
+  GovernedKnowledgeBindingMatchSummary,
+  GovernedKnowledgeSelectionSummary,
   GovernedExecutionModuleSummary,
+  GovernedResolvedRuleSummary,
   JournalTemplateSelectionState,
 } from "@medical/contracts";
 import type { ExecutionGovernanceService } from "../execution-governance/execution-governance-service.ts";
@@ -33,15 +36,24 @@ import {
 import type { RetrievalPresetService } from "../retrieval-presets/retrieval-preset-service.ts";
 import type { RuntimeBindingService } from "../runtime-bindings/runtime-binding-service.ts";
 import type { RuntimeBindingReadinessService } from "../runtime-bindings/runtime-binding-readiness-service.ts";
-import type { ModuleTemplateRepository } from "../templates/template-repository.ts";
+import type {
+  ModuleTemplateRepository,
+  TemplateFamilyRepository,
+} from "../templates/template-repository.ts";
 import type { ManuscriptType } from "../manuscripts/manuscript-record.ts";
 import type { TemplateModule } from "../templates/template-record.ts";
-import { GOVERNED_MANUSCRIPT_MAINLINE_MODULES } from "../shared/module-run-support.ts";
+import {
+  GOVERNED_MANUSCRIPT_MAINLINE_MODULES,
+  type ActiveQualityPackageBindingContext,
+  type KnowledgeBindingMatchDetail,
+  selectApprovedDynamicKnowledge,
+} from "../shared/module-run-support.ts";
 import type {
   ExecutionResolutionModelSource,
   ProviderReadinessIssueRecord,
   ProviderReadinessRecord,
   ResolvedExecutionBundleRecord,
+  ResolvedExecutionKnowledgeSelectionRecord,
   RuntimeBindingReadinessObservationRecord,
 } from "./execution-resolution-record.ts";
 
@@ -49,6 +61,7 @@ export interface ResolveExecutionBundleInput {
   module: TemplateModule;
   manuscriptType: ManuscriptType;
   templateFamilyId: string;
+  journalTemplateId?: string;
   executionProfileId?: string;
   runtimeBindingId?: string;
   modelRoutingPolicyVersionId?: string;
@@ -64,6 +77,7 @@ export interface ResolveOperatorSummaryInput {
 
 export interface ExecutionResolutionServiceOptions {
   executionGovernanceService: ExecutionGovernanceService;
+  templateFamilyRepository: Pick<TemplateFamilyRepository, "findJournalTemplateProfileById">;
   moduleTemplateRepository: ModuleTemplateRepository;
   promptSkillRegistryRepository: PromptSkillRegistryRepository;
   knowledgeRepository: KnowledgeRepository;
@@ -73,7 +87,7 @@ export interface ExecutionResolutionServiceOptions {
   modelRoutingGovernanceService?: ModelRoutingGovernanceService;
   runtimeBindingService?: Pick<
     RuntimeBindingService,
-    "getActiveBindingForScope" | "getBinding"
+    "getActiveBindingForScope" | "getBinding" | "resolveActiveQualityPackageContext"
   >;
   retrievalPresetService?: Pick<
     RetrievalPresetService,
@@ -130,6 +144,10 @@ export class ExecutionResolutionScopeMismatchError extends Error {
 
 export class ExecutionResolutionService {
   private readonly executionGovernanceService: ExecutionGovernanceService;
+  private readonly templateFamilyRepository: Pick<
+    TemplateFamilyRepository,
+    "findJournalTemplateProfileById"
+  >;
   private readonly moduleTemplateRepository: ModuleTemplateRepository;
   private readonly promptSkillRegistryRepository: PromptSkillRegistryRepository;
   private readonly knowledgeRepository: KnowledgeRepository;
@@ -139,7 +157,7 @@ export class ExecutionResolutionService {
   private readonly modelRoutingGovernanceService?: ModelRoutingGovernanceService;
   private readonly runtimeBindingService?: Pick<
     RuntimeBindingService,
-    "getActiveBindingForScope" | "getBinding"
+    "getActiveBindingForScope" | "getBinding" | "resolveActiveQualityPackageContext"
   >;
   private readonly retrievalPresetService?: Pick<
     RetrievalPresetService,
@@ -156,6 +174,7 @@ export class ExecutionResolutionService {
 
   constructor(options: ExecutionResolutionServiceOptions) {
     this.executionGovernanceService = options.executionGovernanceService;
+    this.templateFamilyRepository = options.templateFamilyRepository;
     this.moduleTemplateRepository = options.moduleTemplateRepository;
     this.promptSkillRegistryRepository = options.promptSkillRegistryRepository;
     this.knowledgeRepository = options.knowledgeRepository;
@@ -184,6 +203,9 @@ export class ExecutionResolutionService {
         });
 
     const runtimeBinding = await this.resolveRuntimeBinding(input);
+    const activeQualityPackages = await this.resolveActiveQualityPackages(
+      runtimeBinding?.quality_package_version_ids,
+    );
     const modelRoutingPolicyVersion = await this.resolveModelRoutingPolicyVersion(input);
     const retrievalPreset = await this.resolveRetrievalPreset(input);
     const manualReviewPolicy = await this.resolveManualReviewPolicy(input);
@@ -223,8 +245,10 @@ export class ExecutionResolutionService {
       skillPackages.push(skillPackage);
     }
 
-    const { ruleSet, rules } =
-      await this.executionGovernanceService.resolvePublishedRuleSource(profile);
+    const { ruleSet, rules, resolvedRules } =
+      await this.executionGovernanceService.resolvePublishedRuleSource(profile, {
+        journalTemplateId: input.journalTemplateId,
+      });
 
     const { model, source, fallbackChain } = await this.resolveModel(
       profile,
@@ -235,27 +259,18 @@ export class ExecutionResolutionService {
       warnings,
       providerReadiness,
     } = await this.resolveProviderState(model);
-    const knowledgeBindingRules =
-      await this.executionGovernanceService.listApplicableActiveKnowledgeBindingRules({
-        module: profile.module,
-        manuscriptType: profile.manuscript_type,
-        templateFamilyId: profile.template_family_id,
-        moduleTemplateId: profile.module_template_id,
-      });
-
-    const knowledgeItems: KnowledgeRecord[] = [];
-    for (const rule of knowledgeBindingRules) {
-      const knowledgeItem = await this.knowledgeRepository.findApprovedById(
-        rule.knowledge_item_id,
-      );
-      if (!knowledgeItem || knowledgeItem.status !== "approved") {
-        throw new ExecutionResolutionKnowledgeItemNotFoundError(
-          rule.knowledge_item_id,
-        );
-      }
-
-      knowledgeItems.push(knowledgeItem);
-    }
+    const {
+      knowledgeBindingRules,
+      knowledgeSelections,
+      knowledgeItems,
+    } = await this.resolveKnowledgeSelections({
+      profile,
+      moduleTemplate,
+      retrievalPreset,
+      journalTemplateId: input.journalTemplateId,
+      qualityPackageVersionIds: runtimeBinding?.quality_package_version_ids,
+      activeQualityPackages,
+    });
 
     const runtimeBindingReadiness = await this.observeRuntimeBindingReadiness({
       module: profile.module,
@@ -274,6 +289,7 @@ export class ExecutionResolutionService {
       module_template: moduleTemplate,
       rule_set: ruleSet,
       rules,
+      resolved_rules: resolvedRules,
       prompt_template: promptTemplate,
       skill_packages: skillPackages,
       resolved_model: model,
@@ -284,6 +300,7 @@ export class ExecutionResolutionService {
       warnings,
       knowledge_binding_rules: knowledgeBindingRules,
       knowledge_items: dedupeKnowledgeItems(knowledgeItems),
+      knowledge_selections: knowledgeSelections,
       runtime_binding_readiness: runtimeBindingReadiness,
     };
   }
@@ -293,6 +310,11 @@ export class ExecutionResolutionService {
   ): Promise<GovernedExecutionContextSummary> {
     const journalTemplateSelectionState: JournalTemplateSelectionState =
       input.journalTemplateId ? "selected" : "base_family_only";
+    const journalTemplate = input.journalTemplateId
+      ? await this.templateFamilyRepository.findJournalTemplateProfileById(
+          input.journalTemplateId,
+        )
+      : undefined;
     if (!input.baseTemplateFamilyId) {
       return {
         observation_status: "reported",
@@ -300,6 +322,18 @@ export class ExecutionResolutionService {
         journal_template_selection_state: journalTemplateSelectionState,
         ...(input.journalTemplateId
           ? { journal_template_id: input.journalTemplateId }
+          : {}),
+        ...(journalTemplate?.target_model_version_id
+          ? {
+              journal_template_target_model_version_id:
+                journalTemplate.target_model_version_id,
+            }
+          : {}),
+        ...(journalTemplate?.target_model_version_no != null
+          ? {
+              journal_template_target_model_version_no:
+                journalTemplate.target_model_version_no,
+            }
           : {}),
         modules: GOVERNED_MANUSCRIPT_MAINLINE_MODULES.map((module) => ({
           module,
@@ -314,6 +348,7 @@ export class ExecutionResolutionService {
           module,
           manuscriptType: input.manuscriptType,
           templateFamilyId: input.baseTemplateFamilyId as string,
+          journalTemplateId: input.journalTemplateId,
         }),
       ),
     );
@@ -330,6 +365,18 @@ export class ExecutionResolutionService {
       journal_template_selection_state: journalTemplateSelectionState,
       ...(input.journalTemplateId
         ? { journal_template_id: input.journalTemplateId }
+        : {}),
+      ...(journalTemplate?.target_model_version_id
+        ? {
+            journal_template_target_model_version_id:
+              journalTemplate.target_model_version_id,
+          }
+        : {}),
+      ...(journalTemplate?.target_model_version_no != null
+        ? {
+            journal_template_target_model_version_no:
+              journalTemplate.target_model_version_no,
+          }
         : {}),
       modules,
       ...(failedOpenErrors.length > 0
@@ -366,6 +413,105 @@ export class ExecutionResolutionService {
             : "Unknown runtime binding readiness observation error.",
       };
     }
+  }
+
+  private async resolveActiveQualityPackages(
+    qualityPackageVersionIds?: readonly string[],
+  ): Promise<readonly ActiveQualityPackageBindingContext[]> {
+    if (
+      !this.runtimeBindingService ||
+      !qualityPackageVersionIds ||
+      qualityPackageVersionIds.length === 0
+    ) {
+      return [];
+    }
+
+    return this.runtimeBindingService.resolveActiveQualityPackageContext([
+      ...qualityPackageVersionIds,
+    ]);
+  }
+
+  private async resolveKnowledgeSelections(input: {
+    profile: Awaited<ReturnType<ExecutionGovernanceService["resolveActiveProfile"]>>;
+    moduleTemplate: ResolvedExecutionBundleRecord["module_template"];
+    retrievalPreset?: ResolvedExecutionBundleRecord["retrieval_preset"];
+    journalTemplateId?: string;
+    qualityPackageVersionIds?: readonly string[];
+    activeQualityPackages: readonly ActiveQualityPackageBindingContext[];
+  }): Promise<{
+    knowledgeBindingRules: ResolvedExecutionBundleRecord["knowledge_binding_rules"];
+    knowledgeSelections: ResolvedExecutionBundleRecord["knowledge_selections"];
+    knowledgeItems: KnowledgeRecord[];
+  }> {
+    const knowledgeSelectionsById = new Map<
+      string,
+      ResolvedExecutionKnowledgeSelectionRecord
+    >();
+    const knowledgeBindingRules =
+      await this.executionGovernanceService.listApplicableActiveKnowledgeBindingRules({
+        module: input.profile.module,
+        manuscriptType: input.profile.manuscript_type,
+        templateFamilyId: input.profile.template_family_id,
+        moduleTemplateId: input.profile.module_template_id,
+      });
+
+    for (const rule of knowledgeBindingRules) {
+      const knowledgeItem = await this.knowledgeRepository.findApprovedById(
+        rule.knowledge_item_id,
+      );
+      if (!knowledgeItem || knowledgeItem.status !== "approved") {
+        throw new ExecutionResolutionKnowledgeItemNotFoundError(
+          rule.knowledge_item_id,
+        );
+      }
+
+      knowledgeSelectionsById.set(
+        knowledgeItem.id,
+        createBindingRuleKnowledgeSelection(rule, knowledgeItem),
+      );
+    }
+
+    if (input.profile.knowledge_binding_mode === "profile_plus_dynamic") {
+      const previewManuscript = {
+        current_template_family_id: input.profile.template_family_id,
+        current_journal_template_id: input.journalTemplateId,
+        manuscript_type: input.profile.manuscript_type,
+      } as Parameters<typeof selectApprovedDynamicKnowledge>[0]["manuscript"];
+      const dynamicSelections = selectApprovedDynamicKnowledge({
+        manuscript: previewManuscript,
+        module: input.profile.module,
+        template: input.moduleTemplate,
+        knowledgeItems: await this.knowledgeRepository.listApproved(),
+        retrievalPreset: input.retrievalPreset ?? undefined,
+        qualityPackageVersionIds: input.qualityPackageVersionIds
+          ? [...input.qualityPackageVersionIds]
+          : undefined,
+        activeQualityPackages: input.activeQualityPackages,
+      });
+
+      for (const selection of dynamicSelections) {
+        if (knowledgeSelectionsById.has(selection.knowledgeItem.id)) {
+          continue;
+        }
+
+        knowledgeSelectionsById.set(
+          selection.knowledgeItem.id,
+          toResolvedExecutionKnowledgeSelection(selection),
+        );
+      }
+    }
+
+    await expandResolvedExecutionKnowledgeSelections({
+      knowledgeSelectionsById,
+      knowledgeRepository: this.knowledgeRepository,
+    });
+
+    const knowledgeSelections = [...knowledgeSelectionsById.values()];
+    return {
+      knowledgeBindingRules,
+      knowledgeSelections,
+      knowledgeItems: knowledgeSelections.map((selection) => selection.knowledge_item),
+    };
   }
 
   private async resolveModel(profile: {
@@ -872,12 +1018,14 @@ export class ExecutionResolutionService {
     module: TemplateModule;
     manuscriptType: ManuscriptType;
     templateFamilyId: string;
+    journalTemplateId?: string;
   }): Promise<GovernedExecutionModuleSummary> {
     try {
       const bundle = await this.resolveExecutionBundle({
         module: input.module,
         manuscriptType: input.manuscriptType,
         templateFamilyId: input.templateFamilyId,
+        journalTemplateId: input.journalTemplateId,
       });
 
       return {
@@ -903,6 +1051,21 @@ export class ExecutionResolutionService {
         resolved_model_id: bundle.resolved_model.id,
         model_source: bundle.model_source,
         provider_readiness_status: bundle.provider_readiness.status,
+        ...(bundle.runtime_binding?.quality_package_version_ids?.length
+          ? {
+              quality_package_ids: [
+                ...bundle.runtime_binding.quality_package_version_ids,
+              ],
+            }
+          : {}),
+        resolved_rule_count: bundle.resolved_rules.length,
+        knowledge_selection_count: bundle.knowledge_selections.length,
+        resolved_rules: bundle.resolved_rules.map((rule) =>
+          summarizeResolvedRule(rule),
+        ),
+        knowledge_selections: bundle.knowledge_selections.map((selection) =>
+          summarizeKnowledgeSelection(selection),
+        ),
         ...(bundle.runtime_binding_readiness.observation_status === "reported" &&
         bundle.runtime_binding_readiness.report
           ? {
@@ -932,6 +1095,299 @@ export class ExecutionResolutionService {
       };
     }
   }
+}
+
+function createBindingRuleKnowledgeSelection(
+  rule: ResolvedExecutionBundleRecord["knowledge_binding_rules"][number],
+  knowledgeItem: KnowledgeRecord,
+): ResolvedExecutionKnowledgeSelectionRecord {
+  const primaryBinding: KnowledgeBindingMatchDetail = {
+    reason: "binding_rule",
+    sourceId: rule.id,
+    priority: 8,
+  };
+
+  return {
+    knowledge_item: knowledgeItem,
+    match_source: "binding_rule",
+    match_source_id: rule.id,
+    binding_rule_id: rule.id,
+    match_reasons: [
+      ...(rule.manuscript_types !== "any" ? ["manuscript_type"] : []),
+      ...(rule.template_family_ids && rule.template_family_ids.length > 0
+        ? ["template_family"]
+        : []),
+      ...(rule.module_template_ids && rule.module_template_ids.length > 0
+        ? ["module_template"]
+        : []),
+      ...(rule.sections && rule.sections.length > 0 ? ["section"] : []),
+      ...(rule.risk_tags && rule.risk_tags.length > 0 ? ["risk_tag"] : []),
+    ],
+    binding_priority: 8,
+    primary_binding: primaryBinding,
+    binding_matches: [primaryBinding],
+  };
+}
+
+function toResolvedExecutionKnowledgeSelection(
+  selection: ReturnType<typeof selectApprovedDynamicKnowledge>[number],
+): ResolvedExecutionKnowledgeSelectionRecord {
+  return {
+    knowledge_item: selection.knowledgeItem,
+    match_source: selection.matchSource,
+    ...(selection.matchSourceId ? { match_source_id: selection.matchSourceId } : {}),
+    match_reasons: [...selection.matchReasons],
+    ...(selection.bindingPriority !== undefined
+      ? { binding_priority: selection.bindingPriority }
+      : {}),
+    ...(selection.retrievalScore !== undefined
+      ? { retrieval_score: selection.retrievalScore }
+      : {}),
+    ...(selection.primaryBinding
+      ? { primary_binding: selection.primaryBinding }
+      : {}),
+    ...(selection.bindingMatches?.length
+      ? { binding_matches: selection.bindingMatches }
+      : {}),
+  };
+}
+
+async function expandResolvedExecutionKnowledgeSelections(input: {
+  knowledgeSelectionsById: Map<string, ResolvedExecutionKnowledgeSelectionRecord>;
+  knowledgeRepository: KnowledgeRepository;
+}): Promise<void> {
+  const queuedIds = new Set(input.knowledgeSelectionsById.keys());
+  const processedIds = new Set<string>();
+  const queue = [...input.knowledgeSelectionsById.values()];
+
+  while (queue.length > 0) {
+    const parentSelection = queue.shift();
+    if (!parentSelection || processedIds.has(parentSelection.knowledge_item.id)) {
+      continue;
+    }
+
+    processedIds.add(parentSelection.knowledge_item.id);
+
+    for (const linkedKnowledgeItemId of parentSelection.knowledge_item
+      .linked_knowledge_item_ids ?? []) {
+      const existingSelection = input.knowledgeSelectionsById.get(linkedKnowledgeItemId);
+      if (existingSelection) {
+        existingSelection.match_reasons = dedupeExecutionMatchReasons([
+          ...existingSelection.match_reasons,
+          "knowledge_item_binding",
+        ]);
+        existingSelection.binding_matches = dedupeExecutionBindingMatches([
+          ...(existingSelection.binding_matches ?? []),
+          createKnowledgeItemBindingDetail(parentSelection),
+        ]);
+        continue;
+      }
+
+      const linkedKnowledgeItem =
+        await input.knowledgeRepository.findApprovedById(linkedKnowledgeItemId);
+      if (!linkedKnowledgeItem || linkedKnowledgeItem.status !== "approved") {
+        continue;
+      }
+
+      const linkedSelection: ResolvedExecutionKnowledgeSelectionRecord = {
+        knowledge_item: linkedKnowledgeItem,
+        match_source: "knowledge_item_binding",
+        match_source_id: `knowledge_item:${parentSelection.knowledge_item.id}`,
+        match_reasons: ["knowledge_item_binding"],
+        binding_priority: parentSelection.binding_priority ?? 1,
+        primary_binding: createKnowledgeItemBindingDetail(parentSelection),
+        binding_matches: [createKnowledgeItemBindingDetail(parentSelection)],
+      };
+      input.knowledgeSelectionsById.set(linkedKnowledgeItem.id, linkedSelection);
+
+      if (!queuedIds.has(linkedKnowledgeItem.id)) {
+        queuedIds.add(linkedKnowledgeItem.id);
+        queue.push(linkedSelection);
+      }
+    }
+  }
+}
+
+function createKnowledgeItemBindingDetail(
+  selection: ResolvedExecutionKnowledgeSelectionRecord,
+): KnowledgeBindingMatchDetail {
+  return {
+    reason: "knowledge_item_binding",
+    sourceId: `knowledge_item:${selection.knowledge_item.id}`,
+    priority: selection.binding_priority ?? 1,
+  };
+}
+
+function dedupeExecutionMatchReasons(reasons: readonly string[]): string[] {
+  return [...new Set(reasons)];
+}
+
+function dedupeExecutionBindingMatches(
+  matches: readonly KnowledgeBindingMatchDetail[],
+): KnowledgeBindingMatchDetail[] {
+  const seen = new Set<string>();
+  const result: KnowledgeBindingMatchDetail[] = [];
+
+  for (const match of matches) {
+    const key = `${match.reason}:${match.sourceId}`;
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push(match);
+  }
+
+  return result;
+}
+
+function summarizeResolvedRule(
+  rule: ResolvedExecutionBundleRecord["resolved_rules"][number],
+): GovernedResolvedRuleSummary {
+  const activationSourceKind = resolveGovernedRuleActivationSourceKind(rule);
+
+  return {
+    rule_id: rule.rule.id,
+    rule_object: rule.rule.rule_object,
+    rule_type: rule.rule.rule_type,
+    coverage_key: rule.coverage_key,
+    source_layer: resolveGovernedRuleSourceLayer(activationSourceKind),
+    activation_source_kind: activationSourceKind,
+    activation_source_id:
+      rule.activation_source?.id ?? rule.rule.rule_set_id,
+    overridden_rule_ids: [...rule.overridden_rule_ids],
+    resolution_reason: rule.resolution_reason,
+    execution_posture: rule.execution_posture,
+    effective_scope: readGovernedRuleEffectiveScope(rule),
+    ...(readSupportingKnowledgeItemIds(rule).length > 0
+      ? { supporting_knowledge_item_ids: readSupportingKnowledgeItemIds(rule) }
+      : {}),
+    ...(rule.conflict_kind ? { conflict_kind: rule.conflict_kind } : {}),
+  };
+}
+
+function summarizeKnowledgeSelection(
+  selection: ResolvedExecutionKnowledgeSelectionRecord,
+): GovernedKnowledgeSelectionSummary {
+  return {
+    knowledge_item_id: selection.knowledge_item.id,
+    title: selection.knowledge_item.title,
+    match_source: selection.match_source,
+    match_reasons: [...selection.match_reasons],
+    ...(selection.match_source_id
+      ? { match_source_id: selection.match_source_id }
+      : {}),
+    ...(selection.binding_rule_id
+      ? { binding_rule_id: selection.binding_rule_id }
+      : {}),
+    ...(selection.binding_priority !== undefined
+      ? { binding_priority: selection.binding_priority }
+      : {}),
+    ...(selection.retrieval_score !== undefined
+      ? { retrieval_score: selection.retrieval_score }
+      : {}),
+    ...(selection.primary_binding
+      ? { primary_binding: summarizeKnowledgeBindingMatch(selection.primary_binding) }
+      : {}),
+    ...(selection.binding_matches?.length
+      ? {
+          binding_matches: selection.binding_matches.map(
+            summarizeKnowledgeBindingMatch,
+          ),
+        }
+      : {}),
+  };
+}
+
+function summarizeKnowledgeBindingMatch(
+  match: KnowledgeBindingMatchDetail,
+): GovernedKnowledgeBindingMatchSummary {
+  return {
+    reason: match.reason,
+    source_id: match.sourceId,
+    priority: match.priority,
+  };
+}
+
+function resolveGovernedRuleActivationSourceKind(
+  rule: ResolvedExecutionBundleRecord["resolved_rules"][number],
+): GovernedResolvedRuleSummary["activation_source_kind"] {
+  return (
+    rule.activation_source?.kind ??
+    (rule.source_layer === "journal"
+      ? "journal_template_rule_set"
+      : "template_family_rule_set")
+  );
+}
+
+function resolveGovernedRuleSourceLayer(
+  kind: GovernedResolvedRuleSummary["activation_source_kind"],
+): GovernedResolvedRuleSummary["source_layer"] {
+  switch (kind) {
+    case "medical_package":
+      return "medical";
+    case "journal_template_rule_set":
+      return "journal";
+    default:
+      return "general";
+  }
+}
+
+function readGovernedRuleEffectiveScope(
+  rule: ResolvedExecutionBundleRecord["resolved_rules"][number],
+): GovernedResolvedRuleSummary["effective_scope"] {
+  if (rule.effective_scope) {
+    return {
+      ...(rule.effective_scope.manuscript_types
+        ? { manuscript_types: [...rule.effective_scope.manuscript_types] }
+        : {}),
+      ...(rule.effective_scope.sections
+        ? { sections: [...rule.effective_scope.sections] }
+        : {}),
+      ...(rule.effective_scope.object_granularity
+        ? { object_granularity: [...rule.effective_scope.object_granularity] }
+        : {}),
+    };
+  }
+
+  return {
+    ...(readExecutionScopeList(rule.rule.scope.manuscript_types).length > 0
+      ? {
+          manuscript_types: readExecutionScopeList(
+            rule.rule.scope.manuscript_types,
+          ) as ManuscriptType[],
+        }
+      : {}),
+    ...(readExecutionScopeList(rule.rule.scope.sections).length > 0
+      ? { sections: readExecutionScopeList(rule.rule.scope.sections) }
+      : {}),
+    ...(readExecutionScopeList(rule.rule.scope.object_granularity).length > 0
+      ? {
+          object_granularity: readExecutionScopeList(
+            rule.rule.scope.object_granularity,
+          ),
+        }
+      : {}),
+  };
+}
+
+function readSupportingKnowledgeItemIds(
+  rule: ResolvedExecutionBundleRecord["resolved_rules"][number],
+): string[] {
+  return (rule.rule.linkage_payload?.projected_knowledge_item_ids ?? []).filter(
+    (value): value is string => typeof value === "string" && value.trim().length > 0,
+  );
+}
+
+function readExecutionScopeList(values: unknown): string[] {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return values
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
 }
 
 function summarizeConnection(
@@ -1028,7 +1484,9 @@ function createWarning(
 }
 
 function formatResolutionScope(input: ResolveExecutionBundleInput): string {
-  return `${input.module}/${input.manuscriptType}/${input.templateFamilyId}`;
+  return `${input.module}/${input.manuscriptType}/${input.templateFamilyId}${
+    input.journalTemplateId ? `/journal:${input.journalTemplateId}` : ""
+  }`;
 }
 
 function createProviderIssue(

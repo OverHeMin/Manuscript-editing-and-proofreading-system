@@ -1,4 +1,9 @@
 import React from "react";
+import type {
+  EditingCompletionGateSummary,
+  EditingSlotGovernanceSummary,
+  EditingSlotManualResolutionKind,
+} from "@medical/contracts";
 import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import type { DocumentPreviewSessionViewModel } from "../document-preview/index.ts";
 import type {
@@ -23,6 +28,7 @@ import type {
 export type ManuscriptAssetDetailKind =
   | "document_preview"
   | "report_preview"
+  | "screening_workspace"
   | "proofreading_workspace"
   | "proofreading_confirmation";
 
@@ -32,6 +38,7 @@ export interface EditingChangeLedgerEntry {
   before: string;
   after: string;
   locationText?: string;
+  blockIndex?: number;
 }
 
 export interface EditingGuardrailEntry {
@@ -50,9 +57,36 @@ export interface ProofreadingIssueAnchorViewModel {
 export interface ProofreadingDocumentBlockViewModel {
   blockId: string;
   blockIndex: number;
+  sourceLocator?: string;
   sectionLabel?: string;
   blockKind?: string;
   text: string;
+}
+
+type SharedReviewTone = "error" | "neutral" | "success";
+
+interface EditingWorkspaceFocusItemViewModel {
+  id: string;
+  origin: "slot" | "completion_gate" | "guardrail" | "change_ledger";
+  title: string;
+  summary: string;
+  detail?: string;
+  badgeLabel: string;
+  tone: SharedReviewTone;
+  locationLabel?: string;
+  blockIndex?: number;
+}
+
+interface ScreeningWorkspaceFocusItemViewModel {
+  id: string;
+  origin: "risk" | "decision" | "summary" | "quality_finding";
+  title: string;
+  summary: string;
+  detail?: string;
+  badgeLabel: string;
+  tone: SharedReviewTone;
+  locationLabel?: string;
+  blockIndex?: number;
 }
 
 export interface ProofreadingConfirmationItemViewModel {
@@ -76,6 +110,14 @@ export interface ProofreadingConfirmationDraftState {
   note?: string;
 }
 
+export interface EditingSlotManualSaveInput {
+  slotKey: string;
+  resolutionKind: EditingSlotManualResolutionKind;
+  resolvedText?: string;
+  selectedCandidateId?: string;
+  note?: string;
+}
+
 export interface ManuscriptWorkbenchAssetDetailPageProps {
   mode: ManuscriptWorkbenchMode;
   manuscriptTitle: string;
@@ -87,6 +129,8 @@ export interface ManuscriptWorkbenchAssetDetailPageProps {
   reportBody?: string | null;
   changeLedger?: readonly EditingChangeLedgerEntry[];
   editingGuardrails?: readonly EditingGuardrailEntry[];
+  editingSlotSummary?: EditingSlotGovernanceSummary | null;
+  editingCompletionGateSummary?: EditingCompletionGateSummary | null;
   executionSnapshot?: ExecutionTrackingSnapshotViewModel | null;
   knowledgeHitLogs?: readonly KnowledgeHitLogViewModel[];
   knowledgeReferences?: Readonly<
@@ -94,10 +138,14 @@ export interface ManuscriptWorkbenchAssetDetailPageProps {
   >;
   confirmationItems?: readonly ProofreadingConfirmationItemViewModel[];
   confirmationState?: Readonly<Record<string, ProofreadingConfirmationDraftState>>;
+  screeningDocumentBlocks?: readonly ProofreadingDocumentBlockViewModel[];
+  screeningWorkspaceFocusItems?: readonly ScreeningWorkspaceFocusItemViewModel[];
+  editingDocumentBlocks?: readonly ProofreadingDocumentBlockViewModel[];
   proofreadingDocumentBlocks?: readonly ProofreadingDocumentBlockViewModel[];
   activeProofreadingIssueId?: string;
   isFinalizeEnabled?: boolean;
   isFinalizing?: boolean;
+  savingEditingSlotKey?: string | null;
   onProofreadingIssueSelect?(itemId: string): void;
   onConfirmationActionChange?(
     itemId: string,
@@ -105,6 +153,7 @@ export interface ManuscriptWorkbenchAssetDetailPageProps {
   ): void;
   onConfirmationEditedReplacementTextChange?(itemId: string, value: string): void;
   onConfirmationNoteChange?(itemId: string, value: string): void;
+  onEditingSlotSave?(input: EditingSlotManualSaveInput): void;
   onFinalize?(): void;
 }
 
@@ -140,6 +189,10 @@ export function resolveManuscriptAssetDetailKind(input: {
   mode: ManuscriptWorkbenchMode;
   assetType: DocumentAssetViewModel["asset_type"];
 }): ManuscriptAssetDetailKind {
+  if (input.mode === "screening" && input.assetType === "screening_report") {
+    return "screening_workspace";
+  }
+
   if (input.mode === "proofreading") {
     if (input.assetType === "proofreading_draft_report") {
       return "proofreading_workspace";
@@ -195,6 +248,10 @@ export function buildEditingChangeLedgerEntries(
         before,
         after,
         locationText: formatLocationText(change?.semantic_hit),
+        blockIndex:
+          typeof change?.blockIndex === "number" && Number.isInteger(change.blockIndex)
+            ? change.blockIndex
+            : undefined,
       },
     ];
   });
@@ -244,6 +301,48 @@ export function buildEditingGuardrailEntries(
   }
 
   return Array.from(deduped.values());
+}
+
+export function buildEditingSlotGovernanceSummary(
+  job: Pick<JobViewModel, "payload"> | null | undefined,
+): EditingSlotGovernanceSummary | undefined {
+  const payload = asRecord(job?.payload);
+  const summary = asRecord(payload?.slotGovernanceSummary);
+  if (
+    !summary ||
+    !Array.isArray(summary.slots) ||
+    !Array.isArray(summary.blocking_slot_keys) ||
+    typeof summary.unresolved_required_count !== "number" ||
+    (summary.observation_status !== "reported" &&
+      summary.observation_status !== "failed_open")
+  ) {
+    return undefined;
+  }
+
+  return structuredClone(summary as unknown as EditingSlotGovernanceSummary);
+}
+
+export function buildEditingCompletionGateSummary(
+  job: Pick<JobViewModel, "payload"> | null | undefined,
+): EditingCompletionGateSummary | undefined {
+  const payload = asRecord(job?.payload);
+  const summary = asRecord(payload?.editingCompletionGateSummary);
+  if (
+    !summary ||
+    !Array.isArray(summary.unresolved_required_slots) ||
+    !Array.isArray(summary.pending_manual_resolution_items) ||
+    !Array.isArray(summary.high_risk_object_items) ||
+    !Array.isArray(summary.table_high_risk_items) ||
+    !Array.isArray(summary.blocking_format_failures) ||
+    typeof summary.passed !== "boolean" ||
+    typeof summary.blocker_count !== "number" ||
+    (summary.observation_status !== "reported" &&
+      summary.observation_status !== "failed_open")
+  ) {
+    return undefined;
+  }
+
+  return structuredClone(summary as unknown as EditingCompletionGateSummary);
 }
 
 export function buildProofreadingConfirmationItems(
@@ -318,12 +417,48 @@ export function buildProofreadingConfirmationItems(
 export function buildProofreadingDocumentBlocks(
   job: Pick<JobViewModel, "payload"> | null | undefined,
 ): ProofreadingDocumentBlockViewModel[] {
-  const payload = asRecord(job?.payload);
-  if (!Array.isArray(payload?.proofreadingSourceBlocks)) {
+  return buildWorkbenchDocumentBlocks({
+    job,
+    payloadKey: "proofreadingSourceBlocks",
+    blockPrefix: "proofreading-block",
+  });
+}
+
+export function buildScreeningDocumentBlocks(
+  job: Pick<JobViewModel, "payload"> | null | undefined,
+): ProofreadingDocumentBlockViewModel[] {
+  return buildWorkbenchDocumentBlocks({
+    job,
+    payloadKey: "screeningSourceBlocks",
+    blockPrefix: "screening-block",
+  });
+}
+
+export function buildEditingDocumentBlocks(
+  job: Pick<JobViewModel, "payload"> | null | undefined,
+): ProofreadingDocumentBlockViewModel[] {
+  return buildWorkbenchDocumentBlocks({
+    job,
+    payloadKey: "editingSourceBlocks",
+    blockPrefix: "editing-block",
+  });
+}
+
+function buildWorkbenchDocumentBlocks(input: {
+  job: Pick<JobViewModel, "payload"> | null | undefined;
+  payloadKey:
+    | "proofreadingSourceBlocks"
+    | "editingSourceBlocks"
+    | "screeningSourceBlocks";
+  blockPrefix: string;
+}): ProofreadingDocumentBlockViewModel[] {
+  const payload = asRecord(input.job?.payload);
+  const blocks = payload?.[input.payloadKey];
+  if (!Array.isArray(blocks)) {
     return [];
   }
 
-  return payload.proofreadingSourceBlocks.flatMap((entry, index) => {
+  return blocks.flatMap((entry, index) => {
     const block = asRecord(entry);
     const text = readOptionalString(block?.text);
     if (!text) {
@@ -334,17 +469,291 @@ export function buildProofreadingDocumentBlocks(
       typeof block?.blockIndex === "number" && Number.isInteger(block.blockIndex)
         ? block.blockIndex
         : index;
+    const sourceLocator = readOptionalString(block?.source_locator);
 
     return [
       {
-        blockId: `proofreading-block-${blockIndex}`,
+        blockId: `${input.blockPrefix}-${blockIndex}`,
         blockIndex,
+        ...(sourceLocator ? { sourceLocator } : {}),
         sectionLabel: readOptionalString(block?.section),
         blockKind: readOptionalString(block?.block_kind),
         text,
       },
     ];
   });
+}
+
+function buildEditingWorkspaceFocusItems(input: {
+  documentBlocks: readonly ProofreadingDocumentBlockViewModel[];
+  changeLedger: readonly EditingChangeLedgerEntry[];
+  editingGuardrails: readonly EditingGuardrailEntry[];
+  editingSlotSummary?: EditingSlotGovernanceSummary | null;
+  editingCompletionGateSummary?: EditingCompletionGateSummary | null;
+}): EditingWorkspaceFocusItemViewModel[] {
+  const items: EditingWorkspaceFocusItemViewModel[] = [];
+
+  for (const slot of input.editingSlotSummary?.slots ?? []) {
+    if (slot.state === "resolved_auto") {
+      continue;
+    }
+
+    const primaryCandidate = slot.candidates[0];
+    const blockIndex = resolveEditingDocumentBlockIndex({
+      documentBlocks: input.documentBlocks,
+      locator: primaryCandidate?.source_locator,
+      excerpts: [
+        primaryCandidate?.raw_text,
+        primaryCandidate?.normalized_text,
+        slot.resolved_text,
+      ],
+    });
+    const detailParts = [
+      slot.required ? "必填槽位" : "非必填槽位",
+      `完成门槛：${slot.completion_gate}`,
+      primaryCandidate?.source_locator ? `来源：${primaryCandidate.source_locator}` : undefined,
+    ].filter((value): value is string => Boolean(value));
+
+    items.push({
+      id: `slot:${slot.slot_key}`,
+      origin: "slot",
+      title: `槽位 · ${slot.label}`,
+      summary: slot.resolution_reason,
+      detail: detailParts.join(" · ") || undefined,
+      badgeLabel: formatEditingSlotStateLabel(slot.state),
+      tone: slot.state === "resolved_manual" ? "neutral" : "error",
+      locationLabel: primaryCandidate?.source_locator ?? slot.anchor,
+      blockIndex,
+    });
+  }
+
+  for (const item of flattenEditingCompletionGateItems(
+    input.editingCompletionGateSummary,
+  )) {
+    items.push({
+      id: `gate:${item.item_key}`,
+      origin: "completion_gate",
+      title: `门禁 · ${item.summary}`,
+      summary:
+        item.detail ?? `${formatEditingCompletionGateSourceLabel(item.source)}待处理`,
+      detail: formatEditingCompletionGatePendingItemMeta(item),
+      badgeLabel: formatEditingCompletionGatePendingCategoryLabel(item.category),
+      tone:
+        item.status === "resolved"
+          ? "success"
+          : item.status === "waived"
+            ? "neutral"
+            : "error",
+      locationLabel: item.location_text ?? item.related_slot_key,
+      blockIndex: resolveEditingDocumentBlockIndex({
+        documentBlocks: input.documentBlocks,
+        locator: item.location_text,
+        excerpts: [item.summary, item.detail],
+      }),
+    });
+  }
+
+  for (const entry of input.editingGuardrails) {
+    items.push({
+      id: `guardrail:${entry.id}`,
+      origin: "guardrail",
+      title: `拦截 · ${formatEditingGuardrailReasonLabel(entry.reasonCode)}`,
+      summary: entry.excerpt,
+      detail: formatEditingGuardrailSourceStageLabel(entry.sourceStage),
+      badgeLabel: "守门拦截",
+      tone: "error",
+      blockIndex: resolveEditingDocumentBlockIndex({
+        documentBlocks: input.documentBlocks,
+        excerpts: [entry.excerpt],
+      }),
+    });
+  }
+
+  for (const entry of input.changeLedger) {
+    items.push({
+      id: `ledger:${entry.id}`,
+      origin: "change_ledger",
+      title: `改动 · ${entry.sourceLabel}`,
+      summary: `${entry.before} -> ${entry.after}`,
+      detail: entry.locationText,
+      badgeLabel: "已落稿改动",
+      tone: "success",
+      locationLabel: entry.locationText,
+      blockIndex: resolveEditingDocumentBlockIndex({
+        documentBlocks: input.documentBlocks,
+        explicitBlockIndex: entry.blockIndex,
+        locator: entry.locationText,
+        excerpts: [entry.before, entry.after],
+      }),
+    });
+  }
+
+  return items;
+}
+
+export function buildScreeningWorkspaceFocusItems(input: {
+  job: Pick<JobViewModel, "payload"> | null | undefined;
+  documentBlocks: readonly ProofreadingDocumentBlockViewModel[];
+}): ScreeningWorkspaceFocusItemViewModel[] {
+  const payload = asRecord(input.job?.payload);
+  const screeningReport = asRecord(payload?.screeningReport);
+  const qualityFindingSummary = asRecord(payload?.qualityFindingSummary);
+  const majorFindings = readStringArray(screeningReport?.majorFindings);
+  const minorFindings = readStringArray(screeningReport?.minorFindings);
+  const medicalReviewSignals = Array.isArray(payload?.medicalReviewSignals)
+    ? payload.medicalReviewSignals
+    : [];
+  const items: ScreeningWorkspaceFocusItemViewModel[] = [];
+  const riskLevel = readOptionalString(screeningReport?.riskLevel);
+  const recommendedDecision = readOptionalString(screeningReport?.recommendedDecision);
+  const summary = readOptionalString(screeningReport?.summary);
+
+  if (riskLevel) {
+    const riskDetailParts = [
+      readOptionalString(qualityFindingSummary?.highest_action)
+        ? `最高动作：${formatQualityActionLabel(
+            qualityFindingSummary.highest_action as
+              NonNullable<
+                NonNullable<
+                  ExecutionTrackingSnapshotViewModel["quality_findings_summary"]
+                >["highest_action"]
+              >,
+          )}`
+        : undefined,
+      medicalReviewSignals.length > 0
+        ? `医学复核信号：${medicalReviewSignals.length} 项`
+        : undefined,
+    ].filter((value): value is string => Boolean(value));
+
+    items.push({
+      id: "screening-risk",
+      origin: "risk",
+      title: "风险等级",
+      summary: formatScreeningRiskLevelLabel(riskLevel),
+      detail: riskDetailParts.join(" · ") || undefined,
+      badgeLabel: "总体风险",
+      tone: resolveScreeningRiskTone(riskLevel),
+    });
+  }
+
+  if (recommendedDecision) {
+    items.push({
+      id: "screening-decision",
+      origin: "decision",
+      title: "建议结论",
+      summary: formatScreeningDecisionLabel(recommendedDecision),
+      detail:
+        majorFindings.length > 0
+          ? `主要发现 ${majorFindings.length} 项`
+          : minorFindings.length > 0
+            ? `次要发现 ${minorFindings.length} 项`
+            : undefined,
+      badgeLabel: "处理建议",
+      tone: resolveScreeningDecisionTone(recommendedDecision),
+    });
+  }
+
+  if (
+    summary ||
+    majorFindings.length > 0 ||
+    minorFindings.length > 0 ||
+    typeof qualityFindingSummary?.total_issue_count === "number"
+  ) {
+    const summaryDetailParts = [
+      majorFindings.length > 0 ? `主要发现：${majorFindings.join("；")}` : undefined,
+      minorFindings.length > 0 ? `次要发现：${minorFindings.join("；")}` : undefined,
+      typeof qualityFindingSummary?.total_issue_count === "number"
+        ? `质量问题：${qualityFindingSummary.total_issue_count} 项`
+        : undefined,
+    ].filter((value): value is string => Boolean(value));
+
+    items.push({
+      id: "screening-summary",
+      origin: "summary",
+      title: "证据摘要",
+      summary: summary ?? "已生成初筛摘要，可结合正文继续人工判断。",
+      detail: summaryDetailParts.join(" · ") || undefined,
+      badgeLabel: "摘要",
+      tone: "neutral",
+    });
+  }
+
+  if (Array.isArray(payload?.qualityFindings)) {
+    for (const [index, entry] of payload.qualityFindings.entries()) {
+      const finding = asRecord(entry);
+      if (!finding) {
+        continue;
+      }
+
+      const severity = readOptionalString(finding.severity);
+      const action = readOptionalString(finding.action);
+      const excerpt = readOptionalString(finding.text_excerpt);
+      const explanation = readOptionalString(finding.explanation);
+      const issueSummary = readOptionalString(finding.summary);
+      const blockIndex = resolveEditingDocumentBlockIndex({
+        documentBlocks: input.documentBlocks,
+        explicitBlockIndex:
+          typeof finding.paragraph_index === "number" &&
+          Number.isInteger(finding.paragraph_index)
+            ? finding.paragraph_index
+            : undefined,
+        excerpts: [excerpt, issueSummary, explanation],
+      });
+      const detailParts = [
+        issueSummary,
+        excerpt ? `原文：${excerpt}` : undefined,
+        action
+          ? `动作：${formatQualityActionLabel(
+              action as NonNullable<
+                NonNullable<
+                  ExecutionTrackingSnapshotViewModel["quality_findings_summary"]
+                >["highest_action"]
+              >,
+            )}`
+          : undefined,
+        readOptionalString(finding.source_id)
+          ? `来源：${readOptionalString(finding.source_id)}`
+          : undefined,
+      ].filter((value): value is string => Boolean(value));
+
+      items.push({
+        id:
+          readOptionalString(finding.issue_id) ??
+          `screening-quality-finding-${index + 1}`,
+        origin: "quality_finding",
+        title:
+          readOptionalString(finding.issue_type) ??
+          `质量命中 ${index + 1}`,
+        summary: explanation ?? issueSummary ?? excerpt ?? "需要人工核查。",
+        detail: detailParts.join(" · ") || undefined,
+        badgeLabel: severity ? formatSeverityLabel(severity) : "中",
+        tone: resolveScreeningFindingTone(severity, action),
+        locationLabel:
+          typeof finding.paragraph_index === "number"
+            ? `段落 ${finding.paragraph_index}`
+            : undefined,
+        blockIndex,
+      });
+    }
+  }
+
+  return items;
+}
+
+function flattenEditingCompletionGateItems(
+  summary?: EditingCompletionGateSummary | null,
+): EditingCompletionGateSummary["unresolved_required_slots"] {
+  if (!summary) {
+    return [];
+  }
+
+  return [
+    ...summary.unresolved_required_slots,
+    ...summary.pending_manual_resolution_items,
+    ...summary.high_risk_object_items,
+    ...summary.table_high_risk_items,
+    ...summary.blocking_format_failures,
+  ];
 }
 
 export function buildAssetPreviewComments(input: {
@@ -470,19 +879,26 @@ export function ManuscriptWorkbenchAssetDetailPage({
   reportBody = null,
   changeLedger = [],
   editingGuardrails = [],
+  editingSlotSummary = null,
+  editingCompletionGateSummary = null,
   executionSnapshot = null,
   knowledgeHitLogs = [],
   knowledgeReferences,
   confirmationItems = [],
   confirmationState = {},
+  screeningDocumentBlocks = [],
+  screeningWorkspaceFocusItems = [],
+  editingDocumentBlocks = [],
   proofreadingDocumentBlocks = [],
   activeProofreadingIssueId,
   isFinalizeEnabled = false,
   isFinalizing = false,
+  savingEditingSlotKey = null,
   onProofreadingIssueSelect,
   onConfirmationActionChange,
   onConfirmationEditedReplacementTextChange,
   onConfirmationNoteChange,
+  onEditingSlotSave,
   onFinalize,
 }: ManuscriptWorkbenchAssetDetailPageProps) {
   const assetRoleLabel = formatWorkbenchAssetTypeLabel(asset.asset_type);
@@ -502,6 +918,308 @@ export function ManuscriptWorkbenchAssetDetailPage({
           entries: editingGuardrails,
         })
       : null;
+  const editingCompletionGateCard = editingCompletionGateSummary
+    ? <EditingCompletionGateCard summary={editingCompletionGateSummary} />
+    : null;
+  const changeLedgerCard =
+    changeLedger.length > 0
+      ? (
+          <article className="manuscript-workbench-detail-ledger-card">
+            <div className="manuscript-workbench-detail-card-header">
+              <div>
+                <h4>改动台账</h4>
+                <p>这里展示 AI 编辑已落地的真实改动。</p>
+              </div>
+            </div>
+            <ul className="manuscript-workbench-detail-ledger-list">
+              {changeLedger.map((entry) => (
+                <li key={entry.id} className="manuscript-workbench-detail-ledger-item">
+                  <header>
+                    <strong>{entry.sourceLabel}</strong>
+                    {entry.locationText ? <span>{entry.locationText}</span> : null}
+                  </header>
+                  <dl>
+                    <div>
+                      <dt>修改前</dt>
+                      <dd>{entry.before}</dd>
+                    </div>
+                    <div>
+                      <dt>修改后</dt>
+                      <dd>{entry.after}</dd>
+                    </div>
+                  </dl>
+                </li>
+              ))}
+            </ul>
+          </article>
+        )
+      : null;
+  const editingSlotGovernanceCard =
+    editingSlotSummary?.slots.length
+      ? (
+          <EditingSlotGovernanceCard
+            assetId={asset.id}
+            summary={editingSlotSummary}
+            savingSlotKey={savingEditingSlotKey}
+            onSave={onEditingSlotSave}
+          />
+        )
+      : null;
+  const [activeScreeningFocusId, setActiveScreeningFocusId] = React.useState("");
+  React.useEffect(() => {
+    setActiveScreeningFocusId((current) => {
+      if (current && screeningWorkspaceFocusItems.some((item) => item.id === current)) {
+        return current;
+      }
+
+      return screeningWorkspaceFocusItems[0]?.id ?? "";
+    });
+  }, [
+    asset.id,
+    screeningWorkspaceFocusItems.length,
+    screeningWorkspaceFocusItems[0]?.id,
+  ]);
+
+  const activeScreeningFocus =
+    screeningWorkspaceFocusItems.find((item) => item.id === activeScreeningFocusId) ??
+    screeningWorkspaceFocusItems[0] ??
+    null;
+  const activeScreeningBlock =
+    activeScreeningFocus?.blockIndex != null
+      ? findWorkbenchDocumentBlockByIndex(
+          screeningDocumentBlocks,
+          activeScreeningFocus.blockIndex,
+        )
+      : null;
+
+  React.useEffect(() => {
+    if (!activeScreeningBlock || typeof document === "undefined") {
+      return;
+    }
+
+    document.getElementById(activeScreeningBlock.blockId)?.scrollIntoView({
+      block: "center",
+      behavior: "smooth",
+    });
+  }, [asset.id, activeScreeningBlock?.blockId]);
+
+  const editingWorkspaceFocusItems = buildEditingWorkspaceFocusItems({
+    documentBlocks: editingDocumentBlocks,
+    changeLedger,
+    editingGuardrails,
+    editingSlotSummary,
+    editingCompletionGateSummary,
+  });
+  const [activeEditingFocusId, setActiveEditingFocusId] = React.useState("");
+
+  React.useEffect(() => {
+    setActiveEditingFocusId((current) => {
+      if (current && editingWorkspaceFocusItems.some((item) => item.id === current)) {
+        return current;
+      }
+
+      return editingWorkspaceFocusItems[0]?.id ?? "";
+    });
+  }, [
+    asset.id,
+    editingWorkspaceFocusItems.length,
+    editingWorkspaceFocusItems[0]?.id,
+  ]);
+
+  const activeEditingFocus =
+    editingWorkspaceFocusItems.find((item) => item.id === activeEditingFocusId) ??
+    editingWorkspaceFocusItems[0] ??
+    null;
+  const activeEditingBlock =
+    activeEditingFocus?.blockIndex != null
+      ? findWorkbenchDocumentBlockByIndex(
+          editingDocumentBlocks,
+          activeEditingFocus.blockIndex,
+        )
+      : null;
+
+  React.useEffect(() => {
+    if (!activeEditingBlock || typeof document === "undefined") {
+      return;
+    }
+
+    document.getElementById(activeEditingBlock.blockId)?.scrollIntoView({
+      block: "center",
+      behavior: "smooth",
+    });
+  }, [asset.id, activeEditingBlock?.blockId]);
+
+  if (detailKind === "screening_workspace") {
+    return (
+      <section
+        className="manuscript-workbench-detail-page manuscript-workbench-proofreading-layout manuscript-workbench-editing-layout"
+        data-detail-kind={detailKind}
+        data-screening-layout="shared-review"
+      >
+        <header className="manuscript-workbench-detail-header">
+          <div className="manuscript-workbench-detail-copy">
+            <span className="manuscript-workbench-section-eyebrow">
+              初筛共享审阅工作台
+            </span>
+            <h3>左全文右风险建议的初筛审阅台</h3>
+            <p>{manuscriptTitle}</p>
+          </div>
+          <div className="manuscript-workbench-detail-actions">
+            <a className="manuscript-workbench-shortcut" href={backHref}>
+              返回工作台
+            </a>
+            <a
+              className="manuscript-workbench-shortcut"
+              href={downloadHref}
+              target="_blank"
+              rel="noreferrer"
+            >
+              打开当前文件
+            </a>
+            <a className="manuscript-workbench-shortcut" href={downloadHref} download>
+              {resolveDetailDownloadLabel(asset)}
+            </a>
+          </div>
+        </header>
+
+        <div className="manuscript-workbench-proofreading-layout-grid manuscript-workbench-editing-layout-grid">
+          <article className="manuscript-workbench-proofreading-manuscript-pane">
+            <div className="manuscript-workbench-detail-card-header">
+              <div>
+                <h4>稿件全文</h4>
+                <p>{assetDisplayName}</p>
+                <small>{assetRoleLabel}</small>
+              </div>
+            </div>
+            {screeningDocumentBlocks.length > 0 ? (
+              <div className="manuscript-workbench-proofreading-block-list">
+                {screeningDocumentBlocks.map((block) => (
+                  <article
+                    key={block.blockId}
+                    id={block.blockId}
+                    className={`manuscript-workbench-proofreading-block${
+                      activeScreeningBlock?.blockIndex === block.blockIndex
+                        ? " is-selected"
+                        : ""
+                    }`}
+                    data-selected={
+                      activeScreeningBlock?.blockIndex === block.blockIndex
+                        ? "true"
+                        : "false"
+                    }
+                  >
+                    <header>
+                      <strong>{formatWorkbenchDocumentBlockLabel(block)}</strong>
+                      <span>{block.blockKind ?? "paragraph"}</span>
+                    </header>
+                    <p>{block.text}</p>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="manuscript-workbench-detail-empty">
+                <strong>暂无稿件正文块</strong>
+                <p>当前初筛结果没有保存可定位的全文块，暂时无法进入全文定位审阅。</p>
+              </div>
+            )}
+          </article>
+
+          <article className="manuscript-workbench-proofreading-issue-pane manuscript-workbench-editing-focus-pane">
+            <div className="manuscript-workbench-detail-card-header">
+              <div>
+                <h4>风险与建议</h4>
+                <p>右侧点击条目后，可在左侧全文继续核对相关上下文。</p>
+              </div>
+            </div>
+            {screeningWorkspaceFocusItems.length > 0 ? (
+              <div className="manuscript-workbench-proofreading-issue-list manuscript-workbench-editing-focus-list">
+                {screeningWorkspaceFocusItems.map((item) => {
+                  const isSelected = activeScreeningFocus?.id === item.id;
+                  const linkedBlock =
+                    item.blockIndex != null
+                      ? findWorkbenchDocumentBlockByIndex(
+                          screeningDocumentBlocks,
+                          item.blockIndex,
+                        )
+                      : null;
+
+                  return (
+                    <article
+                      key={item.id}
+                      className={`manuscript-workbench-proofreading-issue${
+                        isSelected ? " is-selected" : ""
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        className="manuscript-workbench-proofreading-issue-toggle"
+                        onClick={() => setActiveScreeningFocusId(item.id)}
+                      >
+                        <div>
+                          <strong>{item.title}</strong>
+                          <p>
+                            {item.locationLabel ??
+                              (linkedBlock
+                                ? formatWorkbenchDocumentBlockLabel(linkedBlock)
+                                : "未定位到正文块")}
+                          </p>
+                        </div>
+                        <span className={resolveTonePillClassName(item.tone)}>
+                          {item.badgeLabel}
+                        </span>
+                      </button>
+
+                      {isSelected ? (
+                        <div className="manuscript-workbench-proofreading-issue-detail manuscript-workbench-editing-focus-detail">
+                          <p>{item.summary}</p>
+                          {item.detail ? <p>{item.detail}</p> : null}
+                          <dl className="manuscript-workbench-detail-metadata">
+                            <div>
+                              <dt>来源</dt>
+                              <dd>{formatScreeningWorkspaceFocusOriginLabel(item.origin)}</dd>
+                            </div>
+                            <div>
+                              <dt>正文定位</dt>
+                              <dd>
+                                {linkedBlock
+                                  ? formatWorkbenchDocumentBlockLabel(linkedBlock)
+                                  : "当前未定位到正文块"}
+                              </dd>
+                            </div>
+                            {item.locationLabel ? (
+                              <div>
+                                <dt>原始锚点</dt>
+                                <dd>{item.locationLabel}</dd>
+                              </div>
+                            ) : null}
+                          </dl>
+                          {linkedBlock ? (
+                            <div className="manuscript-workbench-selection-context">
+                              <span>正文上下文</span>
+                              <strong>{linkedBlock.text}</strong>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="manuscript-workbench-detail-empty">
+                <strong>当前没有结构化风险与建议</strong>
+                <p>初筛结果已生成，但没有沉淀出可供右栏审阅的结构化条目。</p>
+              </div>
+            )}
+          </article>
+        </div>
+
+        <div className="manuscript-workbench-detail-layout manuscript-workbench-detail-layout--supporting">
+          {governanceEvidenceCard}
+        </div>
+      </section>
+    );
+  }
 
   if (
     detailKind === "proofreading_workspace" ||
@@ -727,6 +1445,179 @@ export function ManuscriptWorkbenchAssetDetailPage({
     );
   }
 
+  if (
+    mode === "editing" &&
+    detailKind === "document_preview" &&
+    editingDocumentBlocks.length > 0
+  ) {
+    return (
+      <section
+        className="manuscript-workbench-detail-page manuscript-workbench-proofreading-layout manuscript-workbench-editing-layout"
+        data-detail-kind={detailKind}
+        data-editing-layout="shared-review"
+      >
+        <header className="manuscript-workbench-detail-header">
+          <div className="manuscript-workbench-detail-copy">
+            <span className="manuscript-workbench-section-eyebrow">
+              编辑共享审阅工作台
+            </span>
+            <h3>左全文右问题的编辑审阅台</h3>
+            <p>{manuscriptTitle}</p>
+          </div>
+          <div className="manuscript-workbench-detail-actions">
+            <a className="manuscript-workbench-shortcut" href={backHref}>
+              返回工作台
+            </a>
+            <a
+              className="manuscript-workbench-shortcut"
+              href={downloadHref}
+              target="_blank"
+              rel="noreferrer"
+            >
+              打开当前文件
+            </a>
+            <a className="manuscript-workbench-shortcut" href={downloadHref} download>
+              {resolveDetailDownloadLabel(asset)}
+            </a>
+          </div>
+        </header>
+
+        <div className="manuscript-workbench-proofreading-layout-grid manuscript-workbench-editing-layout-grid">
+          <article className="manuscript-workbench-proofreading-manuscript-pane">
+            <div className="manuscript-workbench-detail-card-header">
+              <div>
+                <h4>稿件全文</h4>
+                <p>{assetDisplayName}</p>
+                <small>{assetRoleLabel}</small>
+              </div>
+            </div>
+            <div className="manuscript-workbench-proofreading-block-list">
+              {editingDocumentBlocks.map((block) => (
+                <article
+                  key={block.blockId}
+                  id={block.blockId}
+                  className={`manuscript-workbench-proofreading-block${
+                    activeEditingBlock?.blockIndex === block.blockIndex
+                      ? " is-selected"
+                      : ""
+                  }`}
+                  data-selected={
+                    activeEditingBlock?.blockIndex === block.blockIndex
+                      ? "true"
+                      : "false"
+                  }
+                >
+                  <header>
+                    <strong>{formatWorkbenchDocumentBlockLabel(block)}</strong>
+                    <span>{block.blockKind ?? "paragraph"}</span>
+                  </header>
+                  <p>{block.text}</p>
+                </article>
+              ))}
+            </div>
+          </article>
+
+          <article className="manuscript-workbench-proofreading-issue-pane manuscript-workbench-editing-focus-pane">
+            <div className="manuscript-workbench-detail-card-header">
+              <div>
+                <h4>问题与台账</h4>
+                <p>右侧点击条目即可定位到全文对应位置，改动台账也会并排进入审阅。</p>
+              </div>
+            </div>
+            {editingWorkspaceFocusItems.length > 0 ? (
+              <div className="manuscript-workbench-proofreading-issue-list manuscript-workbench-editing-focus-list">
+                {editingWorkspaceFocusItems.map((item) => {
+                  const isSelected = activeEditingFocus?.id === item.id;
+                  const linkedBlock =
+                    item.blockIndex != null
+                      ? findWorkbenchDocumentBlockByIndex(
+                          editingDocumentBlocks,
+                          item.blockIndex,
+                        )
+                      : null;
+
+                  return (
+                    <article
+                      key={item.id}
+                      className={`manuscript-workbench-proofreading-issue${
+                        isSelected ? " is-selected" : ""
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        className="manuscript-workbench-proofreading-issue-toggle"
+                        onClick={() => setActiveEditingFocusId(item.id)}
+                      >
+                        <div>
+                          <strong>{item.title}</strong>
+                          <p>
+                            {item.locationLabel ??
+                              (linkedBlock
+                                ? formatWorkbenchDocumentBlockLabel(linkedBlock)
+                                : "未定位到正文块")}
+                          </p>
+                        </div>
+                        <span className={resolveTonePillClassName(item.tone)}>
+                          {item.badgeLabel}
+                        </span>
+                      </button>
+
+                      {isSelected ? (
+                        <div className="manuscript-workbench-proofreading-issue-detail manuscript-workbench-editing-focus-detail">
+                          <p>{item.summary}</p>
+                          {item.detail ? <p>{item.detail}</p> : null}
+                          <dl className="manuscript-workbench-detail-metadata">
+                            <div>
+                              <dt>来源</dt>
+                              <dd>{formatEditingWorkspaceFocusOriginLabel(item.origin)}</dd>
+                            </div>
+                            <div>
+                              <dt>正文定位</dt>
+                              <dd>
+                                {linkedBlock
+                                  ? formatWorkbenchDocumentBlockLabel(linkedBlock)
+                                  : "当前未定位到正文块"}
+                              </dd>
+                            </div>
+                            {item.locationLabel ? (
+                              <div>
+                                <dt>原始锚点</dt>
+                                <dd>{item.locationLabel}</dd>
+                              </div>
+                            ) : null}
+                          </dl>
+                          {linkedBlock ? (
+                            <div className="manuscript-workbench-selection-context">
+                              <span>正文上下文</span>
+                              <strong>{linkedBlock.text}</strong>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="manuscript-workbench-detail-empty">
+                <strong>当前没有结构化问题与台账</strong>
+                <p>全文块已加载，但本次编辑任务没有沉淀出可审阅的问题或落稿记录。</p>
+              </div>
+            )}
+          </article>
+        </div>
+
+        <div className="manuscript-workbench-detail-layout manuscript-workbench-detail-layout--supporting">
+          {editingSlotGovernanceCard}
+          {editingCompletionGateCard}
+          {changeLedgerCard}
+          {editingGuardrailCard}
+          {governanceEvidenceCard}
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section
       className="manuscript-workbench-detail-page"
@@ -826,36 +1717,11 @@ export function ManuscriptWorkbenchAssetDetailPage({
           )}
         </article>
 
-        {changeLedger.length > 0 ? (
-          <article className="manuscript-workbench-detail-ledger-card">
-            <div className="manuscript-workbench-detail-card-header">
-              <div>
-                <h4>改动台账</h4>
-                <p>这里展示 AI 编辑已落地的真实改动。</p>
-              </div>
-            </div>
-            <ul className="manuscript-workbench-detail-ledger-list">
-              {changeLedger.map((entry) => (
-                <li key={entry.id} className="manuscript-workbench-detail-ledger-item">
-                  <header>
-                    <strong>{entry.sourceLabel}</strong>
-                    {entry.locationText ? <span>{entry.locationText}</span> : null}
-                  </header>
-                  <dl>
-                    <div>
-                      <dt>修改前</dt>
-                      <dd>{entry.before}</dd>
-                    </div>
-                    <div>
-                      <dt>修改后</dt>
-                      <dd>{entry.after}</dd>
-                    </div>
-                  </dl>
-                </li>
-              ))}
-            </ul>
-          </article>
-        ) : null}
+        {changeLedgerCard}
+
+        {editingCompletionGateCard}
+
+        {editingSlotGovernanceCard}
 
         {editingGuardrailCard}
 
@@ -1024,6 +1890,351 @@ function renderEditingGuardrailCard(input: {
   );
 }
 
+interface EditingSlotDraftState {
+  resolvedText?: string;
+  note?: string;
+}
+
+function EditingSlotGovernanceCard(input: {
+  assetId: string;
+  summary: EditingSlotGovernanceSummary;
+  savingSlotKey?: string | null;
+  onSave?(input: EditingSlotManualSaveInput): void;
+}) {
+  const [drafts, setDrafts] = React.useState<Record<string, EditingSlotDraftState>>({});
+  const isSavingAnySlot = Boolean(input.savingSlotKey);
+
+  React.useEffect(() => {
+    setDrafts({});
+  }, [input.assetId, input.summary.generated_at, input.summary.target_model_version_id]);
+
+  return (
+    <article className="manuscript-workbench-detail-ledger-card manuscript-workbench-detail-governance-card">
+      <div className="manuscript-workbench-detail-card-header">
+        <div>
+          <h4>前置信息槽位</h4>
+          <p>这里展示目标模型要求的前置元数据槽位、当前命中状态和阻断原因。</p>
+        </div>
+      </div>
+
+      <dl className="manuscript-workbench-detail-metadata">
+        <div>
+          <dt>阻断槽位</dt>
+          <dd>
+            {input.summary.blocking_slot_keys.length > 0
+              ? input.summary.blocking_slot_keys.join("；")
+              : "无"}
+          </dd>
+        </div>
+        <div>
+          <dt>未解决必填</dt>
+          <dd>{String(input.summary.unresolved_required_count)}</dd>
+        </div>
+        {input.summary.target_model_version_no != null ? (
+          <div>
+            <dt>目标模型版本</dt>
+            <dd>{`v${input.summary.target_model_version_no}`}</dd>
+          </div>
+        ) : null}
+      </dl>
+
+      <ul className="manuscript-workbench-detail-comment-list">
+        {input.summary.slots.map((slot) => (
+          <li key={slot.slot_key} className="manuscript-workbench-detail-comment-item">
+            <strong>
+              {slot.label} · {formatEditingSlotStateLabel(slot.state)}
+            </strong>
+            <p>{slot.resolution_reason}</p>
+            <dl className="manuscript-workbench-detail-metadata">
+              <div>
+                <dt>锚点</dt>
+                <dd>{slot.anchor}</dd>
+              </div>
+              <div>
+                <dt>候选数</dt>
+                <dd>{String(slot.candidate_count)}</dd>
+              </div>
+              <div>
+                <dt>完成门槛</dt>
+                <dd>{slot.completion_gate}</dd>
+              </div>
+              {slot.resolved_text ? (
+                <div>
+                  <dt>当前内容</dt>
+                  <dd>{slot.resolved_text}</dd>
+                </div>
+              ) : null}
+              {slot.manual_resolution ? (
+                <div>
+                  <dt>人工裁决</dt>
+                  <dd>
+                    {formatEditingSlotManualResolutionKindLabel(
+                      slot.manual_resolution.resolution_kind,
+                    )}
+                  </dd>
+                </div>
+              ) : null}
+              {slot.manual_resolution?.note ? (
+                <div>
+                  <dt>人工备注</dt>
+                  <dd>{slot.manual_resolution.note}</dd>
+                </div>
+              ) : null}
+            </dl>
+            {slot.candidates.length > 0 ? (
+              <ul className="manuscript-workbench-detail-comment-list">
+                {slot.candidates.slice(0, 3).map((candidate) => (
+                  <li
+                    key={candidate.candidate_id}
+                    className="manuscript-workbench-detail-comment-item"
+                  >
+                    <strong>{candidate.raw_text}</strong>
+                    <small>
+                      {candidate.source_zone} · {candidate.source_locator}
+                    </small>
+                    {input.onSave ? (
+                      <div className="manuscript-workbench-detail-slot-candidate-actions">
+                        <button
+                          type="button"
+                          className="manuscript-workbench-button-secondary"
+                          disabled={isSavingAnySlot}
+                          onClick={() =>
+                            input.onSave?.({
+                              slotKey: slot.slot_key,
+                              resolutionKind: "picked_candidate",
+                              selectedCandidateId: candidate.candidate_id,
+                              note: readOptionalString(drafts[slot.slot_key]?.note),
+                            })
+                          }
+                        >
+                          {input.savingSlotKey === slot.slot_key ? "保存中..." : "采用此候选"}
+                        </button>
+                      </div>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {input.onSave ? (
+              <div className="manuscript-workbench-detail-slot-actions">
+                <label className="manuscript-workbench-field">
+                  <span>人工录入内容</span>
+                  <textarea
+                    value={drafts[slot.slot_key]?.resolvedText ?? ""}
+                    disabled={isSavingAnySlot}
+                    onChange={(event) =>
+                      setDrafts((current) => ({
+                        ...current,
+                        [slot.slot_key]: {
+                          ...current[slot.slot_key],
+                          resolvedText: event.target.value,
+                        },
+                      }))
+                    }
+                  />
+                </label>
+                <label className="manuscript-workbench-field">
+                  <span>人工备注</span>
+                  <textarea
+                    value={drafts[slot.slot_key]?.note ?? ""}
+                    disabled={isSavingAnySlot}
+                    onChange={(event) =>
+                      setDrafts((current) => ({
+                        ...current,
+                        [slot.slot_key]: {
+                          ...current[slot.slot_key],
+                          note: event.target.value,
+                        },
+                      }))
+                    }
+                  />
+                </label>
+                <div className="manuscript-workbench-button-row">
+                  <button
+                    type="button"
+                    disabled={
+                      isSavingAnySlot ||
+                      !readOptionalString(drafts[slot.slot_key]?.resolvedText)
+                    }
+                    onClick={() =>
+                      input.onSave?.({
+                        slotKey: slot.slot_key,
+                        resolutionKind: "manual_entry",
+                        resolvedText: readOptionalString(
+                          drafts[slot.slot_key]?.resolvedText,
+                        ),
+                        note: readOptionalString(drafts[slot.slot_key]?.note),
+                      })
+                    }
+                  >
+                    {input.savingSlotKey === slot.slot_key ? "保存中..." : "保存人工录入"}
+                  </button>
+                  <button
+                    type="button"
+                    className="manuscript-workbench-button-secondary"
+                    disabled={isSavingAnySlot}
+                    onClick={() =>
+                      input.onSave?.({
+                        slotKey: slot.slot_key,
+                        resolutionKind: "waived",
+                        note: readOptionalString(drafts[slot.slot_key]?.note),
+                      })
+                    }
+                  >
+                    {input.savingSlotKey === slot.slot_key ? "保存中..." : "标记为豁免"}
+                  </button>
+                </div>
+                <p className="manuscript-workbench-detail-slot-note">
+                  候选可直接采用；若稿件里没有可靠候选，可人工录入或在确认后标记豁免。
+                </p>
+              </div>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </article>
+  );
+}
+
+function EditingCompletionGateCard(input: {
+  summary: EditingCompletionGateSummary;
+}) {
+  const sections = [
+    {
+      key: "required-slots",
+      title: "必填槽位阻断",
+      items: input.summary.unresolved_required_slots,
+    },
+    {
+      key: "manual-resolution",
+      title: "人工处理项",
+      items: input.summary.pending_manual_resolution_items,
+    },
+    {
+      key: "high-risk-objects",
+      title: "高风险对象",
+      items: input.summary.high_risk_object_items,
+    },
+    {
+      key: "table-high-risk",
+      title: "表格高风险项",
+      items: input.summary.table_high_risk_items,
+    },
+    {
+      key: "blocking-format-failures",
+      title: "格式阻断项",
+      items: input.summary.blocking_format_failures,
+    },
+  ].filter((section) => section.items.length > 0);
+
+  return (
+    <article className="manuscript-workbench-detail-ledger-card manuscript-workbench-detail-governance-card">
+      <div className="manuscript-workbench-detail-card-header">
+        <div>
+          <h4>编辑完成门禁</h4>
+          <p>这里展示编辑结果是否真的可以交接，以及当前仍在阻断完成的具体问题。</p>
+        </div>
+      </div>
+
+      <dl className="manuscript-workbench-detail-metadata">
+        <div>
+          <dt>门禁判定</dt>
+          <dd>
+            {input.summary.observation_status === "failed_open"
+              ? "观测失败打开"
+              : formatEditingCompletionGateVerdictLabel(input.summary.verdict)}
+          </dd>
+        </div>
+        <div>
+          <dt>阻断总数</dt>
+          <dd>{String(input.summary.blocker_count)}</dd>
+        </div>
+        <div>
+          <dt>通过状态</dt>
+          <dd>{input.summary.passed ? "已通过" : "未通过"}</dd>
+        </div>
+        {input.summary.target_model_version_no != null ? (
+          <div>
+            <dt>目标模型版本</dt>
+            <dd>{`v${input.summary.target_model_version_no}`}</dd>
+          </div>
+        ) : null}
+      </dl>
+
+      {input.summary.observation_status === "failed_open" ? (
+        <div className="manuscript-workbench-detail-empty">
+          <strong>门禁观测不可用</strong>
+          <p>
+            {input.summary.error ??
+              "编辑完成门禁 failed open，当前结果不能视为可信完成。"}
+          </p>
+        </div>
+      ) : input.summary.passed ? (
+        <div className="manuscript-workbench-detail-empty">
+          <strong>当前编辑结果已通过门禁</strong>
+          <p>必填槽位、人工处理项、高风险对象和格式阻断项均已清空。</p>
+        </div>
+      ) : (
+        sections.map((section) => (
+          <div
+            key={section.key}
+            className="manuscript-workbench-metric manuscript-workbench-activity-section"
+          >
+            <span>{section.title}</span>
+            <ul className="manuscript-workbench-detail-comment-list">
+              {section.items.map((item) => (
+                <li
+                  key={item.item_key}
+                  className="manuscript-workbench-detail-comment-item"
+                >
+                  <strong>{item.summary}</strong>
+                  {renderEditingCompletionGateItemDetail(item)}
+                  <small>{formatEditingCompletionGatePendingItemMeta(item)}</small>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))
+      )}
+
+      {input.summary.override_reasons?.length ? (
+        <div className="manuscript-workbench-metric manuscript-workbench-activity-section">
+          <span>人工覆盖理由</span>
+          <ul className="manuscript-workbench-detail-comment-list">
+            {input.summary.override_reasons.map((reason, index) => (
+              <li
+                key={`${reason}-${index}`}
+                className="manuscript-workbench-detail-comment-item"
+              >
+                <strong>覆盖理由 {index + 1}</strong>
+                <p>{reason}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {input.summary.manual_object_decisions?.length ? (
+        <div className="manuscript-workbench-metric manuscript-workbench-activity-section">
+          <span>人工对象裁决</span>
+          <ul className="manuscript-workbench-detail-comment-list">
+            {input.summary.manual_object_decisions.map((decision) => (
+              <li
+                key={decision.item_key}
+                className="manuscript-workbench-detail-comment-item"
+              >
+                <strong>{decision.item_key}</strong>
+                <p>{formatEditingCompletionGateDecisionLabel(decision.decision)}</p>
+                {decision.note ? <small>{decision.note}</small> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
 function formatKnowledgeHitMatchSourceLabel(
   value: KnowledgeHitLogViewModel["match_source"],
 ): string {
@@ -1156,6 +2367,147 @@ function formatEditingGuardrailSourceStageLabel(
       return "AI 规划拦截";
     case "docx_transform":
       return "DOCX 落稿拦截";
+    default:
+      return value;
+  }
+}
+
+function formatEditingSlotStateLabel(
+  value: EditingSlotGovernanceSummary["slots"][number]["state"],
+): string {
+  switch (value) {
+    case "resolved_auto":
+      return "自动解决";
+    case "resolved_manual":
+      return "人工解决";
+    case "recognized_misplaced":
+      return "识别到但位置不对";
+    case "conflicted_candidates":
+      return "候选冲突";
+    case "low_confidence_pending_review":
+      return "低置信待核对";
+    default:
+      return "缺失";
+  }
+}
+
+function formatEditingSlotManualResolutionKindLabel(
+  value: EditingSlotManualResolutionKind,
+): string {
+  switch (value) {
+    case "picked_candidate":
+      return "采用候选";
+    case "manual_entry":
+      return "人工录入";
+    case "waived":
+      return "人工豁免";
+    default:
+      return value;
+  }
+}
+
+function formatEditingCompletionGateVerdictLabel(
+  value: EditingCompletionGateSummary["verdict"],
+): string {
+  switch (value) {
+    case "passed":
+      return "已通过";
+    case "needs_manual_resolution":
+      return "仍需人工处理";
+    case "blocked_by_missing_required_slots":
+      return "被必填槽位阻断";
+    case "blocked_by_high_risk_objects":
+      return "被高风险对象/表格/格式阻断";
+    default:
+      return "未判定";
+  }
+}
+
+function formatEditingCompletionGatePendingItemMeta(
+  item: EditingCompletionGateSummary["unresolved_required_slots"][number],
+): string {
+  const parts = [
+    formatEditingCompletionGateSourceLabel(item.source),
+    item.location_text,
+    item.related_slot_key ? `槽位 ${item.related_slot_key}` : undefined,
+    item.related_rule_id ? `规则 ${item.related_rule_id}` : undefined,
+    item.review_item_id ? `复核项 ${item.review_item_id}` : undefined,
+    item.status === "waived"
+      ? "已豁免"
+      : item.status === "resolved"
+        ? "已解决"
+        : "待处理",
+  ].filter((value): value is string => Boolean(value));
+
+  return parts.join(" · ");
+}
+
+function renderEditingCompletionGateItemDetail(
+  item: EditingCompletionGateSummary["unresolved_required_slots"][number],
+) {
+  if (!item.detail) {
+    return null;
+  }
+
+  if (item.category !== "high_risk_object") {
+    return <p>{item.detail}</p>;
+  }
+
+  const segments = item.detail
+    .split("；")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+
+  if (segments.length <= 1) {
+    return <p>{item.detail}</p>;
+  }
+
+  return (
+    <div className="manuscript-workbench-detail-comment-copy">
+      {segments.map((segment) => (
+        <p key={segment}>{segment}</p>
+      ))}
+    </div>
+  );
+}
+
+function formatEditingCompletionGateSourceLabel(
+  value: EditingCompletionGateSummary["unresolved_required_slots"][number]["source"],
+): string {
+  switch (value) {
+    case "slot_governance":
+      return "槽位治理";
+    case "manual_review_item":
+      return "人工复核";
+    case "content_rule_candidate":
+      return "内容规则候选";
+    case "quality_finding":
+      return "质量问题";
+    case "table_inspection_finding":
+      return "表格核查";
+    case "table_patch_result":
+      return "表格落稿";
+    case "editing_guardrail":
+      return "编辑守门";
+    case "skipped_ai_replacement":
+      return "跳过改写";
+    default:
+      return value;
+  }
+}
+
+function formatEditingCompletionGateDecisionLabel(
+  value: NonNullable<
+    EditingCompletionGateSummary["manual_object_decisions"]
+  >[number]["decision"],
+): string {
+  switch (value) {
+    case "accepted_change_only":
+      return "仅接受改动";
+    case "manual_only":
+      return "仅人工处理";
+    case "waived":
+      return "人工豁免";
     default:
       return value;
   }
@@ -1337,6 +2689,231 @@ function renderProofreadingIssueSection(
     ),
     "",
   ];
+}
+
+function resolveEditingDocumentBlockIndex(input: {
+  documentBlocks: readonly ProofreadingDocumentBlockViewModel[];
+  explicitBlockIndex?: number;
+  locator?: string;
+  excerpts?: readonly (string | undefined)[];
+}): number | undefined {
+  if (
+    typeof input.explicitBlockIndex === "number" &&
+    Number.isInteger(input.explicitBlockIndex)
+  ) {
+    const directMatch = findWorkbenchDocumentBlockByIndex(
+      input.documentBlocks,
+      input.explicitBlockIndex,
+    );
+    if (directMatch) {
+      return directMatch.blockIndex;
+    }
+  }
+
+  const parsedIndex = input.locator
+    ? parseWorkbenchDocumentBlockIndexFromLocator(input.locator)
+    : undefined;
+  if (typeof parsedIndex === "number") {
+    const locatorMatch =
+      input.documentBlocks.find((block) => block.sourceLocator === input.locator) ??
+      findWorkbenchDocumentBlockByIndex(input.documentBlocks, parsedIndex);
+    if (locatorMatch) {
+      return locatorMatch.blockIndex;
+    }
+  }
+
+  for (const excerpt of input.excerpts ?? []) {
+    const matchedIndex = findWorkbenchDocumentBlockIndexByText(
+      input.documentBlocks,
+      excerpt,
+    );
+    if (typeof matchedIndex === "number") {
+      return matchedIndex;
+    }
+  }
+
+  return undefined;
+}
+
+function parseWorkbenchDocumentBlockIndexFromLocator(
+  value: string,
+): number | undefined {
+  const bodyParagraphMatch = value.match(/body:p:(\d+)/iu);
+  if (bodyParagraphMatch) {
+    return Number(bodyParagraphMatch[1]);
+  }
+
+  const paragraphLabelMatch = value.match(/段落\s*(\d+)/u);
+  if (paragraphLabelMatch) {
+    return Number(paragraphLabelMatch[1]);
+  }
+
+  return undefined;
+}
+
+function findWorkbenchDocumentBlockByIndex(
+  blocks: readonly ProofreadingDocumentBlockViewModel[],
+  blockIndex: number,
+): ProofreadingDocumentBlockViewModel | undefined {
+  return blocks.find((block) => block.blockIndex === blockIndex);
+}
+
+function findWorkbenchDocumentBlockIndexByText(
+  blocks: readonly ProofreadingDocumentBlockViewModel[],
+  value: string | undefined,
+): number | undefined {
+  const normalizedNeedle = normalizeSearchableText(value);
+  if (!normalizedNeedle || normalizedNeedle.length < 3) {
+    return undefined;
+  }
+
+  const matchedBlock = blocks.find((block) =>
+    normalizeSearchableText(block.text)?.includes(normalizedNeedle),
+  );
+  return matchedBlock?.blockIndex;
+}
+
+function normalizeSearchableText(value: string | undefined): string | undefined {
+  const normalized = value?.replace(/\s+/gu, " ").trim().toLowerCase();
+  return normalized && normalized.length > 0 ? normalized : undefined;
+}
+
+function formatWorkbenchDocumentBlockLabel(
+  block: ProofreadingDocumentBlockViewModel,
+): string {
+  return block.sectionLabel ?? `段落 ${block.blockIndex + 1}`;
+}
+
+function formatEditingWorkspaceFocusOriginLabel(
+  value: EditingWorkspaceFocusItemViewModel["origin"],
+): string {
+  switch (value) {
+    case "slot":
+      return "前置信息槽位";
+    case "completion_gate":
+      return "编辑完成门禁";
+    case "guardrail":
+      return "自动改动被拦截";
+    case "change_ledger":
+      return "改动台账";
+    default:
+      return value;
+  }
+}
+
+function formatScreeningWorkspaceFocusOriginLabel(
+  value: ScreeningWorkspaceFocusItemViewModel["origin"],
+): string {
+  switch (value) {
+    case "risk":
+      return "初筛风险判断";
+    case "decision":
+      return "初筛建议结论";
+    case "summary":
+      return "初筛证据摘要";
+    case "quality_finding":
+      return "质量问题";
+    default:
+      return value;
+  }
+}
+
+function formatScreeningRiskLevelLabel(value: string): string {
+  switch (value) {
+    case "critical":
+      return "严重风险";
+    case "high":
+      return "高风险";
+    case "low":
+      return "低风险";
+    default:
+      return "中风险";
+  }
+}
+
+function formatScreeningDecisionLabel(value: string): string {
+  switch (value) {
+    case "accept":
+      return "建议录用";
+    case "minor_revision":
+      return "建议小修";
+    case "major_revision":
+      return "建议大修";
+    case "reject":
+      return "建议退稿";
+    default:
+      return value;
+  }
+}
+
+function resolveScreeningRiskTone(value: string): SharedReviewTone {
+  if (value === "critical" || value === "high") {
+    return "error";
+  }
+
+  if (value === "low") {
+    return "success";
+  }
+
+  return "neutral";
+}
+
+function resolveScreeningDecisionTone(value: string): SharedReviewTone {
+  if (value === "accept") {
+    return "success";
+  }
+
+  if (value === "minor_revision") {
+    return "neutral";
+  }
+
+  return "error";
+}
+
+function resolveScreeningFindingTone(
+  severity?: string,
+  action?: string,
+): SharedReviewTone {
+  if (severity === "critical" || severity === "high" || action === "block") {
+    return "error";
+  }
+
+  if (action === "manual_review" || severity === "medium") {
+    return "neutral";
+  }
+
+  return "success";
+}
+
+function formatEditingCompletionGatePendingCategoryLabel(
+  value: EditingCompletionGateSummary["unresolved_required_slots"][number]["category"],
+): string {
+  switch (value) {
+    case "required_slot":
+      return "必填槽位";
+    case "manual_resolution":
+      return "人工处理";
+    case "high_risk_object":
+      return "高风险对象";
+    case "table_high_risk":
+      return "表格高风险";
+    case "blocking_format_failure":
+      return "格式阻断";
+    default:
+      return value;
+  }
+}
+
+function resolveTonePillClassName(
+  tone: SharedReviewTone,
+): string {
+  return `manuscript-workbench-status-pill ${
+    tone === "success"
+      ? "is-success"
+      : tone === "neutral"
+        ? "is-neutral"
+        : "is-error"
+  }`;
 }
 
 function formatLocationText(value: unknown): string | undefined {

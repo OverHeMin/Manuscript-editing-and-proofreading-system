@@ -147,6 +147,63 @@ def test_document_xml_extracts_table_semantics_snapshot():
     assert semantic["footnote_items"][0]["note_kind"] == "statistical_significance"
 
 
+def test_document_xml_extracts_rich_table_style_evidence():
+    document_xml = """
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>
+        <w:p>
+          <w:pPr><w:jc w:val="center"/></w:pPr>
+          <w:r>
+            <w:rPr><w:rFonts w:ascii="Times New Roman"/><w:b/></w:rPr>
+            <w:t>Table 2 Alpha summary</w:t>
+          </w:r>
+        </w:p>
+        <w:tbl>
+          <w:tr>
+            <w:tc>
+              <w:tcPr><w:vAlign w:val="center"/></w:tcPr>
+              <w:p>
+                <w:pPr>
+                  <w:jc w:val="right"/>
+                  <w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>
+                </w:pPr>
+                <w:r>
+                  <w:rPr><w:rFonts w:ascii="Symbol"/><w:sz w:val="21"/></w:rPr>
+                  <w:sym w:font="Symbol" w:char="03B1"/>
+                </w:r>
+                <w:r>
+                  <w:rPr><w:rFonts w:ascii="Times New Roman"/><w:sz w:val="21"/><w:i/></w:rPr>
+                  <w:t>=0.05</w:t>
+                </w:r>
+              </w:p>
+            </w:tc>
+          </w:tr>
+        </w:tbl>
+        <w:p>
+          <w:r>
+            <w:rPr><w:i/></w:rPr>
+            <w:t>Note: α retained as symbol</w:t>
+          </w:r>
+        </w:p>
+      </w:body>
+    </w:document>
+    """
+
+    result = extract_structure_from_document_xml(document_xml)
+
+    semantic = result["tables"][0]["semantic"]
+    assert semantic["row_count"] == 1
+    assert semantic["column_count"] == 1
+    assert semantic["caption_fields"]["paragraphs"][0]["style"]["alignment"]["value"] == "center"
+    assert semantic["caption_fields"]["paragraphs"][0]["fragments"][0]["style"]["bold"]["value"] is True
+    assert semantic["note_zone"]["paragraphs"][0]["fragments"][0]["style"]["italic"]["value"] is True
+    assert semantic["grid_cells"][0]["style_evidence"]["alignment"]["value"] == "right"
+    assert semantic["grid_cells"][0]["style_evidence"]["vertical_alignment"]["value"] == "center"
+    assert semantic["grid_cells"][0]["paragraphs"][0]["fragments"][0]["kind"] == "symbol"
+    assert semantic["grid_cells"][0]["paragraphs"][0]["fragments"][0]["text"] == "α"
+    assert semantic["grid_cells"][0]["paragraphs"][0]["fragments"][1]["style"]["italic"]["value"] is True
+
+
 def test_document_xml_recovers_sections_from_numbered_plain_paragraphs():
     document_xml = """
     <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -176,3 +233,48 @@ def test_document_xml_recovers_sections_from_numbered_plain_paragraphs():
         "2 结果",
     ]
     assert [section["level"] for section in result["sections"]] == [1, 2, 1]
+
+
+def test_document_xml_extracts_object_evidence_for_image_substituted_symbols():
+    document_xml = """
+    <w:document
+      xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+      xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+      xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+      xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"
+      xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+      <w:body>
+        <w:p>
+          <w:r><w:t>2 结果</w:t></w:r>
+        </w:p>
+        <w:p>
+          <w:r>
+            <w:drawing>
+              <wp:inline>
+                <wp:docPr id="1" name="chi-square image" descr="卡方检验符号图片"/>
+                <a:graphic>
+                  <a:graphicData>
+                    <pic:pic>
+                      <pic:blipFill>
+                        <a:blip r:embed="rId5"/>
+                      </pic:blipFill>
+                    </pic:pic>
+                  </a:graphicData>
+                </a:graphic>
+              </wp:inline>
+            </w:drawing>
+          </w:r>
+        </w:p>
+      </w:body>
+    </w:document>
+    """
+
+    result = extract_structure_from_document_xml(document_xml)
+
+    assert result["status"] == "ready"
+    assert len(result["objects"]) == 1
+    assert result["objects"][0]["object_kind"] == "image"
+    assert result["objects"][0]["source_locator"] == "body:p:1"
+    assert result["objects"][0]["relationship_id"] == "rId5"
+    assert "卡方检验符号图片" in result["objects"][0]["evidence_text"]
+    assert result["objects"][0]["intended_target"] == "χ²"

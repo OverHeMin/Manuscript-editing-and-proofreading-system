@@ -8,6 +8,7 @@ import {
   TABLE_DOCX_PATCH_APPLY_PRIORITY,
   type TableDocxPatchAnchor,
   type TableDocxPatchApplyScope,
+  type TableDocxExecutionPath,
   type TableDocxPatchGrade,
   type TableDocxPatchPlan,
   type TableDocxPatchResult,
@@ -39,10 +40,12 @@ export interface TableDocxPatchPlannerOptions {
 
 interface EligibleCandidate {
   rule_entry: ResolvedEditorialRule;
+  table_snapshot: DocumentStructureTableSnapshot;
   hit: EditorialRuleTableHit;
   patch_type: TableDocxPatchType;
   grade: TableDocxPatchGrade;
   apply_scope: TableDocxPatchApplyScope;
+  execution_path: Exclude<TableDocxExecutionPath, "manual_downgrade">;
   required_snapshot_capabilities: TableDocxSnapshotCapability[];
   proposed_before: string;
   proposed_after: string;
@@ -181,15 +184,21 @@ export class TableDocxPatchPlanner {
           continue;
         }
 
-        if (patchType === "apply_three_line_table_style") {
+        const executionPath = resolveExecutionPath({
+          patchType,
+          tableSnapshot,
+        });
+        if (!executionPath) {
           results.push(
             buildPatchResult({
               ruleEntry: entry,
               patchType,
               status: "skipped_unsafe",
-              reason: "Style patch family is not yet safe for deterministic DOCX auto-apply.",
+              reason:
+                "Controlled table rebuild requires authoritative grid cell evidence and style anchors; downgrade to manual review.",
               requiredSnapshotCapabilities,
               hit,
+              executionPath: "manual_downgrade",
             }),
           );
           continue;
@@ -227,10 +236,12 @@ export class TableDocxPatchPlanner {
 
         candidates.push({
           rule_entry: entry,
+          table_snapshot: tableSnapshot,
           hit,
           patch_type: patchType,
           grade,
           apply_scope: applyScope,
+          execution_path: executionPath,
           required_snapshot_capabilities: requiredSnapshotCapabilities,
           proposed_before: proposedBefore,
           proposed_after: proposedAfter,
@@ -280,6 +291,14 @@ export class TableDocxPatchPlanner {
             ? { example_after: candidate.rule_entry.rule.example_after }
             : {}),
         },
+        execution_path: candidate.execution_path,
+        ...(candidate.execution_path === "controlled_rebuild"
+          ? {
+              rebuild_payload: buildControlledRebuildPayload(
+                candidate.table_snapshot,
+              ),
+            }
+          : {}),
       });
     }
 
@@ -346,7 +365,8 @@ function isSnapshotCapability(value: unknown): value is TableDocxSnapshotCapabil
     value === "table_title" ||
     value === "caption_fields" ||
     value === "note_zone" ||
-    value === "style_profile";
+    value === "style_profile" ||
+    value === "grid_cells";
 }
 
 function collectSnapshotCapabilities(
@@ -377,6 +397,9 @@ function collectSnapshotCapabilities(
   if (table.style_profile) {
     capabilities.add("style_profile");
   }
+  if ((table.grid_cells?.length ?? 0) > 0) {
+    capabilities.add("grid_cells");
+  }
   return capabilities;
 }
 
@@ -390,6 +413,10 @@ function resolveCurrentAnchorText(
       return table.caption_fields?.text;
     case "note_zone":
       return table.note_zone?.text;
+    case "style_profile":
+      return table.profile.is_three_line_table
+        ? "three_line_table"
+        : "non_three_line_table";
     case "header_cell":
       return findHeaderCell(table, hit)?.text;
     case "footnote_item":
@@ -455,6 +482,36 @@ function matchesPatchTypeToHit(
   }
 }
 
+function resolveExecutionPath(input: {
+  patchType: TableDocxPatchType;
+  tableSnapshot: DocumentStructureTableSnapshot;
+}): Exclude<TableDocxExecutionPath, "manual_downgrade"> | undefined {
+  if (input.patchType !== "apply_three_line_table_style") {
+    return "safe_patch";
+  }
+
+  return (input.tableSnapshot.grid_cells?.length ?? 0) > 0 &&
+    input.tableSnapshot.style_profile
+    ? "controlled_rebuild"
+    : undefined;
+}
+
+function buildControlledRebuildPayload(
+  tableSnapshot: DocumentStructureTableSnapshot,
+): Record<string, unknown> {
+  return {
+    strategy: "three_line_table_normalization",
+    objectives: [
+      "preserve_table_content_and_merged_structure",
+      "normalize_caption_above_table",
+      "normalize_note_zone_below_table",
+      "normalize_intra_cell_rich_text_runs",
+      "enforce_three_line_table_borders",
+    ],
+    table_snapshot: structuredClone(tableSnapshot),
+  };
+}
+
 function buildAnchorKey(hit: EditorialRuleTableHit): string {
   return JSON.stringify({
     table_id: hit.table_id,
@@ -496,6 +553,7 @@ function buildPatchResult(input: {
   reason: string;
   requiredSnapshotCapabilities: TableDocxSnapshotCapability[];
   hit?: EditorialRuleTableHit;
+  executionPath?: TableDocxExecutionPath;
 }): TableDocxPatchResult {
   return {
     patch_id: buildPatchId(
@@ -511,6 +569,7 @@ function buildPatchResult(input: {
     ...(input.hit ? { semantic_target: input.hit.semantic_target } : {}),
     ...(input.hit ? { anchor: toPatchAnchor(input.hit) } : {}),
     required_snapshot_capabilities: [...input.requiredSnapshotCapabilities],
+    ...(input.executionPath ? { execution_path: input.executionPath } : {}),
   };
 }
 

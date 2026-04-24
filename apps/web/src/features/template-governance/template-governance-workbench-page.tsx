@@ -53,6 +53,7 @@ import type {
 import type {
   GovernedContentModuleClass,
   GovernedContentModuleViewModel,
+  JournalFormatTargetModelViewModel,
   JournalTemplateProfileViewModel,
   ModuleTemplateViewModel,
   RuleEvidenceExampleViewModel,
@@ -4609,7 +4610,37 @@ function TemplateGovernanceJournalTemplateLedgerRoute({
     }
 
     if (formMode === "edit") {
-      setErrorMessage("当前版本暂不支持直接修改期刊模板，请删除后重建。");
+      if (!viewModel.selectedJournalTemplate) {
+        setErrorMessage("请先在台账中选择一个期刊模板。");
+        return;
+      }
+
+      setIsBusy(true);
+      resetFeedback();
+
+      try {
+        const { overview, journalTemplateProfile } =
+          await controller.updateJournalTemplateProfileAndReload({
+            journalTemplateProfileId: viewModel.selectedJournalTemplate.id,
+            input: {
+              journalName: formValues.journalName.trim(),
+              journalKey: formValues.journalKey.trim(),
+              journalFormatTargetModel: formValues.targetModel,
+            },
+            selectedTemplateFamilyId: formValues.templateFamilyId.trim(),
+            selectedJournalTemplateId: viewModel.selectedJournalTemplate.id,
+          });
+        setViewModel(toJournalTemplateLedgerViewModel(overview));
+        setFormMode(null);
+        setFormValues(toJournalTemplateFormValues(journalTemplateProfile));
+        setStatusMessage(
+          `期刊模板已更新：${journalTemplateProfile.journal_name}（V${journalTemplateProfile.target_model_version_no ?? "?"}）`,
+        );
+      } catch (error) {
+        setErrorMessage(toErrorMessage(error, "保存期刊模板失败"));
+      } finally {
+        setIsBusy(false);
+      }
       return;
     }
 
@@ -5271,6 +5302,264 @@ function createJournalTemplateFormValues(
     templateFamilyId,
     journalName: "",
     journalKey: "",
+    targetModel: createDefaultJournalFormatTargetModelViewModel(),
+  };
+}
+
+function createDefaultJournalFormatTargetModelViewModel(): JournalFormatTargetModelViewModel {
+  return {
+    skeleton: [
+      "front_matter",
+      "title",
+      "abstract",
+      "keywords",
+      "body",
+      "figures_tables",
+      "references",
+    ],
+    target_blocks: [
+      {
+        block_key: "author_line",
+        label: "作者署名",
+        zone: "front_matter",
+        anchor: "after_title",
+        order: 10,
+        required: true,
+        repeatable: false,
+        enabled: true,
+        format_policy: {
+          display_label: "作者",
+          target_position: "标题下方",
+          style_requirements: ["保留作者顺序", "与单位行分离"],
+          allow_auto_reorder: false,
+        },
+        content_source_policy: "must_harvest_existing",
+        completion_gate: "block_on_unresolved",
+      },
+      {
+        block_key: "affiliation_line",
+        label: "作者单位",
+        zone: "front_matter",
+        anchor: "after_author_line",
+        order: 20,
+        required: true,
+        repeatable: true,
+        enabled: true,
+        format_policy: {
+          display_label: "单位",
+          target_position: "作者署名下方",
+          style_requirements: ["机构信息独立成行"],
+          allow_auto_reorder: true,
+        },
+        content_source_policy: "must_harvest_existing",
+        completion_gate: "block_on_unresolved",
+      },
+      {
+        block_key: "author_bio",
+        label: "作者简介",
+        zone: "front_matter",
+        anchor: "before_title",
+        order: 30,
+        required: false,
+        repeatable: true,
+        enabled: true,
+        format_policy: {
+          display_label: "作者简介",
+          prefix: "作者简介：",
+          target_position: "标题上方",
+          style_requirements: ["使用期刊要求的前缀标签"],
+          allow_auto_reorder: true,
+        },
+        content_source_policy: "prefer_existing_with_manual_fill",
+        completion_gate: "warn_only",
+      },
+      {
+        block_key: "corresponding_author_bio",
+        label: "通信作者简介",
+        zone: "front_matter",
+        anchor: "before_title",
+        order: 40,
+        required: false,
+        repeatable: true,
+        enabled: true,
+        format_policy: {
+          display_label: "通信作者简介",
+          prefix: "通信作者简介：",
+          target_position: "标题上方",
+          style_requirements: ["与作者简介分行展示"],
+          allow_auto_reorder: true,
+        },
+        content_source_policy: "prefer_existing_with_manual_fill",
+        completion_gate: "warn_only",
+      },
+      {
+        block_key: "funding_statement",
+        label: "基金项目",
+        zone: "front_matter",
+        anchor: "before_title",
+        order: 50,
+        required: false,
+        repeatable: true,
+        enabled: true,
+        format_policy: {
+          display_label: "基金项目",
+          prefix: "基金项目：",
+          target_position: "标题上方",
+          style_requirements: ["项目编号完整保留"],
+          allow_auto_reorder: true,
+        },
+        content_source_policy: "prefer_existing_with_manual_fill",
+        completion_gate: "warn_only",
+      },
+      {
+        block_key: "title",
+        label: "标题",
+        zone: "title",
+        anchor: "before_body",
+        order: 60,
+        required: true,
+        repeatable: false,
+        enabled: true,
+        format_policy: {
+          display_label: "标题",
+          target_position: "正文前部",
+          style_requirements: ["保留标题层级"],
+          allow_auto_reorder: false,
+        },
+        content_source_policy: "must_harvest_existing",
+        completion_gate: "block_on_missing",
+      },
+      {
+        block_key: "abstract",
+        label: "摘要",
+        zone: "abstract",
+        anchor: "before_body",
+        order: 70,
+        required: true,
+        repeatable: false,
+        enabled: true,
+        format_policy: {
+          display_label: "摘要",
+          target_position: "正文前部",
+          style_requirements: ["与关键词保持邻接"],
+          allow_auto_reorder: false,
+        },
+        content_source_policy: "must_harvest_existing",
+        completion_gate: "block_on_missing",
+      },
+      {
+        block_key: "keywords",
+        label: "关键词",
+        zone: "keywords",
+        anchor: "after_abstract",
+        order: 80,
+        required: true,
+        repeatable: false,
+        enabled: true,
+        format_policy: {
+          display_label: "关键词",
+          prefix: "关键词：",
+          separator: "；",
+          target_position: "摘要后",
+          style_requirements: ["采用期刊关键词分隔符"],
+          allow_auto_reorder: true,
+        },
+        content_source_policy: "must_harvest_existing",
+        completion_gate: "block_on_unresolved",
+      },
+      {
+        block_key: "classification_code",
+        label: "中图分类号",
+        zone: "keywords",
+        anchor: "after_keywords",
+        order: 90,
+        required: false,
+        repeatable: false,
+        enabled: true,
+        format_policy: {
+          display_label: "中图分类号",
+          prefix: "中图分类号：",
+          target_position: "关键词下方",
+          style_requirements: ["允许与文献标志码相邻"],
+          allow_auto_reorder: true,
+        },
+        content_source_policy: "prefer_existing_with_manual_fill",
+        completion_gate: "warn_only",
+      },
+      {
+        block_key: "document_code",
+        label: "文献标志码",
+        zone: "keywords",
+        anchor: "after_keywords",
+        order: 100,
+        required: false,
+        repeatable: false,
+        enabled: true,
+        format_policy: {
+          display_label: "文献标志码",
+          prefix: "文献标志码：",
+          target_position: "关键词下方",
+          style_requirements: ["允许与中图分类号同区域展示"],
+          allow_auto_reorder: true,
+        },
+        content_source_policy: "prefer_existing_with_manual_fill",
+        completion_gate: "warn_only",
+      },
+      {
+        block_key: "body",
+        label: "正文",
+        zone: "body",
+        anchor: "before_reference",
+        order: 110,
+        required: true,
+        repeatable: false,
+        enabled: true,
+        format_policy: {
+          display_label: "正文",
+          target_position: "参考文献前",
+          style_requirements: ["保留结构层级"],
+          allow_auto_reorder: false,
+        },
+        content_source_policy: "must_harvest_existing",
+        completion_gate: "block_on_missing",
+      },
+      {
+        block_key: "figures_tables",
+        label: "图表区",
+        zone: "figures_tables",
+        anchor: "before_reference",
+        order: 120,
+        required: true,
+        repeatable: true,
+        enabled: true,
+        format_policy: {
+          display_label: "图表",
+          target_position: "参考文献前",
+          style_requirements: ["图题表题与对象绑定"],
+          allow_auto_reorder: true,
+        },
+        content_source_policy: "must_harvest_existing",
+        completion_gate: "block_on_unresolved",
+      },
+      {
+        block_key: "references",
+        label: "参考文献",
+        zone: "references",
+        anchor: "before_reference",
+        order: 130,
+        required: true,
+        repeatable: false,
+        enabled: true,
+        format_policy: {
+          display_label: "参考文献",
+          target_position: "文末",
+          style_requirements: ["保持著录顺序与编号体系"],
+          allow_auto_reorder: false,
+        },
+        content_source_policy: "must_harvest_existing",
+        completion_gate: "block_on_missing",
+      },
+    ],
   };
 }
 
@@ -5746,6 +6035,17 @@ function validateJournalTemplateFormValues(
     return "请填写期刊键。";
   }
 
+  const blockKeys = new Set<string>();
+  for (const block of values.targetModel.target_blocks) {
+    if (block.block_key.trim().length === 0) {
+      return "格式目标模型中的 block key 不能为空。";
+    }
+    if (blockKeys.has(block.block_key)) {
+      return `格式目标模型中的 block key 不能重复：${block.block_key}`;
+    }
+    blockKeys.add(block.block_key);
+  }
+
   return null;
 }
 
@@ -5859,6 +6159,11 @@ function toJournalTemplateFormValues(
     templateFamilyId: template.template_family_id,
     journalName: template.journal_name,
     journalKey: template.journal_key,
+    targetModel:
+      template.journal_format_target_model ??
+      createDefaultJournalFormatTargetModelViewModel(),
+    targetModelVersionId: template.target_model_version_id,
+    targetModelVersionNo: template.target_model_version_no,
   };
 }
 

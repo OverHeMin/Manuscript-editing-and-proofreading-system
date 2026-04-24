@@ -17,6 +17,70 @@ export type GovernedContentModuleEvidenceLevel =
   | "high"
   | "expert_opinion";
 export type GovernedContentModuleRiskLevel = "low" | "medium" | "high";
+export type JournalFormatTargetZone =
+  | "front_matter"
+  | "title"
+  | "abstract"
+  | "keywords"
+  | "body"
+  | "figures_tables"
+  | "references";
+export type JournalFormatTargetAnchor =
+  | "before_title"
+  | "after_title"
+  | "after_author_line"
+  | "after_affiliation_line"
+  | "after_abstract"
+  | "after_keywords"
+  | "before_body"
+  | "after_body"
+  | "before_reference"
+  | "header_zone"
+  | "footer_zone";
+export type JournalFormatTargetContentSourcePolicy =
+  | "must_harvest_existing"
+  | "prefer_existing_with_manual_fill"
+  | "manual_only";
+export type JournalFormatTargetCompletionGate =
+  | "block_on_missing"
+  | "block_on_unresolved"
+  | "warn_only";
+
+export interface JournalFormatTargetBlockFormatPolicyViewModel {
+  display_label?: string;
+  prefix?: string;
+  suffix?: string;
+  separator?: string;
+  target_position?: string;
+  style_requirements?: string[];
+  allow_auto_reorder: boolean;
+}
+
+export interface JournalFormatTargetBlockViewModel {
+  block_key: string;
+  label: string;
+  zone: JournalFormatTargetZone;
+  anchor: JournalFormatTargetAnchor;
+  order: number;
+  required: boolean;
+  repeatable: boolean;
+  enabled: boolean;
+  format_policy: JournalFormatTargetBlockFormatPolicyViewModel;
+  content_source_policy: JournalFormatTargetContentSourcePolicy;
+  completion_gate: JournalFormatTargetCompletionGate;
+}
+
+export interface JournalFormatTargetModelViewModel {
+  skeleton: JournalFormatTargetZone[];
+  target_blocks: JournalFormatTargetBlockViewModel[];
+}
+
+export interface JournalFormatTargetModelVersionViewModel {
+  version_id: string;
+  version_no: number;
+  created_at: string;
+  journal_format_target_model: JournalFormatTargetModelViewModel;
+}
 
 export interface RuleEvidenceExampleViewModel {
   before: string;
@@ -37,6 +101,10 @@ export interface JournalTemplateProfileViewModel {
   journal_key: string;
   journal_name: string;
   status: JournalTemplateProfileStatus;
+  target_model_version_id?: string;
+  target_model_version_no?: number;
+  journal_format_target_model?: JournalFormatTargetModelViewModel;
+  target_model_versions?: JournalFormatTargetModelVersionViewModel[];
 }
 
 export interface ModuleTemplateViewModel {
@@ -114,6 +182,12 @@ export interface CreateJournalTemplateProfileInput {
   manuscriptType: ManuscriptType;
   journalKey: string;
   journalName: string;
+}
+
+export interface UpdateJournalTemplateProfileInput {
+  journalKey?: string;
+  journalName?: string;
+  journalFormatTargetModel?: JournalFormatTargetModelViewModel;
 }
 
 export interface UpdateModuleTemplateDraftInput {

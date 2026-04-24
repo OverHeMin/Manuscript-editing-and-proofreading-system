@@ -18,6 +18,20 @@ function cloneRecord(record: ManuscriptRecord): ManuscriptRecord {
           },
         }
       : {}),
+    ...(record.editing_slot_governance_summary
+      ? {
+          editing_slot_governance_summary: structuredClone(
+            record.editing_slot_governance_summary,
+          ),
+        }
+      : {}),
+    ...(record.editing_completion_gate_summary
+      ? {
+          editing_completion_gate_summary: structuredClone(
+            record.editing_completion_gate_summary,
+          ),
+        }
+      : {}),
   };
 }
 

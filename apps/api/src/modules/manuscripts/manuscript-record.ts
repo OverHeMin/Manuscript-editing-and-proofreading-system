@@ -1,4 +1,6 @@
 import type {
+  EditingCompletionGateSummary,
+  EditingSlotGovernanceSummary,
   GovernedExecutionContextSummary,
   ManuscriptType as SharedManuscriptType,
   ManuscriptTypeDetectionSummary,
@@ -27,6 +29,8 @@ export interface ManuscriptRecord {
   current_template_family_id?: string;
   current_journal_template_id?: string;
   governed_execution_context_summary?: GovernedExecutionContextSummary;
+  editing_slot_governance_summary?: EditingSlotGovernanceSummary;
+  editing_completion_gate_summary?: EditingCompletionGateSummary;
   created_at: string;
   updated_at: string;
 }

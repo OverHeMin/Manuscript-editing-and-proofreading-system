@@ -6,6 +6,8 @@ import type {
 } from "./template-repository.ts";
 import type {
   GovernedContentModuleRecord,
+  JournalFormatTargetModel,
+  JournalFormatTargetModelVersionRecord,
   JournalTemplateProfileRecord,
   ModuleTemplateRecord,
   TemplateCompositionRecord,
@@ -53,6 +55,10 @@ interface JournalTemplateProfileRow {
   journal_key: string;
   journal_name: string;
   status: JournalTemplateProfileRecord["status"];
+  target_model_version_id: string | null;
+  target_model_version_no: number | null;
+  journal_format_target_model: JournalFormatTargetModel | string | null;
+  target_model_versions: JournalFormatTargetModelVersionRecord[] | string | null;
   created_at: Date;
 }
 
@@ -195,15 +201,23 @@ export class PostgresTemplateFamilyRepository
             template_family_id,
             journal_key,
             journal_name,
-            status
+            status,
+            target_model_version_id,
+            target_model_version_no,
+            journal_format_target_model,
+            target_model_versions
           )
-          values ($1, $2, $3, $4, $5)
+          values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb)
           on conflict (id) do update
           set
             template_family_id = excluded.template_family_id,
             journal_key = excluded.journal_key,
             journal_name = excluded.journal_name,
             status = excluded.status,
+            target_model_version_id = excluded.target_model_version_id,
+            target_model_version_no = excluded.target_model_version_no,
+            journal_format_target_model = excluded.journal_format_target_model,
+            target_model_versions = excluded.target_model_versions,
             updated_at = now()
         `,
         [
@@ -212,6 +226,10 @@ export class PostgresTemplateFamilyRepository
           record.journal_key,
           record.journal_name,
           record.status,
+          record.target_model_version_id ?? null,
+          record.target_model_version_no ?? null,
+          JSON.stringify(record.journal_format_target_model ?? null),
+          JSON.stringify(record.target_model_versions ?? []),
         ],
       );
     } catch (error) {
@@ -237,6 +255,10 @@ export class PostgresTemplateFamilyRepository
           journal_key,
           journal_name,
           status,
+          target_model_version_id,
+          target_model_version_no,
+          journal_format_target_model,
+          target_model_versions,
           created_at
         from journal_template_profiles
         where id = $1
@@ -261,6 +283,10 @@ export class PostgresTemplateFamilyRepository
           journal_key,
           journal_name,
           status,
+          target_model_version_id,
+          target_model_version_no,
+          journal_format_target_model,
+          target_model_versions,
           created_at
         from journal_template_profiles
         where template_family_id = $1
@@ -285,6 +311,10 @@ export class PostgresTemplateFamilyRepository
           journal_key,
           journal_name,
           status,
+          target_model_version_id,
+          target_model_version_no,
+          journal_format_target_model,
+          target_model_versions,
           created_at
         from journal_template_profiles
         where template_family_id = $1
@@ -742,6 +772,26 @@ function mapJournalTemplateProfileRow(
     journal_key: row.journal_key,
     journal_name: row.journal_name,
     status: row.status,
+    ...(row.target_model_version_id != null
+      ? { target_model_version_id: row.target_model_version_id }
+      : {}),
+    ...(row.target_model_version_no != null
+      ? { target_model_version_no: row.target_model_version_no }
+      : {}),
+    ...(row.journal_format_target_model != null
+      ? {
+          journal_format_target_model: decodeJournalFormatTargetModel(
+            row.journal_format_target_model,
+          ),
+        }
+      : {}),
+    ...(row.target_model_versions != null
+      ? {
+          target_model_versions: decodeJournalFormatTargetModelVersions(
+            row.target_model_versions,
+          ),
+        }
+      : {}),
   };
 }
 
@@ -862,6 +912,42 @@ function decodeRuleExamples(value: RuleExampleRow[] | string): RuleEvidenceExamp
   }
 
   return JSON.parse(value) as RuleEvidenceExample[];
+}
+
+function decodeJournalFormatTargetModel(
+  value: JournalFormatTargetModel | string,
+): JournalFormatTargetModel {
+  const parsed =
+    typeof value === "string"
+      ? (JSON.parse(value) as JournalFormatTargetModel)
+      : value;
+  return {
+    skeleton: [...parsed.skeleton],
+    target_blocks: parsed.target_blocks.map((block) => ({
+      ...block,
+      format_policy: {
+        ...block.format_policy,
+        style_requirements: block.format_policy.style_requirements
+          ? [...block.format_policy.style_requirements]
+          : undefined,
+      },
+    })),
+  };
+}
+
+function decodeJournalFormatTargetModelVersions(
+  value: JournalFormatTargetModelVersionRecord[] | string,
+): JournalFormatTargetModelVersionRecord[] {
+  const parsed =
+    typeof value === "string"
+      ? (JSON.parse(value) as JournalFormatTargetModelVersionRecord[])
+      : value;
+  return parsed.map((record) => ({
+    ...record,
+    journal_format_target_model: decodeJournalFormatTargetModel(
+      record.journal_format_target_model,
+    ),
+  }));
 }
 
 function isActiveTemplateFamilyConstraintError(

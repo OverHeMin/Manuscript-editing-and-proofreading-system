@@ -11,6 +11,7 @@ import {
   deriveEditorialRuleExecutionPosture,
   type EditorialRuleExecutionPosture,
 } from "./editorial-rule-object-catalog.ts";
+import type { ManuscriptType } from "../manuscripts/manuscript-record.ts";
 
 export interface ResolveEditorialRulesInput {
   templateFamilyId: string;
@@ -29,6 +30,21 @@ export interface EditorialRuleResolutionResult {
   overrides: EditorialRuleOverrideRecord[];
 }
 
+export type ResolvedEditorialRuleActivationSourceKind =
+  | "template_family_rule_set"
+  | "journal_template_rule_set";
+
+export interface ResolvedEditorialRuleActivationSource {
+  kind: ResolvedEditorialRuleActivationSourceKind;
+  id: string;
+}
+
+export interface ResolvedEditorialRuleEffectiveScope {
+  manuscript_types?: ManuscriptType[];
+  sections?: string[];
+  object_granularity?: string[];
+}
+
 export interface ResolvedEditorialRule {
   rule: EditorialRuleRecord;
   coverage_key: string;
@@ -36,6 +52,9 @@ export interface ResolvedEditorialRule {
   overridden_rule_ids: string[];
   resolution_reason: string;
   execution_posture: EditorialRuleExecutionPosture;
+  activation_source?: ResolvedEditorialRuleActivationSource;
+  effective_scope?: ResolvedEditorialRuleEffectiveScope;
+  overridden_sources?: ResolvedEditorialRuleActivationSource[];
   conflict_kind?: Exclude<EditorialRuleConflictKind, "exclusive_conflict">;
 }
 
@@ -51,6 +70,17 @@ export interface EditorialRuleResolutionServiceOptions {
     "listRuleSetsByTemplateFamilyAndModule" | "listRulesByRuleSetId"
   >;
 }
+
+const LEGACY_FRONT_MATTER_AUTHOR_LINE_SHADOW_TARGET_BLOCK_KEYS = [
+  "affiliation_line",
+  "corresponding_author_bio",
+] as const;
+const LEGACY_FRONT_MATTER_AUTHOR_LINE_LEGACY_ONLY_SEMANTIC_ROLES = [
+  "author_bio",
+  "funding_statement",
+  "classification_line",
+  "front_matter",
+] as const;
 
 export class EditorialRuleResolutionService {
   private readonly repository: Pick<
@@ -173,22 +203,27 @@ function overlayRules(
   }
 
   const journalByCoverageKey = new Map(
-    journalRules.map((entry) => [entry.coverage_key, entry]),
+    journalRules.map((entry) => [resolveRuleResolutionKey(entry.rule, entry.coverage_key), entry]),
   );
   const resolvedRules: ResolvedEditorialRule[] = [];
   const overrides: EditorialRuleOverrideRecord[] = [];
   const consumedJournalKeys = new Set<string>();
 
   for (const entry of baseRules) {
-    const journalOverride = journalByCoverageKey.get(entry.coverage_key);
+    const resolutionKey = resolveRuleResolutionKey(entry.rule, entry.coverage_key);
+    const journalOverride = journalByCoverageKey.get(resolutionKey);
     if (journalOverride) {
-      const reason = `Journal template override matched coverage key "${entry.coverage_key}".`;
+      const reason = `Journal template override matched ${describeResolutionMatchLabel(entry.coverage_key, resolutionKey)}.`;
       resolvedRules.push({
         ...journalOverride,
         overridden_rule_ids: [
           ...journalOverride.overridden_rule_ids,
           entry.rule.id,
         ],
+        overridden_sources: dedupeActivationSources([
+          ...(journalOverride.overridden_sources ?? []),
+          resolveActivationSource(entry),
+        ]),
         resolution_reason: reason,
       });
       overrides.push({
@@ -196,7 +231,7 @@ function overlayRules(
         overridden_rule_id: entry.rule.id,
         reason,
       });
-      consumedJournalKeys.add(entry.coverage_key);
+      consumedJournalKeys.add(resolutionKey);
       continue;
     }
 
@@ -204,13 +239,17 @@ function overlayRules(
   }
 
   for (const entry of journalRules) {
-    if (consumedJournalKeys.has(entry.coverage_key)) {
+    const resolutionKey = resolveRuleResolutionKey(entry.rule, entry.coverage_key);
+    if (consumedJournalKeys.has(resolutionKey)) {
       continue;
     }
 
     resolvedRules.push({
       ...entry,
-      resolution_reason: `Journal template added coverage key "${entry.coverage_key}".`,
+      resolution_reason: `Journal template added ${describeResolutionMatchLabel(
+        entry.coverage_key,
+        resolutionKey,
+      )}.`,
     });
   }
 
@@ -227,35 +266,49 @@ function normalizeLayerRules(
   resolved_rules: ResolvedEditorialRule[];
   overrides: EditorialRuleOverrideRecord[];
 } {
-  const activeByCoverageKey = new Map<string, ResolvedEditorialRule>();
+  const activeByResolutionKey = new Map<string, ResolvedEditorialRule>();
   const resolvedRules: ResolvedEditorialRule[] = [];
   const overrides: EditorialRuleOverrideRecord[] = [];
 
   for (const rule of rules) {
     const coverageKey = createEditorialRuleCoverageKey(rule);
-    const existing = activeByCoverageKey.get(coverageKey);
+    const resolutionKey = resolveRuleResolutionKey(rule, coverageKey);
+    const existing = activeByResolutionKey.get(resolutionKey);
 
     if (existing) {
       const comparison = compareRuleResolutionCandidates(rule, existing.rule);
       const winningRule = comparison.winner === "current" ? rule : existing.rule;
       const losingRule = comparison.winner === "current" ? existing.rule : rule;
-      const reason = `Same-layer conflict retained the ${comparison.reason} for coverage key "${coverageKey}".`;
+      const reason = `Same-layer conflict retained the ${comparison.reason} for ${describeResolutionMatchLabel(
+        coverageKey,
+        resolutionKey,
+      )}.`;
 
       if (comparison.winner === "current") {
         const replacement: ResolvedEditorialRule = {
           ...createResolvedRule(rule, coverageKey, sourceLayer),
           overridden_rule_ids: [...existing.overridden_rule_ids, existing.rule.id],
+          overridden_sources: dedupeActivationSources([
+            ...(existing.overridden_sources ?? []),
+            resolveActivationSource(existing),
+          ]),
           resolution_reason: reason,
         };
-        activeByCoverageKey.set(coverageKey, replacement);
+        activeByResolutionKey.set(resolutionKey, replacement);
         const existingIndex = resolvedRules.findIndex(
-          (entry) => entry.coverage_key === coverageKey,
+          (entry) =>
+            resolveRuleResolutionKey(entry.rule, entry.coverage_key) ===
+            resolutionKey,
         );
         if (existingIndex >= 0) {
           resolvedRules[existingIndex] = replacement;
         }
       } else {
         existing.overridden_rule_ids = [...existing.overridden_rule_ids, rule.id];
+        existing.overridden_sources = dedupeActivationSources([
+          ...(existing.overridden_sources ?? []),
+          createResolvedRuleActivationSource(sourceLayer, rule.rule_set_id),
+        ]);
       }
 
       overrides.push({
@@ -268,7 +321,7 @@ function normalizeLayerRules(
 
     const resolvedRule = createResolvedRule(rule, coverageKey, sourceLayer);
 
-    activeByCoverageKey.set(coverageKey, resolvedRule);
+    activeByResolutionKey.set(resolutionKey, resolvedRule);
     resolvedRules.push(resolvedRule);
   }
 
@@ -340,16 +393,90 @@ function createResolvedRule(
     coverage_key: coverageKey,
     source_layer: sourceLayer,
     overridden_rule_ids: [],
-    resolution_reason:
-      sourceLayer === "base"
-        ? `Selected base published rule for coverage key "${coverageKey}".`
-        : `Selected journal published rule for coverage key "${coverageKey}".`,
+    resolution_reason: buildSelectedRuleResolutionReason({
+      rule,
+      coverageKey,
+      sourceLayer,
+    }),
     execution_posture: deriveEditorialRuleExecutionPosture({
       rule_object: rule.rule_object,
       execution_mode: rule.execution_mode,
       confidence_policy: rule.confidence_policy,
     }),
+    activation_source: createResolvedRuleActivationSource(
+      sourceLayer,
+      rule.rule_set_id,
+    ),
+    effective_scope: readResolvedRuleEffectiveScope(rule),
+    overridden_sources: [],
   };
+}
+
+function createResolvedRuleActivationSource(
+  sourceLayer: "base" | "journal",
+  ruleSetId: string,
+): ResolvedEditorialRuleActivationSource {
+  return {
+    kind:
+      sourceLayer === "journal"
+        ? "journal_template_rule_set"
+        : "template_family_rule_set",
+    id: ruleSetId,
+  };
+}
+
+function resolveActivationSource(
+  rule: Pick<ResolvedEditorialRule, "activation_source" | "source_layer" | "rule">,
+): ResolvedEditorialRuleActivationSource {
+  return (
+    rule.activation_source ??
+    createResolvedRuleActivationSource(rule.source_layer, rule.rule.rule_set_id)
+  );
+}
+
+function readResolvedRuleEffectiveScope(
+  rule: EditorialRuleRecord,
+): ResolvedEditorialRuleEffectiveScope | undefined {
+  const manuscriptTypes = normalizeStringArray(rule.scope.manuscript_types);
+  const sections = normalizeStringArray(rule.scope.sections);
+  const objectGranularity = normalizeStringArray(readRuleObjectGranularity(rule));
+
+  if (
+    manuscriptTypes.length === 0 &&
+    sections.length === 0 &&
+    objectGranularity.length === 0
+  ) {
+    return undefined;
+  }
+
+  return {
+    ...(manuscriptTypes.length > 0
+      ? { manuscript_types: manuscriptTypes as ManuscriptType[] }
+      : {}),
+    ...(sections.length > 0 ? { sections } : {}),
+    ...(objectGranularity.length > 0
+      ? { object_granularity: objectGranularity }
+      : {}),
+  };
+}
+
+function dedupeActivationSources(
+  values: readonly ResolvedEditorialRuleActivationSource[],
+): ResolvedEditorialRuleActivationSource[] {
+  const seen = new Set<string>();
+  const result: ResolvedEditorialRuleActivationSource[] = [];
+
+  for (const value of values) {
+    const key = `${value.kind}:${value.id}`;
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push(value);
+  }
+
+  return result;
 }
 
 function annotateResolvedRuleConflictKinds(
@@ -471,6 +598,23 @@ export function createEditorialRuleCoverageKey(
   ].join("::");
 }
 
+export function createEditorialRuleComparisonKey(
+  rule: Pick<
+    EditorialRuleRecord,
+    "rule_object" | "selector" | "trigger" | "authoring_payload"
+  >,
+): string | undefined {
+  const legacyFrontMatterBridge = readLegacyFrontMatterBridgeDescriptor(rule);
+  if (legacyFrontMatterBridge) {
+    return legacyFrontMatterBridge.comparison_key;
+  }
+
+  const targetBlockKey = readStructuredTargetBlockKey(rule);
+  return targetBlockKey
+    ? createTargetBlockComparisonKey(targetBlockKey)
+    : undefined;
+}
+
 function stableSerialize(value: unknown): string {
   if (value === null || value === undefined) {
     return String(value);
@@ -490,4 +634,173 @@ function stableSerialize(value: unknown): string {
   return `{${entries
     .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableSerialize(entryValue)}`)
     .join(",")}}`;
+}
+
+function resolveRuleResolutionKey(
+  rule: Pick<
+    EditorialRuleRecord,
+    "rule_object" | "selector" | "trigger" | "authoring_payload"
+  >,
+  coverageKey: string,
+): string {
+  return createEditorialRuleComparisonKey(rule) ?? coverageKey;
+}
+
+function describeResolutionMatchLabel(
+  coverageKey: string,
+  resolutionKey: string,
+): string {
+  if (coverageKey === resolutionKey) {
+    return `coverage key "${coverageKey}"`;
+  }
+
+  return `comparison key "${resolutionKey}" (coverage key "${coverageKey}")`;
+}
+
+function buildSelectedRuleResolutionReason(input: {
+  rule: EditorialRuleRecord;
+  coverageKey: string;
+  sourceLayer: "base" | "journal";
+}): string {
+  const prefix =
+    input.sourceLayer === "base"
+      ? "Selected base published rule"
+      : "Selected journal published rule";
+  const legacyFrontMatterBridge = readLegacyFrontMatterBridgeDescriptor(input.rule);
+  if (!legacyFrontMatterBridge) {
+    return `${prefix} for coverage key "${input.coverageKey}".`;
+  }
+
+  const details = [
+    `${prefix} via legacy front-matter bridge for target block "${legacyFrontMatterBridge.target_block_key}".`,
+  ];
+  if (legacyFrontMatterBridge.shadow_target_block_keys.length > 0) {
+    details.push(
+      `Shared legacy coverage still touches ${legacyFrontMatterBridge.shadow_target_block_keys.join(", ")}.`,
+    );
+  }
+  if (legacyFrontMatterBridge.legacy_only_semantic_roles.length > 0) {
+    details.push(
+      `Remaining legacy-only roles: ${legacyFrontMatterBridge.legacy_only_semantic_roles.join(", ")}.`,
+    );
+  }
+  details.push(`Coverage key "${input.coverageKey}".`);
+  return details.join(" ");
+}
+
+function readLegacyFrontMatterBridgeDescriptor(
+  rule: Pick<
+    EditorialRuleRecord,
+    "rule_object" | "selector" | "trigger" | "authoring_payload"
+  >,
+): {
+  comparison_key: string;
+  target_block_key: string;
+  slot_key?: string;
+  shadow_target_block_keys: string[];
+  legacy_only_semantic_roles: string[];
+} | undefined {
+  const authoringPayload = asRecord(rule.authoring_payload) ?? {};
+  const compileTrace = asRecord(authoringPayload["compile_trace"]);
+  const bridgeKind =
+    readOptionalString(authoringPayload["compatibility_bridge_kind"]) ??
+    readOptionalString(authoringPayload["bridge_kind"]);
+  const packageKind = readOptionalString(compileTrace?.["package_kind"]);
+  const isLegacyFrontMatter =
+    bridgeKind === "legacy_front_matter" || packageKind === "front_matter";
+  if (!isLegacyFrontMatter) {
+    return undefined;
+  }
+
+  const explicitTargetBlockKey = readOptionalString(
+    authoringPayload["target_block_key"],
+  );
+  const explicitSlotKey = readOptionalString(authoringPayload["slot_key"]);
+  const shadowTargetBlockKeys =
+    readStringArray(authoringPayload["bridge_shadow_target_block_keys"]) ??
+    (rule.rule_object === "author_line"
+      ? [...LEGACY_FRONT_MATTER_AUTHOR_LINE_SHADOW_TARGET_BLOCK_KEYS]
+      : []);
+  const legacyOnlySemanticRoles =
+    readStringArray(authoringPayload["legacy_only_semantic_roles"]) ??
+    (rule.rule_object === "author_line"
+      ? [...LEGACY_FRONT_MATTER_AUTHOR_LINE_LEGACY_ONLY_SEMANTIC_ROLES]
+      : []);
+
+  if (explicitTargetBlockKey || explicitSlotKey) {
+    const targetBlockKey =
+      explicitTargetBlockKey ?? explicitSlotKey ?? rule.rule_object;
+    const slotKey = explicitSlotKey ?? undefined;
+    return {
+      comparison_key: createTargetBlockComparisonKey(slotKey ?? targetBlockKey),
+      target_block_key: targetBlockKey,
+      ...(slotKey ? { slot_key: slotKey } : {}),
+      shadow_target_block_keys: shadowTargetBlockKeys,
+      legacy_only_semantic_roles: legacyOnlySemanticRoles,
+    };
+  }
+
+  if (rule.rule_object === "title") {
+    return {
+      comparison_key: createTargetBlockComparisonKey("title"),
+      target_block_key: "title",
+      shadow_target_block_keys: [],
+      legacy_only_semantic_roles: [],
+    };
+  }
+
+  if (rule.rule_object === "author_line") {
+    return {
+      comparison_key: createTargetBlockComparisonKey("author_line"),
+      target_block_key: "author_line",
+      slot_key: "author_line",
+      shadow_target_block_keys: shadowTargetBlockKeys,
+      legacy_only_semantic_roles: legacyOnlySemanticRoles,
+    };
+  }
+
+  return undefined;
+}
+
+function readStructuredTargetBlockKey(
+  rule: Pick<
+    EditorialRuleRecord,
+    "selector" | "authoring_payload"
+  >,
+): string | undefined {
+  const authoringPayload = asRecord(rule.authoring_payload) ?? {};
+  return (
+    readOptionalString(authoringPayload["slot_key"]) ??
+    readOptionalString(authoringPayload["target_block_key"]) ??
+    readOptionalString(rule.selector["slot_key"]) ??
+    readOptionalString(rule.selector["target_block_key"])
+  );
+}
+
+function createTargetBlockComparisonKey(targetBlockKey: string): string {
+  return `target_block::${targetBlockKey}`;
+}
+
+function readOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function readStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const normalized = value
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value != null && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : undefined;
 }

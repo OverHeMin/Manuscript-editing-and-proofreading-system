@@ -3329,3 +3329,199 @@ test("manuscript workbench controller loads execution snapshot details and knowl
   );
 });
 
+test("manuscript workbench controller saves editing slot resolutions and reloads the workspace", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/modules/editing/slot-resolutions"
+      ) {
+        return {
+          status: 200,
+          body: {
+            manuscript_id: "manuscript-slot-1",
+            summary: {
+              observation_status: "reported",
+              target_model_version_no: 2,
+              unresolved_required_count: 0,
+              blocking_slot_keys: [],
+              slots: [
+                {
+                  slot_key: "author_line",
+                  label: "作者署名",
+                  required: true,
+                  enabled: true,
+                  zone: "front_matter",
+                  anchor: "after_title",
+                  completion_gate: "block_on_unresolved",
+                  state: "resolved_manual",
+                  resolution_reason: "已记录人工槽位裁决，并采用指定候选。",
+                  resolved_text: "李四, 王五",
+                  candidate_count: 1,
+                  candidates: [
+                    {
+                      candidate_id: "candidate-author-2",
+                      slot_key: "author_line",
+                      raw_text: "李四, 王五",
+                      normalized_text: "李四, 王五",
+                      source_zone: "front_matter",
+                      source_locator: "body:p:2",
+                      semantic_role: "author_line",
+                      confidence: 0.93,
+                      recommended_action: "auto_place_candidate",
+                    },
+                  ],
+                  manual_resolution: {
+                    slot_key: "author_line",
+                    resolution_kind: "picked_candidate",
+                    selected_candidate_id: "candidate-author-2",
+                  },
+                },
+              ],
+              manual_resolutions: [
+                {
+                  slot_key: "author_line",
+                  resolution_kind: "picked_candidate",
+                  selected_candidate_id: "candidate-author-2",
+                },
+              ],
+            },
+            completion_gate_summary: {
+              observation_status: "reported",
+              verdict: "passed",
+              passed: true,
+              blocker_count: 0,
+              unresolved_required_slots: [],
+              pending_manual_resolution_items: [],
+              high_risk_object_items: [],
+              table_high_risk_items: [],
+              blocking_format_failures: [],
+            },
+          } as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/manuscripts/manuscript-slot-1") {
+        return {
+          status: 200,
+          body: {
+            id: "manuscript-slot-1",
+            title: "Slot manuscript",
+            manuscript_type: "review",
+            status: "processing",
+            created_by: "editor-1",
+            current_editing_asset_id: "asset-edit-slot-1",
+            editing_slot_governance_summary: {
+              observation_status: "reported",
+              target_model_version_no: 2,
+              unresolved_required_count: 0,
+              blocking_slot_keys: [],
+              slots: [
+                {
+                  slot_key: "author_line",
+                  label: "作者署名",
+                  required: true,
+                  enabled: true,
+                  zone: "front_matter",
+                  anchor: "after_title",
+                  completion_gate: "block_on_unresolved",
+                  state: "resolved_manual",
+                  resolution_reason: "已记录人工槽位裁决，并采用指定候选。",
+                  resolved_text: "李四, 王五",
+                  candidate_count: 1,
+                  candidates: [],
+                },
+              ],
+            },
+            editing_completion_gate_summary: {
+              observation_status: "reported",
+              verdict: "passed",
+              passed: true,
+              blocker_count: 0,
+              unresolved_required_slots: [],
+              pending_manual_resolution_items: [],
+              high_risk_object_items: [],
+              table_high_risk_items: [],
+              blocking_format_failures: [],
+            },
+            created_at: "2026-04-24T09:00:00.000Z",
+            updated_at: "2026-04-24T09:05:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/manuscripts/manuscript-slot-1/assets"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "asset-edit-slot-1",
+              manuscript_id: "manuscript-slot-1",
+              asset_type: "edited_docx",
+              status: "active",
+              storage_key: "runs/editing/slot-output.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              source_module: "editing",
+              created_by: "editor-1",
+              version_no: 2,
+              is_current: true,
+              file_name: "slot-output.docx",
+              created_at: "2026-04-24T09:00:00.000Z",
+              updated_at: "2026-04-24T09:05:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const result = await controller.saveEditingSlotResolutionAndLoad({
+    manuscriptId: "manuscript-slot-1",
+    actorRole: "editor",
+    slotKey: "author_line",
+    resolutionKind: "picked_candidate",
+    selectedCandidateId: "candidate-author-2",
+    note: "采用前置区作者行。",
+  });
+
+  assert.equal(result.resolution.summary.unresolved_required_count, 0);
+  assert.equal(result.resolution.completion_gate_summary?.verdict, "passed");
+  assert.equal(
+    result.workspace.manuscript.editing_slot_governance_summary?.slots[0]?.state,
+    "resolved_manual",
+  );
+  assert.equal(
+    result.workspace.manuscript.editing_completion_gate_summary?.verdict,
+    "passed",
+  );
+  assert.equal(result.workspace.currentAsset?.id, "asset-edit-slot-1");
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "POST /api/v1/modules/editing/slot-resolutions",
+      "GET /api/v1/manuscripts/manuscript-slot-1",
+      "GET /api/v1/manuscripts/manuscript-slot-1/assets",
+    ],
+  );
+  assert.deepEqual(requests[0]?.body, {
+    manuscriptId: "manuscript-slot-1",
+    slotKey: "author_line",
+    resolutionKind: "picked_candidate",
+    selectedCandidateId: "candidate-author-2",
+    note: "采用前置区作者行。",
+  });
+});
+

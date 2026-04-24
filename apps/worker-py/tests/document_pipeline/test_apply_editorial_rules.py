@@ -349,6 +349,280 @@ def test_apply_rules_to_docx_applies_safe_table_patches_and_returns_patch_result
     assert "注：P&lt;0.05 vs control" in document_xml
 
 
+def test_apply_rules_to_docx_rebuilds_three_line_tables_and_reports_execution_path(
+    tmp_path,
+):
+    source_path = tmp_path / "source-rebuild.docx"
+    output_path = tmp_path / "output-rebuild.docx"
+    write_advanced_table_docx(source_path)
+
+    result = apply_rules_to_docx(
+        source_path,
+        output_path,
+        [],
+        [],
+        table_auto_apply_mode="editing_safe_apply",
+        table_patches=[
+            {
+                "patch_id": "patch-style",
+                "rule_id": "rule-style",
+                "table_id": "table-1",
+                "patch_type": "apply_three_line_table_style",
+                "anchor": {
+                    "table_id": "table-1",
+                    "semantic_target": "style_profile",
+                },
+                "required_snapshot_capabilities": ["style_profile", "grid_cells"],
+                "execution_path": "controlled_rebuild",
+                "rebuild_payload": {
+                    "table_snapshot": build_three_line_rebuild_snapshot(),
+                },
+                "proposed_after": "three_line_table",
+            }
+        ],
+    )
+
+    assert result["applied_rule_ids"] == []
+    assert result["table_patch_results"] == [
+        {
+            "patch_id": "patch-style",
+            "rule_id": "rule-style",
+            "patch_type": "apply_three_line_table_style",
+            "status": "applied",
+            "reason": "Controlled table rebuild applied.",
+            "required_snapshot_capabilities": ["style_profile", "grid_cells"],
+            "table_id": "table-1",
+            "anchor": {
+                "table_id": "table-1",
+                "semantic_target": "style_profile",
+            },
+            "semantic_target": "style_profile",
+            "execution_path": "controlled_rebuild",
+        }
+    ]
+
+    with zipfile.ZipFile(output_path, "r") as archive:
+        document_xml = archive.read("word/document.xml").decode("utf-8")
+
+    assert "Table 1 " in document_xml
+    assert "Demographic characteristics" in document_xml
+    assert "Item" in document_xml
+    assert "Value" in document_xml
+    assert "Age" in document_xml
+    assert "54.2" in document_xml
+    assert "03C7" in document_xml
+    assert "insideV" in document_xml
+
+
+def build_three_line_rebuild_snapshot() -> dict:
+    def fact(value):
+        return {"availability": "authoritative", "value": value}
+
+    def paragraph_snapshot(
+        paragraph_id: str,
+        text: str,
+        *,
+        alignment: str = "left",
+        italic: bool = False,
+        symbol: dict | None = None,
+    ) -> dict:
+        fragments = [
+            {
+                "id": f"{paragraph_id}-fragment-1",
+                "kind": "text",
+                "text": text if symbol is None else "Note: ",
+                "style": {
+                    "font_family": fact("Times New Roman"),
+                    "font_size_pt": fact(10.5),
+                    "bold": fact(False),
+                    "italic": fact(italic),
+                    "script_position": fact("baseline"),
+                },
+            }
+        ]
+        if symbol is not None:
+            fragments.append(symbol)
+
+        return {
+            "id": paragraph_id,
+            "text": text,
+            "style": {
+                "alignment": fact(alignment),
+                "spacing_before_pt": fact(0),
+                "spacing_after_pt": fact(0),
+                "line_spacing": fact(1),
+                "line_spacing_mode": fact("multiple"),
+                "left_indent_pt": fact(0),
+                "right_indent_pt": fact(0),
+                "first_line_indent_pt": fact(0),
+                "hanging_indent_pt": fact(0),
+            },
+            "fragments": fragments,
+        }
+
+    def cell_style() -> dict:
+        return {
+            "font_family": fact("Times New Roman"),
+            "font_size_pt": fact(10.5),
+            "bold": fact(False),
+            "italic": fact(False),
+            "script_position": fact("baseline"),
+            "alignment": fact("center"),
+            "spacing_before_pt": fact(0),
+            "spacing_after_pt": fact(0),
+            "line_spacing": fact(1),
+            "line_spacing_mode": fact("multiple"),
+            "left_indent_pt": fact(0),
+            "right_indent_pt": fact(0),
+            "first_line_indent_pt": fact(0),
+            "hanging_indent_pt": fact(0),
+            "vertical_alignment": fact("center"),
+        }
+
+    return {
+        "table_id": "table-1",
+        "row_count": 2,
+        "column_count": 2,
+        "profile": {
+            "is_three_line_table": False,
+            "header_depth": 1,
+            "has_stub_column": False,
+            "has_statistical_footnotes": True,
+            "has_unit_markers": False,
+        },
+        "caption_fields": {
+            "text": "Table 1 Demographic characteristics",
+            "label_text": "Table 1",
+            "title_text": "Demographic characteristics",
+            "paragraphs": [
+                {
+                    "id": "caption-paragraph-1",
+                    "text": "Table 1 Demographic characteristics",
+                    "style": paragraph_snapshot(
+                        "caption-paragraph-1",
+                        "Table 1 Demographic characteristics",
+                        alignment="center",
+                    )["style"],
+                    "fragments": [
+                        {
+                            "id": "caption-fragment-1",
+                            "kind": "text",
+                            "text": "Table 1 ",
+                            "style": {
+                                "font_family": fact("Times New Roman"),
+                                "font_size_pt": fact(12),
+                                "bold": fact(True),
+                                "italic": fact(False),
+                                "script_position": fact("baseline"),
+                            },
+                        },
+                        {
+                            "id": "caption-fragment-2",
+                            "kind": "text",
+                            "text": "Demographic characteristics",
+                            "style": {
+                                "font_family": fact("Times New Roman"),
+                                "font_size_pt": fact(12),
+                                "bold": fact(False),
+                                "italic": fact(True),
+                                "script_position": fact("baseline"),
+                            },
+                        },
+                    ],
+                }
+            ],
+        },
+        "note_zone": {
+            "text": "Note: χ2 compared with control",
+            "line_texts": ["Note: χ2 compared with control"],
+            "footnote_ids": ["table-1-footnote-1"],
+            "coordinate": {
+                "table_id": "table-1",
+                "target": "note_zone",
+            },
+            "paragraphs": [
+                paragraph_snapshot(
+                    "note-paragraph-1",
+                    "Note: χ2 compared with control",
+                    symbol={
+                        "id": "note-fragment-2",
+                        "kind": "symbol",
+                        "text": "",
+                        "symbol_font": "Symbol",
+                        "symbol_char": "03C7",
+                        "style": {
+                            "font_family": fact("Symbol"),
+                            "font_size_pt": fact(10.5),
+                            "bold": fact(False),
+                            "italic": fact(False),
+                            "script_position": fact("baseline"),
+                        },
+                    },
+                )
+            ],
+        },
+        "footnote_items": [
+            {
+                "id": "table-1-footnote-1",
+                "text": "Note: χ2 compared with control",
+                "note_kind": "statistical_significance",
+                "marker": "*",
+                "coordinate": {
+                    "table_id": "table-1",
+                    "target": "footnote_item",
+                    "footnote_anchor": "*",
+                },
+            }
+        ],
+        "grid_cells": [
+            {
+                "id": "table-1-grid-1",
+                "text": "Item",
+                "row_index": 0,
+                "column_index": 0,
+                "row_span": 1,
+                "column_span": 1,
+                "inferred_role": "header",
+                "style_evidence": cell_style(),
+                "paragraphs": [paragraph_snapshot("cell-paragraph-1", "Item", alignment="center")],
+            },
+            {
+                "id": "table-1-grid-2",
+                "text": "Value",
+                "row_index": 0,
+                "column_index": 1,
+                "row_span": 1,
+                "column_span": 1,
+                "inferred_role": "header",
+                "style_evidence": cell_style(),
+                "paragraphs": [paragraph_snapshot("cell-paragraph-2", "Value", alignment="center")],
+            },
+            {
+                "id": "table-1-grid-3",
+                "text": "Age",
+                "row_index": 1,
+                "column_index": 0,
+                "row_span": 1,
+                "column_span": 1,
+                "inferred_role": "data",
+                "style_evidence": cell_style(),
+                "paragraphs": [paragraph_snapshot("cell-paragraph-3", "Age", alignment="left")],
+            },
+            {
+                "id": "table-1-grid-4",
+                "text": "54.2",
+                "row_index": 1,
+                "column_index": 1,
+                "row_span": 1,
+                "column_span": 1,
+                "inferred_role": "data",
+                "style_evidence": cell_style(),
+                "paragraphs": [paragraph_snapshot("cell-paragraph-4", "54.2", alignment="right")],
+            },
+        ],
+    }
+
+
 def write_table_docx(output_path: Path) -> None:
     document_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -390,6 +664,41 @@ def write_table_docx(output_path: Path) -> None:
       </w:tr>
     </w:tbl>
     <w:p><w:r><w:t>*P&lt;0.05 vs control</w:t></w:r></w:p>
+  </w:body>
+</w:document>"""
+
+    write_docx(output_path, ["placeholder"])
+    with zipfile.ZipFile(output_path, "r") as archive:
+        entries = {name: archive.read(name) for name in archive.namelist()}
+    entries["word/document.xml"] = document_xml.encode("utf-8")
+    with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, content in entries.items():
+            archive.writestr(name, content)
+
+
+def write_advanced_table_docx(output_path: Path) -> None:
+    document_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:r><w:t>Table 1 Baseline characteristics</w:t></w:r></w:p>
+    <w:tbl>
+      <w:tblPr>
+        <w:tblBorders>
+          <w:top w:val="single"/>
+          <w:bottom w:val="single"/>
+          <w:insideV w:val="single"/>
+        </w:tblBorders>
+      </w:tblPr>
+      <w:tr>
+        <w:tc><w:p><w:r><w:t>Item</w:t></w:r></w:p></w:tc>
+        <w:tc><w:p><w:r><w:t>Value</w:t></w:r></w:p></w:tc>
+      </w:tr>
+      <w:tr>
+        <w:tc><w:p><w:r><w:t>Age</w:t></w:r></w:p></w:tc>
+        <w:tc><w:p><w:r><w:t>54.2</w:t></w:r></w:p></w:tc>
+      </w:tr>
+    </w:tbl>
+    <w:p><w:r><w:t>Note: P&lt;0.05 vs control</w:t></w:r></w:p>
   </w:body>
 </w:document>"""
 

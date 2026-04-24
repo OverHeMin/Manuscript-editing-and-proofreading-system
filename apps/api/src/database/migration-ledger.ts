@@ -94,6 +94,18 @@ const migrationDescriptions = new Map<string, string>([
     "0050_online_execution_regression.sql",
     "Extend evaluation suite types for module, scope, and rule-family online regression.",
   ],
+  [
+    "0052_journal_template_target_model_versioning.sql",
+    "Persist journal template target models and version history for template governance.",
+  ],
+  [
+    "0053_manuscript_editing_slot_governance_summary.sql",
+    "Persist manuscript-level editing slot governance summaries for rerun-stable metadata resolution.",
+  ],
+  [
+    "0054_manuscript_editing_completion_gate_summary.sql",
+    "Persist manuscript-level editing completion gate summaries for truthful editing settlement and rerun replay.",
+  ],
 ]);
 const legacyMigrationChecksums = new Map<string, Set<string>>([
   [

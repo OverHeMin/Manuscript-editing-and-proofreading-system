@@ -1,3 +1,5 @@
+import type { EditingMetadataCandidate, EditingMetadataSourceZone } from "@medical/contracts";
+
 export interface DocumentStructureSection {
   order: number;
   heading: string;
@@ -41,6 +43,7 @@ export interface DocumentStructureTableHeaderCell {
   column_index: number;
   row_span?: number;
   column_span?: number;
+  source_cell_id?: string;
   header_path: string[];
   coordinate: DocumentStructureTableSemanticCoordinate;
 }
@@ -49,6 +52,7 @@ export interface DocumentStructureTableStubColumn {
   id: string;
   text: string;
   row_key: string;
+  source_cell_id?: string;
   coordinate: DocumentStructureTableSemanticCoordinate;
 }
 
@@ -59,6 +63,7 @@ export interface DocumentStructureTableDataCell {
   column_index: number;
   row_key: string;
   column_key: string;
+  source_cell_id?: string;
   coordinate: DocumentStructureTableSemanticCoordinate;
   unit_context?: "header" | "stub" | "footnote";
 }
@@ -75,6 +80,7 @@ export interface DocumentStructureTableFootnoteItem {
   text: string;
   note_kind: "statistical_significance" | "abbreviation" | "general";
   marker?: string;
+  paragraphs?: DocumentStructureTableParagraphSnapshot[];
   coordinate: DocumentStructureTableSemanticCoordinate;
 }
 
@@ -90,16 +96,104 @@ export interface DocumentStructureTableTextAnchor {
   coordinate: DocumentStructureTableSemanticCoordinate;
 }
 
+export type DocumentStructureTableStyleAvailability =
+  | "authoritative"
+  | "mixed"
+  | "unavailable";
+
+export interface DocumentStructureTableStyleFact<
+  T = string | number | boolean,
+> {
+  availability: DocumentStructureTableStyleAvailability;
+  value?: T;
+}
+
+export interface DocumentStructureTableInlineStyleEvidence {
+  font_family: DocumentStructureTableStyleFact<string>;
+  font_size_pt: DocumentStructureTableStyleFact<number>;
+  bold: DocumentStructureTableStyleFact<boolean>;
+  italic: DocumentStructureTableStyleFact<boolean>;
+  script_position: DocumentStructureTableStyleFact<string>;
+}
+
+export interface DocumentStructureTableParagraphStyleEvidence {
+  alignment: DocumentStructureTableStyleFact<string>;
+  spacing_before_pt: DocumentStructureTableStyleFact<number>;
+  spacing_after_pt: DocumentStructureTableStyleFact<number>;
+  line_spacing: DocumentStructureTableStyleFact<number>;
+  line_spacing_mode: DocumentStructureTableStyleFact<string>;
+  left_indent_pt: DocumentStructureTableStyleFact<number>;
+  right_indent_pt: DocumentStructureTableStyleFact<number>;
+  first_line_indent_pt: DocumentStructureTableStyleFact<number>;
+  hanging_indent_pt: DocumentStructureTableStyleFact<number>;
+}
+
+export interface DocumentStructureTableInlineFragment {
+  id: string;
+  kind: "text" | "symbol" | "tab" | "line_break";
+  text: string;
+  style: DocumentStructureTableInlineStyleEvidence;
+  symbol_font?: string;
+  symbol_char?: string;
+}
+
+export interface DocumentStructureTableParagraphSnapshot {
+  id: string;
+  text: string;
+  style: DocumentStructureTableParagraphStyleEvidence;
+  fragments: DocumentStructureTableInlineFragment[];
+}
+
+export interface DocumentStructureTableCellStyleEvidence {
+  font_family: DocumentStructureTableStyleFact<string>;
+  font_size_pt: DocumentStructureTableStyleFact<number>;
+  bold: DocumentStructureTableStyleFact<boolean>;
+  italic: DocumentStructureTableStyleFact<boolean>;
+  script_position: DocumentStructureTableStyleFact<string>;
+  alignment: DocumentStructureTableStyleFact<string>;
+  spacing_before_pt: DocumentStructureTableStyleFact<number>;
+  spacing_after_pt: DocumentStructureTableStyleFact<number>;
+  line_spacing: DocumentStructureTableStyleFact<number>;
+  line_spacing_mode: DocumentStructureTableStyleFact<string>;
+  left_indent_pt: DocumentStructureTableStyleFact<number>;
+  right_indent_pt: DocumentStructureTableStyleFact<number>;
+  first_line_indent_pt: DocumentStructureTableStyleFact<number>;
+  hanging_indent_pt: DocumentStructureTableStyleFact<number>;
+  vertical_alignment: DocumentStructureTableStyleFact<string>;
+}
+
+export interface DocumentStructureTableBorderHints {
+  top?: boolean;
+  bottom?: boolean;
+  left?: boolean;
+  right?: boolean;
+}
+
+export interface DocumentStructureTableGridCell {
+  id: string;
+  text: string;
+  row_index: number;
+  column_index: number;
+  row_span: number;
+  column_span: number;
+  inferred_role: "header" | "stub" | "data" | "unknown";
+  style_evidence: DocumentStructureTableCellStyleEvidence;
+  paragraphs: DocumentStructureTableParagraphSnapshot[];
+  border_hints?: DocumentStructureTableBorderHints;
+}
+
 export interface DocumentStructureTableCaptionFields {
   text: string;
   label_text?: string;
   title_text?: string;
+  paragraphs?: DocumentStructureTableParagraphSnapshot[];
 }
 
 export interface DocumentStructureTableNoteZone {
   text: string;
   line_texts: string[];
   footnote_ids: string[];
+  paragraphs?: DocumentStructureTableParagraphSnapshot[];
   coordinate: DocumentStructureTableSemanticCoordinate;
 }
 
@@ -113,6 +207,8 @@ export interface DocumentStructureTableStyleProfile {
 
 export interface DocumentStructureTableSnapshot {
   table_id: string;
+  row_count?: number;
+  column_count?: number;
   profile: DocumentStructureTableSemanticProfile;
   table_label?: DocumentStructureTableTextAnchor;
   table_title?: DocumentStructureTableTextAnchor;
@@ -125,13 +221,43 @@ export interface DocumentStructureTableSnapshot {
   stub_columns?: DocumentStructureTableStubColumn[];
   unit_markers?: DocumentStructureTableUnitMarker[];
   merged_relations?: DocumentStructureTableMergedRelation[];
+  grid_cells?: DocumentStructureTableGridCell[];
+}
+
+export type DocumentStructureObjectKind =
+  | "image"
+  | "equation"
+  | "embedded_object"
+  | "drawing"
+  | "chart"
+  | "unknown";
+
+export type DocumentStructureObjectContainerKind =
+  | "paragraph"
+  | "table_cell"
+  | "header"
+  | "footer";
+
+export interface DocumentStructureObjectEvidence {
+  object_id: string;
+  object_kind: DocumentStructureObjectKind;
+  container_kind: DocumentStructureObjectContainerKind;
+  source_zone: EditingMetadataSourceZone | "body";
+  source_locator: string;
+  original_tag: string;
+  relationship_id?: string;
+  evidence_text?: string;
+  surrounding_text?: string;
+  intended_target?: string;
 }
 
 export interface DocumentStructureWorkerResult {
   status: "ready" | "partial" | "needs_manual_review";
   parser: "python_docx" | "mammoth" | "other";
   sections: DocumentStructureSection[];
+  metadata_candidates?: EditingMetadataCandidate[];
   tables?: DocumentStructureTableSnapshot[];
+  objects?: DocumentStructureObjectEvidence[];
   warnings: string[];
 }
 
@@ -156,7 +282,9 @@ export interface DocumentStructureSnapshot {
   status: DocumentStructureWorkerResult["status"];
   parser: DocumentStructureWorkerResult["parser"];
   sections: DocumentStructureSection[];
+  metadata_candidates: EditingMetadataCandidate[];
   tables: DocumentStructureTableSnapshot[];
+  objects?: DocumentStructureObjectEvidence[];
   warnings: string[];
 }
 
@@ -183,7 +311,11 @@ export class DocumentStructureService {
       status: result.status,
       parser: result.parser,
       sections: result.sections.map((section) => ({ ...section })),
+      metadata_candidates: (result.metadata_candidates ?? []).map((candidate) =>
+        structuredClone(candidate),
+      ),
       tables: (result.tables ?? []).map(cloneTableSnapshot),
+      objects: (result.objects ?? []).map((entry) => structuredClone(entry)),
       warnings: [...result.warnings],
     };
   }
@@ -194,11 +326,15 @@ function cloneTableSnapshot(
 ): DocumentStructureTableSnapshot {
   return {
     table_id: table.table_id,
+    ...(typeof table.row_count === "number" ? { row_count: table.row_count } : {}),
+    ...(typeof table.column_count === "number"
+      ? { column_count: table.column_count }
+      : {}),
     profile: { ...table.profile },
     ...(table.table_label ? { table_label: cloneTextAnchor(table.table_label) } : {}),
     ...(table.table_title ? { table_title: cloneTextAnchor(table.table_title) } : {}),
     ...(table.caption_fields
-      ? { caption_fields: { ...table.caption_fields } }
+      ? { caption_fields: structuredClone(table.caption_fields) }
       : {}),
     ...(table.note_zone
       ? {
@@ -206,6 +342,9 @@ function cloneTableSnapshot(
             ...table.note_zone,
             line_texts: [...table.note_zone.line_texts],
             footnote_ids: [...table.note_zone.footnote_ids],
+            ...(table.note_zone.paragraphs
+              ? { paragraphs: structuredClone(table.note_zone.paragraphs) }
+              : {}),
             coordinate: cloneCoordinateOrFallback(
               table.note_zone.coordinate,
               table.table_id,
@@ -237,6 +376,7 @@ function cloneTableSnapshot(
     })),
     footnote_items: table.footnote_items.map((item) => ({
       ...item,
+      ...(item.paragraphs ? { paragraphs: structuredClone(item.paragraphs) } : {}),
       coordinate: cloneCoordinate(item.coordinate),
     })),
     stub_columns: table.stub_columns?.map((column) => ({
@@ -251,6 +391,7 @@ function cloneTableSnapshot(
       ...relation,
       target_ids: [...relation.target_ids],
     })),
+    grid_cells: table.grid_cells?.map((cell) => structuredClone(cell)),
   };
 }
 

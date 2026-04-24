@@ -12,6 +12,10 @@ import {
   buildWorkspaceChildProcessEnv,
   isCommandUnavailableError,
 } from "../shared/windows-command-runtime.ts";
+import {
+  normalizeRawDocxBlock,
+  type RawDocxBlockRecord,
+} from "./docx-metadata-hunter.ts";
 
 const EXTRACT_DOCX_STRUCTURE_SCRIPT = path.resolve(
   import.meta.dirname,
@@ -22,14 +26,6 @@ export interface PythonDocxSourceBlockResolverOptions {
   assetRepository: DocumentAssetRepository;
   rootDir: string;
   workerRunner?: (sourcePath: string) => Promise<unknown>;
-}
-
-interface RawDocxBlockRecord {
-  kind: string;
-  text?: string;
-  heading?: string;
-  caption?: string | null;
-  table_index?: number;
 }
 
 export class PythonDocxSourceBlockResolver
@@ -81,18 +77,26 @@ function normalizeBlocks(raw: unknown): EditorialTextBlock[] {
   let currentSection = "front_matter";
 
   for (const entry of blocks) {
-    const block = normalizeRawBlock(entry);
+    const block = normalizeRawDocxBlock(entry);
     if (!block) {
       continue;
     }
 
     const headingText = readBlockHeadingText(block);
     if (headingText) {
-      currentSection = classifyHeadingSectionKey(headingText, readHeadingToken(headingText));
+      const headingSection = classifyHeadingSectionKey(headingText, readHeadingToken(headingText));
+      const blockSection = resolveBlockSection(block, currentSection, headingSection);
+      if (blockSection === headingSection) {
+        currentSection = headingSection;
+      }
       normalized.push({
         text: headingText,
-        section: currentSection,
+        section: blockSection,
         block_kind: "heading",
+        ...(block.source_zone ? { source_zone: block.source_zone } : {}),
+        ...(block.source_locator ? { source_locator: block.source_locator } : {}),
+        ...(block.semantic_role ? { semantic_role: block.semantic_role } : {}),
+        ...(block.confidence != null ? { confidence: block.confidence } : {}),
       });
       continue;
     }
@@ -102,11 +106,16 @@ function normalizeBlocks(raw: unknown): EditorialTextBlock[] {
       if (!text) {
         continue;
       }
+      const blockSection = resolveBlockSection(block, currentSection);
 
       normalized.push({
         text,
-        section: currentSection,
-        block_kind: currentSection === "reference" ? "reference_entry" : "paragraph",
+        section: blockSection,
+        block_kind: blockSection === "reference" ? "reference_entry" : "paragraph",
+        ...(block.source_zone ? { source_zone: block.source_zone } : {}),
+        ...(block.source_locator ? { source_locator: block.source_locator } : {}),
+        ...(block.semantic_role ? { semantic_role: block.semantic_role } : {}),
+        ...(block.confidence != null ? { confidence: block.confidence } : {}),
       });
       continue;
     }
@@ -115,10 +124,15 @@ function normalizeBlocks(raw: unknown): EditorialTextBlock[] {
       const text =
         readOptionalString(block.caption) ??
         `table-${typeof block.table_index === "number" ? block.table_index + 1 : normalized.length + 1}`;
+      const blockSection = resolveBlockSection(block, currentSection);
       normalized.push({
         text,
-        section: currentSection,
+        section: blockSection,
         block_kind: "table",
+        ...(block.source_zone ? { source_zone: block.source_zone } : {}),
+        ...(block.source_locator ? { source_locator: block.source_locator } : {}),
+        ...(block.semantic_role ? { semantic_role: block.semantic_role } : {}),
+        ...(block.confidence != null ? { confidence: block.confidence } : {}),
       });
     }
   }
@@ -126,22 +140,16 @@ function normalizeBlocks(raw: unknown): EditorialTextBlock[] {
   return normalized;
 }
 
-function normalizeRawBlock(value: unknown): RawDocxBlockRecord | undefined {
-  const record = isRecord(value) ? value : undefined;
-  if (!record || typeof record.kind !== "string") {
-    return undefined;
+function resolveBlockSection(
+  block: RawDocxBlockRecord,
+  currentSection: string,
+  fallbackSection = currentSection,
+): string {
+  if (block.source_zone === "header" || block.source_zone === "footer") {
+    return "front_matter";
   }
 
-  return {
-    kind: record.kind,
-    text: readOptionalString(record.text),
-    heading: readOptionalString(record.heading),
-    caption: readOptionalString(record.caption) ?? null,
-    table_index:
-      typeof record.table_index === "number" && Number.isFinite(record.table_index)
-        ? record.table_index
-        : undefined,
-  };
+  return fallbackSection;
 }
 
 function readBlockHeadingText(block: RawDocxBlockRecord): string | undefined {
