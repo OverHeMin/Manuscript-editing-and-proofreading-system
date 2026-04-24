@@ -69,10 +69,14 @@ export function RuntimeBindingQualityPackageEditor(
 function formatQualityPackageLabel(
   record: ManuscriptQualityPackageViewModel,
 ): string {
+  const targetScopes = Array.isArray(record.target_scopes)
+    ? record.target_scopes.join(", ")
+    : "scope unavailable";
+
   return [
     `${record.package_name} v${record.version}`,
     formatQualityPackageKind(record.package_kind),
-    record.target_scopes.join(", "),
+    targetScopes,
     record.status,
   ].join(" / ");
 }

@@ -70,6 +70,39 @@ test("general style package editor renders structured fields for operators", () 
   assert.match(html, /Genre Wording Suspicions/);
 });
 
+test("general style package editor localizes the harness surface copy", () => {
+  const html = renderToStaticMarkup(
+    <GeneralStylePackageEditor
+      surface="harness"
+      manifest={buildGeneralStylePackageManifest({
+        abstractRequiredLabels: "objective, methods, results, conclusion",
+        strongClaims: "prove, guarantee",
+        cautiousClaims: "suggest, may",
+        abstractPosture: "objective, methods, results, conclusion",
+        resultsPosture: "measured, observed, compared",
+        conclusionPosture: "suggest, may, support",
+        genreWordingSuspicions: "news report, experience sharing",
+        sectionExpectationMissingSeverity: "medium",
+        sectionExpectationMissingAction: "suggest_fix",
+        resultConclusionJumpSeverity: "high",
+        resultConclusionJumpAction: "manual_review",
+        toneOverclaimSeverity: "medium",
+        toneOverclaimAction: "suggest_fix",
+        genreWordingSuspicionSeverity: "medium",
+        genreWordingSuspicionAction: "suggest_fix",
+      })}
+      onChange={() => undefined}
+    />,
+  );
+
+  assert.match(html, /结构化风格规则/u);
+  assert.match(html, /摘要必备标签/u);
+  assert.match(html, /措辞过强/u);
+  assert.match(html, /结果\/结论跳跃/u);
+  assert.match(html, /可疑文风词/u);
+  assert.doesNotMatch(html, /Structured Style Rules/u);
+});
+
 test("manuscript quality packages section renders the structured general style editor by default", () => {
   const html = renderToStaticMarkup(
     <ManuscriptQualityPackagesSection
@@ -83,4 +116,22 @@ test("manuscript quality packages section renders the structured general style e
   assert.match(html, /Abstract Required Labels/);
   assert.match(html, /Advanced JSON/);
   assert.match(html, /Create Draft Package Version/);
+});
+
+test("manuscript quality packages section uses Chinese-first copy on the harness surface", () => {
+  const html = renderToStaticMarkup(
+    <ManuscriptQualityPackagesSection
+      packages={[]}
+      isMutating={false}
+      surface="harness"
+      onCreateDraft={async () => undefined}
+      onPublishVersion={async () => undefined}
+    />,
+  );
+
+  assert.match(html, /质量包治理/u);
+  assert.match(html, /质量包清单/u);
+  assert.match(html, /结构化风格规则/u);
+  assert.match(html, /高级 JSON/u);
+  assert.match(html, /创建草稿质量包版本/u);
 });

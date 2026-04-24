@@ -221,6 +221,81 @@ test("agent tooling governance section renders routing governance drafts, groupe
   assert.match(html, /model-fallback-1/);
 });
 
+test("agent tooling governance section hides non-Harness registry editors on the harness surface", () => {
+  const html = renderToStaticMarkup(
+    <AgentToolingGovernanceSection
+      actorRole="admin"
+      controller={{} as AdminGovernanceWorkbenchController}
+      overview={createOverview({
+        templateFamilies: [
+          {
+            id: "family-1",
+            manuscript_type: "review",
+            name: "Review Family",
+            status: "active",
+          },
+        ],
+        selectedTemplateFamilyId: "family-1",
+        modelRegistryEntries: [
+          {
+            id: "model-primary-1",
+            provider: "openai",
+            model_name: "gpt-5.4",
+            model_version: "2026-04-01",
+            allowed_modules: ["editing"],
+            is_prod_allowed: true,
+          },
+        ],
+        qualityPackages: [
+          {
+            id: "quality-package-1",
+            package_name: "Editing Quality",
+            package_kind: "general_style_package",
+            version: 1,
+            status: "published",
+            target_scopes: ["general_proofreading"],
+            manifest: {},
+          },
+        ],
+        runtimeBindings: [
+          {
+            id: "binding-1",
+            module: "editing",
+            manuscript_type: "review",
+            template_family_id: "family-1",
+            runtime_id: "runtime-1",
+            sandbox_profile_id: "sandbox-1",
+            agent_profile_id: "agent-profile-1",
+            tool_permission_policy_id: "policy-1",
+            prompt_template_id: "prompt-1",
+            skill_package_ids: [],
+            quality_package_version_ids: ["quality-package-1"],
+            execution_profile_id: "profile-1",
+            verification_check_profile_ids: [],
+            evaluation_suite_ids: [],
+            release_check_profile_id: undefined,
+            status: "active",
+            version: 1,
+          },
+        ],
+      })}
+      isMutating={false}
+      surface="harness"
+      runMutation={async () => {}}
+      onOverviewChange={() => {}}
+    />,
+  );
+
+  assert.match(html, /路由策略草稿/u);
+  assert.match(html, /运行绑定治理/u);
+  assert.match(html, /最近代理执行/u);
+  assert.doesNotMatch(html, /Tool Gateway Registry/u);
+  assert.doesNotMatch(html, /Sandbox Profiles/u);
+  assert.doesNotMatch(html, /Agent Profiles/u);
+  assert.doesNotMatch(html, /Agent Runtimes/u);
+  assert.doesNotMatch(html, /Tool Permission Policies/u);
+});
+
 function createOverview(
   overrides: Partial<AdminGovernanceOverview> = {},
 ): AdminGovernanceOverview {

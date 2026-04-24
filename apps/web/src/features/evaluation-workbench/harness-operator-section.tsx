@@ -18,9 +18,11 @@ import type {
   ResolveExecutionBundlePreviewInput,
 } from "../execution-governance/index.ts";
 import type {
+  EvaluationSuiteViewModel,
   EvaluationRunViewModel,
   FrozenExperimentBindingInput,
 } from "../verification-ops/index.ts";
+import { HarnessResizableSplitPane } from "./harness-resizable-split-pane.tsx";
 
 if (typeof document !== "undefined") {
   void import("../admin-governance/admin-governance-workbench.css");
@@ -38,12 +40,27 @@ interface HarnessScopeSelection {
   manualReviewPolicyId: string;
 }
 
+export interface HarnessOperatorWorkspaceSnapshot {
+  overview: AdminGovernanceOverview | null;
+  scope: AdminHarnessScopeViewModel | null;
+  preview: HarnessEnvironmentPreviewViewModel | null;
+  latestRun: EvaluationRunViewModel | null;
+  statusMessage: string | null;
+  errorMessage: string | null;
+  isLoading: boolean;
+  isMutating: boolean;
+}
+
 export interface HarnessOperatorSectionProps {
   actorRole?: AuthRole;
   harnessController?: AdminGovernanceWorkbenchController;
   initialHarnessOverview?: AdminGovernanceOverview | null;
   initialHarnessScope?: AdminHarnessScopeViewModel | null;
   initialHarnessPreview?: HarnessEnvironmentPreviewViewModel | null;
+  reloadSignal?: number;
+  layout?: "stack" | "split";
+  showScopeSummary?: boolean;
+  onStateChange?: (snapshot: HarnessOperatorWorkspaceSnapshot) => void;
 }
 
 export function HarnessOperatorSection({
@@ -52,6 +69,10 @@ export function HarnessOperatorSection({
   initialHarnessOverview = null,
   initialHarnessScope = null,
   initialHarnessPreview = null,
+  reloadSignal = 0,
+  layout = "stack",
+  showScopeSummary = true,
+  onStateChange,
 }: HarnessOperatorSectionProps) {
   const [overview, setOverview] = useState<AdminGovernanceOverview | null>(initialHarnessOverview);
   const [scope, setScope] = useState<AdminHarnessScopeViewModel | null>(initialHarnessScope);
@@ -73,6 +94,69 @@ export function HarnessOperatorSection({
   const [selectedSuiteId, setSelectedSuiteId] = useState<string>(
     initialHarnessOverview?.evaluationSuites[0]?.id ?? "",
   );
+
+  useEffect(() => {
+    if (reloadSignal === 0) {
+      return;
+    }
+
+    let disposed = false;
+
+    async function refreshHarnessWorkspace() {
+      setIsLoading(true);
+      setPreview(null);
+      setErrorMessage(null);
+      setStatusMessage(null);
+
+      try {
+        const nextOverview = await harnessController.loadOverview();
+        if (disposed) {
+          return;
+        }
+
+        const nextScopeKey = activeScopeKey ?? resolveDefaultScopeKey(nextOverview);
+        const nextScopeProfile = resolveScopeProfile(nextOverview, nextScopeKey);
+
+        setOverview(nextOverview);
+        setActiveScopeKey(nextScopeKey);
+        setSelectedSuiteId((current) =>
+          current && nextOverview.evaluationSuites.some((suite) => suite.id === current)
+            ? current
+            : nextOverview.evaluationSuites[0]?.id ?? "",
+        );
+
+        if (nextScopeProfile != null) {
+          const nextScope = await harnessController.loadHarnessScope({
+            module: nextScopeProfile.module,
+            manuscriptType: nextScopeProfile.manuscript_type,
+            templateFamilyId: nextScopeProfile.template_family_id,
+          });
+          if (disposed) {
+            return;
+          }
+
+          setScope(nextScope);
+          setSelection(resolveSelectionFromScope(nextScope));
+        }
+
+        setLatestRun(null);
+        setIsLoading(false);
+      } catch (error) {
+        if (disposed) {
+          return;
+        }
+
+        setErrorMessage(toErrorMessage(error));
+        setIsLoading(false);
+      }
+    }
+
+    void refreshHarnessWorkspace();
+
+    return () => {
+      disposed = true;
+    };
+  }, [reloadSignal, harnessController]);
 
   useEffect(() => {
     if (initialHarnessOverview != null) {
@@ -129,9 +213,18 @@ export function HarnessOperatorSection({
     () => filterEvaluationSuitesForScope(overview, scopeProfile),
     [overview, scopeProfile],
   );
+  const selectedEvaluationSuite = useMemo(
+    () =>
+      scopedEvaluationSuites.find((suite) => suite.id === selectedSuiteId) ?? null,
+    [scopedEvaluationSuites, selectedSuiteId],
+  );
   const routingVersions = useMemo(
     () => filterRoutingVersionsForScope(overview, scopeProfile),
     [overview, scopeProfile],
+  );
+  const launchReadiness = useMemo(
+    () => resolveHarnessLaunchReadiness(preview, selectedEvaluationSuite),
+    [preview, selectedEvaluationSuite],
   );
 
   useEffect(() => {
@@ -186,6 +279,29 @@ export function HarnessOperatorSection({
     setSelectedSuiteId(scopedEvaluationSuites[0]?.id ?? "");
   }, [scopedEvaluationSuites, selectedSuiteId]);
 
+  useEffect(() => {
+    onStateChange?.({
+      overview,
+      scope,
+      preview,
+      latestRun,
+      statusMessage,
+      errorMessage,
+      isLoading,
+      isMutating,
+    });
+  }, [
+    errorMessage,
+    isLoading,
+    isMutating,
+    latestRun,
+    onStateChange,
+    overview,
+    preview,
+    scope,
+    statusMessage,
+  ]);
+
   function handleModuleChange(nextModule: TemplateModule) {
     const nextManuscriptTypes = resolveManuscriptTypesForModule(overview, nextModule);
     const preferredManuscriptType =
@@ -194,7 +310,7 @@ export function HarnessOperatorSection({
         : nextManuscriptTypes[0] ?? null;
 
     if (preferredManuscriptType == null) {
-      setErrorMessage("No Harness scope is configured for the selected module.");
+      setErrorMessage("当前模块还没有配置 Harness 范围。");
       return;
     }
 
@@ -204,7 +320,7 @@ export function HarnessOperatorSection({
   function handleManuscriptTypeChange(nextManuscriptType: ManuscriptType) {
     const activeModule = scopeProfile?.module ?? overview?.executionProfiles[0]?.module ?? null;
     if (activeModule == null) {
-      setErrorMessage("No Harness scope is configured yet.");
+      setErrorMessage("当前还没有可用的 Harness 范围。");
       return;
     }
 
@@ -224,7 +340,7 @@ export function HarnessOperatorSection({
       preferredTemplateFamilyId: scopeProfile?.template_family_id ?? null,
     });
     if (nextProfile == null) {
-      setErrorMessage("No Harness scope is configured for the selected module and manuscript type.");
+      setErrorMessage("当前模块和稿件类型组合还没有配置 Harness 范围。");
       return;
     }
 
@@ -248,7 +364,7 @@ export function HarnessOperatorSection({
         buildPreviewInput(scopeProfile, selection),
       );
       setPreview(nextPreview);
-      setStatusMessage("Candidate environment preview refreshed.");
+      setStatusMessage("候选环境预览已刷新。");
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -258,6 +374,12 @@ export function HarnessOperatorSection({
 
   async function handleLaunch() {
     if (preview == null || selectedSuiteId.trim().length === 0) {
+      return;
+    }
+
+    if (!launchReadiness.canLaunch) {
+      setStatusMessage(null);
+      setErrorMessage(launchReadiness.guidance);
       return;
     }
 
@@ -275,9 +397,9 @@ export function HarnessOperatorSection({
           preview.candidate_environment.runtime_binding.release_check_profile_id,
       });
       setLatestRun(createdRun);
-      setStatusMessage(`Created candidate run ${createdRun.id}.`);
+      setStatusMessage(`已创建候选验证运行 ${createdRun.id}。`);
     } catch (error) {
-      setErrorMessage(toErrorMessage(error));
+      setErrorMessage(toHarnessLaunchErrorMessage(error));
     } finally {
       setIsMutating(false);
     }
@@ -313,7 +435,7 @@ export function HarnessOperatorSection({
       setScope(nextScope);
       setSelection(resolveSelectionFromScope(nextScope));
       setPreview(null);
-      setStatusMessage("Candidate environment activated for the current Harness scope.");
+      setStatusMessage("当前 Harness 范围已激活候选环境。");
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -346,7 +468,7 @@ export function HarnessOperatorSection({
       setScope(nextScope);
       setSelection(resolveSelectionFromScope(nextScope));
       setPreview(null);
-      setStatusMessage("Harness scope rolled back to the current active environment.");
+      setStatusMessage("当前 Harness 范围已回滚到现行生效环境。");
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -358,11 +480,11 @@ export function HarnessOperatorSection({
     return (
       <article className="evaluation-workbench-panel">
         <div className="evaluation-workbench-panel-header">
-          <h3>Harness Control Plane</h3>
-          <span>Loading</span>
+          <h3>Harness 控制区</h3>
+          <span>加载中</span>
         </div>
         <p className="evaluation-workbench-empty">
-          Loading governed scope, runtime bindings, and candidate controls...
+          正在加载治理范围、运行绑定和候选控制项...
         </p>
       </article>
     );
@@ -373,63 +495,130 @@ export function HarnessOperatorSection({
       {statusMessage ? <p className="evaluation-workbench-status">{statusMessage}</p> : null}
       {errorMessage ? <p className="evaluation-workbench-error">{errorMessage}</p> : null}
 
-      <article className="evaluation-workbench-panel evaluation-workbench-operator-summary">
-        <div className="evaluation-workbench-panel-header">
-          <h3>Harness Control Plane</h3>
-          <span>Scope boundary</span>
-        </div>
-        <div className="evaluation-workbench-history-compare">
-          <span>Module: {scopeProfile?.module ?? "unresolved"}</span>
-          <span>Manuscript Type: {scopeProfile?.manuscript_type ?? "unresolved"}</span>
-          <span>
-            Template Family:{" "}
-            {scopeProfile == null
-              ? "unresolved"
-              : activeTemplateFamily
-                ? `${activeTemplateFamily.name} (${activeTemplateFamily.id})`
-                : scopeProfile.template_family_id}
-          </span>
-        </div>
-      </article>
+      {showScopeSummary ? (
+        <article className="evaluation-workbench-panel evaluation-workbench-operator-summary">
+          <div className="evaluation-workbench-panel-header">
+            <h3>Harness 控制范围</h3>
+            <span>当前边界</span>
+          </div>
+          <div className="evaluation-workbench-history-compare">
+            <span>模块：{scopeProfile?.module ?? "未解析"}</span>
+            <span>
+              稿件类型：
+              {scopeProfile?.manuscript_type ?? "未解析"}
+            </span>
+            <span>
+              模板族：
+              {scopeProfile == null
+                ? "未解析"
+                : activeTemplateFamily
+                  ? `${activeTemplateFamily.name} (${activeTemplateFamily.id})`
+                  : scopeProfile.template_family_id}
+            </span>
+          </div>
+        </article>
+      ) : null}
 
-      <HarnessEnvironmentEditor
-        module={scopeProfile?.module ?? "editing"}
-        manuscriptType={scopeProfile?.manuscript_type ?? "clinical_study"}
-        availableManuscriptTypes={availableManuscriptTypes}
-        templateFamilyName={activeTemplateFamily?.name ?? null}
-        templateFamilyId={scopeProfile?.template_family_id ?? null}
-        activeScope={scope}
-        preview={preview}
-        qualityPackages={overview?.qualityPackages ?? []}
-        executionProfiles={scopedExecutionProfiles}
-        runtimeBindings={scopedRuntimeBindings}
-        routingVersions={routingVersions}
-        selection={selection}
-        onModuleChange={handleModuleChange}
-        onManuscriptTypeChange={handleManuscriptTypeChange}
-        onSelectionChange={handleSelectionChange}
-        onPreview={() => void handlePreview()}
-        isMutating={isMutating}
-      />
+      {layout === "split" ? (
+        <HarnessResizableSplitPane
+          direction="horizontal"
+          initialRatio={0.56}
+          minRatio={0.34}
+          maxRatio={0.72}
+          className="evaluation-workbench-operator-split"
+          primary={
+            <HarnessEnvironmentEditor
+              module={scopeProfile?.module ?? "editing"}
+              manuscriptType={scopeProfile?.manuscript_type ?? "clinical_study"}
+              availableManuscriptTypes={availableManuscriptTypes}
+              templateFamilyName={activeTemplateFamily?.name ?? null}
+              templateFamilyId={scopeProfile?.template_family_id ?? null}
+              activeScope={scope}
+              preview={preview}
+              qualityPackages={overview?.qualityPackages ?? []}
+              executionProfiles={scopedExecutionProfiles}
+              runtimeBindings={scopedRuntimeBindings}
+              routingVersions={routingVersions}
+              selection={selection}
+              onModuleChange={handleModuleChange}
+              onManuscriptTypeChange={handleManuscriptTypeChange}
+              onSelectionChange={handleSelectionChange}
+              onPreview={() => void handlePreview()}
+              isMutating={isMutating}
+            />
+          }
+          secondary={
+            <div className="evaluation-workbench-operator-actions">
+              <HarnessQualityLab
+                evaluationSuites={scopedEvaluationSuites}
+                selectedSuiteId={selectedSuiteId}
+                selectedSuite={selectedEvaluationSuite}
+                preview={preview}
+                latestRun={latestRun}
+                canLaunch={launchReadiness.canLaunch}
+                launchGuidance={launchReadiness.guidance}
+                onSuiteChange={setSelectedSuiteId}
+                onLaunch={() => void handleLaunch()}
+                isMutating={isMutating}
+              />
 
-      <HarnessQualityLab
-        evaluationSuites={scopedEvaluationSuites}
-        selectedSuiteId={selectedSuiteId}
-        preview={preview}
-        latestRun={latestRun}
-        onSuiteChange={setSelectedSuiteId}
-        onLaunch={() => void handleLaunch()}
-        isMutating={isMutating}
-      />
+              <HarnessActivationGate
+                preview={preview}
+                reason={operatorReason}
+                onReasonChange={setOperatorReason}
+                onActivate={() => void handleActivate()}
+                onRollback={() => void handleRollback()}
+                isMutating={isMutating}
+              />
+            </div>
+          }
+          separatorLabel="调整环境编辑与操作区宽度"
+        />
+      ) : (
+        <>
+          <HarnessEnvironmentEditor
+            module={scopeProfile?.module ?? "editing"}
+            manuscriptType={scopeProfile?.manuscript_type ?? "clinical_study"}
+            availableManuscriptTypes={availableManuscriptTypes}
+            templateFamilyName={activeTemplateFamily?.name ?? null}
+            templateFamilyId={scopeProfile?.template_family_id ?? null}
+            activeScope={scope}
+            preview={preview}
+            qualityPackages={overview?.qualityPackages ?? []}
+            executionProfiles={scopedExecutionProfiles}
+            runtimeBindings={scopedRuntimeBindings}
+            routingVersions={routingVersions}
+            selection={selection}
+            onModuleChange={handleModuleChange}
+            onManuscriptTypeChange={handleManuscriptTypeChange}
+            onSelectionChange={handleSelectionChange}
+            onPreview={() => void handlePreview()}
+            isMutating={isMutating}
+          />
 
-      <HarnessActivationGate
-        preview={preview}
-        reason={operatorReason}
-        onReasonChange={setOperatorReason}
-        onActivate={() => void handleActivate()}
-        onRollback={() => void handleRollback()}
-        isMutating={isMutating}
-      />
+          <HarnessQualityLab
+            evaluationSuites={scopedEvaluationSuites}
+            selectedSuiteId={selectedSuiteId}
+            selectedSuite={selectedEvaluationSuite}
+            preview={preview}
+            latestRun={latestRun}
+            canLaunch={launchReadiness.canLaunch}
+            launchGuidance={launchReadiness.guidance}
+            onSuiteChange={setSelectedSuiteId}
+            onLaunch={() => void handleLaunch()}
+            isMutating={isMutating}
+          />
+
+          <HarnessActivationGate
+            preview={preview}
+            reason={operatorReason}
+            onReasonChange={setOperatorReason}
+            onActivate={() => void handleActivate()}
+            onRollback={() => void handleRollback()}
+            isMutating={isMutating}
+          />
+        </>
+      )}
     </section>
   );
 }
@@ -650,6 +839,139 @@ function buildFrozenBinding(
   };
 }
 
+function resolveHarnessLaunchReadiness(
+  preview: HarnessEnvironmentPreviewViewModel | null,
+  suite: EvaluationSuiteViewModel | null,
+): {
+  canLaunch: boolean;
+  guidance: string | null;
+} {
+  if (suite == null) {
+    return {
+      canLaunch: false,
+      guidance: "请先选择评测套件。",
+    };
+  }
+
+  if (preview == null) {
+    return {
+      canLaunch: false,
+      guidance: "请先预览候选环境。",
+    };
+  }
+
+  const primaryDiffCount = countPrimaryBindingDiffs(
+    buildFrozenBinding(preview.active_environment, "baseline"),
+    buildFrozenBinding(preview.candidate_environment, "candidate"),
+  );
+
+  if (suite.supports_ab_comparison) {
+    if (primaryDiffCount === 1) {
+      return {
+        canLaunch: true,
+        guidance: null,
+      };
+    }
+
+    if (primaryDiffCount === 0) {
+      return {
+        canLaunch: false,
+        guidance: "当前候选环境与生效环境没有主差异，所选评测套件不能发起 A/B 验证。",
+      };
+    }
+
+    return {
+      canLaunch: false,
+      guidance: `当前候选环境与生效环境存在 ${primaryDiffCount} 处主差异，所选评测套件要求恰好 1 处主差异。`,
+    };
+  }
+
+  if (primaryDiffCount > 0) {
+    return {
+      canLaunch: false,
+      guidance: "所选评测套件不支持 A/B 对照，请先清空候选环境差异。",
+    };
+  }
+
+  return {
+    canLaunch: true,
+    guidance: null,
+  };
+}
+
+function countPrimaryBindingDiffs(
+  baselineBinding: FrozenExperimentBindingInput,
+  candidateBinding: FrozenExperimentBindingInput,
+): number {
+  let diffCount = 0;
+
+  if (baselineBinding.executionProfileId !== candidateBinding.executionProfileId) {
+    diffCount += 1;
+  }
+  if (baselineBinding.runtimeBindingId !== candidateBinding.runtimeBindingId) {
+    diffCount += 1;
+  }
+  if (
+    baselineBinding.modelRoutingPolicyVersionId !==
+    candidateBinding.modelRoutingPolicyVersionId
+  ) {
+    diffCount += 1;
+  }
+  if (baselineBinding.retrievalPresetId !== candidateBinding.retrievalPresetId) {
+    diffCount += 1;
+  }
+  if (baselineBinding.manualReviewPolicyId !== candidateBinding.manualReviewPolicyId) {
+    diffCount += 1;
+  }
+  if (baselineBinding.modelId !== candidateBinding.modelId) {
+    diffCount += 1;
+  }
+  if (baselineBinding.runtimeId !== candidateBinding.runtimeId) {
+    diffCount += 1;
+  }
+  if (baselineBinding.promptTemplateId !== candidateBinding.promptTemplateId) {
+    diffCount += 1;
+  }
+  if (!sameOrderedIds(baselineBinding.skillPackageIds, candidateBinding.skillPackageIds)) {
+    diffCount += 1;
+  }
+  if (
+    !sameOrderedIds(
+      baselineBinding.qualityPackageVersionIds ?? [],
+      candidateBinding.qualityPackageVersionIds ?? [],
+    )
+  ) {
+    diffCount += 1;
+  }
+  if (baselineBinding.moduleTemplateId !== candidateBinding.moduleTemplateId) {
+    diffCount += 1;
+  }
+
+  return diffCount;
+}
+
+function sameOrderedIds(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((value, index) => value === right[index]);
+}
+
+function toHarnessLaunchErrorMessage(error: unknown) {
+  const message = toErrorMessage(error);
+
+  if (message.includes("requires exactly one primary A/B difference")) {
+    return "所选评测套件要求候选与基线恰好存在 1 处主差异，请先调整候选环境后再发起验证。";
+  }
+
+  if (message.includes("does not allow A/B comparisons")) {
+    return "所选评测套件不支持 A/B 对照，请先清空候选环境差异。";
+  }
+
+  return message;
+}
+
 function toErrorMessage(error: unknown) {
   if (error instanceof BrowserHttpClientError) {
     return error.message;
@@ -659,5 +981,5 @@ function toErrorMessage(error: unknown) {
     return error.message;
   }
 
-  return "Unable to update the Harness control plane right now.";
+  return "当前无法更新 Harness 控制区。";
 }
