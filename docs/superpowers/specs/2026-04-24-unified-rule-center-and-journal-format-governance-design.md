@@ -33,7 +33,7 @@ The following decisions are locked:
 - rule center must serve `screening`, `proofreading`, `editing`, and `knowledge library`
 - editing must only normalize format and must not change article meaning, data, or medical conclusions
 - table governance must support both rule intake and runtime manuscript checking
-- the preferred direction is a heavy clipboard intake flow for Word/WPS tables plus DOCX runtime truth
+- the preferred direction is an exact-capture clipboard intake flow for Word/WPS tables plus DOCX runtime truth
 - knowledge library must follow the same deterministic evidence-first approach and must not let AI guess freely
 - image-based replacement of symbols such as `χ²` is treated as an object-type problem, not a normal text-style case
 - binding buttons and runtime binding effectiveness must be treated as first-class design scope, not deferred cleanup
@@ -55,7 +55,7 @@ The repository already contains meaningful governed pieces, but they are split a
 - knowledge bindings exist as types, but the main knowledge UI still relies on raw text entry instead of real selection controls
 - runtime knowledge selection still mostly treats bindings as flattened template ids instead of preserving binding kind semantics
 - current “general package / medical package” UX is mixed with content-module concepts and is not yet clearly aligned with the real runtime package model the user expects
-- table intake currently keeps structural text well enough for semantic aid, but does not preserve rich Word formatting detail
+- table intake currently does not yet preserve the full rich Word formatting detail required by the approved product direction
 
 The result is a false sense of governance:
 
@@ -97,6 +97,17 @@ If the UI shows that a rule or knowledge item is bound to a journal template, pa
 
 Editing gets the strongest guardrails because bad automatic formatting can create disaster-level output. If a rule even slightly risks changing content, it must degrade to inspect-only or explicit confirmation.
 
+### 6. Supported-path exactness, not best effort
+
+For the formally supported table-intake path, the requirement is exact capture of key formatting facts, not approximate capture.
+
+That means:
+
+- the supported intake path must be explicitly narrowed
+- key style fields must be fully reconstructed before rule or knowledge drafting can proceed
+- if key formatting facts are missing, the intake must fail closed
+- AI must not invent missing formatting facts
+
 ## Scope
 
 ### In Scope
@@ -104,7 +115,7 @@ Editing gets the strongest guardrails because bad automatic formatting can creat
 - redesign rule center around governed rule intake, ledger, review, and runtime effect
 - define the role boundary between journal templates, knowledge library, and rule center
 - add deterministic evidence capture for text, tables, visual symbols, and a future-phase equation-object extension
-- add a heavy Word/WPS clipboard intake design for table evidence
+- add an exact-capture Word/WPS clipboard intake design for table evidence
 - align runtime manuscript checking to the same evidence model through DOCX parsing
 - extend the same governed model across screening, proofreading, and editing
 - redesign bindings so journal-template, package, and template-family scope are all real UI and real runtime inputs
@@ -251,8 +262,8 @@ It should capture:
 - statistical footnotes
 - top, header, bottom, and vertical border profile
 - alignment profile
-- cell-level and run-level style information where available
-- font, italic, bold, superscript, and subscript signals where available
+- cell-level and run-level style information for supported intake documents
+- font, italic, bold, superscript, and subscript signals for supported intake documents
 
 ### 3.3 Visual symbol snapshot
 
@@ -281,9 +292,10 @@ It is not used to silently bless image-based symbol substitution as valid text.
 
 The approved direction is not “simple paste plus AI guess”. It is:
 
-- heavy clipboard capture for Word/WPS table intake
+- exact-capture clipboard intake for Word/WPS table intake
 - deterministic parsing before AI drafting
 - DOCX-based truth checking at manuscript runtime
+- fail-closed behavior whenever critical formatting facts cannot be fully reconstructed
 
 ### 4.2 Intake behavior
 
@@ -294,6 +306,7 @@ The rule-intake and knowledge-intake table surface should become a dedicated ric
 - reads `rtf` when the browser exposes it
 - reconstructs table structure deterministically
 - extracts style hints before any AI step
+- blocks formal rule or runtime-eligible knowledge publication when key style facts are incomplete
 
 The first supported primary environment should be explicitly narrowed to:
 
@@ -301,11 +314,11 @@ The first supported primary environment should be explicitly narrowed to:
 - Chrome or Edge
 - Word or WPS to browser paste
 
-This is preferable to pretending the feature is equally reliable everywhere.
+Inside this supported path, the product requirement is exact capture of the approved key formatting fields. Outside this path, the feature may fall back to non-authoritative evidence intake, but it must not pretend that the capture is exact.
 
 ### 4.3 Runtime truth path
 
-Manuscript runtime checking should continue to trust parsed DOCX structure and style more than clipboard intake. Intake solves authoring efficiency. DOCX parsing solves governed runtime truth.
+Manuscript runtime checking should continue to trust parsed DOCX structure and style more than clipboard intake. Intake solves authoritative rule and knowledge authoring inside the supported path. DOCX parsing solves governed runtime truth.
 
 ## 5. Image-As-Symbol Handling
 
@@ -465,6 +478,12 @@ A rule cannot publish unless it has:
 - execution posture
 - auto-apply permission level
 
+For table-format rules authored from clipboard evidence, publication also requires:
+
+- complete key-format capture for the supported intake path
+- no missing mandatory style fields
+- no AI-filled formatting placeholders
+
 ### 8.2 Execution posture
 
 At minimum:
@@ -503,6 +522,8 @@ For journal-format work, knowledge should be able to include:
 - sample visual-symbol evidence
 - correct and incorrect formatting pairs
 - journal-specific examples for references, captions, notes, and typography
+
+For runtime-eligible table-format knowledge authored from clipboard evidence, incomplete key-format extraction must block approval.
 
 ## 10. Module-Specific Runtime Behavior
 
@@ -601,7 +622,8 @@ This design is not complete unless the following end-to-end checks are part of i
 ### 12.3 Table-governance checks
 
 - paste a Word/WPS table into rule intake and verify structured extraction appears before AI drafting
-- confirm that critical fields such as caption position, border profile, and italic markers are inspectable
+- confirm that critical fields such as caption position, border profile, italic markers, and run-level style facts are fully inspectable
+- verify that missing key formatting facts cause intake failure rather than guessed completion
 - run the same journal rule on a manuscript DOCX and verify the runtime hit uses the same underlying snapshot vocabulary
 
 ### 12.4 Image-symbol checks
