@@ -55,6 +55,12 @@ export interface EditorialTextReplacement {
   reason: string;
 }
 
+export interface SkippedAiReplacement {
+  replacementId: string;
+  reason: string;
+  targetText?: string;
+}
+
 export interface DeterministicFormatExecutionResult {
   blocks: EditorialTextBlock[];
   appliedRuleIds: string[];
@@ -79,6 +85,7 @@ export interface DeterministicDocxTransformResult {
   tableInspectionFindings: TableRuleInspectionFinding[];
   tablePatchPlans: TableDocxPatchPlan[];
   tablePatchResults: TableDocxPatchResult[];
+  skippedAiReplacements: SkippedAiReplacement[];
 }
 
 export interface GovernedKnowledgeSelectionInput {

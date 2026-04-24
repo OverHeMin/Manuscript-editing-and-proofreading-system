@@ -204,6 +204,7 @@ import {
   KnowledgeSemanticLayerNotFoundError,
   KnowledgeSemanticLayerService,
   KnowledgeRevisionNotFoundError,
+  KnowledgeRevisionReviewGateError,
   KnowledgeService,
   KnowledgeStatusTransitionError,
   KnowledgeUploadNotFoundError,
@@ -2704,6 +2705,13 @@ function seedDemoWorkbenchData(input: {
     name: "Seeded Clinical Study Family",
     status: "active",
   });
+  void input.templateFamilyRepository.saveJournalTemplateProfile({
+    id: "journal-template-seeded-1",
+    template_family_id: "family-seeded-1",
+    journal_key: "seeded-clinical-journal",
+    journal_name: "Seeded Clinical Journal Overlay",
+    status: "active",
+  });
 
   void input.moduleTemplateRepository.save({
     id: "template-screening-1",
@@ -4810,7 +4818,6 @@ async function handleRoute(
       });
     }
     case "manuscript-quality-package-list": {
-      await requirePermission(req, runtime, "permissions.manage");
       const requestUrl = new URL(req.url ?? "/", "http://localhost");
       const input: NonNullable<
         Parameters<typeof runtime.manuscriptQualityPackageApi.listPackageVersions>[0]
@@ -4827,6 +4834,21 @@ async function handleRoute(
       const status = coalesceOptionalString(
         requestUrl.searchParams.get("status") ?? undefined,
       );
+
+      if (status === "published") {
+        const session = await runtime.authRuntime.requireSession(req);
+        const canReadPublishedPackages =
+          runtime.permissionGuard.can(session.user.role, "permissions.manage") ||
+          runtime.permissionGuard.can(
+            session.user.role,
+            "template-governance.manage",
+          );
+        if (!canReadPublishedPackages) {
+          runtime.permissionGuard.assert(session.user.role, "permissions.manage");
+        }
+      } else {
+        await requirePermission(req, runtime, "permissions.manage");
+      }
 
       if (packageKind) {
         input.packageKind = packageKind as typeof input.packageKind;
@@ -8957,6 +8979,7 @@ export function mapErrorToHttpResponse(
       error instanceof LearningHumanFinalAssetRequiredError ||
       error instanceof KnowledgeContentBlockOrderError ||
       error instanceof KnowledgeContentBlockPayloadInvalidError ||
+      error instanceof KnowledgeRevisionReviewGateError ||
       error instanceof LearningDeidentificationRequiredError ||
     error instanceof LearningCandidateEvidenceRequiredError ||
     error instanceof LearningSnapshotDeidentificationRequiredError ||

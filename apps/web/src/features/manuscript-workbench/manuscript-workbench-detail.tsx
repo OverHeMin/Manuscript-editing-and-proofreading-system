@@ -2,6 +2,10 @@ import React from "react";
 import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import type { DocumentPreviewSessionViewModel } from "../document-preview/index.ts";
 import type {
+  KnowledgeHitLogViewModel,
+  ModuleExecutionSnapshotViewModel as ExecutionTrackingSnapshotViewModel,
+} from "../execution-tracking/types.ts";
+import type {
   DocumentAssetViewModel,
   JobViewModel,
 } from "../manuscripts/index.ts";
@@ -11,7 +15,10 @@ import {
   formatWorkbenchAssetTypeLabel,
   resolveWorkbenchAssetDownloadLabel,
 } from "./manuscript-workbench-asset-labels.ts";
-import type { ManuscriptWorkbenchMode } from "./manuscript-workbench-controller.ts";
+import type {
+  ManuscriptWorkbenchKnowledgeReferenceViewModel,
+  ManuscriptWorkbenchMode,
+} from "./manuscript-workbench-controller.ts";
 
 export type ManuscriptAssetDetailKind =
   | "document_preview"
@@ -25,6 +32,13 @@ export interface EditingChangeLedgerEntry {
   before: string;
   after: string;
   locationText?: string;
+}
+
+export interface EditingGuardrailEntry {
+  id: string;
+  sourceStage: "planning" | "docx_transform";
+  reasonCode: string;
+  excerpt: string;
 }
 
 export interface ProofreadingIssueAnchorViewModel {
@@ -72,6 +86,12 @@ export interface ManuscriptWorkbenchAssetDetailPageProps {
   previewSession?: DocumentPreviewSessionViewModel | null;
   reportBody?: string | null;
   changeLedger?: readonly EditingChangeLedgerEntry[];
+  editingGuardrails?: readonly EditingGuardrailEntry[];
+  executionSnapshot?: ExecutionTrackingSnapshotViewModel | null;
+  knowledgeHitLogs?: readonly KnowledgeHitLogViewModel[];
+  knowledgeReferences?: Readonly<
+    Record<string, ManuscriptWorkbenchKnowledgeReferenceViewModel>
+  >;
   confirmationItems?: readonly ProofreadingConfirmationItemViewModel[];
   confirmationState?: Readonly<Record<string, ProofreadingConfirmationDraftState>>;
   proofreadingDocumentBlocks?: readonly ProofreadingDocumentBlockViewModel[];
@@ -178,6 +198,52 @@ export function buildEditingChangeLedgerEntries(
       },
     ];
   });
+}
+
+export function buildEditingGuardrailEntries(
+  job: Pick<JobViewModel, "payload"> | null | undefined,
+): EditingGuardrailEntry[] {
+  const payload = asRecord(job?.payload);
+  const plan = asRecord(payload?.editingPlan);
+  const deduped = new Map<string, EditingGuardrailEntry>();
+
+  for (const item of readStringArray(plan?.manualReviewItems)) {
+    const entry = parseEditingGuardrailManualReviewItem(item);
+    if (!entry) {
+      continue;
+    }
+
+    deduped.set(
+      `${entry.sourceStage}:${entry.reasonCode}:${entry.excerpt}`,
+      entry,
+    );
+  }
+
+  if (Array.isArray(payload?.skippedAiReplacements)) {
+    for (const [index, item] of payload.skippedAiReplacements.entries()) {
+      const replacement = asRecord(item);
+      const reasonCode = readOptionalString(replacement?.reason);
+      const excerpt =
+        readOptionalString(replacement?.targetText) ??
+        readOptionalString(replacement?.replacementId);
+      if (!reasonCode || !excerpt) {
+        continue;
+      }
+
+      const entry: EditingGuardrailEntry = {
+        id: `editing-guardrail-docx-${index + 1}`,
+        sourceStage: "docx_transform",
+        reasonCode,
+        excerpt,
+      };
+      deduped.set(
+        `${entry.sourceStage}:${entry.reasonCode}:${entry.excerpt}`,
+        entry,
+      );
+    }
+  }
+
+  return Array.from(deduped.values());
 }
 
 export function buildProofreadingConfirmationItems(
@@ -403,6 +469,10 @@ export function ManuscriptWorkbenchAssetDetailPage({
   previewSession = null,
   reportBody = null,
   changeLedger = [],
+  editingGuardrails = [],
+  executionSnapshot = null,
+  knowledgeHitLogs = [],
+  knowledgeReferences,
   confirmationItems = [],
   confirmationState = {},
   proofreadingDocumentBlocks = [],
@@ -421,6 +491,17 @@ export function ManuscriptWorkbenchAssetDetailPage({
     asset,
     previewSession,
   });
+  const governanceEvidenceCard = renderGovernanceEvidenceCard({
+    executionSnapshot,
+    knowledgeHitLogs,
+    knowledgeReferences,
+  });
+  const editingGuardrailCard =
+    editingGuardrails.length > 0
+      ? renderEditingGuardrailCard({
+          entries: editingGuardrails,
+        })
+      : null;
 
   if (
     detailKind === "proofreading_workspace" ||
@@ -638,6 +719,8 @@ export function ManuscriptWorkbenchAssetDetailPage({
                 {isFinalizing ? "发布中..." : "发布人工终稿"}
               </button>
             </div>
+
+            {governanceEvidenceCard}
           </article>
         </div>
       </section>
@@ -773,6 +856,10 @@ export function ManuscriptWorkbenchAssetDetailPage({
             </ul>
           </article>
         ) : null}
+
+        {editingGuardrailCard}
+
+        {governanceEvidenceCard}
       </div>
     </section>
   );
@@ -790,6 +877,329 @@ const CONFIRMATION_ACTIONS: ReadonlyArray<{
   { value: "route_to_rule_candidate", label: "转规则候选" },
   { value: "route_to_knowledge_candidate", label: "转知识候选" },
 ];
+
+function renderGovernanceEvidenceCard(input: {
+  executionSnapshot?: ExecutionTrackingSnapshotViewModel | null;
+  knowledgeHitLogs?: readonly KnowledgeHitLogViewModel[];
+  knowledgeReferences?: Readonly<
+    Record<string, ManuscriptWorkbenchKnowledgeReferenceViewModel>
+  >;
+}) {
+  const snapshot = input.executionSnapshot ?? null;
+  const knowledgeHitLogs = input.knowledgeHitLogs ?? [];
+  const qualityPackages = snapshot?.quality_packages ?? [];
+  const qualityFindingsSummary = snapshot?.quality_findings_summary;
+
+  return (
+    <article className="manuscript-workbench-detail-ledger-card manuscript-workbench-detail-governance-card">
+      <div className="manuscript-workbench-detail-card-header">
+        <div>
+          <h4>治理命中依据</h4>
+          <p>这里展示当前结果为什么会命中规则、知识和质量包。</p>
+        </div>
+      </div>
+
+      <dl className="manuscript-workbench-detail-metadata">
+        <div>
+          <dt>快照 ID</dt>
+          <dd>{snapshot?.id ?? "未记录"}</dd>
+        </div>
+        <div>
+          <dt>质量包</dt>
+          <dd>
+            {qualityPackages.length > 0
+              ? qualityPackages.map(formatQualityPackageLabel).join("；")
+              : "未记录"}
+          </dd>
+        </div>
+        <div>
+          <dt>质量发现</dt>
+          <dd>
+            {qualityFindingsSummary
+              ? `${qualityFindingsSummary.total_issue_count} 项`
+              : "未记录"}
+          </dd>
+        </div>
+        {qualityFindingsSummary?.highest_action ? (
+          <div>
+            <dt>最高动作</dt>
+            <dd>{formatQualityActionLabel(qualityFindingsSummary.highest_action)}</dd>
+          </div>
+        ) : null}
+      </dl>
+
+      {knowledgeHitLogs.length > 0 ? (
+        <ul className="manuscript-workbench-detail-comment-list">
+          {knowledgeHitLogs.map((log) => {
+            const reference = input.knowledgeReferences?.[log.knowledge_item_id];
+            const label = reference?.title ?? log.knowledge_item_id;
+            const activationSource = formatKnowledgeHitActivationSource(
+              log,
+              qualityPackages,
+            );
+
+            return (
+              <li
+                key={log.id}
+                className="manuscript-workbench-detail-comment-item"
+              >
+                <strong>{label}</strong>
+                {reference?.title ? <small>{log.knowledge_item_id}</small> : null}
+                <p>
+                  {log.match_reasons.length > 0
+                    ? log.match_reasons.join("；")
+                    : "未记录命中原因"}
+                </p>
+                <dl className="manuscript-workbench-detail-metadata">
+                  <div>
+                    <dt>命中来源</dt>
+                    <dd>{formatKnowledgeHitMatchSourceLabel(log.match_source)}</dd>
+                  </div>
+                  {activationSource ? (
+                    <div>
+                      <dt>激活链路</dt>
+                      <dd>{activationSource}</dd>
+                    </div>
+                  ) : null}
+                  {log.binding_rule_id ? (
+                    <div>
+                      <dt>绑定规则</dt>
+                      <dd>{log.binding_rule_id}</dd>
+                    </div>
+                  ) : null}
+                  {log.section ? (
+                    <div>
+                      <dt>章节</dt>
+                      <dd>{log.section}</dd>
+                    </div>
+                  ) : null}
+                  {typeof log.score === "number" ? (
+                    <div>
+                      <dt>命中分数</dt>
+                      <dd>{log.score.toFixed(2)}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <div className="manuscript-workbench-detail-empty">
+          <strong>暂无知识命中日志</strong>
+          <p>当前任务没有保存可追溯的知识命中说明。</p>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function renderEditingGuardrailCard(input: {
+  entries: readonly EditingGuardrailEntry[];
+}) {
+  return (
+    <article className="manuscript-workbench-detail-ledger-card manuscript-workbench-detail-governance-card">
+      <div className="manuscript-workbench-detail-card-header">
+        <div>
+          <h4>自动改动被拦截</h4>
+          <p>这些候选改动没有自动写入文档，而是被编辑守门降级为人工核验。</p>
+        </div>
+      </div>
+
+      <ul className="manuscript-workbench-detail-comment-list">
+        {input.entries.map((entry) => (
+          <li key={entry.id} className="manuscript-workbench-detail-comment-item">
+            <strong>{formatEditingGuardrailReasonLabel(entry.reasonCode)}</strong>
+            <p>{entry.excerpt}</p>
+            <dl className="manuscript-workbench-detail-metadata">
+              <div>
+                <dt>来源阶段</dt>
+                <dd>{formatEditingGuardrailSourceStageLabel(entry.sourceStage)}</dd>
+              </div>
+            </dl>
+          </li>
+        ))}
+      </ul>
+    </article>
+  );
+}
+
+function formatKnowledgeHitMatchSourceLabel(
+  value: KnowledgeHitLogViewModel["match_source"],
+): string {
+  switch (value) {
+    case "binding_rule":
+      return "绑定规则";
+    case "template_binding":
+      return "模板绑定";
+    case "dynamic_routing":
+      return "动态路由";
+    case "knowledge_item_binding":
+      return "知识项绑定";
+    case "draft_snapshot_reuse":
+      return "复用草稿快照";
+    default:
+      return value;
+  }
+}
+
+function formatKnowledgeHitActivationSource(
+  log: KnowledgeHitLogViewModel,
+  qualityPackages: NonNullable<ExecutionTrackingSnapshotViewModel["quality_packages"]>,
+): string | undefined {
+  const sourceId = log.match_source_id?.trim();
+  if (!sourceId) {
+    return undefined;
+  }
+
+  const [prefix, second, third] = sourceId.split(":");
+  switch (prefix) {
+    case "template_family":
+      return `模板族激活：${second ?? sourceId}`;
+    case "module_template":
+      return `模块模板激活：${second ?? sourceId}`;
+    case "journal_template":
+      return `期刊模板激活：${second ?? sourceId}`;
+    case "knowledge_item":
+      return `关联知识项激活：${second ?? sourceId}`;
+    case "general_package":
+    case "medical_package":
+      return formatRuntimeQualityPackageActivation({
+        matchPrefix: prefix,
+        packageId: second,
+        qualityPackages,
+      });
+    case "general_package_kind":
+    case "medical_package_kind":
+      return formatRuntimeQualityPackageActivation({
+        matchPrefix: prefix === "general_package_kind" ? "general_package" : "medical_package",
+        packageId: third,
+        qualityPackages,
+        packageKind: normalizeQualityPackageKind(second),
+        kindFallback: true,
+      });
+    default:
+      return sourceId;
+  }
+}
+
+function formatRuntimeQualityPackageActivation(input: {
+  matchPrefix: "general_package" | "medical_package";
+  packageId?: string;
+  qualityPackages: NonNullable<ExecutionTrackingSnapshotViewModel["quality_packages"]>;
+  packageKind?: NonNullable<
+    ExecutionTrackingSnapshotViewModel["quality_packages"]
+  >[number]["package_kind"];
+  kindFallback?: boolean;
+}): string {
+  const scopeLabel = input.matchPrefix === "general_package" ? "通用包" : "医用包";
+  const matchedPackage =
+    (input.packageId &&
+      input.qualityPackages.find((entry) => entry.package_id === input.packageId)) ||
+    undefined;
+  const runtimeKindLabel =
+    input.packageKind || matchedPackage?.package_kind
+      ? formatQualityPackageKindLabel(
+          input.packageKind ?? matchedPackage?.package_kind ?? "general_style_package",
+        )
+      : scopeLabel;
+  const packageLabel = matchedPackage
+    ? `${formatQualityPackageLabel(matchedPackage)}（${matchedPackage.package_id}）`
+    : input.packageId ?? "未记录";
+
+  if (input.kindFallback) {
+    return `按${scopeLabel}类型激活：${runtimeKindLabel} -> ${packageLabel}`;
+  }
+
+  return `精确${scopeLabel}版本激活：${packageLabel}`;
+}
+
+function normalizeQualityPackageKind(
+  value: string | undefined,
+): NonNullable<
+  ExecutionTrackingSnapshotViewModel["quality_packages"]
+>[number]["package_kind"] | undefined {
+  if (
+    value === "general_style_package" ||
+    value === "medical_analyzer_package"
+  ) {
+    return value;
+  }
+
+  return undefined;
+}
+
+function formatEditingGuardrailReasonLabel(reasonCode: string): string {
+  switch (reasonCode) {
+    case "meaning_risk":
+      return "存在语义风险（meaning_risk）";
+    case "anchor_not_precise":
+      return "锚点不够精确（anchor_not_precise）";
+    case "numeric_entity_present":
+      return "包含数值实体（numeric_entity_present）";
+    case "medical_entity_present":
+      return "包含医学实体（medical_entity_present）";
+    case "object_type_not_safe":
+      return "对象类型不安全（object_type_not_safe）";
+    case "insufficient_style_evidence":
+      return "样式证据不足（insufficient_style_evidence）";
+    default:
+      return reasonCode;
+  }
+}
+
+function formatEditingGuardrailSourceStageLabel(
+  value: EditingGuardrailEntry["sourceStage"],
+): string {
+  switch (value) {
+    case "planning":
+      return "AI 规划拦截";
+    case "docx_transform":
+      return "DOCX 落稿拦截";
+    default:
+      return value;
+  }
+}
+
+function formatQualityPackageLabel(
+  value: NonNullable<ExecutionTrackingSnapshotViewModel["quality_packages"]>[number],
+): string {
+  return `${value.package_name} v${value.version} · ${formatQualityPackageKindLabel(
+    value.package_kind,
+  )}`;
+}
+
+function formatQualityPackageKindLabel(
+  value: NonNullable<ExecutionTrackingSnapshotViewModel["quality_packages"]>[number]["package_kind"],
+): string {
+  switch (value) {
+    case "general_style_package":
+      return "通用包";
+    case "medical_analyzer_package":
+      return "医用包";
+    default:
+      return value;
+  }
+}
+
+function formatQualityActionLabel(
+  value: NonNullable<
+    NonNullable<ExecutionTrackingSnapshotViewModel["quality_findings_summary"]>["highest_action"]
+  >,
+): string {
+  switch (value) {
+    case "auto_fix":
+      return "自动修正";
+    case "suggest_fix":
+      return "建议修正";
+    case "manual_review":
+      return "人工复核";
+    case "block":
+      return "阻断";
+    default:
+      return value;
+  }
+}
 
 function resolveDetailEyebrow(detailKind: ManuscriptAssetDetailKind): string {
   if (detailKind === "report_preview") {
@@ -990,6 +1400,34 @@ function normalizeProofreadingAnchor(
     blockIndex,
     quote,
     sectionLabel: readOptionalString(value.sectionLabel),
+  };
+}
+
+function parseEditingGuardrailManualReviewItem(
+  value: string,
+): EditingGuardrailEntry | undefined {
+  const prefix = "editing_guardrail:";
+  if (!value.startsWith(prefix)) {
+    return undefined;
+  }
+
+  const remainder = value.slice(prefix.length);
+  const separatorIndex = remainder.indexOf(":");
+  if (separatorIndex <= 0) {
+    return undefined;
+  }
+
+  const reasonCode = remainder.slice(0, separatorIndex).trim();
+  const excerpt = remainder.slice(separatorIndex + 1).trim();
+  if (!reasonCode || !excerpt) {
+    return undefined;
+  }
+
+  return {
+    id: `editing-guardrail-plan:${reasonCode}:${excerpt}`,
+    sourceStage: "planning",
+    reasonCode,
+    excerpt,
   };
 }
 

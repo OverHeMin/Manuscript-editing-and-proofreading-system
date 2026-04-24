@@ -9,6 +9,10 @@ import {
   resolveBrowserApiUrl,
 } from "../../lib/browser-http-client.ts";
 import type { DocumentPreviewSessionViewModel } from "../document-preview/index.ts";
+import type {
+  KnowledgeHitLogViewModel,
+  ModuleExecutionSnapshotViewModel as ExecutionTrackingSnapshotViewModel,
+} from "../execution-tracking/types.ts";
 import { formatWorkbenchRequestError } from "./manuscript-workbench-error-format.ts";
 import type { AuthRole } from "../auth/index.ts";
 import type {
@@ -63,6 +67,7 @@ import {
   buildAssetPreviewComments,
   buildAssetReportPreviewBody,
   buildEditingChangeLedgerEntries,
+  buildEditingGuardrailEntries,
   buildProofreadingConfirmationItems,
   buildProofreadingDocumentBlocks,
   buildWorkbenchAssetCollectionHref,
@@ -521,6 +526,18 @@ export function buildPublishedHumanFinalActionResult(input: {
   };
 }
 
+export interface WorkbenchDetailExecutionTrackingViewModel {
+  snapshot: ExecutionTrackingSnapshotViewModel | null;
+  knowledgeHitLogs: KnowledgeHitLogViewModel[];
+}
+
+function createEmptyWorkbenchDetailExecutionTracking(): WorkbenchDetailExecutionTrackingViewModel {
+  return {
+    snapshot: null,
+    knowledgeHitLogs: [],
+  };
+}
+
 function isManualFeedbackCategory(
   value: string,
 ): value is ManualFeedbackCategory {
@@ -685,6 +702,85 @@ export async function hydrateWorkbenchDetailJob(
   }
 }
 
+function hasExecutionTrackingObservation(
+  job: AnyWorkbenchJob | null | undefined,
+): job is JobViewModel {
+  return job != null && "execution_tracking" in job;
+}
+
+function resolveWorkbenchDetailInlineExecutionSnapshot(
+  job: AnyWorkbenchJob | null | undefined,
+): ExecutionTrackingSnapshotViewModel | null {
+  if (!hasExecutionTrackingObservation(job)) {
+    return null;
+  }
+
+  const observation = job.execution_tracking;
+  if (observation?.observation_status !== "reported" || !observation.snapshot) {
+    return null;
+  }
+
+  return observation.snapshot;
+}
+
+function resolveWorkbenchDetailSnapshotId(
+  job: AnyWorkbenchJob | null | undefined,
+): string | null {
+  const inlineSnapshotId =
+    resolveWorkbenchDetailInlineExecutionSnapshot(job)?.id?.trim() ?? "";
+  if (inlineSnapshotId.length > 0) {
+    return inlineSnapshotId;
+  }
+
+  const snapshotId = job?.payload?.snapshotId;
+  return typeof snapshotId === "string" && snapshotId.trim().length > 0
+    ? snapshotId.trim()
+    : null;
+}
+
+export async function hydrateWorkbenchDetailExecutionTracking(
+  controller: Partial<
+    Pick<
+      ManuscriptWorkbenchController,
+      "loadExecutionSnapshot" | "loadKnowledgeHitLogsBySnapshotId"
+    >
+  >,
+  sourceJob: AnyWorkbenchJob | null | undefined,
+): Promise<WorkbenchDetailExecutionTrackingViewModel> {
+  const inlineSnapshot = resolveWorkbenchDetailInlineExecutionSnapshot(sourceJob);
+  const snapshotId = resolveWorkbenchDetailSnapshotId(sourceJob);
+
+  if (!snapshotId) {
+    return {
+      snapshot: inlineSnapshot,
+      knowledgeHitLogs: [],
+    };
+  }
+
+  let snapshot = inlineSnapshot;
+  if (!snapshot && typeof controller.loadExecutionSnapshot === "function") {
+    try {
+      snapshot = (await controller.loadExecutionSnapshot(snapshotId)) ?? null;
+    } catch {
+      snapshot = null;
+    }
+  }
+
+  let knowledgeHitLogs: KnowledgeHitLogViewModel[] = [];
+  if (typeof controller.loadKnowledgeHitLogsBySnapshotId === "function") {
+    try {
+      knowledgeHitLogs = await controller.loadKnowledgeHitLogsBySnapshotId(snapshotId);
+    } catch {
+      knowledgeHitLogs = [];
+    }
+  }
+
+  return {
+    snapshot,
+    knowledgeHitLogs,
+  };
+}
+
 export function pruneConfirmationState(
   current: Readonly<Record<string, ProofreadingConfirmationDraftState>>,
   items: readonly ProofreadingConfirmationItemViewModel[],
@@ -847,6 +943,10 @@ export function ManuscriptWorkbenchPage({
   const [draftAssetId, setDraftAssetId] = useState("");
   const [selectedAssetId, setSelectedAssetId] = useState(normalizedPrefilledAssetId);
   const [detailJob, setDetailJob] = useState<AnyWorkbenchJob | null>(null);
+  const [detailExecutionTracking, setDetailExecutionTracking] =
+    useState<WorkbenchDetailExecutionTrackingViewModel>(
+      createEmptyWorkbenchDetailExecutionTracking,
+    );
   const [detailPreviewSession, setDetailPreviewSession] =
     useState<DocumentPreviewSessionViewModel | null>(null);
   const [detailError, setDetailError] = useState("");
@@ -960,6 +1060,7 @@ export function ManuscriptWorkbenchPage({
     setSelectedTemplateContext(null);
     setSelectedAssetId(normalizedPrefilledAssetId);
     setDetailJob(null);
+    setDetailExecutionTracking(createEmptyWorkbenchDetailExecutionTracking());
     setDetailPreviewSession(null);
     setDetailError("");
     setIsDetailLoading(false);
@@ -971,6 +1072,7 @@ export function ManuscriptWorkbenchPage({
   useEffect(() => {
     setSelectedAssetId(normalizedPrefilledAssetId);
     setDetailJob(null);
+    setDetailExecutionTracking(createEmptyWorkbenchDetailExecutionTracking());
     setDetailPreviewSession(null);
     setDetailError("");
     setConfirmationState({});
@@ -986,6 +1088,7 @@ export function ManuscriptWorkbenchPage({
   useEffect(() => {
     if (!workspace || selectedAssetId.trim().length === 0) {
       setDetailJob(null);
+      setDetailExecutionTracking(createEmptyWorkbenchDetailExecutionTracking());
       setDetailPreviewSession(null);
       setDetailError("");
       setIsDetailLoading(false);
@@ -996,6 +1099,7 @@ export function ManuscriptWorkbenchPage({
     const selectedAsset = workspace.assets.find((asset) => asset.id === selectedAssetId);
     if (!selectedAsset) {
       setDetailJob(null);
+      setDetailExecutionTracking(createEmptyWorkbenchDetailExecutionTracking());
       setDetailPreviewSession(null);
       setDetailError(`Asset ${selectedAssetId} is no longer available in this workspace.`);
       setIsDetailLoading(false);
@@ -1007,6 +1111,7 @@ export function ManuscriptWorkbenchPage({
     let cancelled = false;
     setIsDetailLoading(true);
     setDetailError("");
+    setDetailExecutionTracking(createEmptyWorkbenchDetailExecutionTracking());
 
     void (async () => {
       const detailKind = resolveManuscriptAssetDetailKind({
@@ -1028,6 +1133,15 @@ export function ManuscriptWorkbenchPage({
       }
 
       setDetailJob(sourceJob);
+      const nextDetailExecutionTracking =
+        await hydrateWorkbenchDetailExecutionTracking(controller, sourceJob);
+      if (cancelled) {
+        return;
+      }
+      setDetailExecutionTracking(nextDetailExecutionTracking);
+      if (cancelled) {
+        return;
+      }
       const nextConfirmationItems = buildProofreadingConfirmationItems(sourceJob);
       setConfirmationState((current) =>
         pruneConfirmationState(current, nextConfirmationItems)
@@ -2364,6 +2478,10 @@ function buildTemplateContextActionResult(
             previewSession={detailPreviewSession}
             reportBody={buildAssetReportPreviewBody(detailJob)}
             changeLedger={buildEditingChangeLedgerEntries(detailJob)}
+            editingGuardrails={buildEditingGuardrailEntries(detailJob)}
+            executionSnapshot={detailExecutionTracking.snapshot}
+            knowledgeHitLogs={detailExecutionTracking.knowledgeHitLogs}
+            knowledgeReferences={workspace.knowledgeReferences}
             confirmationItems={confirmationItems}
             confirmationState={confirmationState}
             proofreadingDocumentBlocks={proofreadingDocumentBlocks}

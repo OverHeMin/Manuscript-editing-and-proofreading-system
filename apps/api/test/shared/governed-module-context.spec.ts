@@ -287,6 +287,369 @@ test("governed module context selects approved knowledge bound at the template-f
   assert.equal(selected?.matchSource, "template_binding");
 });
 
+test("governed module context only activates package-scoped knowledge when the runtime package context matches", async () => {
+  const harness = await createGovernedContextHarness();
+
+  await harness.manuscriptRepository.save({
+    id: "manuscript-1",
+    title: "Governed screening fixture",
+    manuscript_type: "clinical_study",
+    status: "uploaded",
+    created_by: "user-1",
+    current_screening_asset_id: undefined,
+    current_editing_asset_id: undefined,
+    current_proofreading_asset_id: undefined,
+    current_template_family_id: "family-1",
+    current_journal_template_id: "journal-template-1",
+    created_at: "2026-04-07T08:30:00.000Z",
+    updated_at: "2026-04-07T08:31:00.000Z",
+  });
+  await harness.knowledgeRepository.saveAsset({
+    id: "knowledge-package-bound-1",
+    status: "active",
+    current_revision_id: "knowledge-package-bound-1-revision-1",
+    current_approved_revision_id: "knowledge-package-bound-1-revision-1",
+    created_at: "2026-04-07T08:45:00.000Z",
+    updated_at: "2026-04-07T08:45:00.000Z",
+  });
+  await harness.knowledgeRepository.saveRevision({
+    id: "knowledge-package-bound-1-revision-1",
+    asset_id: "knowledge-package-bound-1",
+    revision_no: 1,
+    status: "approved",
+    title: "Package scoped knowledge",
+    canonical_text: "This knowledge should only activate for the matched general package.",
+    knowledge_kind: "reference",
+    routing: {
+      module_scope: "screening",
+      manuscript_types: ["clinical_study"],
+    },
+    created_at: "2026-04-07T08:45:00.000Z",
+    updated_at: "2026-04-07T08:45:00.000Z",
+  });
+  await harness.knowledgeRepository.replaceRevisionBindings(
+    "knowledge-package-bound-1-revision-1",
+    [
+      {
+        id: "knowledge-package-bound-1-revision-1-binding-1",
+        revision_id: "knowledge-package-bound-1-revision-1",
+        binding_kind: "template_family",
+        binding_target_id: "family-1",
+        binding_target_label: "Clinical Study Family",
+        created_at: "2026-04-07T08:45:00.000Z",
+      },
+      {
+        id: "knowledge-package-bound-1-revision-1-binding-2",
+        revision_id: "knowledge-package-bound-1-revision-1",
+        binding_kind: "general_package",
+        binding_target_id: "quality-package-version-1",
+        binding_target_label: "General Package v1",
+        created_at: "2026-04-07T08:45:30.000Z",
+      },
+    ],
+  );
+
+  const withoutPackageContext = await resolveGovernedModuleContext({
+    manuscriptId: "manuscript-1",
+    module: "screening",
+    jobId: "job-package-miss",
+    actorId: "screener-1",
+    actorRole: "screener",
+    manuscriptRepository: harness.manuscriptRepository,
+    moduleTemplateRepository: harness.moduleTemplateRepository,
+    executionGovernanceService: harness.executionGovernanceService,
+    promptSkillRegistryRepository: harness.promptSkillRegistryRepository,
+    knowledgeRepository: harness.knowledgeRepository,
+    aiGatewayService: harness.aiGatewayService,
+  });
+  const withPackageContext = await resolveGovernedModuleContext({
+    manuscriptId: "manuscript-1",
+    module: "screening",
+    jobId: "job-package-hit",
+    actorId: "screener-1",
+    actorRole: "screener",
+    manuscriptRepository: harness.manuscriptRepository,
+    moduleTemplateRepository: harness.moduleTemplateRepository,
+    executionGovernanceService: harness.executionGovernanceService,
+    promptSkillRegistryRepository: harness.promptSkillRegistryRepository,
+    knowledgeRepository: harness.knowledgeRepository,
+    aiGatewayService: harness.aiGatewayService,
+    qualityPackageVersionIds: ["quality-package-version-1"],
+  });
+
+  assert.equal(
+    withoutPackageContext.knowledgeSelections.some(
+      (selection) => selection.knowledgeItem.id === "knowledge-package-bound-1",
+    ),
+    false,
+  );
+
+  const selected = withPackageContext.knowledgeSelections.find(
+    (selection) => selection.knowledgeItem.id === "knowledge-package-bound-1",
+  );
+  assert.equal(selected?.matchSource, "template_binding");
+  assert.equal(selected?.matchSourceId, "general_package:quality-package-version-1");
+  assert.deepEqual(selected?.matchReasons, [
+    "module",
+    "manuscript_type",
+    "template_family",
+    "general_package",
+  ]);
+});
+
+test("governed module context supports package-kind fallback and still prefers an exact package version match", async () => {
+  const harness = await createGovernedContextHarness();
+
+  await harness.knowledgeRepository.saveAsset({
+    id: "knowledge-package-kind-bound-1",
+    status: "active",
+    current_revision_id: "knowledge-package-kind-bound-1-revision-1",
+    current_approved_revision_id: "knowledge-package-kind-bound-1-revision-1",
+    created_at: "2026-04-07T08:45:40.000Z",
+    updated_at: "2026-04-07T08:45:40.000Z",
+  });
+  await harness.knowledgeRepository.saveRevision({
+    id: "knowledge-package-kind-bound-1-revision-1",
+    asset_id: "knowledge-package-kind-bound-1",
+    revision_no: 1,
+    status: "approved",
+    title: "General package kind fallback knowledge",
+    canonical_text:
+      "This knowledge should activate for any active general runtime package when no version pin is present.",
+    knowledge_kind: "reference",
+    routing: {
+      module_scope: "screening",
+      manuscript_types: ["clinical_study"],
+    },
+    created_at: "2026-04-07T08:45:40.000Z",
+    updated_at: "2026-04-07T08:45:40.000Z",
+  });
+  await harness.knowledgeRepository.replaceRevisionBindings(
+    "knowledge-package-kind-bound-1-revision-1",
+    [
+      {
+        id: "knowledge-package-kind-bound-1-revision-1-binding-1",
+        revision_id: "knowledge-package-kind-bound-1-revision-1",
+        binding_kind: "template_family",
+        binding_target_id: "family-1",
+        binding_target_label: "Clinical Study Family",
+        created_at: "2026-04-07T08:45:40.000Z",
+      },
+      {
+        id: "knowledge-package-kind-bound-1-revision-1-binding-2",
+        revision_id: "knowledge-package-kind-bound-1-revision-1",
+        binding_kind: "general_package",
+        binding_target_id: "general_style_package",
+        binding_target_label: "通用包（按类型）",
+        created_at: "2026-04-07T08:45:45.000Z",
+      },
+    ],
+  );
+
+  await harness.knowledgeRepository.saveAsset({
+    id: "knowledge-package-version-preferred-1",
+    status: "active",
+    current_revision_id: "knowledge-package-version-preferred-1-revision-1",
+    current_approved_revision_id: "knowledge-package-version-preferred-1-revision-1",
+    created_at: "2026-04-07T08:45:50.000Z",
+    updated_at: "2026-04-07T08:45:50.000Z",
+  });
+  await harness.knowledgeRepository.saveRevision({
+    id: "knowledge-package-version-preferred-1-revision-1",
+    asset_id: "knowledge-package-version-preferred-1",
+    revision_no: 1,
+    status: "approved",
+    title: "Exact package version should win",
+    canonical_text:
+      "If both the package kind and the specific package version are bound, runtime should report the exact version match.",
+    knowledge_kind: "reference",
+    routing: {
+      module_scope: "screening",
+      manuscript_types: ["clinical_study"],
+    },
+    created_at: "2026-04-07T08:45:50.000Z",
+    updated_at: "2026-04-07T08:45:50.000Z",
+  });
+  await harness.knowledgeRepository.replaceRevisionBindings(
+    "knowledge-package-version-preferred-1-revision-1",
+    [
+      {
+        id: "knowledge-package-version-preferred-1-revision-1-binding-1",
+        revision_id: "knowledge-package-version-preferred-1-revision-1",
+        binding_kind: "template_family",
+        binding_target_id: "family-1",
+        binding_target_label: "Clinical Study Family",
+        created_at: "2026-04-07T08:45:50.000Z",
+      },
+      {
+        id: "knowledge-package-version-preferred-1-revision-1-binding-2",
+        revision_id: "knowledge-package-version-preferred-1-revision-1",
+        binding_kind: "general_package",
+        binding_target_id: "general_style_package",
+        binding_target_label: "通用包（按类型）",
+        created_at: "2026-04-07T08:45:55.000Z",
+      },
+      {
+        id: "knowledge-package-version-preferred-1-revision-1-binding-3",
+        revision_id: "knowledge-package-version-preferred-1-revision-1",
+        binding_kind: "general_package",
+        binding_target_id: "quality-package-version-1",
+        binding_target_label: "General Package v1",
+        created_at: "2026-04-07T08:46:00.000Z",
+      },
+    ],
+  );
+
+  const withPackageContext = await resolveGovernedModuleContext({
+    manuscriptId: "manuscript-1",
+    module: "screening",
+    jobId: "job-package-kind-hit",
+    actorId: "screener-1",
+    actorRole: "screener",
+    manuscriptRepository: harness.manuscriptRepository,
+    moduleTemplateRepository: harness.moduleTemplateRepository,
+    executionGovernanceService: harness.executionGovernanceService,
+    promptSkillRegistryRepository: harness.promptSkillRegistryRepository,
+    knowledgeRepository: harness.knowledgeRepository,
+    aiGatewayService: harness.aiGatewayService,
+    qualityPackageVersionIds: ["quality-package-version-1"],
+    activeQualityPackages: [
+      {
+        packageId: "quality-package-version-1",
+        packageKind: "general_style_package",
+      },
+    ],
+  });
+
+  const kindFallbackSelection = withPackageContext.knowledgeSelections.find(
+    (selection) => selection.knowledgeItem.id === "knowledge-package-kind-bound-1",
+  );
+  const versionPreferredSelection = withPackageContext.knowledgeSelections.find(
+    (selection) =>
+      selection.knowledgeItem.id === "knowledge-package-version-preferred-1",
+  );
+
+  assert.equal(
+    kindFallbackSelection?.matchSourceId,
+    "general_package_kind:general_style_package:quality-package-version-1",
+  );
+  assert.equal(
+    versionPreferredSelection?.matchSourceId,
+    "general_package:quality-package-version-1",
+  );
+});
+
+test("governed module context requires a matching journal template for journal-scoped knowledge", async () => {
+  const harness = await createGovernedContextHarness();
+
+  await harness.knowledgeRepository.saveAsset({
+    id: "knowledge-journal-bound-1",
+    status: "active",
+    current_revision_id: "knowledge-journal-bound-1-revision-1",
+    current_approved_revision_id: "knowledge-journal-bound-1-revision-1",
+    created_at: "2026-04-07T08:46:00.000Z",
+    updated_at: "2026-04-07T08:46:00.000Z",
+  });
+  await harness.knowledgeRepository.saveRevision({
+    id: "knowledge-journal-bound-1-revision-1",
+    asset_id: "knowledge-journal-bound-1",
+    revision_no: 1,
+    status: "approved",
+    title: "Journal scoped knowledge",
+    canonical_text: "This knowledge should only activate for the matched journal template.",
+    knowledge_kind: "reference",
+    routing: {
+      module_scope: "screening",
+      manuscript_types: ["clinical_study"],
+    },
+    created_at: "2026-04-07T08:46:00.000Z",
+    updated_at: "2026-04-07T08:46:00.000Z",
+  });
+  await harness.knowledgeRepository.replaceRevisionBindings(
+    "knowledge-journal-bound-1-revision-1",
+    [
+      {
+        id: "knowledge-journal-bound-1-revision-1-binding-1",
+        revision_id: "knowledge-journal-bound-1-revision-1",
+        binding_kind: "template_family",
+        binding_target_id: "family-1",
+        binding_target_label: "Clinical Study Family",
+        created_at: "2026-04-07T08:46:00.000Z",
+      },
+      {
+        id: "knowledge-journal-bound-1-revision-1-binding-2",
+        revision_id: "knowledge-journal-bound-1-revision-1",
+        binding_kind: "journal_template",
+        binding_target_id: "journal-template-1",
+        binding_target_label: "Journal Template 1",
+        created_at: "2026-04-07T08:46:30.000Z",
+      },
+    ],
+  );
+
+  const withoutJournalContext = await resolveGovernedModuleContext({
+    manuscriptId: "manuscript-1",
+    module: "screening",
+    jobId: "job-journal-miss",
+    actorId: "screener-1",
+    actorRole: "screener",
+    manuscriptRepository: harness.manuscriptRepository,
+    moduleTemplateRepository: harness.moduleTemplateRepository,
+    executionGovernanceService: harness.executionGovernanceService,
+    promptSkillRegistryRepository: harness.promptSkillRegistryRepository,
+    knowledgeRepository: harness.knowledgeRepository,
+    aiGatewayService: harness.aiGatewayService,
+  });
+
+  await harness.manuscriptRepository.save({
+    id: "manuscript-1",
+    title: "Governed screening fixture",
+    manuscript_type: "clinical_study",
+    status: "uploaded",
+    created_by: "user-1",
+    current_screening_asset_id: undefined,
+    current_editing_asset_id: undefined,
+    current_proofreading_asset_id: undefined,
+    current_template_family_id: "family-1",
+    current_journal_template_id: "journal-template-1",
+    created_at: "2026-04-07T08:30:00.000Z",
+    updated_at: "2026-04-07T08:31:00.000Z",
+  });
+
+  const withJournalContext = await resolveGovernedModuleContext({
+    manuscriptId: "manuscript-1",
+    module: "screening",
+    jobId: "job-journal-hit",
+    actorId: "screener-1",
+    actorRole: "screener",
+    manuscriptRepository: harness.manuscriptRepository,
+    moduleTemplateRepository: harness.moduleTemplateRepository,
+    executionGovernanceService: harness.executionGovernanceService,
+    promptSkillRegistryRepository: harness.promptSkillRegistryRepository,
+    knowledgeRepository: harness.knowledgeRepository,
+    aiGatewayService: harness.aiGatewayService,
+  });
+
+  assert.equal(
+    withoutJournalContext.knowledgeSelections.some(
+      (selection) => selection.knowledgeItem.id === "knowledge-journal-bound-1",
+    ),
+    false,
+  );
+
+  const selected = withJournalContext.knowledgeSelections.find(
+    (selection) => selection.knowledgeItem.id === "knowledge-journal-bound-1",
+  );
+  assert.equal(selected?.matchSource, "template_binding");
+  assert.equal(selected?.matchSourceId, "journal_template:journal-template-1");
+  assert.deepEqual(selected?.matchReasons, [
+    "module",
+    "manuscript_type",
+    "template_family",
+    "journal_template",
+  ]);
+});
+
 test("governed module context expands approved linked knowledge items from selected governed knowledge", async () => {
   const harness = await createGovernedContextHarness();
 

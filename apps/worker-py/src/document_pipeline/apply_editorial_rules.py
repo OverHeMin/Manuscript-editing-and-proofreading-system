@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import re
 import shutil
 import sys
 from xml.etree import ElementTree as ET
@@ -15,6 +16,17 @@ from document_pipeline.table_patches import apply_table_patches
 
 WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 NS = {"w": WORD_NS}
+FORMAT_ONLY_IGNORED_PATTERN = re.compile(r"[\s.,;:!?()\[\]{}\"'`<>/\-|\\，。；：！？（）【】《》、]+")
+NUMERIC_ENTITY_PATTERN = re.compile(
+    r"\d|%|‰|mg|g/L|mmol|μmol|ml|kg|cm|mm|p\s*[<=>]|ci|confidence interval|n\s*=|mean|sd|±",
+    re.IGNORECASE,
+)
+MEDICAL_ENTITY_PATTERN = re.compile(
+    r"patient|patients|diagnosis|diagnostic|therapy|treatment|clinical|hemoglobin|"
+    r"alanine aminotransferase|serum|plasma|dose|dosage|患者|诊断|治疗|临床|血红蛋白|转氨酶|剂量|结论",
+    re.IGNORECASE,
+)
+OBJECT_TYPE_PATTERN = re.compile(r"χ²|χ|β|α|±|≤|≥|∑|√|≈|≠")
 
 
 def parse_args() -> argparse.Namespace:
@@ -94,6 +106,24 @@ def apply_rules_to_docx(
     applied_changes: list[dict] = []
     applied_rule_ids: list[str] = []
     table_patch_results: list[dict] = []
+    skipped_ai_replacements: list[dict] = []
+    pending_ai_replacements: list[tuple[int, dict]] = []
+
+    for replacement_index, replacement in enumerate(resolved_ai_replacements):
+        target_text = replacement.get("targetText")
+        if not isinstance(target_text, str) or not target_text:
+            skipped_ai_replacements.append(
+                {
+                    "replacementId": f"ai-replacement-{replacement_index + 1}",
+                    "reason": "anchor_not_precise",
+                    "targetText": replacement.get("targetText"),
+                }
+            )
+            continue
+
+        pending_ai_replacements.append((replacement_index, replacement))
+
+    resolved_ai_replacement_indexes: set[int] = set()
 
     if not deterministic_rules and not resolved_ai_replacements and not resolved_table_patches:
         shutil.copyfile(source_path, output_path)
@@ -102,6 +132,7 @@ def apply_rules_to_docx(
             "applied_changes": [],
             "inspection_findings": inspection_findings,
             "table_patch_results": [],
+            "skipped_ai_replacements": [],
         }
 
     for paragraph in root.findall(".//w:body/w:p", NS):
@@ -140,9 +171,61 @@ def apply_rules_to_docx(
             )
             break
 
-        for replacement_index, replacement in enumerate(resolved_ai_replacements):
+        for replacement_index, replacement in pending_ai_replacements:
+            if replacement_index in resolved_ai_replacement_indexes:
+                continue
+
+            target_text = replacement.get("targetText")
+            if not isinstance(target_text, str) or not target_text:
+                resolved_ai_replacement_indexes.add(replacement_index)
+                skipped_ai_replacements.append(
+                    {
+                        "replacementId": f"ai-replacement-{replacement_index + 1}",
+                        "reason": "anchor_not_precise",
+                        "targetText": replacement.get("targetText"),
+                    }
+                )
+                continue
+
+            if target_text not in next_text:
+                continue
+
+            application_skip_reason = detect_ai_replacement_application_skip_reason(
+                text_nodes, replacement
+            )
+            if application_skip_reason:
+                resolved_ai_replacement_indexes.add(replacement_index)
+                skipped_ai_replacements.append(
+                    {
+                        "replacementId": f"ai-replacement-{replacement_index + 1}",
+                        "reason": application_skip_reason,
+                        "targetText": target_text,
+                    }
+                )
+                continue
+
+            guardrail_reason = detect_ai_replacement_guardrail_reason(replacement)
+            if guardrail_reason:
+                resolved_ai_replacement_indexes.add(replacement_index)
+                skipped_ai_replacements.append(
+                    {
+                        "replacementId": f"ai-replacement-{replacement_index + 1}",
+                        "reason": guardrail_reason,
+                        "targetText": target_text,
+                    }
+                )
+                continue
+
             replaced_text = apply_ai_replacement_to_text_nodes(text_nodes, replacement)
             if replaced_text is None:
+                resolved_ai_replacement_indexes.add(replacement_index)
+                skipped_ai_replacements.append(
+                    {
+                        "replacementId": f"ai-replacement-{replacement_index + 1}",
+                        "reason": "anchor_not_precise",
+                        "targetText": target_text,
+                    }
+                )
                 continue
 
             replacement_id = f"ai-replacement-{replacement_index + 1}"
@@ -157,6 +240,7 @@ def apply_rules_to_docx(
                 }
             )
             applied_rule_id = replacement_id
+            resolved_ai_replacement_indexes.add(replacement_index)
             break
 
         if applied_rule_id is None:
@@ -165,6 +249,18 @@ def apply_rules_to_docx(
     if resolved_table_patches:
         table_patch_results = apply_table_patches(root, resolved_table_patches)
 
+    for replacement_index, replacement in pending_ai_replacements:
+        if replacement_index in resolved_ai_replacement_indexes:
+            continue
+
+        skipped_ai_replacements.append(
+            {
+                "replacementId": f"ai-replacement-{replacement_index + 1}",
+                "reason": "anchor_not_precise",
+                "targetText": replacement.get("targetText"),
+            }
+        )
+
     if not applied_rule_ids and not table_patch_results:
         shutil.copyfile(source_path, output_path)
         return {
@@ -172,6 +268,7 @@ def apply_rules_to_docx(
             "applied_changes": [],
             "inspection_findings": inspection_findings,
             "table_patch_results": [],
+            "skipped_ai_replacements": skipped_ai_replacements,
         }
 
     entries["word/document.xml"] = ET.tostring(root, encoding="utf-8", xml_declaration=True)
@@ -185,6 +282,7 @@ def apply_rules_to_docx(
         "applied_changes": applied_changes,
         "inspection_findings": inspection_findings,
         "table_patch_results": table_patch_results,
+        "skipped_ai_replacements": skipped_ai_replacements,
     }
 
 
@@ -211,6 +309,54 @@ def apply_ai_replacement(text: str, replacement: dict) -> str:
     if target_text not in text:
         return text
     return text.replace(target_text, replacement_text, 1)
+
+
+def detect_ai_replacement_guardrail_reason(replacement: dict) -> str | None:
+    target_text = replacement.get("targetText")
+    replacement_text = replacement.get("replacementText")
+    if not isinstance(target_text, str) or not target_text:
+        return "anchor_not_precise"
+    if not isinstance(replacement_text, str) or not replacement_text:
+        return "insufficient_style_evidence"
+
+    combined_text = f"{target_text}\n{replacement_text}"
+    if OBJECT_TYPE_PATTERN.search(combined_text):
+        return "object_type_not_safe"
+    if NUMERIC_ENTITY_PATTERN.search(combined_text):
+        return "numeric_entity_present"
+    if MEDICAL_ENTITY_PATTERN.search(combined_text):
+        return "medical_entity_present"
+    if not is_likely_format_only_replacement(target_text, replacement_text):
+        return "meaning_risk"
+    return None
+
+
+def detect_ai_replacement_application_skip_reason(
+    text_nodes: list[ET.Element], replacement: dict
+) -> str | None:
+    target_text = replacement.get("targetText")
+    if not isinstance(target_text, str) or not target_text:
+        return "anchor_not_precise"
+
+    paragraph_text = "".join(node.text or "" for node in text_nodes)
+    if target_text not in paragraph_text:
+        return "anchor_not_precise"
+
+    if not any(target_text in (node.text or "") for node in text_nodes):
+        return "anchor_not_precise"
+
+    return None
+
+
+def is_likely_format_only_replacement(target_text: str, replacement_text: str) -> bool:
+    return normalize_format_skeleton(target_text) == normalize_format_skeleton(
+        replacement_text
+    )
+
+
+def normalize_format_skeleton(value: str) -> str:
+    normalized = value.casefold()
+    return FORMAT_ONLY_IGNORED_PATTERN.sub("", normalized)
 
 
 def replace_paragraph_text_in_single_node(

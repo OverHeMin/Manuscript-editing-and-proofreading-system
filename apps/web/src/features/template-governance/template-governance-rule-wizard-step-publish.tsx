@@ -1,15 +1,18 @@
 import type {
   RuleWizardBindingFormState,
   RuleWizardConfirmFormState,
+  RuleWizardEvidenceGateSummary,
   RuleWizardEntryFormState,
   RuleWizardPublishFormState,
 } from "./template-governance-rule-wizard-api.ts";
+import { formatQualityPackageBindingDisplayLabel } from "../manuscript-quality-packages/binding-kind-options.ts";
 
 export interface TemplateGovernanceRuleWizardStepPublishProps {
   value: RuleWizardPublishFormState;
   entryState: RuleWizardEntryFormState;
   confirmState: RuleWizardConfirmFormState;
   bindingState: RuleWizardBindingFormState;
+  evidenceGateSummary: RuleWizardEvidenceGateSummary;
   isBusy?: boolean;
   errorMessage?: string | null;
   onChange: (nextValue: RuleWizardPublishFormState) => void;
@@ -20,11 +23,24 @@ export function TemplateGovernanceRuleWizardStepPublish({
   entryState,
   confirmState,
   bindingState,
+  evidenceGateSummary,
   isBusy = false,
   errorMessage = null,
   onChange,
 }: TemplateGovernanceRuleWizardStepPublishProps) {
-  const checklist = buildChecklist(entryState, confirmState, bindingState);
+  const checklist = buildChecklist(
+    entryState,
+    confirmState,
+    bindingState,
+    evidenceGateSummary,
+  );
+  const selectedPackageLabel = bindingState.selectedPackageId
+    ? formatQualityPackageBindingDisplayLabel({
+        bindingKind: bindingState.selectedPackageKind,
+        bindingTargetId: bindingState.selectedPackageId,
+        bindingTargetLabel: bindingState.selectedPackageLabel,
+      })
+    : "尚未选择规则包";
 
   return (
     <article className="template-governance-card template-governance-ledger-section">
@@ -53,7 +69,7 @@ export function TemplateGovernanceRuleWizardStepPublish({
       <div className="template-governance-detail-grid">
         <div>
           <span>当前规则包</span>
-          <p>{bindingState.selectedPackageLabel || "尚未选择规则包"}</p>
+          <p>{selectedPackageLabel}</p>
         </div>
         <div>
           <span>关联模板族</span>
@@ -61,6 +77,14 @@ export function TemplateGovernanceRuleWizardStepPublish({
             {bindingState.selectedTemplateFamilies.length
               ? bindingState.selectedTemplateFamilies.map((family) => family.name).join("、")
               : "尚未选择模板族"}
+          </p>
+        </div>
+        <div>
+          <span>直绑期刊模板</span>
+          <p>
+            {bindingState.selectedJournalTemplates.length
+              ? bindingState.selectedJournalTemplates.map((template) => template.name).join("、")
+              : "未直绑期刊模板"}
           </p>
         </div>
       </div>
@@ -88,9 +112,51 @@ export function TemplateGovernanceRuleWizardStepPublish({
             </div>
             <div>
               <span>绑定去向</span>
-              <strong>{bindingState.selectedPackageLabel || "待选择规则包"}</strong>
+              <strong>
+                {bindingState.selectedPackageId ? selectedPackageLabel : "待选择规则包"}
+              </strong>
+            </div>
+            <div>
+              <span>期刊模板覆盖</span>
+              <strong>
+                {bindingState.selectedJournalTemplates.length
+                  ? bindingState.selectedJournalTemplates
+                      .map((template) => template.name)
+                      .join("、")
+                  : "未直绑期刊模板"}
+              </strong>
             </div>
           </div>
+        </section>
+
+        <section className="template-governance-card template-governance-rule-impact-card">
+          <header className="template-governance-rule-section-heading">
+            <div>
+              <h3>高精度证据预检</h3>
+              <p>正式提交前先看表格 exact-capture 和视觉符号快照会不会卡住当前发布方式。</p>
+            </div>
+          </header>
+          {evidenceGateSummary.itemCount === 0 ? (
+            <p>当前没有会触发高精度发布门禁的表格或视觉符号证据。</p>
+          ) : (
+            <div className="template-governance-rule-impact-list">
+              <div>
+                <span>预检结果</span>
+                <strong>
+                  {evidenceGateSummary.hasBlockingIssues
+                    ? `有 ${evidenceGateSummary.blockingItemCount} 条证据会阻断当前发布方式`
+                    : "当前高精度证据已满足发布条件"}
+                </strong>
+              </div>
+              {evidenceGateSummary.items.map((item) => (
+                <div key={item.blockId}>
+                  <span>{item.title}</span>
+                  <strong>{item.statusLabel}</strong>
+                  <small>{item.detail}</small>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="template-governance-card template-governance-rule-impact-card">
@@ -174,6 +240,7 @@ function buildChecklist(
   entryState: RuleWizardEntryFormState,
   confirmState: RuleWizardConfirmFormState,
   bindingState: RuleWizardBindingFormState,
+  evidenceGateSummary: RuleWizardEvidenceGateSummary,
 ): Array<{ label: string; done: boolean }> {
   return [
     {
@@ -192,6 +259,10 @@ function buildChecklist(
     {
       label: "模板族绑定已确认",
       done: bindingState.selectedTemplateFamilies.length > 0,
+    },
+    {
+      label: "高精度证据满足当前发布方式",
+      done: !evidenceGateSummary.hasBlockingIssues,
     },
   ];
 }

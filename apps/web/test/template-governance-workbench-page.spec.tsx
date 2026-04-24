@@ -568,6 +568,106 @@ test("template governance workbench page renders the package-first rule center w
   assert.match(markup, /\uff08\u6458\u8981\u3000\u76ee\u7684\uff09/);
 });
 
+test("template governance workbench page labels selected knowledge bindings by real scope", () => {
+  const Page = TemplateGovernanceWorkbenchPage as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const selectedKnowledgeItem = {
+    id: "knowledge-table-proofreading-1",
+    asset_id: "knowledge-table-proofreading-1",
+    revision_id: "knowledge-table-proofreading-1-revision-2",
+    title: "表格校对依据",
+    canonical_text: "核查表题、单位、表注与统计注释是否完整。",
+    summary: "面向校对的表格核查依据",
+    knowledge_kind: "reference" as const,
+    status: "approved" as const,
+    routing: {
+      module_scope: "proofreading" as const,
+      manuscript_types: ["clinical_study"],
+      sections: ["tables"],
+      risk_tags: ["table-proofreading"],
+      discipline_tags: ["cardiology"],
+    },
+    binding_targets: {
+      journal_template_ids: ["journal-alpha"],
+      general_package_ids: ["general_style_package"],
+    },
+    template_bindings: ["legacy-template-binding"],
+  };
+  const markup = renderToStaticMarkup(
+    <Page
+      controller={{
+        loadOverview: async () => {
+          throw new Error("not used");
+        },
+      }}
+      initialOverview={{
+        templateFamilies: [
+          {
+            id: "family-1",
+            manuscript_type: "clinical_study",
+            name: "Clinical Study Family",
+            status: "active",
+          },
+        ],
+        selectedTemplateFamilyId: "family-1",
+        selectedTemplateFamily: {
+          id: "family-1",
+          manuscript_type: "clinical_study",
+          name: "Clinical Study Family",
+          status: "active",
+        },
+        journalTemplateProfiles: [
+          {
+            id: "journal-alpha",
+            template_family_id: "family-1",
+            journal_key: "zxyjhzz",
+            journal_name: "《中西医结合杂志》",
+            status: "active",
+          },
+        ],
+        selectedJournalTemplateId: "journal-alpha",
+        selectedJournalTemplateProfile: {
+          id: "journal-alpha",
+          template_family_id: "family-1",
+          journal_key: "zxyjhzz",
+          journal_name: "《中西医结合杂志》",
+          status: "active",
+        },
+        moduleTemplates: [],
+        retrievalInsights: {
+          status: "not_started",
+          latestRun: null,
+          latestSnapshot: null,
+          signals: [],
+          message: "当前模板族还没有检索质量运行记录。",
+        },
+        knowledgeItems: [selectedKnowledgeItem],
+        visibleKnowledgeItems: [selectedKnowledgeItem],
+        boundKnowledgeItems: [selectedKnowledgeItem],
+        selectedKnowledgeItemId: "knowledge-table-proofreading-1",
+        selectedKnowledgeItem,
+        filters: {
+          searchText: "",
+          knowledgeStatus: "all",
+        },
+        ruleSets: [],
+        selectedRuleSetId: null,
+        selectedRuleSet: null,
+        rules: [],
+        instructionTemplates: [],
+        selectedInstructionTemplateId: null,
+        selectedInstructionTemplate: null,
+      }}
+    />,
+  );
+
+  assert.match(markup, /当前选中知识/u);
+  assert.match(markup, /期刊模板: journal-alpha/u);
+  assert.match(markup, /通用包: general_style_package/u);
+  assert.doesNotMatch(markup, /legacy-template-binding/u);
+});
+
 test("extraction candidate confirmation creates a governed module draft and writes the intake link back", async () => {
   const candidate = buildExtractionCandidateFixture();
   const confirmedCandidate = buildExtractionCandidateFixture({

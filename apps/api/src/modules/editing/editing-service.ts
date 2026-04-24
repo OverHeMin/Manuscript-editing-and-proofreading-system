@@ -536,6 +536,8 @@ export class EditingService {
         deterministicTransform.tableInspectionFindings ?? [];
       const tablePatchPlans = deterministicTransform.tablePatchPlans ?? [];
       const tablePatchResults = deterministicTransform.tablePatchResults ?? [];
+      const skippedAiReplacements =
+        deterministicTransform.skippedAiReplacements ?? [];
       await this.activationMetricsService?.recordTablePatchResults(
         tablePatchResults,
       );
@@ -754,6 +756,9 @@ export class EditingService {
           tablePatchPlans: tablePatchPlans.map((plan) => structuredClone(plan)),
           tablePatchResults: tablePatchResults.map((result) =>
             structuredClone(result),
+          ),
+          skippedAiReplacements: skippedAiReplacements.map((entry) =>
+            structuredClone(entry),
           ),
         },
         attempt_count: 1,

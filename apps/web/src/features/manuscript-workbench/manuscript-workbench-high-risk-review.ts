@@ -41,6 +41,7 @@ export function buildHighRiskReviewItemsFromJob(
   const payload = latestJob.payload;
   return [
     ...extractManualReviewHighRiskItems(payload),
+    ...extractEditingGuardrailHighRiskItems(payload),
     ...extractTableInspectionHighRiskItems(payload),
     ...extractQualityFindingHighRiskItems(payload),
     ...extractContentRuleCandidateHighRiskItems(payload),
@@ -186,6 +187,63 @@ function extractManualReviewHighRiskItems(
       ...(item.ruleId ? { ruleId: item.ruleId } : {}),
     },
   }));
+}
+
+function extractEditingGuardrailHighRiskItems(
+  payload: Record<string, unknown> | undefined,
+): ManuscriptWorkbenchHighRiskReviewItemViewModel[] {
+  const deduped = new Map<string, ManuscriptWorkbenchHighRiskReviewItemViewModel>();
+  const editingPlan = asRecord(payload?.editingPlan);
+
+  if (Array.isArray(editingPlan?.manualReviewItems)) {
+    for (const value of editingPlan.manualReviewItems) {
+      const entry = parseEditingGuardrailManualReviewItem(value);
+      if (!entry) {
+        continue;
+      }
+
+      deduped.set(
+        entry.id,
+        buildEditingGuardrailHighRiskItem({
+          id: entry.id,
+          sourceStage: entry.sourceStage,
+          reasonCode: entry.reasonCode,
+          excerpt: entry.excerpt,
+        }),
+      );
+    }
+  }
+
+  if (Array.isArray(payload?.skippedAiReplacements)) {
+    for (const item of payload.skippedAiReplacements) {
+      const replacement = asRecord(item);
+      const reasonCode = asNonEmptyString(replacement?.reason);
+      const excerpt =
+        asNonEmptyString(replacement?.targetText) ??
+        asNonEmptyString(replacement?.replacementId);
+      if (!reasonCode || !excerpt) {
+        continue;
+      }
+
+      const id = buildEditingGuardrailHighRiskId(
+        "docx_transform",
+        reasonCode,
+        excerpt,
+      );
+      deduped.set(
+        id,
+        buildEditingGuardrailHighRiskItem({
+          id,
+          sourceStage: "docx_transform",
+          reasonCode,
+          excerpt,
+          replacementId: asNonEmptyString(replacement?.replacementId),
+        }),
+      );
+    }
+  }
+
+  return Array.from(deduped.values());
 }
 
 function extractTableInspectionHighRiskItems(
@@ -539,6 +597,120 @@ function buildFailedCheckRationale(
     return `规则 ${ruleId} 未通过，需要人工确认。`;
   }
   return "高风险规则命中需要人工确认。";
+}
+
+function buildEditingGuardrailHighRiskItem(input: {
+  id: string;
+  sourceStage: "planning" | "docx_transform";
+  reasonCode: string;
+  excerpt: string;
+  replacementId?: string;
+}): ManuscriptWorkbenchHighRiskReviewItemViewModel {
+  const reasonLabel = formatEditingGuardrailReasonLabel(input.reasonCode);
+  const sourceStageLabel = formatEditingGuardrailSourceStageLabel(
+    input.sourceStage,
+  );
+  const summary = `${sourceStageLabel}触发编辑护栏：${reasonLabel}，已降级为仅检查。`;
+  const rationale = `${sourceStageLabel}触发编辑护栏：${reasonLabel}；命中片段：${input.excerpt}`;
+
+  return {
+    id: input.id,
+    title: `${sourceStageLabel}需要人工确认`,
+    feedbackCategory: "incorrect_hit",
+    candidate_posture: "inspect_only",
+    riskLevel: "high",
+    summary,
+    excerpt: input.excerpt,
+    locationText: "待人工定位",
+    rationale,
+    evidence_pack: buildGovernedEvidencePack({
+      excerpt: input.excerpt,
+      rationale,
+    }),
+    recommendedRoute: "rule_candidate",
+    originPayload: {
+      source: "editing_guardrail",
+      sourceStage: input.sourceStage,
+      reasonCode: input.reasonCode,
+      ...(input.replacementId ? { replacementId: input.replacementId } : {}),
+    },
+  };
+}
+
+function buildEditingGuardrailHighRiskId(
+  sourceStage: "planning" | "docx_transform",
+  reasonCode: string,
+  excerpt: string,
+): string {
+  return `editing-guardrail:${sourceStage}:${reasonCode}:${excerpt}`;
+}
+
+function parseEditingGuardrailManualReviewItem(
+  value: unknown,
+):
+  | {
+      id: string;
+      sourceStage: "planning";
+      reasonCode: string;
+      excerpt: string;
+    }
+  | undefined {
+  const rawValue = asNonEmptyString(value);
+  const prefix = "editing_guardrail:";
+  if (!rawValue || !rawValue.startsWith(prefix)) {
+    return undefined;
+  }
+
+  const remainder = rawValue.slice(prefix.length);
+  const separatorIndex = remainder.indexOf(":");
+  if (separatorIndex <= 0) {
+    return undefined;
+  }
+
+  const reasonCode = remainder.slice(0, separatorIndex).trim();
+  const excerpt = remainder.slice(separatorIndex + 1).trim();
+  if (!reasonCode || !excerpt) {
+    return undefined;
+  }
+
+  return {
+    id: buildEditingGuardrailHighRiskId("planning", reasonCode, excerpt),
+    sourceStage: "planning",
+    reasonCode,
+    excerpt,
+  };
+}
+
+function formatEditingGuardrailReasonLabel(reasonCode: string): string {
+  switch (reasonCode) {
+    case "meaning_risk":
+      return "存在语义风险（meaning_risk）";
+    case "anchor_not_precise":
+      return "锚点不够精确（anchor_not_precise）";
+    case "numeric_entity_present":
+      return "包含数值实体（numeric_entity_present）";
+    case "medical_entity_present":
+      return "包含医学实体（medical_entity_present）";
+    case "object_type_not_safe":
+      return "对象类型不安全（object_type_not_safe）";
+    case "insufficient_style_evidence":
+      return "样式证据不足（insufficient_style_evidence）";
+    default:
+      return reasonCode;
+  }
+}
+
+function formatEditingGuardrailSourceStageLabel(
+  value: "planning" | "docx_transform",
+): string {
+  switch (value) {
+    case "planning":
+      return "AI 规划拦截";
+    case "docx_transform":
+      return "DOCX 落稿拦截";
+    default:
+      return value;
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {

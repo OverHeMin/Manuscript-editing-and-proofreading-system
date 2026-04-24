@@ -111,12 +111,140 @@ def test_apply_rules_to_docx_skips_ai_replacements_that_span_multiple_runs(tmp_p
 
     assert result["applied_rule_ids"] == []
     assert result["applied_changes"] == []
+    assert result["skipped_ai_replacements"] == [
+        {
+            "replacementId": "ai-replacement-1",
+            "reason": "anchor_not_precise",
+            "targetText": "5 mg per dL",
+        }
+    ]
 
     with zipfile.ZipFile(output_path, "r") as archive:
         output_xml = archive.read("word/document.xml").decode("utf-8")
 
     assert "<w:t>5 mg </w:t>" in output_xml
     assert "<w:t>per dL</w:t>" in output_xml
+
+
+def test_apply_rules_to_docx_skips_numeric_ai_replacements_by_guardrail(tmp_path):
+    source_path = tmp_path / "source-numeric.docx"
+    output_path = tmp_path / "output-numeric.docx"
+    write_docx(source_path, ["5 mg per dL"])
+
+    result = apply_rules_to_docx(
+        source_path,
+        output_path,
+        [],
+        [
+            {
+                "targetText": "5 mg per dL",
+                "replacementText": "5 mg/dL",
+            }
+        ],
+    )
+
+    assert result["applied_rule_ids"] == []
+    assert result["applied_changes"] == []
+    assert result["skipped_ai_replacements"] == [
+        {
+            "replacementId": "ai-replacement-1",
+            "reason": "numeric_entity_present",
+            "targetText": "5 mg per dL",
+        }
+    ]
+
+    with zipfile.ZipFile(output_path, "r") as archive:
+        output_xml = archive.read("word/document.xml").decode("utf-8")
+
+    assert "5 mg per dL" in output_xml
+    assert "5 mg/dL" not in output_xml
+
+
+def test_apply_rules_to_docx_flags_missing_replacement_as_insufficient_style_evidence(
+    tmp_path,
+):
+    source_path = tmp_path / "source-missing-replacement.docx"
+    output_path = tmp_path / "output-missing-replacement.docx"
+    write_docx(source_path, ["摘要 目的"])
+
+    result = apply_rules_to_docx(
+        source_path,
+        output_path,
+        [],
+        [
+            {
+                "targetText": "摘要 目的",
+            }
+        ],
+    )
+
+    assert result["applied_rule_ids"] == []
+    assert result["applied_changes"] == []
+    assert result["skipped_ai_replacements"] == [
+        {
+            "replacementId": "ai-replacement-1",
+            "reason": "insufficient_style_evidence",
+            "targetText": "摘要 目的",
+        }
+    ]
+
+
+def test_apply_rules_to_docx_allows_format_only_punctuation_ai_replacements(tmp_path):
+    source_path = tmp_path / "source-punctuation.docx"
+    output_path = tmp_path / "output-punctuation.docx"
+    write_docx(source_path, ["Introduction ,"])
+
+    result = apply_rules_to_docx(
+        source_path,
+        output_path,
+        [],
+        [
+            {
+                "targetText": "Introduction ,",
+                "replacementText": "Introduction,",
+            }
+        ],
+    )
+
+    assert result["applied_rule_ids"] == ["ai-replacement-1"]
+    assert result["applied_changes"] == [
+        {
+            "ruleId": "ai-replacement-1",
+            "before": "Introduction ,",
+            "after": "Introduction,",
+        }
+    ]
+    assert result["skipped_ai_replacements"] == []
+
+
+def test_apply_rules_to_docx_does_not_record_false_skip_before_later_paragraph_match(
+    tmp_path,
+):
+    source_path = tmp_path / "source-later-paragraph.docx"
+    output_path = tmp_path / "output-later-paragraph.docx"
+    write_docx(source_path, ["Background paragraph", "Introduction ,"])
+
+    result = apply_rules_to_docx(
+        source_path,
+        output_path,
+        [],
+        [
+            {
+                "targetText": "Introduction ,",
+                "replacementText": "Introduction,",
+            }
+        ],
+    )
+
+    assert result["applied_rule_ids"] == ["ai-replacement-1"]
+    assert result["applied_changes"] == [
+        {
+            "ruleId": "ai-replacement-1",
+            "before": "Introduction ,",
+            "after": "Introduction,",
+        }
+    ]
+    assert result["skipped_ai_replacements"] == []
 
 
 def test_apply_rules_to_docx_rejects_table_patches_outside_editing_safe_mode(tmp_path):

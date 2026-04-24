@@ -52,6 +52,45 @@ function cloneKnowledgeRecord(record: KnowledgeRecord): KnowledgeRecord {
         : undefined,
     },
     aliases: record.aliases ? [...record.aliases] : undefined,
+    binding_targets: record.binding_targets
+      ? {
+          ...(record.binding_targets.template_family_ids
+            ? {
+                template_family_ids: [
+                  ...record.binding_targets.template_family_ids,
+                ],
+              }
+            : {}),
+          ...(record.binding_targets.module_template_ids
+            ? {
+                module_template_ids: [
+                  ...record.binding_targets.module_template_ids,
+                ],
+              }
+            : {}),
+          ...(record.binding_targets.journal_template_ids
+            ? {
+                journal_template_ids: [
+                  ...record.binding_targets.journal_template_ids,
+                ],
+              }
+            : {}),
+          ...(record.binding_targets.general_package_ids
+            ? {
+                general_package_ids: [
+                  ...record.binding_targets.general_package_ids,
+                ],
+              }
+            : {}),
+          ...(record.binding_targets.medical_package_ids
+            ? {
+                medical_package_ids: [
+                  ...record.binding_targets.medical_package_ids,
+                ],
+              }
+            : {}),
+        }
+      : undefined,
     template_bindings: record.template_bindings
       ? [...record.template_bindings]
       : undefined,
@@ -482,58 +521,10 @@ export class InMemoryKnowledgeRepository implements KnowledgeRepository {
     revision: KnowledgeRevisionRecord,
   ): KnowledgeRecord {
     const bindings = this.bindingsByRevisionId.get(revision.id) ?? [];
-    const linkedKnowledgeItemIds = bindings
-      .filter((binding) => binding.binding_kind === "knowledge_item")
-      .map((binding) => binding.binding_target_id);
-
-    return {
-      id: revision.asset_id,
-      title: revision.title,
-      canonical_text: revision.canonical_text,
-      knowledge_kind: revision.knowledge_kind,
-      status: revision.status,
-      routing: {
-        ...revision.routing,
-        manuscript_types:
-          revision.routing.manuscript_types === "any"
-            ? "any"
-            : [...revision.routing.manuscript_types],
-        sections: revision.routing.sections ? [...revision.routing.sections] : undefined,
-        risk_tags: revision.routing.risk_tags
-          ? [...revision.routing.risk_tags]
-          : undefined,
-        discipline_tags: revision.routing.discipline_tags
-          ? [...revision.routing.discipline_tags]
-          : undefined,
-      },
-      ...(revision.summary != null ? { summary: revision.summary } : {}),
-      ...(revision.evidence_level != null
-        ? { evidence_level: revision.evidence_level }
-        : {}),
-      ...(revision.source_type != null ? { source_type: revision.source_type } : {}),
-      ...(revision.source_link != null ? { source_link: revision.source_link } : {}),
-      ...(revision.aliases ? { aliases: [...revision.aliases] } : {}),
-      ...(bindings.length > 0
-        ? {
-            template_bindings: bindings.map((binding) => binding.binding_target_id),
-          }
-        : {}),
-      ...(linkedKnowledgeItemIds.length > 0
-        ? {
-            linked_knowledge_item_ids: [...linkedKnowledgeItemIds],
-          }
-        : {}),
-      ...(revision.source_learning_candidate_id != null
-        ? { source_learning_candidate_id: revision.source_learning_candidate_id }
-        : {}),
-      ...(revision.projection_source != null
-        ? {
-            projection_source: JSON.parse(
-              JSON.stringify(revision.projection_source),
-            ) as NonNullable<KnowledgeRecord["projection_source"]>,
-          }
-        : {}),
-    };
+    return projectRuntimeKnowledgeRecord({
+      revision,
+      bindings,
+    });
   }
 
   private resolveRevisionList(assetId: string): KnowledgeRevisionRecord[] {

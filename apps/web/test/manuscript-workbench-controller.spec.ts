@@ -3177,3 +3177,155 @@ test("manuscript workbench controller loads proofreading governance handoff with
   );
 });
 
+test("manuscript workbench controller loads execution snapshot details and knowledge hit logs for detail explanations", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/execution-tracking/snapshots/snapshot-output-1"
+      ) {
+        return {
+          status: 200,
+          body: {
+            id: "snapshot-output-1",
+            manuscript_id: "manuscript-1",
+            module: "editing",
+            job_id: "job-editing-1",
+            execution_profile_id: "execution-profile-editing-1",
+            module_template_id: "template-editing-1",
+            module_template_version_no: 2,
+            prompt_template_id: "prompt-editing-1",
+            prompt_template_version: "2026-04-24",
+            skill_package_ids: [],
+            skill_package_versions: [],
+            model_id: "gpt-5.4",
+            quality_packages: [
+              {
+                package_id: "pkg-general-1",
+                package_name: "通用样式包",
+                package_kind: "general_style_package",
+                target_scopes: ["general_proofreading"],
+                version: 3,
+              },
+            ],
+            knowledge_item_ids: ["knowledge-1"],
+            created_asset_ids: ["asset-edited-1"],
+            quality_findings_summary: {
+              total_issue_count: 2,
+              issue_count_by_scope: {
+                general_proofreading: 2,
+              },
+              issue_count_by_action: {
+                manual_review: 2,
+              },
+              issue_count_by_severity: {
+                high: 1,
+                medium: 1,
+              },
+              highest_action: "manual_review",
+              representative_issue_ids: ["issue-1"],
+            },
+            created_at: "2026-04-24T09:00:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url ===
+          "/api/v1/execution-tracking/snapshots/snapshot-output-1/knowledge-hit-logs"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "hit-1",
+              snapshot_id: "snapshot-output-1",
+              knowledge_item_id: "knowledge-1",
+              binding_rule_id: "rule-table-1",
+              match_source: "knowledge_item_binding",
+              match_reasons: ["命中期刊表格说明"],
+              section: "结果",
+              created_at: "2026-04-24T09:01:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const snapshot = await controller.loadExecutionSnapshot?.("snapshot-output-1");
+  const knowledgeHitLogs =
+    await controller.loadKnowledgeHitLogsBySnapshotId?.("snapshot-output-1");
+
+  assert.deepEqual(snapshot, {
+    id: "snapshot-output-1",
+    manuscript_id: "manuscript-1",
+    module: "editing",
+    job_id: "job-editing-1",
+    execution_profile_id: "execution-profile-editing-1",
+    module_template_id: "template-editing-1",
+    module_template_version_no: 2,
+    prompt_template_id: "prompt-editing-1",
+    prompt_template_version: "2026-04-24",
+    skill_package_ids: [],
+    skill_package_versions: [],
+    model_id: "gpt-5.4",
+    quality_packages: [
+      {
+        package_id: "pkg-general-1",
+        package_name: "通用样式包",
+        package_kind: "general_style_package",
+        target_scopes: ["general_proofreading"],
+        version: 3,
+      },
+    ],
+    knowledge_item_ids: ["knowledge-1"],
+    created_asset_ids: ["asset-edited-1"],
+    quality_findings_summary: {
+      total_issue_count: 2,
+      issue_count_by_scope: {
+        general_proofreading: 2,
+      },
+      issue_count_by_action: {
+        manual_review: 2,
+      },
+      issue_count_by_severity: {
+        high: 1,
+        medium: 1,
+      },
+      highest_action: "manual_review",
+      representative_issue_ids: ["issue-1"],
+    },
+    created_at: "2026-04-24T09:00:00.000Z",
+  });
+  assert.deepEqual(knowledgeHitLogs, [
+    {
+      id: "hit-1",
+      snapshot_id: "snapshot-output-1",
+      knowledge_item_id: "knowledge-1",
+      binding_rule_id: "rule-table-1",
+      match_source: "knowledge_item_binding",
+      match_reasons: ["命中期刊表格说明"],
+      section: "结果",
+      created_at: "2026-04-24T09:01:00.000Z",
+    },
+  ]);
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "GET /api/v1/execution-tracking/snapshots/snapshot-output-1",
+      "GET /api/v1/execution-tracking/snapshots/snapshot-output-1/knowledge-hit-logs",
+    ],
+  );
+});
+

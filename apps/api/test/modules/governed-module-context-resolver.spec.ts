@@ -10,6 +10,7 @@ import { AgentRuntimeService } from "../../src/modules/agent-runtime/agent-runti
 import { InMemoryExecutionGovernanceRepository } from "../../src/modules/execution-governance/in-memory-execution-governance-repository.ts";
 import { ExecutionGovernanceService } from "../../src/modules/execution-governance/execution-governance-service.ts";
 import { InMemoryKnowledgeRepository } from "../../src/modules/knowledge/in-memory-knowledge-repository.ts";
+import { InMemoryManuscriptQualityPackageRepository } from "../../src/modules/manuscript-quality-packages/in-memory-manuscript-quality-package-repository.ts";
 import { InMemoryManuscriptRepository } from "../../src/modules/manuscripts/in-memory-manuscript-repository.ts";
 import { InMemoryManualReviewPolicyRepository } from "../../src/modules/manual-review-policies/in-memory-manual-review-policy-repository.ts";
 import { ManualReviewPolicyService } from "../../src/modules/manual-review-policies/manual-review-policy-service.ts";
@@ -48,6 +49,8 @@ async function createResolverHarness() {
   const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
   const promptSkillRegistryRepository = new InMemoryPromptSkillRegistryRepository();
   const knowledgeRepository = new InMemoryKnowledgeRepository();
+  const manuscriptQualityPackageRepository =
+    new InMemoryManuscriptQualityPackageRepository();
   const retrievalPresetRepository = new InMemoryRetrievalPresetRepository();
   const manualReviewPolicyRepository =
     new InMemoryManualReviewPolicyRepository();
@@ -182,6 +185,7 @@ async function createResolverHarness() {
     toolPermissionPolicyRepository,
     promptSkillRegistryRepository,
     verificationOpsRepository,
+    manuscriptQualityPackageRepository,
     createId: (() => {
       const ids = ["binding-1"];
       return () => {
@@ -235,6 +239,17 @@ async function createResolverHarness() {
     scope: "admin_only",
     status: "published",
     applies_to_modules: ["editing"],
+  });
+  await manuscriptQualityPackageRepository.save({
+    id: "quality-package-version-1",
+    package_name: "Editing General Style",
+    package_kind: "general_style_package",
+    target_scopes: ["general_proofreading"],
+    version: 1,
+    status: "published",
+    manifest: {
+      style_family: "editing_general_style",
+    },
   });
   await knowledgeRepository.save({
     id: "knowledge-bound-1",
@@ -401,6 +416,7 @@ async function createResolverHarness() {
     toolPermissionPolicyId: policy.id,
     promptTemplateId: "prompt-editing-1",
     skillPackageIds: ["skill-editing-1"],
+    qualityPackageVersionIds: ["quality-package-version-1"],
     executionProfileId: "profile-1",
   });
   await runtimeBindingService.activateBinding(runtimeBinding.id, "admin");
@@ -647,6 +663,175 @@ test("agent resolver returns the active runtime binding with profile runtime san
   assert.equal(context.moduleContext.executionProfile.id, "profile-1");
   assert.equal(context.runtimeBindingReadiness.observation_status, "reported");
   assert.deepEqual(context.runtimeBindingReadiness.report, readinessReport);
+});
+
+test("agent resolver threads active runtime package ids into governed dynamic knowledge selection", async () => {
+  const harness = await createResolverHarness();
+
+  await harness.knowledgeRepository.saveAsset({
+    id: "knowledge-package-bound-1",
+    status: "active",
+    current_revision_id: "knowledge-package-bound-1-revision-1",
+    current_approved_revision_id: "knowledge-package-bound-1-revision-1",
+    created_at: "2026-03-28T11:40:00.000Z",
+    updated_at: "2026-03-28T11:40:00.000Z",
+  });
+  await harness.knowledgeRepository.saveRevision({
+    id: "knowledge-package-bound-1-revision-1",
+    asset_id: "knowledge-package-bound-1",
+    revision_no: 1,
+    status: "approved",
+    title: "Editing package scoped knowledge",
+    canonical_text: "Only use this knowledge when the active runtime binding carries the matched package.",
+    knowledge_kind: "reference",
+    routing: {
+      module_scope: "editing",
+      manuscript_types: ["clinical_study"],
+    },
+    created_at: "2026-03-28T11:40:00.000Z",
+    updated_at: "2026-03-28T11:40:00.000Z",
+  });
+  await harness.knowledgeRepository.replaceRevisionBindings(
+    "knowledge-package-bound-1-revision-1",
+    [
+      {
+        id: "knowledge-package-bound-1-revision-1-binding-1",
+        revision_id: "knowledge-package-bound-1-revision-1",
+        binding_kind: "template_family",
+        binding_target_id: "family-1",
+        binding_target_label: "Clinical Study Family",
+        created_at: "2026-03-28T11:40:00.000Z",
+      },
+      {
+        id: "knowledge-package-bound-1-revision-1-binding-2",
+        revision_id: "knowledge-package-bound-1-revision-1",
+        binding_kind: "general_package",
+        binding_target_id: "quality-package-version-1",
+        binding_target_label: "General Package v1",
+        created_at: "2026-03-28T11:40:30.000Z",
+      },
+    ],
+  );
+
+  const context = await resolveGovernedAgentContext({
+    manuscriptId: "manuscript-1",
+    module: "editing",
+    jobId: "job-package-1",
+    actorId: "editor-1",
+    actorRole: "editor",
+    manuscriptRepository: harness.manuscriptRepository,
+    moduleTemplateRepository: harness.moduleTemplateRepository,
+    executionGovernanceService: harness.executionGovernanceService,
+    promptSkillRegistryRepository: harness.promptSkillRegistryRepository,
+    knowledgeRepository: harness.knowledgeRepository,
+    aiGatewayService: harness.aiGatewayService,
+    sandboxProfileService: harness.sandboxProfileService,
+    agentProfileService: harness.agentProfileService,
+    agentRuntimeService: harness.agentRuntimeService,
+    runtimeBindingService: harness.runtimeBindingService,
+    toolPermissionPolicyService: harness.toolPermissionPolicyService,
+  });
+
+  const selected = context.moduleContext.knowledgeSelections.find(
+    (selection) => selection.knowledgeItem.id === "knowledge-package-bound-1",
+  );
+
+  assert.deepEqual(context.runtimeBinding.quality_package_version_ids, [
+    "quality-package-version-1",
+  ]);
+  assert.equal(selected?.matchSource, "template_binding");
+  assert.equal(selected?.matchSourceId, "general_package:quality-package-version-1");
+  assert.deepEqual(selected?.matchReasons, [
+    "module",
+    "manuscript_type",
+    "template_family",
+    "general_package",
+  ]);
+});
+
+test("agent resolver can activate package-scoped knowledge through package-kind fallback", async () => {
+  const harness = await createResolverHarness();
+
+  await harness.knowledgeRepository.saveAsset({
+    id: "knowledge-package-kind-bound-1",
+    status: "active",
+    current_revision_id: "knowledge-package-kind-bound-1-revision-1",
+    current_approved_revision_id: "knowledge-package-kind-bound-1-revision-1",
+    created_at: "2026-03-28T11:40:40.000Z",
+    updated_at: "2026-03-28T11:40:40.000Z",
+  });
+  await harness.knowledgeRepository.saveRevision({
+    id: "knowledge-package-kind-bound-1-revision-1",
+    asset_id: "knowledge-package-kind-bound-1",
+    revision_no: 1,
+    status: "approved",
+    title: "Editing package kind fallback knowledge",
+    canonical_text:
+      "Use this knowledge whenever the runtime binding carries any active general package.",
+    knowledge_kind: "reference",
+    routing: {
+      module_scope: "editing",
+      manuscript_types: ["clinical_study"],
+    },
+    created_at: "2026-03-28T11:40:40.000Z",
+    updated_at: "2026-03-28T11:40:40.000Z",
+  });
+  await harness.knowledgeRepository.replaceRevisionBindings(
+    "knowledge-package-kind-bound-1-revision-1",
+    [
+      {
+        id: "knowledge-package-kind-bound-1-revision-1-binding-1",
+        revision_id: "knowledge-package-kind-bound-1-revision-1",
+        binding_kind: "template_family",
+        binding_target_id: "family-1",
+        binding_target_label: "Clinical Study Family",
+        created_at: "2026-03-28T11:40:40.000Z",
+      },
+      {
+        id: "knowledge-package-kind-bound-1-revision-1-binding-2",
+        revision_id: "knowledge-package-kind-bound-1-revision-1",
+        binding_kind: "general_package",
+        binding_target_id: "general_style_package",
+        binding_target_label: "通用包（按类型）",
+        created_at: "2026-03-28T11:40:45.000Z",
+      },
+    ],
+  );
+
+  const context = await resolveGovernedAgentContext({
+    manuscriptId: "manuscript-1",
+    module: "editing",
+    jobId: "job-package-kind-1",
+    actorId: "editor-1",
+    actorRole: "editor",
+    manuscriptRepository: harness.manuscriptRepository,
+    moduleTemplateRepository: harness.moduleTemplateRepository,
+    executionGovernanceService: harness.executionGovernanceService,
+    promptSkillRegistryRepository: harness.promptSkillRegistryRepository,
+    knowledgeRepository: harness.knowledgeRepository,
+    aiGatewayService: harness.aiGatewayService,
+    sandboxProfileService: harness.sandboxProfileService,
+    agentProfileService: harness.agentProfileService,
+    agentRuntimeService: harness.agentRuntimeService,
+    runtimeBindingService: harness.runtimeBindingService,
+    toolPermissionPolicyService: harness.toolPermissionPolicyService,
+  });
+
+  const selected = context.moduleContext.knowledgeSelections.find(
+    (selection) => selection.knowledgeItem.id === "knowledge-package-kind-bound-1",
+  );
+
+  assert.equal(selected?.matchSource, "template_binding");
+  assert.equal(
+    selected?.matchSourceId,
+    "general_package_kind:general_style_package:quality-package-version-1",
+  );
+  assert.deepEqual(selected?.matchReasons, [
+    "module",
+    "manuscript_type",
+    "template_family",
+    "general_package",
+  ]);
 });
 
 test("agent resolver fails when no active runtime binding exists for the governed module scope", async () => {

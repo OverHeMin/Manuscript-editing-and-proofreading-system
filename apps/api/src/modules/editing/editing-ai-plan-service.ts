@@ -15,6 +15,14 @@ export interface EditingAiPlan {
   manualReviewItems: string[];
 }
 
+type EditingGuardrailReason =
+  | "meaning_risk"
+  | "anchor_not_precise"
+  | "numeric_entity_present"
+  | "medical_entity_present"
+  | "object_type_not_safe"
+  | "insufficient_style_evidence";
+
 export interface EditingAiPlanServiceOptions {
   mainlineAiRuntimeExecutor?: MainlineAiRuntimeExecutor;
 }
@@ -119,27 +127,9 @@ function buildEditingUserPayload(input: CreateEditingAiPlanInput) {
 }
 
 function buildFallbackEditingPlan(input: CreateEditingAiPlanInput): EditingAiPlan {
-  const firstLongBlock = (input.sourceBlocks ?? []).find(
-    (block) => block.text.trim().length >= 8,
-  );
-  if (!firstLongBlock) {
-    return {
-      summary: `No AI editing replacements were proposed for ${input.manuscriptId}.`,
-      replacements: [],
-      manualReviewItems: [],
-    };
-  }
-
-  const targetText = firstLongBlock.text.trim();
   return {
-    summary: `Prepared a conservative editing plan for ${input.manuscriptId}.`,
-    replacements: [
-      {
-        targetText,
-        replacementText: `${targetText}（编辑建议版）`,
-        reason: "Provide a deterministic fallback replacement when AI runtime is unavailable.",
-      },
-    ],
+    summary: `No AI editing replacements were proposed for ${input.manuscriptId}.`,
+    replacements: [],
     manualReviewItems: [],
   };
 }
@@ -148,20 +138,54 @@ function normalizeEditingAiPlan(
   payload: Record<string, unknown>,
   fallback: EditingAiPlan,
 ): EditingAiPlan {
-  const replacements = Array.isArray(payload.replacements)
-    ? payload.replacements
-        .map(normalizeReplacement)
-        .filter(
-          (entry): entry is EditingAiReplacement =>
-            entry !== undefined &&
-            entry.targetText !== entry.replacementText,
-        )
-    : [];
+  const guardrailManualReviewItems: string[] = [];
+  const replacements: EditingAiReplacement[] = [];
+
+  if (Array.isArray(payload.replacements)) {
+    for (const entry of payload.replacements) {
+      if (!isRecord(entry)) {
+        continue;
+      }
+
+      const malformedReason = detectMalformedEditingGuardrailReason(entry);
+      if (malformedReason) {
+        guardrailManualReviewItems.push(
+          buildEditingGuardrailManualReviewItem(
+            malformedReason,
+            toNonEmptyString(entry.targetText) ??
+              toNonEmptyString(entry.replacementText) ??
+              "unlabeled_replacement",
+          ),
+        );
+        continue;
+      }
+
+      const normalized = normalizeReplacement(entry);
+      if (!normalized || normalized.targetText === normalized.replacementText) {
+        continue;
+      }
+
+      const guardrailReason = detectEditingGuardrailReason(normalized);
+      if (guardrailReason) {
+        guardrailManualReviewItems.push(
+          buildEditingGuardrailManualReviewItem(
+            guardrailReason,
+            normalized.targetText,
+          ),
+        );
+        continue;
+      }
+
+      replacements.push(normalized);
+    }
+  }
 
   return {
     summary: toNonEmptyString(payload.summary) ?? fallback.summary,
     replacements: replacements.length > 0 ? replacements : fallback.replacements,
-    manualReviewItems: toStringArray(payload.manualReviewItems),
+    manualReviewItems: dedupeStringArray(
+      toStringArray(payload.manualReviewItems).concat(guardrailManualReviewItems),
+    ),
   };
 }
 
@@ -202,3 +226,87 @@ function toStringArray(value: unknown): string[] {
 function toNonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
+
+function detectMalformedEditingGuardrailReason(
+  value: Record<string, unknown>,
+): EditingGuardrailReason | undefined {
+  if (!toNonEmptyString(value.targetText)) {
+    return "anchor_not_precise";
+  }
+
+  if (!toNonEmptyString(value.replacementText) || !toNonEmptyString(value.reason)) {
+    return "insufficient_style_evidence";
+  }
+
+  return undefined;
+}
+
+function detectEditingGuardrailReason(
+  replacement: EditingAiReplacement,
+): EditingGuardrailReason | undefined {
+  const combinedText = `${replacement.targetText}\n${replacement.replacementText}`;
+  if (OBJECT_TYPE_PATTERN.test(combinedText)) {
+    return "object_type_not_safe";
+  }
+
+  if (NUMERIC_ENTITY_PATTERN.test(combinedText)) {
+    return "numeric_entity_present";
+  }
+
+  if (MEDICAL_ENTITY_PATTERN.test(combinedText)) {
+    return "medical_entity_present";
+  }
+
+  if (!isLikelyFormatOnlyReplacement(replacement.targetText, replacement.replacementText)) {
+    return "meaning_risk";
+  }
+
+  return undefined;
+}
+
+function isLikelyFormatOnlyReplacement(targetText: string, replacementText: string): boolean {
+  return normalizeFormatSkeleton(targetText) === normalizeFormatSkeleton(replacementText);
+}
+
+function normalizeFormatSkeleton(value: string): string {
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(FORMAT_ONLY_IGNORED_PATTERN, "");
+}
+
+function truncateGuardrailExcerpt(value: string): string {
+  const trimmed = value.trim().replace(/\s+/g, " ");
+  return trimmed.length > 60 ? `${trimmed.slice(0, 57)}...` : trimmed;
+}
+
+function buildEditingGuardrailManualReviewItem(
+  reason: EditingGuardrailReason,
+  excerpt: string,
+): string {
+  return `editing_guardrail:${reason}:${truncateGuardrailExcerpt(excerpt)}`;
+}
+
+function dedupeStringArray(values: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const value of values) {
+    if (!value || seen.has(value)) {
+      continue;
+    }
+
+    seen.add(value);
+    result.push(value);
+  }
+
+  return result;
+}
+
+const FORMAT_ONLY_IGNORED_PATTERN =
+  /[\s.,;:!?()[\]{}"'`“”‘’<>/\-|\\，。；：！？（）【】《》、]/gu;
+const NUMERIC_ENTITY_PATTERN =
+  /\d|%|‰|mg|g\/L|mmol|μmol|ml|kg|cm|mm|p\s*[<=>]|ci|confidence interval|n\s*=|mean|sd|±/iu;
+const MEDICAL_ENTITY_PATTERN =
+  /patient|patients|diagnosis|diagnostic|therapy|treatment|clinical|hemoglobin|alanine aminotransferase|serum|plasma|dose|dosage|患者|诊断|治疗|临床|血红蛋白|转氨酶|剂量|结论/iu;
+const OBJECT_TYPE_PATTERN = /χ²|χ|β|α|±|≤|≥|∑|√|≈|≠/u;

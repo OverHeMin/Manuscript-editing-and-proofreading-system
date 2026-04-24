@@ -19,3 +19,4 @@ output/
 **/.local-data/
 .pytest_cache/
 **/__pycache__/
+.gstack/

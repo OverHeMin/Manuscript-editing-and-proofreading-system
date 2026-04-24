@@ -86,7 +86,10 @@ test("template governance controller loads template families, retrieval insights
                 module_scope: "screening",
                 manuscript_types: ["clinical_study"],
               },
-              template_bindings: ["template-screening-1"],
+              binding_targets: {
+                module_template_ids: ["template-screening-1"],
+              },
+              template_bindings: [],
             },
             {
               id: "knowledge-2",

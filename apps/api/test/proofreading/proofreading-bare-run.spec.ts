@@ -689,6 +689,13 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
           rationale:
             "Human adjusted the proofreading issue before final publication.",
           source_stage: "model_residual",
+          signal_breakdown: {
+            promotion_evidence: {
+              source: "proofreading_confirmation",
+              decision_action: "accept_and_edit",
+              correction_category: "grammar",
+            },
+          },
         },
       ],
     },
@@ -703,6 +710,13 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
           rationale:
             "Human adjusted the proofreading issue before final publication.",
           source_stage: "model_residual",
+          signal_breakdown: {
+            promotion_evidence: {
+              source: "proofreading_confirmation",
+              decision_action: "accept_and_edit",
+              correction_category: "terminology",
+            },
+          },
         },
       ],
     },
@@ -717,6 +731,13 @@ test("publishHumanFinal applies human confirmation decisions, routes rule candid
           rationale:
             "Human adjusted the proofreading issue before final publication.",
           source_stage: "model_residual",
+          signal_breakdown: {
+            promotion_evidence: {
+              source: "proofreading_confirmation",
+              decision_action: "accept_and_edit",
+              correction_category: "punctuation",
+            },
+          },
         },
       ],
     },

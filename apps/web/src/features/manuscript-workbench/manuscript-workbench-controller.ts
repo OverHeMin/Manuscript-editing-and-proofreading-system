@@ -1,6 +1,14 @@
 import type { AuthRole } from "../auth/index.ts";
 import type { ModuleExecutionMode } from "@medical/contracts";
 import {
+  getExecutionSnapshot,
+  listKnowledgeHitLogsBySnapshotId,
+} from "../execution-tracking/execution-tracking-api.ts";
+import type {
+  KnowledgeHitLogViewModel,
+  ModuleExecutionSnapshotViewModel as ExecutionTrackingSnapshotViewModel,
+} from "../execution-tracking/types.ts";
+import {
   type HumanFeedbackRecordViewModel,
   type ManualFeedbackCategory,
 } from "../feedback-governance/index.ts";
@@ -235,6 +243,12 @@ export interface ManuscriptWorkbenchController {
     manuscriptId: string,
     options?: ManuscriptWorkbenchProofreadingGovernanceHandoffOptions,
   ): Promise<ManuscriptWorkbenchProofreadingGovernanceHandoffViewModel>;
+  loadExecutionSnapshot?(
+    snapshotId: string,
+  ): Promise<ExecutionTrackingSnapshotViewModel | undefined>;
+  loadKnowledgeHitLogsBySnapshotId?(
+    snapshotId: string,
+  ): Promise<KnowledgeHitLogViewModel[]>;
   loadTemplateContext?(
     templateFamilyId: string,
   ): Promise<ManuscriptWorkbenchTemplateContext>;
@@ -302,6 +316,14 @@ export function createManuscriptWorkbenchController(
     },
     loadProofreadingGovernanceHandoff(manuscriptId, options) {
       return loadProofreadingGovernanceHandoff(client, manuscriptId, options);
+    },
+    async loadExecutionSnapshot(snapshotId) {
+      const response = await getExecutionSnapshot(client, snapshotId);
+      return response.body;
+    },
+    async loadKnowledgeHitLogsBySnapshotId(snapshotId) {
+      const response = await listKnowledgeHitLogsBySnapshotId(client, snapshotId);
+      return response.body;
     },
     async loadTemplateContext(templateFamilyId) {
       const [availableTemplateFamilies, templateFamily, journalTemplateProfiles] =

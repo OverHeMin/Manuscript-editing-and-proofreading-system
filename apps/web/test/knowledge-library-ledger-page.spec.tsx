@@ -155,6 +155,49 @@ function buildPersistedDraftComposer(): KnowledgeLibraryLedgerComposer {
   };
 }
 
+function buildBoundDraftComposer(): KnowledgeLibraryLedgerComposer {
+  const composer = buildPersistedDraftComposer();
+  return {
+    ...composer,
+    draft: {
+      ...composer.draft,
+      bindings: [
+        {
+          bindingKind: "general_package",
+          bindingTargetId: "general-package-1",
+          bindingTargetLabel: "通用包 A",
+        },
+        {
+          bindingKind: "knowledge_item",
+          bindingTargetId: "knowledge-2",
+          bindingTargetLabel: "统计学说明",
+        },
+      ],
+    },
+  };
+}
+
+function buildEvidenceGapDraftComposer(): KnowledgeLibraryLedgerComposer {
+  const composer = buildPersistedDraftComposer();
+  return {
+    ...composer,
+    contentBlocksDraft: [
+      {
+        id: "knowledge-1-revision-2-block-table-1",
+        revision_id: "knowledge-1-revision-2",
+        block_type: "table_block",
+        order_no: 0,
+        status: "active",
+        content_payload: {
+          capture_mode: "plain_text_grid",
+          rows: [["column", "value"]],
+          exact_capture_failure_codes: ["run_style_incomplete"],
+        },
+      },
+    ],
+  };
+}
+
 test("knowledge library ledger page renders the approved toolbar and default columns for the final operator posture", () => {
   const markup = renderToStaticMarkup(
     <KnowledgeLibraryLedgerPage initialViewModel={buildLedgerViewModel()} />,
@@ -243,6 +286,76 @@ test("knowledge library ledger page switches the board footer to save and submit
   assert.match(markup, /data-board-action="save-draft"/u);
   assert.match(markup, /data-board-action="submit-review"/u);
   assert.doesNotMatch(markup, /data-board-action="confirm-entry"/u);
+});
+
+test("knowledge library ledger page renders the high-precision evidence precheck for submit review", () => {
+  const markup = renderToStaticMarkup(
+    <KnowledgeLibraryLedgerPage
+      initialViewModel={buildLedgerViewModel()}
+      initialComposer={buildEvidenceGapDraftComposer()}
+      initialFormMode="edit"
+    />,
+  );
+
+  assert.match(markup, /data-entry-evidence-gate="knowledge"/u);
+  assert.match(markup, /高精度证据预检/u);
+  assert.match(markup, /当前有 1 条高精度证据未满足提交审核条件/u);
+  assert.match(markup, /表格块 #1/u);
+  assert.match(markup, /阻断提交审核/u);
+});
+
+test("knowledge library ledger board renders structured bindings on the real side panel path", () => {
+  const baseViewModel = buildLedgerViewModel();
+  const markup = renderToStaticMarkup(
+    <KnowledgeLibraryLedgerPage
+      initialViewModel={{
+        ...baseViewModel,
+        library: [
+          ...baseViewModel.library,
+          {
+            id: "knowledge-2",
+            title: "统计学说明",
+            summary: "卡方检验和统计量格式说明。",
+            knowledge_kind: "reference",
+            status: "approved",
+            module_scope: "proofreading",
+            manuscript_types: ["clinical_study"],
+            selected_revision_id: "knowledge-2-revision-1",
+            semantic_status: "confirmed",
+            content_block_count: 1,
+            contributor_label: "editor.zh",
+            updated_at: "2026-04-08T09:30:00.000Z",
+          },
+        ],
+        visibleLibrary: [
+          ...baseViewModel.visibleLibrary,
+          {
+            id: "knowledge-2",
+            title: "统计学说明",
+            summary: "卡方检验和统计量格式说明。",
+            knowledge_kind: "reference",
+            status: "approved",
+            module_scope: "proofreading",
+            manuscript_types: ["clinical_study"],
+            selected_revision_id: "knowledge-2-revision-1",
+            semantic_status: "confirmed",
+            content_block_count: 1,
+            contributor_label: "editor.zh",
+            updated_at: "2026-04-08T09:30:00.000Z",
+          },
+        ],
+      }}
+      initialComposer={buildBoundDraftComposer()}
+      initialFormMode="edit"
+    />,
+  );
+
+  assert.match(markup, /结构化绑定/u);
+  assert.match(markup, /data-knowledge-binding-multi-select="binding-general-packages"/u);
+  assert.match(markup, /data-knowledge-binding-multi-select="binding-knowledge-items"/u);
+  assert.match(markup, /通用包 A（锁定具体版本）/u);
+  assert.match(markup, /统计学说明/u);
+  assert.match(markup, /已绑定但当前目录未返回/u);
 });
 
 test("knowledge library ledger page can open a create board from a rule-center template prefill", () => {

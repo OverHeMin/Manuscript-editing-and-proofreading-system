@@ -25,8 +25,10 @@ import type {
   KnowledgeItemStatus,
   KnowledgeKind,
   KnowledgeSourceType,
+  KnowledgeItemViewModel,
   UpdateKnowledgeDraftInput,
 } from "../knowledge/index.ts";
+import { buildKnowledgeBindingSummaries } from "../knowledge/knowledge-binding-presenter.ts";
 import type { ManuscriptType } from "../manuscripts/types.ts";
 import { EDITORIAL_MANUSCRIPT_TYPE_OPTIONS } from "../shared/editorial-taxonomy.ts";
 import {
@@ -2614,11 +2616,13 @@ export function TemplateGovernanceWorkbenchPage({
                     </div>
                   </div>
                   <div className="template-governance-chip-row">
-                    {(selectedKnowledgeItem.template_bindings ?? []).map((binding) => (
+                    {resolveTemplateGovernanceKnowledgeBindingChips(selectedKnowledgeItem).map(
+                      (binding) => (
                       <span key={binding} className="template-governance-chip">
                         {binding}
                       </span>
-                    ))}
+                      ),
+                    )}
                   </div>
                 </article>
               ) : (
@@ -3124,7 +3128,7 @@ function TemplateGovernanceRuleLedgerRoute({
       return;
     }
 
-    if (wizardState.step !== "entry") {
+    if (wizardState.step !== "entry" && wizardState.draftRevisionId) {
       setWizardState((current) =>
         current == null ? current : { ...current, dirty: false },
       );
@@ -4267,7 +4271,7 @@ function TemplateGovernanceContentModuleLedgerRoute({
       return;
     }
 
-    if (wizardState.step !== "entry") {
+    if (wizardState.step !== "entry" && wizardState.draftRevisionId) {
       setWizardState((current) =>
         current == null ? current : { ...current, dirty: false },
       );
@@ -6931,6 +6935,19 @@ export function toKnowledgeDraftFormState(item: {
     sourceType: item.source_type ?? "other",
     sourceLink: item.source_link ?? "",
   };
+}
+
+function resolveTemplateGovernanceKnowledgeBindingChips(
+  item: Pick<KnowledgeItemViewModel, "binding_targets" | "template_bindings">,
+): string[] {
+  const summaries = buildKnowledgeBindingSummaries(item);
+  if (summaries.length === 0) {
+    return [];
+  }
+
+  return summaries.flatMap((summary) =>
+    summary.values.map((value) => `${summary.label}: ${value}`),
+  );
 }
 
 function resolveInitialRuleAuthoringDraft(

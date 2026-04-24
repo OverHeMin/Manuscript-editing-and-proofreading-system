@@ -36,6 +36,14 @@ export interface KnowledgeProjectionSourceViewModel {
   projection_kind: KnowledgeProjectionKind;
 }
 
+export interface KnowledgeBindingTargetsViewModel {
+  template_family_ids?: string[];
+  module_template_ids?: string[];
+  journal_template_ids?: string[];
+  general_package_ids?: string[];
+  medical_package_ids?: string[];
+}
+
 export interface KnowledgeItemViewModel {
   id: string;
   asset_id?: string;
@@ -58,6 +66,7 @@ export interface KnowledgeItemViewModel {
   effective_at?: string;
   expires_at?: string;
   aliases?: string[];
+  binding_targets?: KnowledgeBindingTargetsViewModel;
   template_bindings?: string[];
   projection_source?: KnowledgeProjectionSourceViewModel;
 }

@@ -61,7 +61,7 @@ export function KnowledgeLibraryGridTable({
                 <small>{item.selected_revision_id ?? "未选择版本"}</small>
               </span>
               <span role="cell">
-                <strong>{item.contributor_label ?? "待接入贡献账号"}</strong>
+                <strong>{item.contributor_label ?? "未记录贡献账号"}</strong>
                 <small>
                   {item.updated_at ? `最近更新 ${formatTimestampLabel(item.updated_at)}` : "等待首次提交"}
                 </small>
