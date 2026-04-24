@@ -445,7 +445,10 @@ import {
   LastActiveAdminDisableError,
   UserAdminNotFoundError,
 } from "../users/index.ts";
-import type { RoleKey } from "../users/roles.ts";
+import {
+  INTERNAL_TEAM_ROLE_KEYS,
+  type RoleKey,
+} from "../users/roles.ts";
 
 type RouteResponse<TBody> = {
   status: number;
@@ -458,6 +461,15 @@ class RoleRouteAuthorizationError extends Error {
   constructor(role: RoleKey, routeSurface: string) {
     super(`Role "${role}" is not allowed to access "${routeSurface}".`);
     this.name = "RoleRouteAuthorizationError";
+  }
+}
+
+class InternalTeamRoleSelectionError extends Error {
+  constructor(role: string) {
+    super(
+      `Role "${role}" is not allowed for internal team accounts. Allowed roles: ${INTERNAL_TEAM_ROLE_KEYS.join(", ")}.`,
+    );
+    this.name = "InternalTeamRoleSelectionError";
   }
 }
 
@@ -1303,6 +1315,7 @@ const MANUSCRIPT_SURFACE_ROLES: readonly RoleKey[] = [
   "screener",
   "editor",
   "proofreader",
+  "knowledge_reviewer",
 ];
 
 export interface CreateApiHttpServerOptions {
@@ -4021,6 +4034,7 @@ async function handleRoute(
       const body = (await readJsonBody(req)) as Parameters<
         typeof userAdminApi.createUser
       >[0]["input"];
+      assertAllowedInternalTeamRole(body.role);
 
       return userAdminApi.createUser({
         actorId: session.user.id,
@@ -4042,6 +4056,7 @@ async function handleRoute(
       const body = (await readJsonBody(req)) as Parameters<
         typeof userAdminApi.updateUserProfile
       >[0]["input"];
+      assertAllowedInternalTeamRole(body.role);
 
       return userAdminApi.updateUserProfile({
         actorId: session.user.id,
@@ -8540,6 +8555,15 @@ function resolveWorkbenchPermissionForModule(
   }
 }
 
+function assertAllowedInternalTeamRole(role: unknown): asserts role is RoleKey {
+  if (
+    typeof role !== "string" ||
+    !(INTERNAL_TEAM_ROLE_KEYS as readonly string[]).includes(role)
+  ) {
+    throw new InternalTeamRoleSelectionError(String(role));
+  }
+}
+
 function mapManualFeedbackCategoryToFeedbackType(
   category: ManualFeedbackCategory,
 ): "manual_confirmation" | "manual_correction" | "manual_rejection" {
@@ -8964,6 +8988,7 @@ export function mapErrorToHttpResponse(
     error instanceof ResidualIssueExecutionLogRequiredError ||
     error instanceof ResidualIssueSourceAssetRequiredError ||
     error instanceof ResidualLearningServiceDependencyRequiredError ||
+    error instanceof InternalTeamRoleSelectionError ||
     error instanceof ManuscriptBatchUploadLimitExceededError
   ) {
     return [400, { error: "invalid_request", message: error.message }];

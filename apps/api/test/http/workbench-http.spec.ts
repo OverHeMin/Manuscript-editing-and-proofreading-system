@@ -321,7 +321,7 @@ test("workbench http preview-session route creates a read-only preview session f
   }
 });
 
-test("workbench http manuscript and export surfaces stay hidden from non-mainline public-beta roles", async () => {
+test("workbench http gives knowledge reviewers manuscript and export visibility without opening fresh submission", async () => {
   const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-workbench-surface-"));
   const { server, baseUrl } = await startWorkbenchServer({
     uploadRootDir,
@@ -376,9 +376,7 @@ test("workbench http manuscript and export surfaces stay hidden from non-mainlin
           Cookie: reviewerCookie,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          journalTemplateId: "journal-template-public-beta-1",
-        }),
+        body: JSON.stringify({}),
       },
     );
     const assetsResponse = await fetch(
@@ -432,12 +430,12 @@ test("workbench http manuscript and export surfaces stay hidden from non-mainlin
       }),
     });
 
-    assert.equal(manuscriptResponse.status, 403);
-    assert.equal(templateSelectionResponse.status, 403);
-    assert.equal(assetsResponse.status, 403);
-    assert.equal(jobResponse.status, 403);
-    assert.equal(exportResponse.status, 403);
-    assert.equal(downloadResponse.status, 403);
+    assert.equal(manuscriptResponse.status, 200);
+    assert.equal(templateSelectionResponse.status, 200);
+    assert.equal(assetsResponse.status, 200);
+    assert.equal(jobResponse.status, 200);
+    assert.equal(exportResponse.status, 200);
+    assert.equal(downloadResponse.status, 200);
     assert.equal(blockedUploadResponse.status, 403);
   } finally {
     await stopServer(server);
@@ -1840,7 +1838,7 @@ test("default in-memory http runtime exposes resolvable package default-rule ass
   }
 });
 
-test("workbench http module routes reject operators outside the assigned public-beta desk", async () => {
+test("workbench http keeps legacy single-desk roles bounded while editor spans the manuscript mainline", async () => {
   const { server, baseUrl, seededIds } = await startWorkbenchServer();
 
   try {
@@ -1915,9 +1913,9 @@ test("workbench http module routes reject operators outside the assigned public-
       },
     );
 
-    assert.equal(screeningResponse.status, 403);
+    assert.equal(screeningResponse.status, 201);
     assert.equal(editingResponse.status, 403);
-    assert.equal(proofreadingResponse.status, 403);
+    assert.equal(proofreadingResponse.status, 201);
     assert.equal(screeningUploadResponse.status, 403);
   } finally {
     await stopServer(server);

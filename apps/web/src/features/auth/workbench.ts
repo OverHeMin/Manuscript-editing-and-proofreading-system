@@ -63,7 +63,7 @@ export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
     navGroup: "mainline",
     placement: "primary",
     surfaces: ["web"],
-    roles: ["admin", "screener"],
+    roles: ["admin", "screener", "editor", "knowledge_reviewer"],
   },
   {
     id: "editing",
@@ -72,7 +72,7 @@ export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
     navGroup: "mainline",
     placement: "primary",
     surfaces: ["web"],
-    roles: ["admin", "editor"],
+    roles: ["admin", "editor", "knowledge_reviewer"],
   },
   {
     id: "proofreading",
@@ -81,7 +81,7 @@ export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
     navGroup: "mainline",
     placement: "primary",
     surfaces: ["web"],
-    roles: ["admin", "proofreader"],
+    roles: ["admin", "editor", "proofreader", "knowledge_reviewer"],
   },
   {
     id: "knowledge-library",
@@ -254,16 +254,23 @@ export const ROLE_WORKBENCHES: Record<AuthRole, readonly WorkbenchId[]> = {
     "system-settings",
   ],
   screener: ["screening"],
-  editor: ["editing"],
+  editor: ["screening", "editing", "proofreading"],
   proofreader: ["proofreading"],
-  knowledge_reviewer: ["knowledge-library", "knowledge-review", "template-governance"],
+  knowledge_reviewer: [
+    "screening",
+    "editing",
+    "proofreading",
+    "knowledge-library",
+    "knowledge-review",
+    "template-governance",
+  ],
   user: ["submission"],
 };
 
 export const DEFAULT_WORKBENCH_BY_ROLE: Record<AuthRole, WorkbenchId> = {
   admin: "screening",
   screener: "screening",
-  editor: "editing",
+  editor: "screening",
   proofreader: "proofreading",
   knowledge_reviewer: "knowledge-library",
   user: "submission",

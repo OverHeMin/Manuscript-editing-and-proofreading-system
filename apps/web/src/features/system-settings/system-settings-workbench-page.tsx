@@ -4,7 +4,10 @@ import {
   resolveWorkbenchRuntimeMode,
   type WorkbenchRuntimeMode,
 } from "../../app/persistent-session.ts";
-import type { AuthRole } from "../auth/index.ts";
+import {
+  INTERNAL_TEAM_AUTH_ROLES,
+  type AuthRole,
+} from "../auth/index.ts";
 import type { WorkbenchSettingsSection } from "../auth/workbench.ts";
 import {
   createSystemSettingsWorkbenchController,
@@ -24,14 +27,7 @@ if (typeof document !== "undefined") {
 }
 
 const defaultController = createSystemSettingsWorkbenchController(createBrowserHttpClient());
-const accountRoles: AuthRole[] = [
-  "admin",
-  "screener",
-  "editor",
-  "proofreader",
-  "knowledge_reviewer",
-  "user",
-];
+const accountRoles = INTERNAL_TEAM_AUTH_ROLES;
 const providerKindOptions: Array<{ value: AiProviderKind; label: string }> = [
   { value: "openai", label: "OpenAI" },
   { value: "openai_compatible", label: "OpenAI 兼容" },
@@ -788,17 +784,17 @@ function resolveModuleLabel(moduleKey: SystemSettingsModuleKey): string {
 function formatRoleLabel(role: AuthRole): string {
   switch (role) {
     case "admin":
-      return "管理员";
+      return "系统管理员";
     case "screener":
       return "初筛";
     case "editor":
-      return "编辑";
+      return "稿件处理员";
     case "proofreader":
       return "校对";
     case "knowledge_reviewer":
-      return "知识审核";
+      return "知识治理员";
     default:
-      return "普通用户";
+      return "投稿用户";
   }
 }
 

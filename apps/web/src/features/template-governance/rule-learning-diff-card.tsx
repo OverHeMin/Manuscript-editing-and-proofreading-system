@@ -455,7 +455,7 @@ function formatActorRole(value: string): string {
     case "admin":
       return "管理员";
     case "knowledge_reviewer":
-      return "知识审核员";
+      return "知识治理员";
     default:
       return value;
   }

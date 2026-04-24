@@ -15,12 +15,19 @@ export const PERMISSIONS = [
 
 export type Permission = (typeof PERMISSIONS)[number];
 
+const MANUSCRIPT_MAINLINE_PERMISSIONS: readonly Permission[] = [
+  "workbench.screening",
+  "workbench.editing",
+  "workbench.proofreading",
+] as const;
+
 const PERMISSIONS_BY_ROLE: Record<RoleKey, readonly Permission[]> = {
   admin: PERMISSIONS,
   screener: ["workbench.screening"],
-  editor: ["workbench.editing"],
+  editor: MANUSCRIPT_MAINLINE_PERMISSIONS,
   proofreader: ["workbench.proofreading"],
   knowledge_reviewer: [
+    ...MANUSCRIPT_MAINLINE_PERMISSIONS,
     "knowledge.review",
     "learning.review",
     "template-governance.manage",
