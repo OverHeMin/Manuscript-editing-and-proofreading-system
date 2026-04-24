@@ -152,7 +152,7 @@ export function ManuscriptQualityPackagesSection(
                 }
                 disabled={props.isMutating}
               />
-              <span>{scope}</span>
+              <span>{isHarnessSurface ? formatTargetScopeLabel(scope) : scope}</span>
             </label>
           ))}
         </div>
@@ -164,6 +164,7 @@ export function ManuscriptQualityPackagesSection(
           <>
             {parsedManifestState.manifest ? (
               <GeneralStylePackageEditor
+                surface={props.surface}
                 manifest={parsedManifestState.manifest}
                 onChange={(nextManifest) => {
                   setManifestText(JSON.stringify(nextManifest, null, 2));
@@ -324,6 +325,17 @@ function formatPackageKind(
       return surface === "harness" ? "通用风格" : "General Style";
     case "medical_analyzer_package":
       return surface === "harness" ? "医学分析" : "Medical Analyzer";
+  }
+}
+
+function formatTargetScopeLabel(
+  scope: CreateManuscriptQualityPackageDraftInput["targetScopes"][number],
+): string {
+  switch (scope) {
+    case "general_proofreading":
+      return "通用校对";
+    case "medical_specialized":
+      return "医学专项";
   }
 }
 

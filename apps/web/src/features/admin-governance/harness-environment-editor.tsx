@@ -11,6 +11,10 @@ import type { TemplateModule } from "../templates/index.ts";
 import type {
   ManuscriptQualityPackageViewModel,
 } from "../manuscript-quality-packages/index.ts";
+import {
+  formatHarnessModuleLabel,
+  formatHarnessSurfaceName,
+} from "./harness-surface-copy.ts";
 
 export interface HarnessEnvironmentEditorProps {
   module: TemplateModule;
@@ -62,9 +66,9 @@ export function HarnessEnvironmentEditor(
             }
             disabled={props.isMutating}
           >
-            <option value="screening">screening</option>
-            <option value="editing">editing</option>
-            <option value="proofreading">proofreading</option>
+            <option value="screening">{formatHarnessModuleLabel("screening")}</option>
+            <option value="editing">{formatHarnessModuleLabel("editing")}</option>
+            <option value="proofreading">{formatHarnessModuleLabel("proofreading")}</option>
           </select>
         </label>
 
@@ -93,7 +97,7 @@ export function HarnessEnvironmentEditor(
               props.templateFamilyId == null
                 ? "尚未解析范围"
                 : props.templateFamilyName
-                  ? `${props.templateFamilyName} (${props.templateFamilyId})`
+                  ? `${formatHarnessSurfaceName(props.templateFamilyName)} (${props.templateFamilyId})`
                   : props.templateFamilyId
             }
             readOnly
@@ -164,7 +168,7 @@ export function HarnessEnvironmentEditor(
           >
             {(props.activeScope?.retrievalPresets ?? []).map((preset) => (
               <option key={preset.id} value={preset.id}>
-                {preset.name} ({preset.id})
+                {formatHarnessSurfaceName(preset.name)} ({preset.id})
               </option>
             ))}
           </select>
@@ -181,7 +185,7 @@ export function HarnessEnvironmentEditor(
           >
             {(props.activeScope?.manualReviewPolicies ?? []).map((policy) => (
               <option key={policy.id} value={policy.id}>
-                {policy.name} ({policy.id})
+                {formatHarnessSurfaceName(policy.name)} ({policy.id})
               </option>
             ))}
           </select>

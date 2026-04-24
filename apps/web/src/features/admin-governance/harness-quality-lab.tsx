@@ -1,11 +1,18 @@
 import type { EvaluationRunViewModel, EvaluationSuiteViewModel } from "../verification-ops/index.ts";
 import type { HarnessEnvironmentPreviewViewModel } from "./admin-governance-controller.ts";
+import {
+  formatHarnessStatusLabel,
+  formatHarnessSurfaceName,
+} from "./harness-surface-copy.ts";
 
 export interface HarnessQualityLabProps {
   evaluationSuites: readonly EvaluationSuiteViewModel[];
   selectedSuiteId: string;
+  selectedSuite: EvaluationSuiteViewModel | null;
   preview: HarnessEnvironmentPreviewViewModel | null;
   latestRun: EvaluationRunViewModel | null;
+  canLaunch: boolean;
+  launchGuidance: string | null;
   onSuiteChange: (suiteId: string) => void;
   onLaunch: () => void;
   isMutating: boolean;
@@ -29,7 +36,7 @@ export function HarnessQualityLab(props: HarnessQualityLabProps) {
           <option value="">请选择套件</option>
           {props.evaluationSuites.map((suite) => (
             <option key={suite.id} value={suite.id}>
-              {suite.name} ({suite.id})
+              {formatHarnessSurfaceName(suite.name)} ({suite.id})
             </option>
           ))}
         </select>
@@ -48,11 +55,23 @@ export function HarnessQualityLab(props: HarnessQualityLabProps) {
           <span>最近候选运行</span>
           <small>
             {props.latestRun
-              ? `${props.latestRun.id} · ${props.latestRun.status}`
+              ? `${props.latestRun.id} · ${formatHarnessStatusLabel(props.latestRun.status)}`
               : "尚未发起候选运行"}
           </small>
         </article>
       </div>
+
+      {props.selectedSuite ? (
+        <p className="admin-governance-empty">
+          当前套件：{formatHarnessSurfaceName(props.selectedSuite.name)}
+          {props.selectedSuite.supports_ab_comparison
+            ? "，要求候选与基线恰好存在 1 处主差异。"
+            : "，当前按非 A/B 方式执行验证。"}
+        </p>
+      ) : null}
+      {props.launchGuidance ? (
+        <p className="admin-governance-empty">{props.launchGuidance}</p>
+      ) : null}
 
       <div className="auth-actions">
         <button
@@ -62,7 +81,8 @@ export function HarnessQualityLab(props: HarnessQualityLabProps) {
           disabled={
             props.isMutating ||
             props.preview == null ||
-            props.selectedSuiteId.trim().length === 0
+            props.selectedSuiteId.trim().length === 0 ||
+            !props.canLaunch
           }
         >
           发起候选验证

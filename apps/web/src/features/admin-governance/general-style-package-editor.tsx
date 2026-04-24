@@ -27,6 +27,7 @@ export interface GeneralStylePackageEditorProps {
   manifest: Record<string, unknown>;
   onChange: (nextManifest: Record<string, unknown>) => void;
   disabled?: boolean;
+  surface?: "default" | "harness";
 }
 
 const defaultDraft: GeneralStylePackageDraft = {
@@ -63,19 +64,21 @@ const actionOptions: GeneralStyleAction[] = [
 export function GeneralStylePackageEditor(
   props: GeneralStylePackageEditorProps,
 ) {
+  const isHarnessSurface = props.surface === "harness";
   const draft = parseGeneralStylePackageManifestDraft(props.manifest);
 
   return (
     <div className="admin-governance-panel admin-governance-panel-nested">
-      <h4>Structured Style Rules</h4>
+      <h4>{isHarnessSurface ? "结构化风格规则" : "Structured Style Rules"}</h4>
       <p className="admin-governance-empty">
-        Maintain the article-style expectations here. The editor keeps the generated manifest in
-        sync with the worker-facing package schema.
+        {isHarnessSurface
+          ? "在这里维护文章体例约束，结构化编辑器会同步生成面向执行侧的质量包清单。"
+          : "Maintain the article-style expectations here. The editor keeps the generated manifest in sync with the worker-facing package schema."}
       </p>
 
       <div className="admin-governance-form-grid">
         <label className="admin-governance-field">
-          <span>Abstract Required Labels</span>
+          <span>{isHarnessSurface ? "摘要必备标签" : "Abstract Required Labels"}</span>
           <input
             type="text"
             value={draft.abstractRequiredLabels}
@@ -92,7 +95,7 @@ export function GeneralStylePackageEditor(
         </label>
 
         <label className="admin-governance-field">
-          <span>Genre Wording Suspicions</span>
+          <span>{isHarnessSurface ? "可疑文风词" : "Genre Wording Suspicions"}</span>
           <input
             type="text"
             value={draft.genreWordingSuspicions}
@@ -111,7 +114,7 @@ export function GeneralStylePackageEditor(
 
       <div className="admin-governance-form-grid">
         <label className="admin-governance-field">
-          <span>Strong Claims</span>
+          <span>{isHarnessSurface ? "强断言词" : "Strong Claims"}</span>
           <textarea
             value={draft.strongClaims}
             onChange={(event) =>
@@ -128,7 +131,7 @@ export function GeneralStylePackageEditor(
         </label>
 
         <label className="admin-governance-field">
-          <span>Cautious Claims</span>
+          <span>{isHarnessSurface ? "谨慎表达词" : "Cautious Claims"}</span>
           <textarea
             value={draft.cautiousClaims}
             onChange={(event) =>
@@ -147,7 +150,7 @@ export function GeneralStylePackageEditor(
 
       <div className="admin-governance-form-grid">
         <label className="admin-governance-field">
-          <span>Abstract Posture Checks</span>
+          <span>{isHarnessSurface ? "摘要语气检查" : "Abstract Posture Checks"}</span>
           <textarea
             value={draft.abstractPosture}
             onChange={(event) =>
@@ -164,7 +167,7 @@ export function GeneralStylePackageEditor(
         </label>
 
         <label className="admin-governance-field">
-          <span>Results Posture Checks</span>
+          <span>{isHarnessSurface ? "结果段语气检查" : "Results Posture Checks"}</span>
           <textarea
             value={draft.resultsPosture}
             onChange={(event) =>
@@ -181,7 +184,7 @@ export function GeneralStylePackageEditor(
         </label>
 
         <label className="admin-governance-field">
-          <span>Conclusion Posture Checks</span>
+          <span>{isHarnessSurface ? "结论段语气检查" : "Conclusion Posture Checks"}</span>
           <textarea
             value={draft.conclusionPosture}
             onChange={(event) =>
@@ -200,7 +203,7 @@ export function GeneralStylePackageEditor(
 
       <div className="admin-governance-policy-grid">
         <PolicyCard
-          label="Section Expectation Missing"
+          label={isHarnessSurface ? "章节要求缺失" : "Section Expectation Missing"}
           severity={draft.sectionExpectationMissingSeverity}
           action={draft.sectionExpectationMissingAction}
           onSeverityChange={(severity) =>
@@ -220,9 +223,10 @@ export function GeneralStylePackageEditor(
             )
           }
           disabled={props.disabled}
+          surface={props.surface}
         />
         <PolicyCard
-          label="Result / Conclusion Jump"
+          label={isHarnessSurface ? "结果/结论跳跃" : "Result / Conclusion Jump"}
           severity={draft.resultConclusionJumpSeverity}
           action={draft.resultConclusionJumpAction}
           onSeverityChange={(severity) =>
@@ -242,9 +246,10 @@ export function GeneralStylePackageEditor(
             )
           }
           disabled={props.disabled}
+          surface={props.surface}
         />
         <PolicyCard
-          label="Tone Overclaim"
+          label={isHarnessSurface ? "措辞过强" : "Tone Overclaim"}
           severity={draft.toneOverclaimSeverity}
           action={draft.toneOverclaimAction}
           onSeverityChange={(severity) =>
@@ -264,9 +269,10 @@ export function GeneralStylePackageEditor(
             )
           }
           disabled={props.disabled}
+          surface={props.surface}
         />
         <PolicyCard
-          label="Genre Wording Suspicion"
+          label={isHarnessSurface ? "文风可疑" : "Genre Wording Suspicion"}
           severity={draft.genreWordingSuspicionSeverity}
           action={draft.genreWordingSuspicionAction}
           onSeverityChange={(severity) =>
@@ -286,6 +292,7 @@ export function GeneralStylePackageEditor(
             )
           }
           disabled={props.disabled}
+          surface={props.surface}
         />
       </div>
     </div>
@@ -299,15 +306,18 @@ interface PolicyCardProps {
   onSeverityChange: (severity: GeneralStyleSeverity) => void;
   onActionChange: (action: GeneralStyleAction) => void;
   disabled?: boolean;
+  surface?: "default" | "harness";
 }
 
 function PolicyCard(props: PolicyCardProps) {
+  const isHarnessSurface = props.surface === "harness";
+
   return (
     <article className="admin-governance-asset-row">
       <span>{props.label}</span>
       <div className="admin-governance-form-grid">
         <label className="admin-governance-field">
-          <span>Severity</span>
+          <span>{isHarnessSurface ? "严重级别" : "Severity"}</span>
           <select
             value={props.severity}
             onChange={(event) =>
@@ -317,14 +327,14 @@ function PolicyCard(props: PolicyCardProps) {
           >
             {severityOptions.map((severity) => (
               <option key={severity} value={severity}>
-                {severity}
+                {isHarnessSurface ? formatGeneralStyleSeverityLabel(severity) : severity}
               </option>
             ))}
           </select>
         </label>
 
         <label className="admin-governance-field">
-          <span>Action</span>
+          <span>{isHarnessSurface ? "处理动作" : "Action"}</span>
           <select
             value={props.action}
             onChange={(event) =>
@@ -334,7 +344,7 @@ function PolicyCard(props: PolicyCardProps) {
           >
             {actionOptions.map((action) => (
               <option key={action} value={action}>
-                {action}
+                {isHarnessSurface ? formatGeneralStyleActionLabel(action) : action}
               </option>
             ))}
           </select>
@@ -521,4 +531,30 @@ function readPolicyAction(
   return actionOptions.includes(action as GeneralStyleAction)
     ? (action as GeneralStyleAction)
     : fallback;
+}
+
+function formatGeneralStyleSeverityLabel(severity: GeneralStyleSeverity): string {
+  switch (severity) {
+    case "low":
+      return "低";
+    case "medium":
+      return "中";
+    case "high":
+      return "高";
+    case "critical":
+      return "阻断";
+  }
+}
+
+function formatGeneralStyleActionLabel(action: GeneralStyleAction): string {
+  switch (action) {
+    case "auto_fix":
+      return "自动修复";
+    case "suggest_fix":
+      return "建议修复";
+    case "manual_review":
+      return "人工复核";
+    case "block":
+      return "阻断";
+  }
 }

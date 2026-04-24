@@ -36,6 +36,7 @@ export default defineConfig({
       stderr: "pipe",
       env: {
         ...process.env,
+        APP_ENV: "local",
         API_HOST: apiHost,
         API_PORT: apiPort,
         API_ALLOWED_ORIGINS: webBaseUrl,

@@ -18,6 +18,7 @@ import type {
   ResolveExecutionBundlePreviewInput,
 } from "../execution-governance/index.ts";
 import type {
+  EvaluationSuiteViewModel,
   EvaluationRunViewModel,
   FrozenExperimentBindingInput,
 } from "../verification-ops/index.ts";
@@ -212,9 +213,18 @@ export function HarnessOperatorSection({
     () => filterEvaluationSuitesForScope(overview, scopeProfile),
     [overview, scopeProfile],
   );
+  const selectedEvaluationSuite = useMemo(
+    () =>
+      scopedEvaluationSuites.find((suite) => suite.id === selectedSuiteId) ?? null,
+    [scopedEvaluationSuites, selectedSuiteId],
+  );
   const routingVersions = useMemo(
     () => filterRoutingVersionsForScope(overview, scopeProfile),
     [overview, scopeProfile],
+  );
+  const launchReadiness = useMemo(
+    () => resolveHarnessLaunchReadiness(preview, selectedEvaluationSuite),
+    [preview, selectedEvaluationSuite],
   );
 
   useEffect(() => {
@@ -367,6 +377,12 @@ export function HarnessOperatorSection({
       return;
     }
 
+    if (!launchReadiness.canLaunch) {
+      setStatusMessage(null);
+      setErrorMessage(launchReadiness.guidance);
+      return;
+    }
+
     setIsMutating(true);
     setErrorMessage(null);
     setStatusMessage(null);
@@ -383,7 +399,7 @@ export function HarnessOperatorSection({
       setLatestRun(createdRun);
       setStatusMessage(`已创建候选验证运行 ${createdRun.id}。`);
     } catch (error) {
-      setErrorMessage(toErrorMessage(error));
+      setErrorMessage(toHarnessLaunchErrorMessage(error));
     } finally {
       setIsMutating(false);
     }
@@ -536,8 +552,11 @@ export function HarnessOperatorSection({
               <HarnessQualityLab
                 evaluationSuites={scopedEvaluationSuites}
                 selectedSuiteId={selectedSuiteId}
+                selectedSuite={selectedEvaluationSuite}
                 preview={preview}
                 latestRun={latestRun}
+                canLaunch={launchReadiness.canLaunch}
+                launchGuidance={launchReadiness.guidance}
                 onSuiteChange={setSelectedSuiteId}
                 onLaunch={() => void handleLaunch()}
                 isMutating={isMutating}
@@ -580,8 +599,11 @@ export function HarnessOperatorSection({
           <HarnessQualityLab
             evaluationSuites={scopedEvaluationSuites}
             selectedSuiteId={selectedSuiteId}
+            selectedSuite={selectedEvaluationSuite}
             preview={preview}
             latestRun={latestRun}
+            canLaunch={launchReadiness.canLaunch}
+            launchGuidance={launchReadiness.guidance}
             onSuiteChange={setSelectedSuiteId}
             onLaunch={() => void handleLaunch()}
             isMutating={isMutating}
@@ -815,6 +837,139 @@ function buildFrozenBinding(
     ],
     moduleTemplateId: environment.execution_profile.module_template_id,
   };
+}
+
+function resolveHarnessLaunchReadiness(
+  preview: HarnessEnvironmentPreviewViewModel | null,
+  suite: EvaluationSuiteViewModel | null,
+): {
+  canLaunch: boolean;
+  guidance: string | null;
+} {
+  if (suite == null) {
+    return {
+      canLaunch: false,
+      guidance: "请先选择评测套件。",
+    };
+  }
+
+  if (preview == null) {
+    return {
+      canLaunch: false,
+      guidance: "请先预览候选环境。",
+    };
+  }
+
+  const primaryDiffCount = countPrimaryBindingDiffs(
+    buildFrozenBinding(preview.active_environment, "baseline"),
+    buildFrozenBinding(preview.candidate_environment, "candidate"),
+  );
+
+  if (suite.supports_ab_comparison) {
+    if (primaryDiffCount === 1) {
+      return {
+        canLaunch: true,
+        guidance: null,
+      };
+    }
+
+    if (primaryDiffCount === 0) {
+      return {
+        canLaunch: false,
+        guidance: "当前候选环境与生效环境没有主差异，所选评测套件不能发起 A/B 验证。",
+      };
+    }
+
+    return {
+      canLaunch: false,
+      guidance: `当前候选环境与生效环境存在 ${primaryDiffCount} 处主差异，所选评测套件要求恰好 1 处主差异。`,
+    };
+  }
+
+  if (primaryDiffCount > 0) {
+    return {
+      canLaunch: false,
+      guidance: "所选评测套件不支持 A/B 对照，请先清空候选环境差异。",
+    };
+  }
+
+  return {
+    canLaunch: true,
+    guidance: null,
+  };
+}
+
+function countPrimaryBindingDiffs(
+  baselineBinding: FrozenExperimentBindingInput,
+  candidateBinding: FrozenExperimentBindingInput,
+): number {
+  let diffCount = 0;
+
+  if (baselineBinding.executionProfileId !== candidateBinding.executionProfileId) {
+    diffCount += 1;
+  }
+  if (baselineBinding.runtimeBindingId !== candidateBinding.runtimeBindingId) {
+    diffCount += 1;
+  }
+  if (
+    baselineBinding.modelRoutingPolicyVersionId !==
+    candidateBinding.modelRoutingPolicyVersionId
+  ) {
+    diffCount += 1;
+  }
+  if (baselineBinding.retrievalPresetId !== candidateBinding.retrievalPresetId) {
+    diffCount += 1;
+  }
+  if (baselineBinding.manualReviewPolicyId !== candidateBinding.manualReviewPolicyId) {
+    diffCount += 1;
+  }
+  if (baselineBinding.modelId !== candidateBinding.modelId) {
+    diffCount += 1;
+  }
+  if (baselineBinding.runtimeId !== candidateBinding.runtimeId) {
+    diffCount += 1;
+  }
+  if (baselineBinding.promptTemplateId !== candidateBinding.promptTemplateId) {
+    diffCount += 1;
+  }
+  if (!sameOrderedIds(baselineBinding.skillPackageIds, candidateBinding.skillPackageIds)) {
+    diffCount += 1;
+  }
+  if (
+    !sameOrderedIds(
+      baselineBinding.qualityPackageVersionIds ?? [],
+      candidateBinding.qualityPackageVersionIds ?? [],
+    )
+  ) {
+    diffCount += 1;
+  }
+  if (baselineBinding.moduleTemplateId !== candidateBinding.moduleTemplateId) {
+    diffCount += 1;
+  }
+
+  return diffCount;
+}
+
+function sameOrderedIds(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((value, index) => value === right[index]);
+}
+
+function toHarnessLaunchErrorMessage(error: unknown) {
+  const message = toErrorMessage(error);
+
+  if (message.includes("requires exactly one primary A/B difference")) {
+    return "所选评测套件要求候选与基线恰好存在 1 处主差异，请先调整候选环境后再发起验证。";
+  }
+
+  if (message.includes("does not allow A/B comparisons")) {
+    return "所选评测套件不支持 A/B 对照，请先清空候选环境差异。";
+  }
+
+  return message;
 }
 
 function toErrorMessage(error: unknown) {

@@ -402,6 +402,7 @@ function createHarnessGovernanceOverviewFixture() {
         status: "active",
         verification_check_profile_ids: ["check-profile-1"],
         module_scope: ["editing"],
+        supports_ab_comparison: true,
         admin_only: true,
       },
     ],
@@ -727,6 +728,11 @@ test("evaluation workbench page renders the real harness control plane inside a 
   assert.match(markup, /人工复核策略/u);
   assert.match(markup, /预览候选环境/u);
   assert.match(markup, /验证实验区/u);
+  assert.match(
+    markup,
+    /当前候选环境与生效环境存在 2 处主差异，所选评测套件要求恰好 1 处主差异。/u,
+  );
+  assert.match(markup, /<button[^>]*disabled=""[^>]*>发起候选验证<\/button>/u);
   assert.match(markup, /发起候选验证/u);
   assert.match(markup, /激活与回滚/u);
   assert.match(markup, /激活候选环境/u);
@@ -734,6 +740,8 @@ test("evaluation workbench page renders the real harness control plane inside a 
   assert.match(markup, /路由策略草稿/u);
   assert.match(markup, /运行绑定治理/u);
   assert.match(markup, /质量包治理/u);
+  assert.match(markup, /结构化风格规则/u);
+  assert.doesNotMatch(markup, /Structured Style Rules/u);
   assert.match(markup, /数据与样本/u);
   assert.match(markup, /草稿 1 个/u);
   assert.match(markup, /已发布 1 个/u);
@@ -1185,8 +1193,8 @@ test("evaluation workbench comparison card renders binding deltas between finali
     markup,
     /评分摘要：平均加权得分 97.0（共 1 条）（原为 平均加权得分 91.0（共 1 条））/,
   );
-  assert.match(markup, /当前证据：Latest browser QA/);
-  assert.match(markup, /基线证据：已拒绝 browser QA/);
+  assert.match(markup, /当前证据：最新浏览器验收/);
+  assert.match(markup, /基线证据：已拒绝浏览器验收/);
   assert.match(markup, /当前证据包/);
   assert.match(markup, /基线证据包/);
   assert.match(markup, /平均加权得分 97.0（共 1 条）/);

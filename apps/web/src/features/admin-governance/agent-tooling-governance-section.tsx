@@ -22,6 +22,13 @@ import type {
   AdminGovernanceWorkbenchController,
 } from "./admin-governance-controller.ts";
 import { AgentExecutionEvidenceView } from "./agent-execution-evidence-view.tsx";
+import {
+  formatHarnessExecutionStatusFilterLabel,
+  formatHarnessModuleLabel,
+  formatHarnessScopeKindLabel,
+  formatHarnessStatusLabel,
+  formatHarnessSurfaceName,
+} from "./harness-surface-copy.ts";
 import { RuntimeBindingQualityPackageEditor } from "./runtime-binding-quality-package-editor.tsx";
 
 const templateModules: TemplateModule[] = ["screening", "editing", "proofreading"];
@@ -135,7 +142,7 @@ export function AgentToolingGovernanceSection({
     primaryModelId: "",
     fallbackModelIds: [] as string[],
     evidenceLinksText: "evaluation_run:run-1",
-    notes: "Evidence-linked routing governance draft.",
+    notes: isHarnessSurface ? "与证据关联的路由治理草稿。" : "Evidence-linked routing governance draft.",
   });
   const [routingDraftEditors, setRoutingDraftEditors] = useState<
     Record<
@@ -772,8 +779,14 @@ export function AgentToolingGovernanceSection({
                   }
                   disabled={isMutating}
                 >
-                  <option value="template_family">template_family</option>
-                  <option value="module">module</option>
+                  <option value="template_family">
+                    {isHarnessSurface
+                      ? formatHarnessScopeKindLabel("template_family")
+                      : "template_family"}
+                  </option>
+                  <option value="module">
+                    {isHarnessSurface ? formatHarnessScopeKindLabel("module") : "module"}
+                  </option>
                 </select>
               </label>
               <label className="admin-governance-field">
@@ -791,7 +804,7 @@ export function AgentToolingGovernanceSection({
                   >
                     {templateModules.map((module) => (
                       <option key={module} value={module}>
-                        {module}
+                        {isHarnessSurface ? formatHarnessModuleLabel(module) : module}
                       </option>
                     ))}
                   </select>
@@ -809,7 +822,7 @@ export function AgentToolingGovernanceSection({
                     <option value="">{isHarnessSurface ? "选择模板族" : "Select family"}</option>
                     {overview.templateFamilies.map((family) => (
                       <option key={family.id} value={family.id}>
-                        {family.name}
+                        {isHarnessSurface ? formatHarnessSurfaceName(family.name) : family.name}
                       </option>
                     ))}
                   </select>
@@ -928,7 +941,11 @@ export function AgentToolingGovernanceSection({
 
           return (
             <section key={scopeKind} className="admin-governance-panel admin-governance-panel-tight">
-              <h4>{scopeKind}</h4>
+              <h4>
+                {isHarnessSurface
+                  ? formatHarnessScopeKindLabel(scopeKind)
+                  : scopeKind}
+              </h4>
               {policies.length > 0 ? (
                 <ul className="admin-governance-list admin-governance-list-spaced">
                   {policies.map((policy) => {
@@ -942,10 +959,17 @@ export function AgentToolingGovernanceSection({
                       <li key={policy.policy_id} className="admin-governance-template-row">
                         <div>
                           <strong>
-                            {formatRoutingPolicyScopeKindLabel(policy.scope_kind)}
+                            {isHarnessSurface
+                              ? formatHarnessScopeKindLabel(policy.scope_kind)
+                              : formatRoutingPolicyScopeKindLabel(policy.scope_kind)}
                           </strong>
                           <p>
-                            <code>{policy.scope_kind}</code> / {policy.scope_value}
+                            <code>
+                              {isHarnessSurface
+                                ? formatHarnessScopeKindLabel(policy.scope_kind)
+                                : policy.scope_kind}
+                            </code>{" "}
+                            / {policy.scope_value}
                           </p>
                           {policy.active_version ? (
                             <p>
@@ -966,7 +990,10 @@ export function AgentToolingGovernanceSection({
                             <>
                               <p>
                                 {isHarnessSurface ? "版本" : "Version"} {latestVersion.version_no} /{" "}
-                                {isHarnessSurface ? "状态" : "status"} {latestVersion.status}
+                                {isHarnessSurface ? "状态" : "status"}{" "}
+                                {isHarnessSurface
+                                  ? formatHarnessStatusLabel(latestVersion.status)
+                                  : latestVersion.status}
                               </p>
                               <div className="admin-governance-module-options">
                                 {latestVersion.evidence_links.map((link) => (
@@ -1839,7 +1866,7 @@ export function AgentToolingGovernanceSection({
               <option value="">{isHarnessSurface ? "选择模板族" : "Select family"}</option>
               {overview.templateFamilies.map((family) => (
                 <option key={family.id} value={family.id}>
-                  {family.name}
+                  {isHarnessSurface ? formatHarnessSurfaceName(family.name) : family.name}
                 </option>
               ))}
             </select>
@@ -1858,7 +1885,7 @@ export function AgentToolingGovernanceSection({
             >
               {templateModules.map((module) => (
                 <option key={module} value={module}>
-                  {module}
+                  {isHarnessSurface ? formatHarnessModuleLabel(module) : module}
                 </option>
               ))}
             </select>
@@ -1875,7 +1902,7 @@ export function AgentToolingGovernanceSection({
               <option value="">{isHarnessSurface ? "选择运行时" : "Select runtime"}</option>
               {overview.agentRuntimes.map((runtime) => (
                 <option key={runtime.id} value={runtime.id}>
-                  {runtime.name}
+                  {isHarnessSurface ? formatHarnessSurfaceName(runtime.name) : runtime.name}
                 </option>
               ))}
             </select>
@@ -1895,7 +1922,7 @@ export function AgentToolingGovernanceSection({
               <option value="">{isHarnessSurface ? "选择沙箱配置" : "Select sandbox"}</option>
               {overview.sandboxProfiles.map((profile) => (
                 <option key={profile.id} value={profile.id}>
-                  {profile.name}
+                  {isHarnessSurface ? formatHarnessSurfaceName(profile.name) : profile.name}
                 </option>
               ))}
             </select>
@@ -1915,7 +1942,7 @@ export function AgentToolingGovernanceSection({
               <option value="">{isHarnessSurface ? "选择代理档案" : "Select agent profile"}</option>
               {overview.agentProfiles.map((profile) => (
                 <option key={profile.id} value={profile.id}>
-                  {profile.name}
+                  {isHarnessSurface ? formatHarnessSurfaceName(profile.name) : profile.name}
                 </option>
               ))}
             </select>
@@ -1935,7 +1962,7 @@ export function AgentToolingGovernanceSection({
               <option value="">{isHarnessSurface ? "选择工具策略" : "Select policy"}</option>
               {overview.toolPermissionPolicies.map((policy) => (
                 <option key={policy.id} value={policy.id}>
-                  {policy.name}
+                  {isHarnessSurface ? formatHarnessSurfaceName(policy.name) : policy.name}
                 </option>
               ))}
             </select>
@@ -1955,7 +1982,9 @@ export function AgentToolingGovernanceSection({
               <option value="">{isHarnessSurface ? "选择提示模板" : "Select prompt"}</option>
               {eligiblePromptTemplates.map((promptTemplate) => (
                 <option key={promptTemplate.id} value={promptTemplate.id}>
-                  {promptTemplate.name}
+                  {isHarnessSurface
+                    ? formatHarnessSurfaceName(promptTemplate.name)
+                    : promptTemplate.name}
                 </option>
               ))}
             </select>
@@ -1975,7 +2004,10 @@ export function AgentToolingGovernanceSection({
               <option value="">{isHarnessSurface ? "可选" : "Optional"}</option>
               {eligibleExecutionProfiles.map((profile) => (
                 <option key={profile.id} value={profile.id}>
-                  {profile.module} / {profile.template_family_id} / v{profile.version}
+                  {isHarnessSurface
+                    ? formatHarnessModuleLabel(profile.module)
+                    : profile.module}{" "}
+                  / {profile.template_family_id} / v{profile.version}
                 </option>
               ))}
             </select>
@@ -1995,7 +2027,9 @@ export function AgentToolingGovernanceSection({
               <option value="">{isHarnessSurface ? "可选" : "Optional"}</option>
               {eligibleReleaseCheckProfiles.map((profile) => (
                 <option key={profile.id} value={profile.id}>
-                  {profile.name}
+                  {isHarnessSurface
+                    ? formatHarnessSurfaceName(profile.name)
+                    : profile.name}
                 </option>
               ))}
             </select>
@@ -2018,7 +2052,11 @@ export function AgentToolingGovernanceSection({
                   }
                   disabled={isMutating}
                 />
-                <span>{skillPackage.name}</span>
+                <span>
+                  {isHarnessSurface
+                    ? formatHarnessSurfaceName(skillPackage.name)
+                    : skillPackage.name}
+                </span>
               </label>
             ))}
           </div>
@@ -2059,7 +2097,11 @@ export function AgentToolingGovernanceSection({
                   }
                   disabled={isMutating}
                 />
-                <span>{profile.name}</span>
+                <span>
+                  {isHarnessSurface
+                    ? formatHarnessSurfaceName(profile.name)
+                    : profile.name}
+                </span>
               </label>
             ))}
           </div>
@@ -2083,7 +2125,11 @@ export function AgentToolingGovernanceSection({
                   }
                   disabled={isMutating}
                 />
-                <span>{suite.name}</span>
+                <span>
+                  {isHarnessSurface
+                    ? formatHarnessSurfaceName(suite.name)
+                    : suite.name}
+                </span>
               </label>
             ))}
           </div>
@@ -2114,7 +2160,10 @@ export function AgentToolingGovernanceSection({
               <li key={binding.id} className="admin-governance-template-row">
                 <div>
                   <strong>
-                    {binding.module} / {binding.template_family_id}
+                    {isHarnessSurface
+                      ? formatHarnessModuleLabel(binding.module)
+                      : binding.module}{" "}
+                    / {binding.template_family_id}
                   </strong>
                   <p>
                     {isHarnessSurface ? "运行时" : "runtime"} {binding.runtime_id} /{" "}
@@ -2127,6 +2176,8 @@ export function AgentToolingGovernanceSection({
                       resolveNamedItems(
                         binding.verification_check_profile_ids,
                         overview.verificationCheckProfiles,
+                      ).map((label) =>
+                        isHarnessSurface ? formatHarnessSurfaceName(label) : label,
                       ),
                     )}{" "}
                     / {isHarnessSurface ? "套件" : "suites"}{" "}
@@ -2134,13 +2185,28 @@ export function AgentToolingGovernanceSection({
                       resolveNamedItems(
                         binding.evaluation_suite_ids,
                         overview.evaluationSuites,
+                      ).map((label) =>
+                        isHarnessSurface ? formatHarnessSurfaceName(label) : label,
                       ),
                     )}{" "}
                     / {isHarnessSurface ? "发布" : "release"}{" "}
-                    {resolveNamedItem(
-                      binding.release_check_profile_id,
-                      overview.releaseCheckProfiles,
-                    ) ?? (isHarnessSurface ? "无" : "none")}
+                    {binding.release_check_profile_id
+                      ? (() => {
+                          const label = resolveNamedItem(
+                            binding.release_check_profile_id,
+                            overview.releaseCheckProfiles,
+                          );
+                          if (!label) {
+                            return isHarnessSurface ? "无" : "none";
+                          }
+
+                          return isHarnessSurface
+                            ? formatHarnessSurfaceName(label)
+                            : label;
+                        })()
+                      : isHarnessSurface
+                        ? "无"
+                        : "none"}
                   </p>
                   <p>
                     {isHarnessSurface ? "质量包" : "quality packages"}{" "}
@@ -2153,7 +2219,11 @@ export function AgentToolingGovernanceSection({
                   </p>
                 </div>
                 <div className="admin-governance-template-actions">
-                  <span className="admin-governance-badge">{binding.status}</span>
+                  <span className="admin-governance-badge">
+                    {isHarnessSurface
+                      ? formatHarnessStatusLabel(binding.status)
+                      : binding.status}
+                  </span>
                   <small>v{binding.version}</small>
                   {binding.status === "draft" ? (
                     <button
@@ -2194,7 +2264,15 @@ export function AgentToolingGovernanceSection({
                 onClick={() => setExecutionStatusFilter(statusFilter)}
                 aria-pressed={executionStatusFilter === statusFilter}
               >
-                {formatExecutionStatusFilterLabel(statusFilter, executionStatusCounts[statusFilter])}
+                {isHarnessSurface
+                  ? formatHarnessExecutionStatusFilterLabel(
+                      statusFilter,
+                      executionStatusCounts[statusFilter],
+                    )
+                  : formatExecutionStatusFilterLabel(
+                      statusFilter,
+                      executionStatusCounts[statusFilter],
+                    )}
               </button>
             ))}
           </div>
@@ -2240,15 +2318,23 @@ export function AgentToolingGovernanceSection({
               <li key={log.id} className="admin-governance-template-row">
                 <div>
                   <strong>
-                    {log.module} / manuscript {log.manuscript_id}
+                    {isHarnessSurface
+                      ? formatHarnessModuleLabel(log.module)
+                      : log.module}{" "}
+                    / {isHarnessSurface ? "稿件" : "manuscript"} {log.manuscript_id}
                   </strong>
                   <p>
-                    runtime {log.runtime_id} / binding {log.runtime_binding_id} / triggered by{" "}
-                    {log.triggered_by}
+                    {isHarnessSurface ? "运行时" : "runtime"} {log.runtime_id} /{" "}
+                    {isHarnessSurface ? "绑定" : "binding"} {log.runtime_binding_id} /{" "}
+                    {isHarnessSurface ? "触发人" : "triggered by"} {log.triggered_by}
                   </p>
                 </div>
                 <div className="admin-governance-template-actions">
-                  <span className="admin-governance-badge">{log.status}</span>
+                  <span className="admin-governance-badge">
+                    {isHarnessSurface
+                      ? formatHarnessStatusLabel(log.status)
+                      : log.status}
+                  </span>
                   <small>{log.started_at}</small>
                   <button
                     type="button"

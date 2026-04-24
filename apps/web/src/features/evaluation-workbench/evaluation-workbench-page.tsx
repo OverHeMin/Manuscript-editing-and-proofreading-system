@@ -10,6 +10,10 @@ import type {
 } from "../admin-governance/admin-governance-controller.ts";
 import { createAdminGovernanceWorkbenchController } from "../admin-governance/admin-governance-controller.ts";
 import { AgentToolingGovernanceSection } from "../admin-governance/agent-tooling-governance-section.tsx";
+import {
+  formatHarnessNarrative,
+  formatHarnessSurfaceName,
+} from "../admin-governance/harness-surface-copy.ts";
 import { ManuscriptQualityPackagesSection } from "../admin-governance/manuscript-quality-packages-section.tsx";
 import type { AuthRole } from "../auth/index.ts";
 import type { WorkbenchHarnessSection } from "../auth/workbench.ts";
@@ -747,7 +751,7 @@ function EvaluationWorkbenchOperationsView(props: {
                             data-evaluation-suite-id={suite.id}
                             data-evaluation-suite-type={suite.suite_type}
                           >
-                            <strong>{suite.name}</strong>
+                            <strong>{formatHarnessSurfaceName(suite.name)}</strong>
                             <span>{formatSuiteTypeLabel(suite.suite_type)} | {formatLifecycleStatusLabel(suite.status)}</span>
                           </button>
                         </li>
@@ -1730,7 +1734,7 @@ export function EvaluationWorkbenchEvidenceList(props: {
     <ul className="evaluation-workbench-inline-list">
       {evidence.map((item) => (
         <li key={item.id}>
-          <strong>{item.label}</strong>
+          <strong>{formatHarnessSurfaceName(item.label)}</strong>
           <span>{formatEvidenceKindLabel(item.kind)}</span>
           <span>{item.uri ?? item.artifact_asset_id ?? item.id}</span>
           {item.kind === "url" && item.uri ? (
@@ -2546,7 +2550,12 @@ function localizeEvidenceSummaryText(summary: string | null | undefined) {
     return "当前版本暂未记录时延跟踪。";
   }
 
-  return summary;
+  return formatHarnessNarrative(summary);
+}
+
+function localizeEvaluationNarrative(summary: string | null | undefined) {
+  if (!summary) return summary ?? null;
+  return formatHarnessNarrative(summary);
 }
 
 function findPreviousFinalizedRunHistoryEntry(
@@ -2562,7 +2571,7 @@ export function summarizeFinalizedEntry(
   entry: EvaluationWorkbenchOverview["finalizedRunHistory"][number],
 ) {
   return [
-    entry.finalized.recommendation.decision_reason,
+    localizeEvaluationNarrative(entry.finalized.recommendation.decision_reason),
     entry.run.finished_at ? `完成于 ${entry.run.finished_at}` : undefined,
   ]
     .filter((value) => Boolean(value))
@@ -2914,7 +2923,9 @@ function pushOptionalChange(
 }
 
 function summarizeEvidenceLabels(evidence: VerificationEvidenceViewModel[]) {
-  return evidence.length > 0 ? evidence.map((item) => item.label).join("，") : "未记录";
+  return evidence.length > 0
+    ? evidence.map((item) => formatHarnessSurfaceName(item.label)).join("，")
+    : "未记录";
 }
 
 function createDocumentAssetDownloadHref(assetId: string | null | undefined) {
