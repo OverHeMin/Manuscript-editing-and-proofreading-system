@@ -1906,9 +1906,9 @@ function formatActorRole(role: AuthRole): string {
     case "admin":
       return "\u7ba1\u7406\u5458";
     case "knowledge_reviewer":
-      return "\u77e5\u8bc6\u5ba1\u6838";
+      return "\u77e5\u8bc6\u6cbb\u7406\u5458";
     case "editor":
-      return "\u7f16\u8f91";
+      return "\u7a3f\u4ef6\u5904\u7406\u5458";
     case "proofreader":
       return "\u6821\u5bf9";
     case "screener":

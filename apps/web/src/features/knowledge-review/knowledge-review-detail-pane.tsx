@@ -243,9 +243,9 @@ function actorLabel(actorRole: KnowledgeReviewActionViewModel["actor_role"]): st
     case "admin":
       return "管理员";
     case "editor":
-      return "编辑";
+      return "稿件处理员";
     case "knowledge_reviewer":
-      return "知识审核员";
+      return "知识治理员";
     case "proofreader":
       return "校对";
     case "screener":

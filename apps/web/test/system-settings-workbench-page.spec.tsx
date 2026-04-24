@@ -186,6 +186,11 @@ test("system settings accounts section renders overview cards, user list, create
   assert.match(markup, /\u7528\u6237\u540d/);
   assert.match(markup, /\u663e\u793a\u540d\u79f0/);
   assert.match(markup, /\u521d\u59cb\u5bc6\u7801/);
+  assert.match(markup, /\u7a3f\u4ef6\u5904\u7406\u5458/u);
+  assert.match(markup, /\u77e5\u8bc6\u6cbb\u7406\u5458/u);
+  assert.doesNotMatch(markup, /option value="screener"/u);
+  assert.doesNotMatch(markup, /option value="proofreader"/u);
+  assert.doesNotMatch(markup, /option value="user"/u);
   assert.match(markup, /\u8d26\u53f7\u64cd\u4f5c/);
   assert.match(markup, /\u4fee\u6539\u8d26\u53f7\u4fe1\u606f/);
   assert.match(markup, /\u91cd\u7f6e\u767b\u5f55\u5bc6\u7801/);

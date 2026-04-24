@@ -2182,11 +2182,11 @@ function formatArchiveActorRoleLabel(value?: string): string {
     case "screener":
       return "筛查员";
     case "editor":
-      return "编辑";
+      return "稿件处理员";
     case "proofreader":
       return "校对";
     case "knowledge_reviewer":
-      return "知识审核";
+      return "知识治理员";
     case "user":
       return "用户";
     default:

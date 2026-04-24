@@ -90,9 +90,9 @@ test("persistent governance runtime lets admins manage system-settings users", a
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              username: " Proofreader.Liu ",
-              displayName: "Liu Proofreader",
-              role: "proofreader",
+              username: " Reviewer.Liu ",
+              displayName: "Liu Reviewer",
+              role: "knowledge_reviewer",
               password: "new-password",
             }),
           },
@@ -106,9 +106,9 @@ test("persistent governance runtime lets admins manage system-settings users", a
         };
 
         assert.equal(createResponse.status, 201);
-        assert.equal(createdUser.username, "proofreader.liu");
-        assert.equal(createdUser.displayName, "Liu Proofreader");
-        assert.equal(createdUser.role, "proofreader");
+        assert.equal(createdUser.username, "reviewer.liu");
+        assert.equal(createdUser.displayName, "Liu Reviewer");
+        assert.equal(createdUser.role, "knowledge_reviewer");
         assert.equal(createdUser.status, "active");
 
         const updateResponse = await fetch(
@@ -120,7 +120,7 @@ test("persistent governance runtime lets admins manage system-settings users", a
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              displayName: "Liu Senior Proofreader",
+              displayName: "Liu Senior Reviewer",
               role: "editor",
             }),
           },
@@ -131,7 +131,7 @@ test("persistent governance runtime lets admins manage system-settings users", a
         };
 
         assert.equal(updateResponse.status, 200);
-        assert.equal(updatedUser.displayName, "Liu Senior Proofreader");
+        assert.equal(updatedUser.displayName, "Liu Senior Reviewer");
         assert.equal(updatedUser.role, "editor");
 
         const resetPasswordResponse = await fetch(
@@ -185,6 +185,31 @@ test("persistent governance runtime lets admins manage system-settings users", a
 
         assert.equal(enableResponse.status, 200);
         assert.equal(enabledUser.status, "active");
+
+        const legacyRoleResponse = await fetch(
+          `${serverHandle.baseUrl}/api/v1/system-settings/users`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              username: "legacy.proofreader",
+              displayName: "Legacy Proofreader",
+              role: "proofreader",
+              password: "legacy-password",
+            }),
+          },
+        );
+        const legacyRoleBody = (await legacyRoleResponse.json()) as {
+          error: string;
+          message: string;
+        };
+
+        assert.equal(legacyRoleResponse.status, 400);
+        assert.equal(legacyRoleBody.error, "invalid_request");
+        assert.match(legacyRoleBody.message, /internal team accounts/u);
       } finally {
         await stopServer(serverHandle.server);
       }
