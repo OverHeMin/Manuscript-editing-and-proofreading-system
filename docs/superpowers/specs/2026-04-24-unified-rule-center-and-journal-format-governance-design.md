@@ -37,6 +37,9 @@ The following decisions are locked:
 - knowledge library must follow the same deterministic evidence-first approach and must not let AI guess freely
 - image-based replacement of symbols such as `χ²` is treated as an object-type problem, not a normal text-style case
 - binding buttons and runtime binding effectiveness must be treated as first-class design scope, not deferred cleanup
+- visible `通用包` must map to real runtime package kind `general_style_package`
+- visible `医用包` must map to real runtime package kind `medical_analyzer_package`
+- package-scoped runtime activation must be resolved from active runtime binding quality-package context, not from template-family guesswork
 
 ## Why This Design Is Needed
 
@@ -142,6 +145,8 @@ Journal templates answer:
 
 Journal templates should not be treated as the place where all formatting requirements are manually described in free text.
 
+Journal templates also do not replace runtime quality-package context. Journal selection and package activation are different axes and must stay separate in both UI and runtime logic.
+
 ### 1.2 Knowledge library
 
 The knowledge library stores evidence, examples, and interpretation basis.
@@ -171,6 +176,8 @@ In practice:
 - journal template selects the target
 - knowledge library provides the basis
 - rule center turns that basis into runtime action
+
+For package-scoped governance, the rule center must bind against real runtime package kinds rather than content-module lookalikes.
 
 ## 2. Unified Governance Model
 
@@ -418,6 +425,13 @@ Both rule center and knowledge library must support real UI binding controls for
 - `medical_package`
 - linked `knowledge_item` where relevant
 
+Visible operator copy may still use `通用包` and `医用包`, but their underlying runtime identities must be:
+
+- `通用包` -> `general_style_package`
+- `医用包` -> `medical_analyzer_package`
+
+The rule-center package selector must therefore load from the real runtime quality-package inventory or from a strict compatibility projection of that inventory. It must not continue to use unrelated content-module ledgers as the package source of truth.
+
 ### 7.3 Required UI behavior
 
 The UI must provide real, inspectable controls rather than raw text input.
@@ -447,13 +461,22 @@ The selection layer for screening, proofreading, and editing must be able to res
 - general-package-scoped knowledge
 - medical-package-scoped knowledge
 
+Package-scoped resolution must be driven by active runtime binding quality-package context. The authoritative runtime source is the set of active bound quality packages resolved for the current execution scope.
+
+That means:
+
+- package-scoped rules and knowledge are active only when the current execution scope resolves the corresponding quality package kind or package version
+- journal-template selection alone must not implicitly activate package-scoped content
+- template-family scope alone must not implicitly activate package-scoped content
+- the runtime layer must be able to explain which active quality package caused package-scoped activation
+
 ### 7.5 Required explanation behavior
 
 Any surfaced rule hit or retrieved knowledge item must be explainable with a visible source chain such as:
 
 - active because of journal template
-- active because of general package
-- active because of medical package
+- active because runtime binding includes `general_style_package`
+- active because runtime binding includes `medical_analyzer_package`
 - active because of template family fallback
 - active because linked from a directly bound knowledge item
 
@@ -601,6 +624,8 @@ For journal-specific work, the operator should be able to start from a selected 
 
 without leaving the main governed rule flow.
 
+This does not mean journal-template binding replaces package binding. Journal scope selects the target journal. Package scope selects which active runtime package family contributes package-level governance at execution time.
+
 ## 12. Verification And Acceptance
 
 This design is not complete unless the following end-to-end checks are part of implementation acceptance.
@@ -616,8 +641,10 @@ This design is not complete unless the following end-to-end checks are part of i
 
 - bind one rule and one knowledge item to a general package
 - bind one rule and one knowledge item to a medical package
-- verify module runtime picks the correct package-scoped content
+- verify module runtime picks the correct package-scoped content only when the active runtime binding resolves the corresponding quality package
 - verify UI can explain why each item is active
+- verify changing only journal template does not silently activate package-scoped content when the runtime binding package context is unchanged
+- verify changing the active runtime binding package context changes package-scoped activation even when the journal template stays the same
 
 ### 12.3 Table-governance checks
 
