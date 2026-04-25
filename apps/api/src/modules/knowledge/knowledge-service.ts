@@ -31,6 +31,7 @@ import {
 } from "../shared/write-transaction-manager.ts";
 import type { ModuleTemplateRepository } from "../templates/template-repository.ts";
 import type { TemplateModule } from "../templates/template-record.ts";
+import type { DocumentStructureTableSnapshot } from "../document-pipeline/document-structure-service.ts";
 import type { ToolPermissionPolicyService } from "../tool-permission-policies/tool-permission-policy-service.ts";
 import {
   InMemoryKnowledgeRepository,
@@ -54,13 +55,19 @@ import type {
   KnowledgeDuplicateAcknowledgementRecord,
   KnowledgeDuplicateCheckInput,
   KnowledgeDuplicateMatchRecord,
+  KnowledgeEvidencePackageRecord,
   KnowledgeRecord,
   KnowledgeRevisionBindingKind,
   KnowledgeRevisionBindingRecord,
   KnowledgeRevisionRecord,
   KnowledgeSemanticLayerRecord,
   KnowledgeReviewActionRecord,
+  TableEvidencePackageRecord,
+  TableEvidenceSourceKind,
+  TableEvidenceSourceEnvironmentRecord,
+  TableFullFidelitySnapshotRecord,
 } from "./knowledge-record.ts";
+import { buildTableFullFidelitySnapshotFromDocumentTable } from "./table-full-fidelity-snapshot.ts";
 
 export interface CreateKnowledgeDraftInput {
   title: string;
@@ -131,6 +138,36 @@ export interface KnowledgeContentBlockInput {
 
 export interface ReplaceKnowledgeRevisionContentBlocksInput {
   blocks: readonly KnowledgeContentBlockInput[];
+}
+
+export interface CreateKnowledgeEvidencePackageInput {
+  knowledgeItemId: string;
+  revisionId?: string;
+  status?: KnowledgeEvidencePackageRecord["status"];
+  evidenceKind: KnowledgeEvidencePackageRecord["evidence_kind"];
+  authorityLevel: KnowledgeEvidencePackageRecord["authority_level"];
+  sourceLabel: string;
+  sourcePayload: Record<string, unknown>;
+  bindingTargets?: KnowledgeEvidencePackageRecord["binding_targets"];
+  linkedRuleIds?: string[];
+  linkedTargetModelBlockIds?: string[];
+}
+
+export interface CreateTableEvidencePackageInput {
+  knowledgeItemId: string;
+  revisionId?: string;
+  sourceKind: TableEvidenceSourceKind;
+  sourceEnvironment: TableEvidenceSourceEnvironmentRecord;
+  requestedAuthoritativeStatus?: TableEvidencePackageRecord["authoritative_status"];
+  captureFailureCodes?: string[];
+  rawPayloadRefs?: string[];
+  normalizedTableObjectId?: string;
+  tableFullFidelitySnapshotId?: string;
+  tableFullFidelitySnapshot?: TableFullFidelitySnapshotRecord;
+  documentTableSnapshot?: DocumentStructureTableSnapshot;
+  bindingTargets?: KnowledgeEvidencePackageRecord["binding_targets"];
+  linkedRuleIds?: string[];
+  linkedTargetModelBlockIds?: string[];
 }
 
 export interface RegenerateKnowledgeSemanticLayerInput {
@@ -292,6 +329,25 @@ export class KnowledgeRichSpaceNotSupportedError extends Error {
   constructor() {
     super("Knowledge rich-space is not supported by the configured repository.");
     this.name = "KnowledgeRichSpaceNotSupportedError";
+  }
+}
+
+export class KnowledgeEvidencePackageNotSupportedError extends Error {
+  constructor() {
+    super("Knowledge evidence packages are not supported by the configured repository.");
+    this.name = "KnowledgeEvidencePackageNotSupportedError";
+  }
+}
+
+export class KnowledgeTableEvidenceCaptureGateError extends Error {
+  readonly failureCodes: readonly string[];
+
+  constructor(failureCodes: readonly string[]) {
+    super(
+      `Table evidence cannot be published as authoritative: ${failureCodes.join("; ")}.`,
+    );
+    this.name = "KnowledgeTableEvidenceCaptureGateError";
+    this.failureCodes = [...failureCodes];
   }
 }
 
@@ -463,6 +519,110 @@ export class KnowledgeService {
         return this.buildKnowledgeAssetDetail(assetId, revisionId, repository);
       },
     );
+  }
+
+  async createEvidencePackage(
+    input: CreateKnowledgeEvidencePackageInput,
+  ): Promise<KnowledgeEvidencePackageRecord> {
+    if (!this.repository.saveEvidencePackage) {
+      throw new KnowledgeEvidencePackageNotSupportedError();
+    }
+    const timestamp = this.now().toISOString();
+    const record: KnowledgeEvidencePackageRecord = {
+      id: this.createId(),
+      knowledge_item_id: input.knowledgeItemId,
+      revision_id: input.revisionId,
+      status: input.status ?? "raw",
+      evidence_kind: input.evidenceKind,
+      authority_level: input.authorityLevel,
+      source_label: input.sourceLabel,
+      source_payload: JSON.parse(JSON.stringify(input.sourcePayload)) as Record<
+        string,
+        unknown
+      >,
+      binding_targets: input.bindingTargets,
+      linked_rule_ids: input.linkedRuleIds,
+      linked_target_model_block_ids: input.linkedTargetModelBlockIds,
+      created_at: timestamp,
+      updated_at: timestamp,
+    };
+    await this.repository.saveEvidencePackage(record);
+    return record;
+  }
+
+  async createTableEvidencePackage(
+    input: CreateTableEvidencePackageInput,
+  ): Promise<TableEvidencePackageRecord> {
+    const tableFullFidelitySnapshot =
+      input.tableFullFidelitySnapshot ??
+      (input.documentTableSnapshot
+        ? buildTableFullFidelitySnapshotFromDocumentTable(input.documentTableSnapshot)
+        : undefined);
+    if (!tableFullFidelitySnapshot) {
+      throw new KnowledgeTableEvidenceCaptureGateError([
+        "missing_table_full_fidelity_snapshot",
+      ]);
+    }
+    const captureFailureCodes = dedupePreserveOrder([
+      ...(input.captureFailureCodes ?? []),
+      ...collectTableEvidenceGateFailures(tableFullFidelitySnapshot),
+    ]);
+    const requestedStatus = input.requestedAuthoritativeStatus ?? "non_authoritative";
+    if (requestedStatus === "authoritative" && captureFailureCodes.length > 0) {
+      throw new KnowledgeTableEvidenceCaptureGateError(captureFailureCodes);
+    }
+    const authoritativeStatus =
+      requestedStatus === "authoritative" ? "authoritative" : requestedStatus;
+    const evidenceStatus =
+      authoritativeStatus === "authoritative"
+        ? "authoritative"
+        : authoritativeStatus === "blocked" ||
+            authoritativeStatus === "manual_review_required"
+          ? "non_authoritative"
+          : authoritativeStatus;
+    const evidencePackage = await this.createEvidencePackage({
+      knowledgeItemId: input.knowledgeItemId,
+      revisionId: input.revisionId,
+      status: evidenceStatus,
+      evidenceKind:
+        input.sourceKind === "word_clipboard"
+          ? "word_sample_table"
+          : input.sourceKind === "wps_clipboard"
+            ? "wps_sample_table"
+            : "docx_sample_table",
+      authorityLevel:
+        authoritativeStatus === "authoritative"
+          ? "official_journal_sample"
+          : "operator_curated_experience",
+      sourceLabel: `${input.sourceKind}:${input.sourceEnvironment.source_application}`,
+      sourcePayload: {
+        table_evidence_package: {
+          source_kind: input.sourceKind,
+          source_environment: input.sourceEnvironment,
+          authoritative_status: authoritativeStatus,
+          capture_failure_codes: captureFailureCodes,
+          raw_payload_refs: input.rawPayloadRefs ?? [],
+          normalized_table_object_id: input.normalizedTableObjectId,
+          table_full_fidelity_snapshot_id: input.tableFullFidelitySnapshotId,
+          table_full_fidelity_snapshot: tableFullFidelitySnapshot,
+        },
+      },
+      bindingTargets: input.bindingTargets,
+      linkedRuleIds: input.linkedRuleIds,
+      linkedTargetModelBlockIds: input.linkedTargetModelBlockIds,
+    });
+
+    return {
+      ...evidencePackage,
+      source_kind: input.sourceKind,
+      source_environment: input.sourceEnvironment,
+      authoritative_status: authoritativeStatus,
+      capture_failure_codes: captureFailureCodes,
+      raw_payload_refs: input.rawPayloadRefs,
+      normalized_table_object_id: input.normalizedTableObjectId,
+      table_full_fidelity_snapshot_id: input.tableFullFidelitySnapshotId,
+      table_full_fidelity_snapshot: tableFullFidelitySnapshot,
+    };
   }
 
   async createDraftFromLearningCandidate(
@@ -1889,6 +2049,42 @@ function createBindingId(revisionId: string, bindingNo: number): string {
 
 function createContentBlockId(revisionId: string, blockNo: number): string {
   return `${revisionId}-content-block-${blockNo}`;
+}
+
+function collectTableEvidenceGateFailures(
+  snapshot: TableFullFidelitySnapshotRecord,
+): string[] {
+  const failures: string[] = [];
+  const mandatoryGroups: Array<
+    keyof TableFullFidelitySnapshotRecord["mandatory_fact_authority"]
+  > = [
+    "identity",
+    "structure",
+    "border_system",
+    "layout",
+    "paragraph_style",
+    "typography",
+    "rich_content",
+    "object_content",
+    "authority_markers",
+  ];
+
+  for (const group of mandatoryGroups) {
+    const authority = snapshot.mandatory_fact_authority[group];
+    if (authority == null) {
+      failures.push(`missing_${group}_authority`);
+      continue;
+    }
+    if (authority === "unavailable" || authority === "unsupported") {
+      failures.push(`${group}_${authority}`);
+    }
+  }
+
+  return failures;
+}
+
+function dedupePreserveOrder(values: readonly string[]): string[] {
+  return [...new Set(values.filter((value) => value.trim().length > 0))];
 }
 
 function buildImplicitTextContentBlock(

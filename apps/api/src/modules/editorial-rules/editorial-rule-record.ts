@@ -9,6 +9,27 @@ export type EditorialRuleSetStatus =
   | "archived"
   | "rolled_back";
 export type EditorialRuleType = "format" | "content";
+export type EditorialRuleDomain =
+  | "page_structure"
+  | "title_heading"
+  | "abstract_keywords"
+  | "front_matter"
+  | "body_paragraph"
+  | "references"
+  | "declarations"
+  | "table"
+  | "image_symbol"
+  | "object_symbol"
+  | "journal_override";
+export type EditorialRuleStructuredActionKind =
+  | "inspect_only"
+  | "suggest_change"
+  | "auto_apply"
+  | "full_table_rebuild"
+  | "manual_review_required"
+  | "block_completion";
+export type EditorialRuleAutomationGrade = "A" | "B" | "C" | "D";
+export type EditorialRuleScopeLayer = "general" | "medical" | "journal";
 export type EditorialRuleExecutionMode =
   | "apply"
   | "inspect"
@@ -63,6 +84,13 @@ export interface EditorialRuleAction {
   [key: string]: unknown;
 }
 
+export interface EditorialRuleStructuredAction {
+  kind: EditorialRuleStructuredActionKind;
+  target?: string;
+  requires_validation: boolean;
+  manual_review_reason?: string;
+}
+
 export interface EditorialRuleExplanationPayload {
   rationale: string;
   applies_when?: string[];
@@ -76,7 +104,19 @@ export interface EditorialRuleLinkagePayload {
   source_learning_candidate_id?: string;
   source_snapshot_asset_id?: string;
   projected_knowledge_item_ids?: string[];
+  evidence_package_ids?: string[];
+  target_model_block_ids?: string[];
   overrides_rule_ids?: string[];
+}
+
+export interface EditorialRuleGoldSampleGatePayload {
+  status: "not_required" | "pending" | "passed" | "failed";
+  specimen_ids?: string[];
+  validation_snapshot_ids?: string[];
+  negative_specimen_ids?: string[];
+  failure_reasons?: string[];
+  reviewed_by?: string;
+  reviewed_at?: string;
 }
 
 export interface EditorialRuleProjectionPayload {
@@ -117,7 +157,11 @@ export interface EditorialRuleRecord {
   priority?: number;
   rule_object: string;
   rule_type: EditorialRuleType;
+  rule_domain?: EditorialRuleDomain;
   execution_mode: EditorialRuleExecutionMode;
+  structured_action?: EditorialRuleStructuredAction;
+  automation_grade?: EditorialRuleAutomationGrade;
+  scope_layer?: EditorialRuleScopeLayer;
   scope: EditorialRuleScope;
   selector: Record<string, unknown>;
   trigger: EditorialRuleTrigger;
@@ -126,6 +170,7 @@ export interface EditorialRuleRecord {
   explanation_payload?: EditorialRuleExplanationPayload;
   linkage_payload?: EditorialRuleLinkagePayload;
   projection_payload?: EditorialRuleProjectionPayload;
+  gold_sample_gate?: EditorialRuleGoldSampleGatePayload;
   evidence_level?: EditorialRuleEvidenceLevel;
   confidence_policy: EditorialRuleConfidencePolicy;
   severity: EditorialRuleSeverity;

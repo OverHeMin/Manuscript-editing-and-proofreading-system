@@ -42,6 +42,7 @@ const journalFormatTargetZones: JournalFormatTargetZone[] = [
   "keywords",
   "body",
   "figures_tables",
+  "declarations",
   "references",
 ];
 const journalFormatTargetAnchors: JournalFormatTargetAnchor[] = [
@@ -501,6 +502,7 @@ function createEmptyJournalFormatTargetModel(): JournalFormatTargetModelViewMode
       "keywords",
       "body",
       "figures_tables",
+      "declarations",
       "references",
     ],
     target_blocks: [],

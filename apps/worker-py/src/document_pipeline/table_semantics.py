@@ -421,12 +421,18 @@ def build_grid_cells(
                 "style_evidence": build_cell_style_evidence(
                     paragraphs,
                     raw_cell.get("vertical_alignment"),
+                    raw_cell.get("text_direction"),
                 ),
                 "paragraphs": paragraphs,
             }
             borders = _copy_border_flags(raw_cell.get("borders"))
             if borders:
                 cell_payload["border_hints"] = borders
+            object_evidence = raw_cell.get("object_evidence")
+            if isinstance(object_evidence, list) and object_evidence:
+                cell_payload["object_evidence"] = [
+                    entry for entry in object_evidence if isinstance(entry, dict)
+                ]
             grid_cells.append(cell_payload)
             cell_id_by_position[(row_index, column_index)] = cell_id
             column_index += column_span
@@ -484,12 +490,20 @@ def materialize_inline_fragments(value: object, prefix: str) -> list[dict]:
             fragment["symbol_font"] = entry.get("symbol_font")
         if entry.get("symbol_char"):
             fragment["symbol_char"] = entry.get("symbol_char")
+        if entry.get("object_kind"):
+            fragment["object_kind"] = entry.get("object_kind")
+        if entry.get("original_tag"):
+            fragment["original_tag"] = entry.get("original_tag")
+        if entry.get("relationship_id"):
+            fragment["relationship_id"] = entry.get("relationship_id")
+        if entry.get("evidence_text"):
+            fragment["evidence_text"] = entry.get("evidence_text")
         fragments.append(fragment)
     return fragments
 
 
 def normalize_fragment_kind(value: object) -> str:
-    if value in {"text", "symbol", "tab", "line_break"}:
+    if value in {"text", "symbol", "tab", "line_break", "object"}:
         return value  # type: ignore[return-value]
     return "text"
 
@@ -520,7 +534,11 @@ def normalize_paragraph_style_evidence(value: object) -> dict:
     }
 
 
-def build_cell_style_evidence(paragraphs: list[dict], vertical_alignment: object) -> dict:
+def build_cell_style_evidence(
+    paragraphs: list[dict],
+    vertical_alignment: object,
+    text_direction: object = None,
+) -> dict:
     fragments = [
         fragment
         for paragraph in paragraphs
@@ -577,6 +595,9 @@ def build_cell_style_evidence(paragraphs: list[dict], vertical_alignment: object
             [normalize_style_fact_from_value(vertical_alignment)]
             if vertical_alignment
             else []
+        ),
+        "text_direction": summarize_style_fact(
+            [normalize_style_fact_from_value(text_direction)] if text_direction else []
         ),
     }
 

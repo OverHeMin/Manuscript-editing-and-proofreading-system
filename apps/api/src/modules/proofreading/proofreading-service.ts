@@ -3588,6 +3588,11 @@ function buildAiGovernanceContext(input: {
   const resolvedRules = (input.resolvedRules ?? []).map((entry) => ({
     ruleId: entry.rule.id,
     actionKind: entry.rule.action.kind,
+    ruleDomain: entry.rule.rule_domain,
+    structuredActionKind: entry.rule.structured_action?.kind,
+    automationGrade: entry.rule.automation_grade,
+    scopeLayer: entry.rule.scope_layer,
+    governanceExplanation: entry.governance_explanation,
     ruleType: entry.rule.rule_type,
     severity: entry.rule.severity,
     confidencePolicy: entry.rule.confidence_policy,
@@ -3598,6 +3603,12 @@ function buildAiGovernanceContext(input: {
         )
       : [],
     sourceLayer: entry.source_layer,
+    evidencePackageIds: entry.rule.linkage_payload?.evidence_package_ids
+      ? [...entry.rule.linkage_payload.evidence_package_ids]
+      : undefined,
+    targetModelBlockIds: entry.rule.linkage_payload?.target_model_block_ids
+      ? [...entry.rule.linkage_payload.target_model_block_ids]
+      : undefined,
   }));
   const knowledgeHits = (input.knowledgeHits ?? []).map((entry) => ({
     knowledgeItemId: entry.knowledgeItemId,

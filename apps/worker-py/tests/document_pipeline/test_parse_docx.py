@@ -278,3 +278,234 @@ def test_document_xml_extracts_object_evidence_for_image_substituted_symbols():
     assert result["objects"][0]["relationship_id"] == "rId5"
     assert "卡方检验符号图片" in result["objects"][0]["evidence_text"]
     assert result["objects"][0]["intended_target"] == "χ²"
+
+
+def test_document_xml_preserves_table_cell_object_evidence_in_semantic_grid():
+    document_xml = """
+    <w:document
+      xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+      xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"
+      xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+      xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+      xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"
+      xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+      <w:body>
+        <w:p><w:r><w:t>Table 3 Object evidence</w:t></w:r></w:p>
+        <w:tbl>
+          <w:tr>
+            <w:tc>
+              <w:p>
+                <w:r><w:t>Formula </w:t></w:r>
+                <w:r>
+                  <m:oMath>
+                    <m:r><m:t>x=1</m:t></m:r>
+                  </m:oMath>
+                </w:r>
+              </w:p>
+            </w:tc>
+            <w:tc>
+              <w:p>
+                <w:r>
+                  <w:drawing>
+                    <wp:anchor>
+                      <wp:docPr id="2" name="floating image" descr="floating table object"/>
+                      <a:graphic>
+                        <a:graphicData>
+                          <pic:pic>
+                            <pic:blipFill>
+                              <a:blip r:embed="rId7"/>
+                            </pic:blipFill>
+                          </pic:pic>
+                        </a:graphicData>
+                      </a:graphic>
+                    </wp:anchor>
+                  </w:drawing>
+                </w:r>
+              </w:p>
+            </w:tc>
+          </w:tr>
+        </w:tbl>
+      </w:body>
+    </w:document>
+    """
+
+    result = extract_structure_from_document_xml(document_xml)
+
+    assert result["status"] == "ready"
+    assert len(result["objects"]) == 2
+    semantic = result["tables"][0]["semantic"]
+    first_cell = semantic["grid_cells"][0]
+    second_cell = semantic["grid_cells"][1]
+    assert first_cell["object_evidence"][0]["object_kind"] == "equation"
+    assert first_cell["paragraphs"][0]["fragments"][1]["kind"] == "object"
+    assert first_cell["paragraphs"][0]["fragments"][1]["object_kind"] == "equation"
+    assert second_cell["object_evidence"][0]["object_kind"] == "image"
+    assert second_cell["object_evidence"][0]["relationship_id"] == "rId7"
+    assert second_cell["paragraphs"][0]["fragments"][0]["kind"] == "object"
+    assert second_cell["paragraphs"][0]["fragments"][0]["relationship_id"] == "rId7"
+
+
+def test_document_xml_marks_nested_tables_as_table_cell_object_evidence():
+    document_xml = """
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>
+        <w:p><w:r><w:t>Table 4 Nested table</w:t></w:r></w:p>
+        <w:tbl>
+          <w:tr>
+            <w:tc>
+              <w:p><w:r><w:t>Outer cell</w:t></w:r></w:p>
+              <w:tbl>
+                <w:tr>
+                  <w:tc><w:p><w:r><w:t>Inner A</w:t></w:r></w:p></w:tc>
+                  <w:tc><w:p><w:r><w:t>Inner B</w:t></w:r></w:p></w:tc>
+                </w:tr>
+              </w:tbl>
+            </w:tc>
+          </w:tr>
+        </w:tbl>
+      </w:body>
+    </w:document>
+    """
+
+    result = extract_structure_from_document_xml(document_xml)
+
+    assert result["status"] == "ready"
+    assert any(entry["object_kind"] == "nested_table" for entry in result["objects"])
+    nested = next(entry for entry in result["objects"] if entry["object_kind"] == "nested_table")
+    assert nested["container_kind"] == "table_cell"
+    assert nested["intended_target"] == "preserve_as_nested_table"
+    assert "nested_table rows=1 cells=2" in nested["evidence_text"]
+    grid_cell = result["tables"][0]["semantic"]["grid_cells"][0]
+    assert grid_cell["object_evidence"][0]["object_kind"] == "nested_table"
+    assert grid_cell["object_evidence"][0]["source_locator"] == nested["source_locator"]
+
+
+def test_document_xml_marks_text_box_tables_as_table_cell_object_evidence():
+    document_xml = """
+    <w:document
+      xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+      xmlns:v="urn:schemas-microsoft-com:vml">
+      <w:body>
+        <w:p><w:r><w:t>Table 5 Text box table</w:t></w:r></w:p>
+        <w:tbl>
+          <w:tr>
+            <w:tc>
+              <w:p><w:r><w:t>Outer cell before text box</w:t></w:r></w:p>
+              <w:p>
+                <w:r>
+                  <w:pict>
+                    <v:shape id="TextBox1">
+                      <v:textbox>
+                        <w:txbxContent>
+                          <w:tbl>
+                            <w:tr>
+                              <w:tc><w:p><w:r><w:t>Box A</w:t></w:r></w:p></w:tc>
+                            </w:tr>
+                          </w:tbl>
+                        </w:txbxContent>
+                      </v:textbox>
+                    </v:shape>
+                  </w:pict>
+                </w:r>
+              </w:p>
+            </w:tc>
+          </w:tr>
+        </w:tbl>
+      </w:body>
+    </w:document>
+    """
+
+    result = extract_structure_from_document_xml(document_xml)
+
+    assert result["status"] == "ready"
+    assert any(entry["object_kind"] == "text_box_table" for entry in result["objects"])
+    text_box_table = next(
+        entry for entry in result["objects"] if entry["object_kind"] == "text_box_table"
+    )
+    assert text_box_table["container_kind"] == "table_cell"
+    assert text_box_table["intended_target"] == "preserve_as_text_box_table"
+    assert "text_box_table rows=1 cells=1" in text_box_table["evidence_text"]
+    grid_cell = result["tables"][0]["semantic"]["grid_cells"][0]
+    assert any(
+        entry["object_kind"] == "text_box_table"
+        for entry in grid_cell["object_evidence"]
+    )
+
+
+def test_document_xml_preserves_rotated_table_cell_text_direction():
+    document_xml = """
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>
+        <w:p><w:r><w:t>Table 6 Rotated text</w:t></w:r></w:p>
+        <w:tbl>
+          <w:tr>
+            <w:tc>
+              <w:tcPr><w:textDirection w:val="btLr"/></w:tcPr>
+              <w:p><w:r><w:t>Rotated header</w:t></w:r></w:p>
+            </w:tc>
+          </w:tr>
+        </w:tbl>
+      </w:body>
+    </w:document>
+    """
+
+    result = extract_structure_from_document_xml(document_xml)
+
+    assert result["status"] == "ready"
+    style = result["tables"][0]["semantic"]["grid_cells"][0]["style_evidence"]
+    assert style["text_direction"]["availability"] == "authoritative"
+    assert style["text_direction"]["value"] == "btLr"
+
+
+def test_document_xml_marks_ocr_image_tables_for_manual_review():
+    document_xml = """
+    <w:document
+      xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+      xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+      xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+      xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"
+      xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+      <w:body>
+        <w:p><w:r><w:t>Table 7 OCR image table</w:t></w:r></w:p>
+        <w:tbl>
+          <w:tr>
+            <w:tc>
+              <w:p>
+                <w:r>
+                  <w:drawing>
+                    <wp:inline>
+                      <wp:docPr id="3" name="ocr table image" descr="OCR image table needing review"/>
+                      <a:graphic>
+                        <a:graphicData>
+                          <pic:pic>
+                            <pic:blipFill>
+                              <a:blip r:embed="rId9"/>
+                            </pic:blipFill>
+                          </pic:pic>
+                        </a:graphicData>
+                      </a:graphic>
+                    </wp:inline>
+                  </w:drawing>
+                </w:r>
+              </w:p>
+            </w:tc>
+          </w:tr>
+        </w:tbl>
+      </w:body>
+    </w:document>
+    """
+
+    result = extract_structure_from_document_xml(document_xml)
+
+    assert result["status"] == "ready"
+    assert any(entry["object_kind"] == "ocr_image_table" for entry in result["objects"])
+    ocr_table = next(
+        entry for entry in result["objects"] if entry["object_kind"] == "ocr_image_table"
+    )
+    assert ocr_table["container_kind"] == "table_cell"
+    assert ocr_table["relationship_id"] == "rId9"
+    assert ocr_table["intended_target"] == "manual_ocr_table_review"
+    grid_cell = result["tables"][0]["semantic"]["grid_cells"][0]
+    assert grid_cell["object_evidence"][0]["object_kind"] == "ocr_image_table"
+    assert grid_cell["paragraphs"][0]["fragments"][0]["kind"] == "object"
+    assert grid_cell["paragraphs"][0]["fragments"][0]["object_kind"] == "ocr_image_table"

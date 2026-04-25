@@ -8,6 +8,7 @@ import type {
   KnowledgeAssetRecord,
   KnowledgeContentBlockRecord,
   KnowledgeDuplicateSeverity,
+  KnowledgeEvidencePackageRecord,
   KnowledgeRecord,
   KnowledgeRevisionBindingRecord,
   KnowledgeRevisionRecord,
@@ -115,6 +116,22 @@ interface KnowledgeSemanticLayerRow {
   retrieval_snippets: string[] | string;
   table_semantics: Record<string, unknown> | string | null;
   image_understanding: Record<string, unknown> | string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+interface KnowledgeEvidencePackageRow {
+  id: string;
+  knowledge_item_id: string;
+  revision_id: string | null;
+  status: KnowledgeEvidencePackageRecord["status"];
+  evidence_kind: KnowledgeEvidencePackageRecord["evidence_kind"];
+  authority_level: KnowledgeEvidencePackageRecord["authority_level"];
+  source_label: string;
+  source_payload: Record<string, unknown> | string;
+  binding_targets: KnowledgeEvidencePackageRecord["binding_targets"] | string | null;
+  linked_rule_ids: string[] | string;
+  linked_target_model_block_ids: string[] | string;
   created_at: Date;
   updated_at: Date;
 }
@@ -872,6 +889,100 @@ export class PostgresKnowledgeRepository implements KnowledgeRepository {
     return result.rows[0] ? mapKnowledgeSemanticLayerRow(result.rows[0]) : undefined;
   }
 
+  async saveEvidencePackage(record: KnowledgeEvidencePackageRecord): Promise<void> {
+    await this.dependencies.client.query(
+      `
+        insert into knowledge_evidence_packages (
+          id,
+          knowledge_item_id,
+          revision_id,
+          status,
+          evidence_kind,
+          authority_level,
+          source_label,
+          source_payload,
+          binding_targets,
+          linked_rule_ids,
+          linked_target_model_block_ids,
+          created_at,
+          updated_at
+        )
+        values (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7,
+          $8::jsonb,
+          $9::jsonb,
+          $10::text[],
+          $11::text[],
+          $12,
+          $13
+        )
+        on conflict (id) do update
+        set
+          knowledge_item_id = excluded.knowledge_item_id,
+          revision_id = excluded.revision_id,
+          status = excluded.status,
+          evidence_kind = excluded.evidence_kind,
+          authority_level = excluded.authority_level,
+          source_label = excluded.source_label,
+          source_payload = excluded.source_payload,
+          binding_targets = excluded.binding_targets,
+          linked_rule_ids = excluded.linked_rule_ids,
+          linked_target_model_block_ids = excluded.linked_target_model_block_ids,
+          updated_at = excluded.updated_at
+      `,
+      [
+        record.id,
+        record.knowledge_item_id,
+        record.revision_id ?? null,
+        record.status,
+        record.evidence_kind,
+        record.authority_level,
+        record.source_label,
+        JSON.stringify(record.source_payload),
+        record.binding_targets ? JSON.stringify(record.binding_targets) : null,
+        record.linked_rule_ids ?? [],
+        record.linked_target_model_block_ids ?? [],
+        record.created_at,
+        record.updated_at,
+      ],
+    );
+  }
+
+  async findEvidencePackageById(
+    id: string,
+  ): Promise<KnowledgeEvidencePackageRecord | undefined> {
+    const result = await this.dependencies.client.query<KnowledgeEvidencePackageRow>(
+      `
+        select *
+        from knowledge_evidence_packages
+        where id = $1
+      `,
+      [id],
+    );
+    return result.rows[0] ? mapKnowledgeEvidencePackageRow(result.rows[0]) : undefined;
+  }
+
+  async listEvidencePackagesByKnowledgeItemId(
+    knowledgeItemId: string,
+  ): Promise<KnowledgeEvidencePackageRecord[]> {
+    const result = await this.dependencies.client.query<KnowledgeEvidencePackageRow>(
+      `
+        select *
+        from knowledge_evidence_packages
+        where knowledge_item_id = $1
+        order by created_at asc, id asc
+      `,
+      [knowledgeItemId],
+    );
+    return result.rows.map(mapKnowledgeEvidencePackageRow);
+  }
+
   async saveDuplicateAcknowledgement(
     record: KnowledgeDuplicateAcknowledgementAuditRecord,
   ): Promise<void> {
@@ -1477,6 +1588,42 @@ function mapKnowledgeSemanticLayerRow(
             row.image_understanding,
           ),
         }
+      : {}),
+    created_at: row.created_at.toISOString(),
+    updated_at: row.updated_at.toISOString(),
+  };
+}
+
+function mapKnowledgeEvidencePackageRow(
+  row: KnowledgeEvidencePackageRow,
+): KnowledgeEvidencePackageRecord {
+  const linkedRuleIds = decodeTextArray(row.linked_rule_ids);
+  const linkedTargetModelBlockIds = decodeTextArray(
+    row.linked_target_model_block_ids,
+  );
+  return {
+    id: row.id,
+    knowledge_item_id: row.knowledge_item_id,
+    ...(row.revision_id ? { revision_id: row.revision_id } : {}),
+    status: row.status,
+    evidence_kind: row.evidence_kind,
+    authority_level: row.authority_level,
+    source_label: row.source_label,
+    source_payload: parseJsonObject<Record<string, unknown>>(row.source_payload) ?? {},
+    ...(row.binding_targets
+      ? {
+          binding_targets: parseJsonObject<
+            KnowledgeEvidencePackageRecord["binding_targets"]
+          >(
+            typeof row.binding_targets === "string"
+              ? row.binding_targets
+              : (row.binding_targets as Record<string, unknown> | null),
+          ),
+        }
+      : {}),
+    ...(linkedRuleIds.length > 0 ? { linked_rule_ids: linkedRuleIds } : {}),
+    ...(linkedTargetModelBlockIds.length > 0
+      ? { linked_target_model_block_ids: linkedTargetModelBlockIds }
       : {}),
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),

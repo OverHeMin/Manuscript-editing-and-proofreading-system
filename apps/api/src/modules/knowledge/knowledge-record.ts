@@ -36,6 +36,76 @@ export type KnowledgeSourceType =
   | "internal_case"
   | "other";
 
+export type KnowledgeEvidencePackageStatus =
+  | "raw"
+  | "captured"
+  | "non_authoritative"
+  | "authoritative"
+  | "linked_to_rule"
+  | "retired";
+export type KnowledgeEvidencePackageKind =
+  | "official_guideline_text"
+  | "official_sample_screenshot"
+  | "word_sample_table"
+  | "wps_sample_table"
+  | "docx_sample_table"
+  | "correct_example"
+  | "incorrect_example"
+  | "object_symbol_sample"
+  | "journal_article_example"
+  | "operator_annotation";
+export type KnowledgeEvidenceAuthorityLevel =
+  | "official_journal_guideline"
+  | "official_journal_sample"
+  | "journal_published_recent_article"
+  | "institutional_editorial_standard"
+  | "operator_curated_experience";
+export type TableEvidenceSourceKind =
+  | "word_clipboard"
+  | "wps_clipboard"
+  | "docx_upload"
+  | "manual_review_import";
+export type TableEvidenceAuthoritativeStatus =
+  | "authoritative"
+  | "non_authoritative"
+  | "blocked"
+  | "manual_review_required";
+export type TableEvidenceFactAuthority =
+  | "authoritative"
+  | "mixed"
+  | "unavailable"
+  | "unsupported";
+export type TableEvidenceMandatoryFactGroup =
+  | "identity"
+  | "structure"
+  | "border_system"
+  | "layout"
+  | "paragraph_style"
+  | "typography"
+  | "rich_content"
+  | "object_content"
+  | "authority_markers";
+
+export interface TableEvidenceSourceEnvironmentRecord {
+  source_application: "word" | "wps" | "docx_upload" | "manual_review";
+  application_version?: string;
+  browser?: string;
+  os?: string;
+  clipboard_mime_types?: string[];
+  clipboard_html_available?: boolean;
+  ooxml_fragment_available?: boolean;
+  fallback_posture?: "none" | "non_authoritative" | "manual_review_required";
+}
+
+export interface TableFullFidelitySnapshotRecord {
+  snapshot_id?: string;
+  mandatory_fact_authority: Record<
+    TableEvidenceMandatoryFactGroup,
+    TableEvidenceFactAuthority
+  >;
+  facts: Record<string, unknown>;
+}
+
 export type KnowledgeProjectionKind = "rule" | "checklist" | "prompt_snippet";
 
 export type KnowledgeDuplicateSeverity = "exact" | "high" | "possible";
@@ -86,6 +156,7 @@ export interface KnowledgeBindingTargetsRecord {
   journal_template_ids?: string[];
   general_package_ids?: string[];
   medical_package_ids?: string[];
+  target_model_block_ids?: string[];
 }
 
 export interface KnowledgeRecord {
@@ -139,6 +210,33 @@ export interface KnowledgeRevisionRecord {
   updated_at: string;
 }
 
+export interface KnowledgeEvidencePackageRecord {
+  id: string;
+  knowledge_item_id: string;
+  revision_id?: string;
+  status: KnowledgeEvidencePackageStatus;
+  evidence_kind: KnowledgeEvidencePackageKind;
+  authority_level: KnowledgeEvidenceAuthorityLevel;
+  source_label: string;
+  source_payload: Record<string, unknown>;
+  binding_targets?: KnowledgeBindingTargetsRecord;
+  linked_rule_ids?: string[];
+  linked_target_model_block_ids?: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TableEvidencePackageRecord extends KnowledgeEvidencePackageRecord {
+  source_kind: TableEvidenceSourceKind;
+  source_environment: TableEvidenceSourceEnvironmentRecord;
+  authoritative_status: TableEvidenceAuthoritativeStatus;
+  capture_failure_codes: string[];
+  raw_payload_refs?: string[];
+  normalized_table_object_id?: string;
+  table_full_fidelity_snapshot_id?: string;
+  table_full_fidelity_snapshot?: TableFullFidelitySnapshotRecord;
+}
+
 export type KnowledgeRevisionBindingKind =
   | "template_family"
   | "module_template"
@@ -146,6 +244,7 @@ export type KnowledgeRevisionBindingKind =
   | "journal_template"
   | "general_package"
   | "medical_package"
+  | "target_model_block"
   | "knowledge_item";
 
 export type KnowledgeContentBlockType =

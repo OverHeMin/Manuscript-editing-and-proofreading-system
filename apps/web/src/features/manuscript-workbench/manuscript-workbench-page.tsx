@@ -74,6 +74,8 @@ import {
   buildEditingChangeLedgerEntries,
   buildProofreadingConfirmationDraftState,
   buildEditingCompletionGateSummary,
+  buildEditingRuntimeBindingExplanation,
+  buildEditingAutomaticActionLedger,
   buildEditingDocumentBlocks,
   buildEditingGuardrailEntries,
   buildEditingSlotGovernanceSummary,
@@ -3084,6 +3086,12 @@ function buildTemplateContextActionResult(
               buildEditingCompletionGateSummary(detailJob) ??
               workspace.manuscript.editing_completion_gate_summary ??
               null
+            }
+            editingRuntimeBindingExplanation={
+              buildEditingRuntimeBindingExplanation(detailJob) ?? null
+            }
+            editingAutomaticActionLedger={
+              buildEditingAutomaticActionLedger(detailJob)
             }
             executionSnapshot={detailExecutionTracking.snapshot}
             knowledgeHitLogs={detailExecutionTracking.knowledgeHitLogs}

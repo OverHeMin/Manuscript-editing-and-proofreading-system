@@ -13,6 +13,7 @@ import {
   type TableDocxPatchPlan,
   type TableDocxPatchResult,
   type TableDocxPatchType,
+  type TableReconstructionPlan,
   type TableDocxSnapshotCapability,
 } from "./table-docx-patch-plan.ts";
 import {
@@ -293,11 +294,7 @@ export class TableDocxPatchPlanner {
         },
         execution_path: candidate.execution_path,
         ...(candidate.execution_path === "controlled_rebuild"
-          ? {
-              rebuild_payload: buildControlledRebuildPayload(
-                candidate.table_snapshot,
-              ),
-            }
+          ? buildControlledRebuildPlanFields(candidate.table_snapshot)
           : {}),
       });
     }
@@ -491,25 +488,175 @@ function resolveExecutionPath(input: {
   }
 
   return (input.tableSnapshot.grid_cells?.length ?? 0) > 0 &&
-    input.tableSnapshot.style_profile
+    input.tableSnapshot.style_profile &&
+    !hasBlockingFullFidelityGaps(input.tableSnapshot)
     ? "controlled_rebuild"
     : undefined;
 }
 
-function buildControlledRebuildPayload(
+function buildControlledRebuildPlanFields(
   tableSnapshot: DocumentStructureTableSnapshot,
-): Record<string, unknown> {
+): Pick<TableDocxPatchPlan, "rebuild_payload" | "table_reconstruction_plan"> {
+  const tableReconstructionPlan = buildTableReconstructionPlan(tableSnapshot);
   return {
-    strategy: "three_line_table_normalization",
-    objectives: [
-      "preserve_table_content_and_merged_structure",
-      "normalize_caption_above_table",
-      "normalize_note_zone_below_table",
-      "normalize_intra_cell_rich_text_runs",
-      "enforce_three_line_table_borders",
-    ],
-    table_snapshot: structuredClone(tableSnapshot),
+    table_reconstruction_plan: tableReconstructionPlan,
+    rebuild_payload: {
+      strategy: "three_line_table_normalization",
+      objectives: [
+        "preserve_table_content_and_merged_structure",
+        "normalize_caption_above_table",
+        "normalize_note_zone_below_table",
+        "normalize_intra_cell_rich_text_runs",
+        "enforce_three_line_table_borders",
+      ],
+      table_snapshot: structuredClone(tableSnapshot),
+      table_reconstruction_plan: tableReconstructionPlan,
+      normalized_table_object: tableReconstructionPlan.normalized_table_object,
+      content_preservation_map: tableReconstructionPlan.content_preservation_map,
+    },
   };
+}
+
+function buildTableReconstructionPlan(
+  tableSnapshot: DocumentStructureTableSnapshot,
+): TableReconstructionPlan {
+  const normalizedTableObject = {
+    table_id: tableSnapshot.table_id,
+    ...(typeof tableSnapshot.row_count === "number"
+      ? { row_count: tableSnapshot.row_count }
+      : {}),
+    ...(typeof tableSnapshot.column_count === "number"
+      ? { column_count: tableSnapshot.column_count }
+      : {}),
+    ...(tableSnapshot.caption_fields?.text
+      ? { caption_text: tableSnapshot.caption_fields.text }
+      : {}),
+    ...(tableSnapshot.note_zone?.text ? { note_text: tableSnapshot.note_zone.text } : {}),
+    cells: (tableSnapshot.grid_cells ?? []).map((cell) => ({
+      source_cell_id: cell.id,
+      target_cell_id: `target-${cell.id}`,
+      row_index: cell.row_index,
+      column_index: cell.column_index,
+      row_span: cell.row_span,
+      column_span: cell.column_span,
+      inferred_role: cell.inferred_role,
+      text: cell.text,
+      paragraphs: structuredClone(cell.paragraphs),
+      style_evidence: structuredClone(cell.style_evidence),
+      ...(cell.border_hints ? { border_hints: structuredClone(cell.border_hints) } : {}),
+    })),
+  };
+  const contentPreservationMap = normalizedTableObject.cells.map((cell) => ({
+    source_cell_id: cell.source_cell_id,
+    target_cell_id: cell.target_cell_id,
+    source_text: cell.text,
+    target_text: cell.text,
+    preserved: true,
+  }));
+  const downgradeReasons = collectReconstructionDowngradeReasons(tableSnapshot);
+  const status = downgradeReasons.length === 0 ? "planned" : "manual_review_required";
+
+  return {
+    plan_kind: "table_reconstruction_plan",
+    outcome: downgradeReasons.length === 0 ? "full_rebuild" : "manual_review",
+    normalized_table_object: normalizedTableObject,
+    operations: [
+      {
+        kind: "preserve_content_mapping",
+        status,
+        source_ids: normalizedTableObject.cells.map((cell) => cell.source_cell_id),
+        target_ids: normalizedTableObject.cells.map((cell) => cell.target_cell_id),
+        reason: "Map every source cell to a target cell before writeback.",
+      },
+      {
+        kind: "place_caption",
+        status,
+        source_ids: tableSnapshot.caption_fields ? [tableSnapshot.table_id] : [],
+        target_ids: [`${tableSnapshot.table_id}:caption`],
+        reason: "Place table caption according to the target journal table model.",
+      },
+      {
+        kind: "place_note_zone",
+        status,
+        source_ids: tableSnapshot.note_zone ? [tableSnapshot.table_id] : [],
+        target_ids: [`${tableSnapshot.table_id}:note_zone`],
+        reason: "Place table notes below the reconstructed table.",
+      },
+      {
+        kind: "normalize_border_system",
+        status,
+        source_ids: [tableSnapshot.table_id],
+        target_ids: [`${tableSnapshot.table_id}:borders`],
+        reason: "Apply the target three-line border posture.",
+      },
+      {
+        kind: "normalize_layout",
+        status,
+        source_ids: normalizedTableObject.cells.map((cell) => cell.source_cell_id),
+        target_ids: normalizedTableObject.cells.map((cell) => cell.target_cell_id),
+        reason: "Preserve row, column, span, and role topology while rebuilding.",
+      },
+      {
+        kind: "normalize_paragraph_style",
+        status,
+        source_ids: normalizedTableObject.cells.map((cell) => cell.source_cell_id),
+        target_ids: normalizedTableObject.cells.map((cell) => cell.target_cell_id),
+        reason: "Carry paragraph style evidence into the target cell plan.",
+      },
+      {
+        kind: "normalize_typography",
+        status,
+        source_ids: normalizedTableObject.cells.map((cell) => cell.source_cell_id),
+        target_ids: normalizedTableObject.cells.map((cell) => cell.target_cell_id),
+        reason: "Carry font and script evidence into the target cell plan.",
+      },
+      {
+        kind: "preserve_rich_fragments",
+        status,
+        source_ids: normalizedTableObject.cells.map((cell) => cell.source_cell_id),
+        target_ids: normalizedTableObject.cells.map((cell) => cell.target_cell_id),
+        reason: "Preserve rich text fragments including symbols, tabs, and line breaks.",
+      },
+      {
+        kind: "handle_object_content",
+        status,
+        source_ids: [tableSnapshot.table_id],
+        target_ids: [`${tableSnapshot.table_id}:objects`],
+        reason: "Route table object content through validation or manual review.",
+      },
+    ],
+    downgrade_reasons: downgradeReasons,
+    content_preservation_map: contentPreservationMap,
+    required_validation: [
+      "content_preservation",
+      "topology_preservation",
+      "target_border_system",
+      "caption_note_placement",
+      "rich_fragment_preservation",
+      "object_policy",
+    ],
+  };
+}
+
+function hasBlockingFullFidelityGaps(
+  tableSnapshot: DocumentStructureTableSnapshot,
+): boolean {
+  return (tableSnapshot.unsupported_fact_groups ?? []).some((group) =>
+    group === "structure" ||
+    group === "border_system" ||
+    group === "layout" ||
+    group === "paragraph_style" ||
+    group === "typography" ||
+    group === "rich_content"
+  );
+}
+
+function collectReconstructionDowngradeReasons(
+  tableSnapshot: DocumentStructureTableSnapshot,
+): string[] {
+  return (tableSnapshot.unsupported_fact_groups ?? []).map(
+    (group) => `Mandatory table evidence group "${group}" is not authoritative.`,
+  );
 }
 
 function buildAnchorKey(hit: EditorialRuleTableHit): string {

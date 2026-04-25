@@ -702,6 +702,62 @@ test("workbench http routes expose the knowledge library revision lifecycle", as
     assert.equal(created.asset.id, "knowledge-1");
     assert.equal(created.selected_revision.id, "knowledge-1-revision-1");
 
+    const tableEvidenceResponse = await fetch(
+      `${baseUrl}/api/v1/knowledge/table-evidence-packages`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          knowledgeItemId: created.asset.id,
+          revisionId: created.selected_revision.id,
+          sourceKind: "word_clipboard",
+          sourceEnvironment: {
+            source_application: "word",
+            application_version: "Microsoft Word 2021",
+            browser: "chromium",
+            os: "windows",
+            clipboard_mime_types: ["text/html", "text/plain"],
+            clipboard_html_available: true,
+            ooxml_fragment_available: true,
+            fallback_posture: "none",
+          },
+          requestedAuthoritativeStatus: "authoritative",
+          tableFullFidelitySnapshot: {
+            mandatory_fact_authority: {
+              identity: "authoritative",
+              structure: "authoritative",
+              border_system: "authoritative",
+              layout: "authoritative",
+              paragraph_style: "authoritative",
+              typography: "authoritative",
+              rich_content: "authoritative",
+              object_content: "authoritative",
+              authority_markers: "authoritative",
+            },
+            facts: {
+              caption: { text: "表 1 基线特征", position: "above" },
+              local_rich_text_fragments: [{ cell: "r1c1", italic: true }],
+            },
+          },
+        }),
+      },
+    );
+    const tableEvidence = (await tableEvidenceResponse.json()) as {
+      id: string;
+      authoritative_status: string;
+      source_environment: { ooxml_fragment_available?: boolean };
+      capture_failure_codes: string[];
+    };
+
+    assert.equal(tableEvidenceResponse.status, 201);
+    assert.equal(tableEvidence.id, "knowledge-2");
+    assert.equal(tableEvidence.authoritative_status, "authoritative");
+    assert.equal(tableEvidence.source_environment.ooxml_fragment_available, true);
+    assert.deepEqual(tableEvidence.capture_failure_codes, []);
+
     const submitResponse = await fetch(
       `${baseUrl}/api/v1/knowledge/revisions/${created.selected_revision.id}/submit`,
       {

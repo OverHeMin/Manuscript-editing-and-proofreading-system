@@ -364,8 +364,19 @@ test("journal template profiles can be created under a base template family", as
     "keywords",
     "body",
     "figures_tables",
+    "declarations",
     "references",
   ]);
+  assert.equal(
+    created.body.journal_format_target_model?.journal_target_table_model
+      ?.three_line_table_required,
+    true,
+  );
+  assert.equal(
+    created.body.journal_format_target_model?.journal_target_table_model
+      ?.rich_text_policy,
+    "preserve",
+  );
   assert.deepEqual(
     created.body.journal_format_target_model?.target_blocks
       .filter((block) =>
@@ -381,6 +392,12 @@ test("journal template profiles can be created under a base template family", as
     ["作者简介", "通信作者简介", "基金项目", "中图分类号", "文献标志码"],
   );
   assert.equal(created.body.target_model_versions?.length, 1);
+  assert.equal(
+    created.body.journal_format_target_model?.target_blocks.find(
+      (block) => block.block_key === "declarations",
+    )?.label,
+    "声明区",
+  );
   assert.equal(
     created.body.target_model_versions?.[0]?.journal_format_target_model.target_blocks[0]
       ?.block_key,

@@ -222,6 +222,7 @@ const journalFormatTargetSkeleton: JournalFormatTargetZone[] = [
   "keywords",
   "body",
   "figures_tables",
+  "declarations",
   "references",
 ];
 
@@ -451,6 +452,24 @@ function createDefaultJournalFormatTargetBlocks(): JournalFormatTargetBlock[] {
       completion_gate: "block_on_unresolved",
     },
     {
+      block_key: "declarations",
+      label: "声明区",
+      zone: "declarations",
+      anchor: "before_reference",
+      order: 125,
+      required: false,
+      repeatable: true,
+      enabled: true,
+      format_policy: {
+        display_label: "声明",
+        target_position: "参考文献前",
+        style_requirements: ["伦理声明、利益冲突、基金等声明独立成段"],
+        allow_auto_reorder: true,
+      },
+      content_source_policy: "must_harvest_existing",
+      completion_gate: "warn_only",
+    },
+    {
       block_key: "references",
       label: "参考文献",
       zone: "references",
@@ -471,10 +490,35 @@ function createDefaultJournalFormatTargetBlocks(): JournalFormatTargetBlock[] {
   ];
 }
 
+function createDefaultJournalTargetTableModel(): NonNullable<
+  JournalFormatTargetModel["journal_target_table_model"]
+> {
+  return {
+    caption_position: "above",
+    note_position: "below",
+    border_policy: "three-line table: top, header separator, and bottom borders",
+    three_line_table_required: true,
+    vertical_border_policy: "forbid",
+    header_depth_policy: "preserve detected medical manuscript header depth",
+    stub_column_policy: "preserve detected stub column semantics",
+    merged_cell_policy: "preserve",
+    font_policy: "preserve supported in-cell rich text while applying journal table typography",
+    rich_text_policy: "preserve",
+    unit_marker_policy: "preserve unit markers and statistical markers",
+    special_symbol_policy: "preserve supported text symbols and route object symbols to review",
+    width_policy: "fit journal target width when explicit table facts are authoritative",
+    auto_rebuild_eligibility_policy:
+      "eligible only when mandatory full-fidelity facts are authoritative",
+    manual_review_downgrade_policy:
+      "downgrade when mandatory facts, content preservation, or object policy cannot be proven",
+  };
+}
+
 function createDefaultJournalFormatTargetModel(): JournalFormatTargetModel {
   return {
     skeleton: [...journalFormatTargetSkeleton],
     target_blocks: createDefaultJournalFormatTargetBlocks(),
+    journal_target_table_model: createDefaultJournalTargetTableModel(),
   };
 }
 
@@ -483,6 +527,9 @@ function cloneJournalFormatTargetModel(
 ): JournalFormatTargetModel {
   return {
     skeleton: [...model.skeleton],
+    ...(model.journal_target_table_model
+      ? { journal_target_table_model: { ...model.journal_target_table_model } }
+      : {}),
     target_blocks: model.target_blocks.map((block) => ({
       ...block,
       format_policy: {
@@ -542,6 +589,11 @@ function normalizeJournalFormatTargetModel(
 
   return {
     skeleton: [...journalFormatTargetSkeleton],
+    journal_target_table_model: model?.journal_target_table_model
+      ? { ...model.journal_target_table_model }
+      : fallback.journal_target_table_model
+        ? { ...fallback.journal_target_table_model }
+        : undefined,
     target_blocks: normalizedBlocks.map((block) => ({
       ...block,
       format_policy: {

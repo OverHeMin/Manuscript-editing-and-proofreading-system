@@ -56,6 +56,7 @@ export interface ResolvedEditorialRule {
   effective_scope?: ResolvedEditorialRuleEffectiveScope;
   overridden_sources?: ResolvedEditorialRuleActivationSource[];
   conflict_kind?: Exclude<EditorialRuleConflictKind, "exclusive_conflict">;
+  governance_explanation?: string;
 }
 
 export interface EditorialRuleOverrideRecord {
@@ -403,6 +404,7 @@ function createResolvedRule(
       execution_mode: rule.execution_mode,
       confidence_policy: rule.confidence_policy,
     }),
+    governance_explanation: buildRuleGovernanceExplanation(rule),
     activation_source: createResolvedRuleActivationSource(
       sourceLayer,
       rule.rule_set_id,
@@ -686,6 +688,15 @@ function buildSelectedRuleResolutionReason(input: {
   }
   details.push(`Coverage key "${input.coverageKey}".`);
   return details.join(" ");
+}
+
+function buildRuleGovernanceExplanation(rule: EditorialRuleRecord): string {
+  const domain = rule.rule_domain ?? "front_matter";
+  const layer = rule.scope_layer ?? "general";
+  const grade = rule.automation_grade ?? "C";
+  const action = rule.structured_action?.kind ?? "inspect_only";
+  const gateStatus = rule.gold_sample_gate?.status ?? "not_required";
+  return `Rule domain ${domain}, scope layer ${layer}, automation grade ${grade}, action ${action}, gold sample gate ${gateStatus}.`;
 }
 
 function readLegacyFrontMatterBridgeDescriptor(

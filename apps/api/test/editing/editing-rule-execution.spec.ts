@@ -230,7 +230,15 @@ test("editing service resolves governed rules and persists deterministic changes
     order_no: 30,
     rule_object: "table",
     rule_type: "format",
+    rule_domain: "table",
     execution_mode: "inspect",
+    structured_action: {
+      kind: "full_table_rebuild",
+      target: "journal_target_table_model",
+      requires_validation: true,
+    },
+    automation_grade: "A",
+    scope_layer: "journal",
     scope: {
       sections: ["results"],
     },
@@ -247,6 +255,14 @@ test("editing service resolves governed rules and persists deterministic changes
       message: "Check treatment group header formatting.",
     },
     authoring_payload: {},
+    linkage_payload: {
+      evidence_package_ids: ["evidence-package-table-1"],
+      target_model_block_ids: ["journal_target_table_model"],
+    },
+    gold_sample_gate: {
+      status: "passed",
+      specimen_ids: ["gold-table-1"],
+    },
     confidence_policy: "manual_only",
     severity: "warning",
     enabled: true,
@@ -595,6 +611,18 @@ test("editing service resolves governed rules and persists deterministic changes
                   'Matched semantic target "style_profile" in table "table-1".',
               },
               execution_path: "controlled_rebuild",
+              table_reconstruction_plan: {
+                plan_kind: "table_reconstruction_plan",
+                outcome: "full_rebuild",
+                normalized_table_object: {
+                  table_id: "table-1",
+                  cells: [],
+                },
+                operations: [],
+                downgrade_reasons: [],
+                content_preservation_map: [],
+                required_validation: ["content_preservation"],
+              },
               rebuild_payload: {
                 strategy: "three_line_table_normalization",
               },
@@ -632,6 +660,23 @@ test("editing service resolves governed rules and persists deterministic changes
               },
               required_snapshot_capabilities: ["style_profile", "grid_cells"],
               execution_path: "controlled_rebuild",
+              validation_snapshot: {
+                snapshot_id: "patch-style:validation",
+                patch_id: "patch-style",
+                status: "passed",
+                checks: [
+                  {
+                    check_kind: "content_preservation",
+                    passed: true,
+                    reason: "preserved",
+                  },
+                ],
+                rollback_point: {
+                  source_table_id: "table-1",
+                  source_patch_id: "patch-style",
+                },
+                idempotence_key: "patch-style-idempotence",
+              },
             },
           ],
         };
@@ -713,7 +758,15 @@ test("editing service resolves governed rules and persists deterministic changes
       order_no: 30,
       rule_object: "table",
       rule_type: "format",
+      rule_domain: "table",
       execution_mode: "inspect",
+      structured_action: {
+        kind: "full_table_rebuild",
+        target: "journal_target_table_model",
+        requires_validation: true,
+      },
+      automation_grade: "A",
+      scope_layer: "journal",
       scope: {
         sections: ["results"],
       },
@@ -730,6 +783,14 @@ test("editing service resolves governed rules and persists deterministic changes
         message: "Check treatment group header formatting.",
       },
       authoring_payload: {},
+      linkage_payload: {
+        evidence_package_ids: ["evidence-package-table-1"],
+        target_model_block_ids: ["journal_target_table_model"],
+      },
+      gold_sample_gate: {
+        status: "passed",
+        specimen_ids: ["gold-table-1"],
+      },
       confidence_policy: "manual_only",
       severity: "warning",
       enabled: true,
@@ -926,6 +987,18 @@ test("editing service resolves governed rules and persists deterministic changes
           'Matched semantic target "style_profile" in table "table-1".',
       },
       execution_path: "controlled_rebuild",
+      table_reconstruction_plan: {
+        plan_kind: "table_reconstruction_plan",
+        outcome: "full_rebuild",
+        normalized_table_object: {
+          table_id: "table-1",
+          cells: [],
+        },
+        operations: [],
+        downgrade_reasons: [],
+        content_preservation_map: [],
+        required_validation: ["content_preservation"],
+      },
       rebuild_payload: {
         strategy: "three_line_table_normalization",
       },
@@ -963,6 +1036,85 @@ test("editing service resolves governed rules and persists deterministic changes
       },
       required_snapshot_capabilities: ["style_profile", "grid_cells"],
       execution_path: "controlled_rebuild",
+      validation_snapshot: {
+        snapshot_id: "patch-style:validation",
+        patch_id: "patch-style",
+        status: "passed",
+        checks: [
+          {
+            check_kind: "content_preservation",
+            passed: true,
+            reason: "preserved",
+          },
+        ],
+        rollback_point: {
+          source_table_id: "table-1",
+          source_patch_id: "patch-style",
+        },
+        idempotence_key: "patch-style-idempotence",
+      },
+    },
+  ]);
+  assert.deepEqual(result.job.payload?.runtimeBindingExplanation, {
+    tableCount: 1,
+    unsupportedTableFactGroups: [],
+    decisionClasses: ["auto_apply", "full_rebuild"],
+  });
+  assert.deepEqual(result.job.payload?.automaticActionLedger, [
+    {
+      action_id: "patch-header",
+      action_class: "auto_apply",
+      rule_id: "rule-table-treatment-group",
+      rule_domain: "table",
+      structured_action_kind: "full_table_rebuild",
+      automation_grade: "A",
+      evidence_package_ids: ["evidence-package-table-1"],
+      target_model_block_ids: ["journal_target_table_model"],
+      target_model_version_id: undefined,
+      target_model_version_no: undefined,
+      patch_type: "replace_header_cell_text",
+      table_id: "table-1",
+      writeback_status: "applied",
+      validation_snapshot: undefined,
+      rollback_point: undefined,
+      downgrade_reasons: [],
+    },
+    {
+      action_id: "patch-style",
+      action_class: "full_rebuild",
+      rule_id: "rule-table-treatment-group",
+      rule_domain: "table",
+      structured_action_kind: "full_table_rebuild",
+      automation_grade: "A",
+      evidence_package_ids: ["evidence-package-table-1"],
+      target_model_block_ids: ["journal_target_table_model"],
+      target_model_version_id: undefined,
+      target_model_version_no: undefined,
+      patch_type: "apply_three_line_table_style",
+      table_id: "table-1",
+      writeback_status: "applied",
+      validation_snapshot: {
+        snapshot_id: "patch-style:validation",
+        patch_id: "patch-style",
+        status: "passed",
+        checks: [
+          {
+            check_kind: "content_preservation",
+            passed: true,
+            reason: "preserved",
+          },
+        ],
+        rollback_point: {
+          source_table_id: "table-1",
+          source_patch_id: "patch-style",
+        },
+        idempotence_key: "patch-style-idempotence",
+      },
+      rollback_point: {
+        source_table_id: "table-1",
+        source_patch_id: "patch-style",
+      },
+      downgrade_reasons: [],
     },
   ]);
   assert.deepEqual(result.job.payload?.manualReviewItems, [

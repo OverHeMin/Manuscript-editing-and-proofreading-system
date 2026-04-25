@@ -1,6 +1,7 @@
 import type {
   KnowledgeAssetRecord,
   KnowledgeContentBlockRecord,
+  KnowledgeEvidencePackageRecord,
   KnowledgeRecord,
   KnowledgeRevisionBindingRecord,
   KnowledgeRevisionRecord,
@@ -28,6 +29,7 @@ interface KnowledgeRepositorySnapshot {
   bindingsByRevisionId: Map<string, KnowledgeRevisionBindingRecord[]>;
   contentBlocksByRevisionId: Map<string, KnowledgeContentBlockRecord[]>;
   semanticLayersByRevisionId: Map<string, KnowledgeSemanticLayerRecord>;
+  evidencePackages: Map<string, KnowledgeEvidencePackageRecord>;
 }
 
 function cloneJsonRecord(
@@ -89,6 +91,13 @@ function cloneKnowledgeRecord(record: KnowledgeRecord): KnowledgeRecord {
                 ],
               }
             : {}),
+          ...(record.binding_targets.target_model_block_ids
+            ? {
+                target_model_block_ids: [
+                  ...record.binding_targets.target_model_block_ids,
+                ],
+              }
+            : {}),
         }
       : undefined,
     template_bindings: record.template_bindings
@@ -125,6 +134,50 @@ function cloneRevisionRecord(record: KnowledgeRevisionRecord): KnowledgeRevision
     aliases: record.aliases ? [...record.aliases] : undefined,
     projection_source: record.projection_source
       ? JSON.parse(JSON.stringify(record.projection_source))
+      : undefined,
+  };
+}
+
+function cloneBindingTargets(
+  targets: KnowledgeEvidencePackageRecord["binding_targets"],
+): KnowledgeEvidencePackageRecord["binding_targets"] {
+  return targets
+    ? {
+        ...(targets.template_family_ids
+          ? { template_family_ids: [...targets.template_family_ids] }
+          : {}),
+        ...(targets.module_template_ids
+          ? { module_template_ids: [...targets.module_template_ids] }
+          : {}),
+        ...(targets.journal_template_ids
+          ? { journal_template_ids: [...targets.journal_template_ids] }
+          : {}),
+        ...(targets.general_package_ids
+          ? { general_package_ids: [...targets.general_package_ids] }
+          : {}),
+        ...(targets.medical_package_ids
+          ? { medical_package_ids: [...targets.medical_package_ids] }
+          : {}),
+        ...(targets.target_model_block_ids
+          ? { target_model_block_ids: [...targets.target_model_block_ids] }
+          : {}),
+      }
+    : undefined;
+}
+
+function cloneEvidencePackageRecord(
+  record: KnowledgeEvidencePackageRecord,
+): KnowledgeEvidencePackageRecord {
+  return {
+    ...record,
+    source_payload: JSON.parse(JSON.stringify(record.source_payload)) as Record<
+      string,
+      unknown
+    >,
+    binding_targets: cloneBindingTargets(record.binding_targets),
+    linked_rule_ids: record.linked_rule_ids ? [...record.linked_rule_ids] : undefined,
+    linked_target_model_block_ids: record.linked_target_model_block_ids
+      ? [...record.linked_target_model_block_ids]
       : undefined,
   };
 }
@@ -202,6 +255,7 @@ export class InMemoryKnowledgeRepository implements KnowledgeRepository {
     string,
     KnowledgeSemanticLayerRecord
   >();
+  private readonly evidencePackages = new Map<string, KnowledgeEvidencePackageRecord>();
 
   async save(record: KnowledgeRecord): Promise<void> {
     this.legacyRecords.set(record.id, cloneKnowledgeRecord(record));
@@ -350,6 +404,26 @@ export class InMemoryKnowledgeRepository implements KnowledgeRepository {
     return record ? cloneSemanticLayerRecord(record) : undefined;
   }
 
+  async saveEvidencePackage(record: KnowledgeEvidencePackageRecord): Promise<void> {
+    this.evidencePackages.set(record.id, cloneEvidencePackageRecord(record));
+  }
+
+  async findEvidencePackageById(
+    id: string,
+  ): Promise<KnowledgeEvidencePackageRecord | undefined> {
+    const record = this.evidencePackages.get(id);
+    return record ? cloneEvidencePackageRecord(record) : undefined;
+  }
+
+  async listEvidencePackagesByKnowledgeItemId(
+    knowledgeItemId: string,
+  ): Promise<KnowledgeEvidencePackageRecord[]> {
+    return [...this.evidencePackages.values()]
+      .filter((record) => record.knowledge_item_id === knowledgeItemId)
+      .sort((left, right) => left.created_at.localeCompare(right.created_at))
+      .map(cloneEvidencePackageRecord);
+  }
+
   async listDuplicateCheckCandidatesByAsset(): Promise<
     KnowledgeDuplicateCandidateGroupRecord[]
   > {
@@ -427,6 +501,12 @@ export class InMemoryKnowledgeRepository implements KnowledgeRepository {
           cloneSemanticLayerRecord(record),
         ]),
       ),
+      evidencePackages: new Map(
+        [...this.evidencePackages.entries()].map(([id, record]) => [
+          id,
+          cloneEvidencePackageRecord(record),
+        ]),
+      ),
     };
   }
 
@@ -437,6 +517,7 @@ export class InMemoryKnowledgeRepository implements KnowledgeRepository {
     this.bindingsByRevisionId.clear();
     this.contentBlocksByRevisionId.clear();
     this.semanticLayersByRevisionId.clear();
+    this.evidencePackages.clear();
 
     for (const [id, record] of snapshot.legacyRecords.entries()) {
       this.legacyRecords.set(id, cloneKnowledgeRecord(record));
@@ -464,6 +545,9 @@ export class InMemoryKnowledgeRepository implements KnowledgeRepository {
         revisionId,
         cloneSemanticLayerRecord(record),
       );
+    }
+    for (const [id, record] of snapshot.evidencePackages.entries()) {
+      this.evidencePackages.set(id, cloneEvidencePackageRecord(record));
     }
   }
 

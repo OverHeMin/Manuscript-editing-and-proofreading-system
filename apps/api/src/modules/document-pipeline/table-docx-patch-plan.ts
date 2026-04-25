@@ -33,6 +33,64 @@ export interface TableDocxPatchAnchor {
   footnote_anchor?: string;
 }
 
+export type TableReconstructionOperationKind =
+  | "preserve_content_mapping"
+  | "place_caption"
+  | "place_note_zone"
+  | "normalize_border_system"
+  | "normalize_layout"
+  | "normalize_paragraph_style"
+  | "normalize_typography"
+  | "preserve_rich_fragments"
+  | "handle_object_content";
+
+export interface NormalizedTableCellObject {
+  source_cell_id: string;
+  target_cell_id: string;
+  row_index: number;
+  column_index: number;
+  row_span: number;
+  column_span: number;
+  inferred_role: string;
+  text: string;
+  paragraphs: unknown[];
+  style_evidence: unknown;
+  border_hints?: unknown;
+}
+
+export interface NormalizedTableObject {
+  table_id: string;
+  row_count?: number;
+  column_count?: number;
+  caption_text?: string;
+  note_text?: string;
+  cells: NormalizedTableCellObject[];
+}
+
+export interface TableReconstructionOperation {
+  kind: TableReconstructionOperationKind;
+  status: "planned" | "manual_review_required" | "blocked";
+  source_ids: string[];
+  target_ids: string[];
+  reason: string;
+}
+
+export interface TableReconstructionPlan {
+  plan_kind: "table_reconstruction_plan";
+  outcome: "safe_patch" | "full_rebuild" | "manual_review" | "blocked";
+  normalized_table_object: NormalizedTableObject;
+  operations: TableReconstructionOperation[];
+  downgrade_reasons: string[];
+  content_preservation_map: Array<{
+    source_cell_id: string;
+    target_cell_id: string;
+    source_text: string;
+    target_text: string;
+    preserved: boolean;
+  }>;
+  required_validation: string[];
+}
+
 export interface TableDocxPatchPlan {
   patch_id: string;
   rule_id: string;
@@ -49,13 +107,38 @@ export interface TableDocxPatchPlan {
   evidence_pack: Record<string, unknown>;
   execution_path?: TableDocxExecutionPath;
   rebuild_payload?: Record<string, unknown>;
+  table_reconstruction_plan?: TableReconstructionPlan;
 }
 
 export type TableDocxPatchResultStatus =
   | "applied"
+  | "validation_failed"
   | "skipped_no_anchor"
   | "skipped_conflict"
   | "skipped_unsafe";
+
+export interface TableReconstructionValidationSnapshot {
+  snapshot_id: string;
+  patch_id: string;
+  status: "passed" | "failed";
+  checks: Array<{
+    check_kind:
+      | "content_preservation"
+      | "topology_preservation"
+      | "target_border_system"
+      | "caption_note_placement"
+      | "rich_fragment_preservation"
+      | "object_policy"
+      | "idempotence";
+    passed: boolean;
+    reason: string;
+  }>;
+  rollback_point: {
+    source_table_id: string;
+    source_patch_id: string;
+  };
+  idempotence_key: string;
+}
 
 export interface TableDocxPatchResult {
   patch_id: string;
@@ -68,10 +151,12 @@ export interface TableDocxPatchResult {
   anchor?: TableDocxPatchAnchor;
   required_snapshot_capabilities: TableDocxSnapshotCapability[];
   execution_path?: TableDocxExecutionPath;
+  validation_snapshot?: TableReconstructionValidationSnapshot;
 }
 
 export const TABLE_DOCX_PATCH_RESULT_STATUSES: TableDocxPatchResultStatus[] = [
   "applied",
+  "validation_failed",
   "skipped_no_anchor",
   "skipped_conflict",
   "skipped_unsafe",

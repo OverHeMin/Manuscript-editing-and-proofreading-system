@@ -561,6 +561,13 @@ export class EditingService {
         previousSummary: manuscript.editing_slot_governance_summary,
         generatedAt: slotGovernanceTimestamp,
       });
+      const runtimeBindingExplanation = buildEditingRuntimeBindingExplanation({
+        journalTemplateId: manuscript.current_journal_template_id,
+        targetModelVersionId: journalTemplate?.target_model_version_id,
+        targetModelVersionNo: journalTemplate?.target_model_version_no,
+        tableSnapshots: documentStructureSnapshot?.tables ?? [],
+        resolvedRules: normalizedContext.resolvedRules,
+      });
       await context.manuscriptRepository.save({
         ...manuscript,
         editing_slot_governance_summary: structuredClone(slotGovernanceSummary),
@@ -581,6 +588,7 @@ export class EditingService {
           sourceBlocks,
           qualityIssues: qualityRun?.issues,
           governanceContext: buildAiGovernanceContext({
+            runtimeBindingExplanation,
             hardRuleSummary: normalizedContext.instructionPayload?.hardRuleSummary,
             allowedContentOperations:
               normalizedContext.instructionPayload?.allowedContentOperations,
@@ -836,6 +844,7 @@ export class EditingService {
               }
             : {}),
           slotGovernanceSummary: structuredClone(slotGovernanceSummary),
+          runtimeBindingExplanation: structuredClone(runtimeBindingExplanation),
           editingCompletionGateSummary: structuredClone(
             editingCompletionGateSummary,
           ),
@@ -885,6 +894,13 @@ export class EditingService {
           tablePatchResults: tablePatchResults.map((result) =>
             structuredClone(result),
           ),
+          automaticActionLedger: buildEditingAutomaticActionLedger({
+            tablePatchPlans,
+            tablePatchResults,
+            resolvedRules: normalizedContext.resolvedRules,
+            targetModelVersionId: journalTemplate?.target_model_version_id,
+            targetModelVersionNo: journalTemplate?.target_model_version_no,
+          }),
           skippedAiReplacements: skippedAiReplacements.map((entry) =>
             structuredClone(entry),
           ),
@@ -1483,6 +1499,7 @@ function cloneSemanticLocation(
 }
 
 function buildAiGovernanceContext(input: {
+  runtimeBindingExplanation?: AiGovernanceContext["runtimeBindingExplanation"];
   hardRuleSummary?: string;
   allowedContentOperations?: string[];
   forbiddenOperations?: string[];
@@ -1496,6 +1513,11 @@ function buildAiGovernanceContext(input: {
   const resolvedRules = (input.resolvedRules ?? []).map((entry) => ({
     ruleId: entry.rule.id,
     actionKind: entry.rule.action.kind,
+    ruleDomain: entry.rule.rule_domain,
+    structuredActionKind: entry.rule.structured_action?.kind,
+    automationGrade: entry.rule.automation_grade,
+    scopeLayer: entry.rule.scope_layer,
+    governanceExplanation: entry.governance_explanation,
     ruleType: entry.rule.rule_type,
     severity: entry.rule.severity,
     confidencePolicy: entry.rule.confidence_policy,
@@ -1506,6 +1528,12 @@ function buildAiGovernanceContext(input: {
         )
       : [],
     sourceLayer: entry.source_layer,
+    evidencePackageIds: entry.rule.linkage_payload?.evidence_package_ids
+      ? [...entry.rule.linkage_payload.evidence_package_ids]
+      : undefined,
+    targetModelBlockIds: entry.rule.linkage_payload?.target_model_block_ids
+      ? [...entry.rule.linkage_payload.target_model_block_ids]
+      : undefined,
   }));
   const knowledgeHits = (input.knowledgeHits ?? []).map((entry) => ({
     knowledgeItemId: entry.knowledgeItemId,
@@ -1515,6 +1543,13 @@ function buildAiGovernanceContext(input: {
     matchReasons: [...entry.matchReasons],
   }));
   const context: AiGovernanceContext = {
+    ...(input.runtimeBindingExplanation
+      ? {
+          runtimeBindingExplanation: structuredClone(
+            input.runtimeBindingExplanation,
+          ),
+        }
+      : {}),
     ...(input.hardRuleSummary
       ? {
           hardRuleSummary: input.hardRuleSummary,
@@ -1563,6 +1598,113 @@ function buildAiGovernanceContext(input: {
   };
 
   return Object.keys(context).length > 0 ? context : undefined;
+}
+
+function buildEditingRuntimeBindingExplanation(input: {
+  journalTemplateId?: string;
+  targetModelVersionId?: string;
+  targetModelVersionNo?: number;
+  tableSnapshots: Array<{ unsupported_fact_groups?: string[] }>;
+  resolvedRules: ResolvedEditorialRule[];
+}): NonNullable<AiGovernanceContext["runtimeBindingExplanation"]> {
+  return {
+    ...(input.journalTemplateId
+      ? { journalTemplateId: input.journalTemplateId }
+      : {}),
+    ...(input.targetModelVersionId
+      ? { targetModelVersionId: input.targetModelVersionId }
+      : {}),
+    ...(typeof input.targetModelVersionNo === "number"
+      ? { targetModelVersionNo: input.targetModelVersionNo }
+      : {}),
+    tableCount: input.tableSnapshots.length,
+    unsupportedTableFactGroups: dedupeStrings(
+      input.tableSnapshots.flatMap((table) => table.unsupported_fact_groups ?? []),
+    ),
+    decisionClasses: dedupeStrings(
+      input.resolvedRules.map((entry) => classifyEditingDecisionClass(entry)),
+    ),
+  };
+}
+
+function classifyEditingDecisionClass(entry: ResolvedEditorialRule): string {
+  const structuredActionKind = entry.rule.structured_action?.kind;
+  if (structuredActionKind === "full_table_rebuild") {
+    return "full_rebuild";
+  }
+  if (
+    structuredActionKind === "auto_apply" ||
+    structuredActionKind === "manual_review_required" ||
+    structuredActionKind === "block_completion" ||
+    structuredActionKind === "inspect_only"
+  ) {
+    return structuredActionKind;
+  }
+  if (entry.rule.execution_mode === "inspect") {
+    return "inspect_only";
+  }
+  if (entry.rule.confidence_policy === "manual_only") {
+    return "manual_review_required";
+  }
+  return "auto_apply";
+}
+
+function buildEditingAutomaticActionLedger(input: {
+  tablePatchPlans: DeterministicDocxTransformResult["tablePatchPlans"];
+  tablePatchResults: DeterministicDocxTransformResult["tablePatchResults"];
+  resolvedRules: ResolvedEditorialRule[];
+  targetModelVersionId?: string;
+  targetModelVersionNo?: number;
+}): Array<Record<string, unknown>> {
+  const resultByPatchId = new Map(
+    input.tablePatchResults.map((result) => [result.patch_id, result]),
+  );
+  const ruleById = new Map(
+    input.resolvedRules.map((entry) => [entry.rule.id, entry]),
+  );
+
+  return input.tablePatchPlans.map((plan) => {
+    const result = resultByPatchId.get(plan.patch_id);
+    const ruleEntry = ruleById.get(plan.rule_id);
+    return {
+      action_id: plan.patch_id,
+      action_class:
+        plan.execution_path === "controlled_rebuild" ? "full_rebuild" : "auto_apply",
+      rule_id: plan.rule_id,
+      rule_domain: ruleEntry?.rule.rule_domain,
+      structured_action_kind: ruleEntry?.rule.structured_action?.kind,
+      automation_grade: ruleEntry?.rule.automation_grade,
+      evidence_package_ids:
+        ruleEntry?.rule.linkage_payload?.evidence_package_ids ?? [],
+      target_model_block_ids:
+        ruleEntry?.rule.linkage_payload?.target_model_block_ids ?? [],
+      target_model_version_id: input.targetModelVersionId,
+      target_model_version_no: input.targetModelVersionNo,
+      patch_type: plan.patch_type,
+      table_id: plan.table_id,
+      writeback_status: result?.status ?? "not_attempted",
+      validation_snapshot: result?.validation_snapshot
+        ? structuredClone(result.validation_snapshot)
+        : undefined,
+      rollback_point: result?.validation_snapshot?.rollback_point
+        ? structuredClone(result.validation_snapshot.rollback_point)
+        : undefined,
+      downgrade_reasons:
+        plan.table_reconstruction_plan?.downgrade_reasons.map((reason) => reason) ??
+        [],
+    };
+  });
+}
+
+function dedupeStrings(values: readonly (string | undefined)[]): string[] {
+  const result: string[] = [];
+  for (const value of values) {
+    if (!value || result.includes(value)) {
+      continue;
+    }
+    result.push(value);
+  }
+  return result;
 }
 
 export type { DeterministicDocxTransformResult };

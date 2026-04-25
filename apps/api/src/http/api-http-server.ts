@@ -815,6 +815,9 @@ type HttpRouteMatch =
       route: "knowledge-create-library-draft";
     }
   | {
+      route: "knowledge-create-table-evidence-package";
+    }
+  | {
       route: "knowledge-ai-intake";
     }
   | {
@@ -5973,6 +5976,13 @@ async function handleRoute(
       return runtime.knowledgeApi.createLibraryDraft(
         (await readJsonBody(req)) as CreateKnowledgeLibraryDraftInput,
       );
+    case "knowledge-create-table-evidence-package":
+      await requirePermission(req, runtime, "knowledge.review");
+      return runtime.knowledgeApi.createTableEvidencePackage(
+        (await readJsonBody(req)) as Parameters<
+          typeof runtime.knowledgeApi.createTableEvidencePackage
+        >[0],
+      );
     case "knowledge-ai-intake":
       await requirePermission(req, runtime, "knowledge.review");
       return runtime.knowledgeApi.createAiIntakeSuggestion(
@@ -8263,6 +8273,10 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
   if (method === "POST" && path === "/api/v1/knowledge/assets/drafts") {
     return { route: "knowledge-create-library-draft" };
+  }
+
+  if (method === "POST" && path === "/api/v1/knowledge/table-evidence-packages") {
+    return { route: "knowledge-create-table-evidence-package" };
   }
 
   if (method === "POST" && path === "/api/v1/knowledge/uploads") {

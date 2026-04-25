@@ -432,6 +432,7 @@ test("editing completion gate helper extracts persisted gate summaries from job 
             summary: "表 1 三线表样式待人工确认",
             detail: "当前快照识别到表格结构，但仍需人工确认样式。",
             location_text: "结果表 1",
+            review_item_id: "review-table-1",
             status: "pending",
           },
         ],
@@ -1765,6 +1766,7 @@ test("editing detail page renders explicit completion gate blocker sections", ()
             summary: "表 1 三线表样式待人工确认",
             detail: "当前快照识别到表格结构，但仍需人工确认样式。",
             location_text: "结果表 1",
+            review_item_id: "review-table-1",
             status: "pending",
           },
         ],
@@ -1785,6 +1787,13 @@ test("editing detail page renders explicit completion gate blocker sections", ()
 
   assert.match(markup, /编辑完成门禁/u);
   assert.match(markup, /被高风险对象\/表格\/格式阻断/u);
+  assert.match(markup, /\u8868\u683c\u4e13\u5c5e\u6838\u5bf9\u52a8\u4f5c/u);
+  assert.match(markup, /\u63a5\u53d7\u6539\u52a8/u);
+  assert.match(markup, /\u62d2\u7edd\u6539\u52a8/u);
+  assert.match(markup, /\u8986\u76d6\u653e\u884c/u);
+  assert.match(markup, /\u5ef6\u540e\u5904\u7406/u);
+  assert.match(markup, /review-table-1/u);
+  assert.doesNotMatch(markup, /<button/u);
   assert.match(markup, /人工处理项/u);
   assert.match(markup, /高风险对象/u);
   assert.match(markup, /原始对象：图片对象 \/ drawing \/ rId5/u);
@@ -1981,6 +1990,29 @@ test("editing detail page renders the shared review workspace with full text on 
         table_high_risk_items: [],
         blocking_format_failures: [],
       }}
+      editingRuntimeBindingExplanation={{
+        tableCount: 1,
+        targetModelVersionNo: 2,
+        decisionClasses: ["auto_apply", "full_rebuild"],
+        unsupportedTableFactGroups: [],
+      }}
+      editingAutomaticActionLedger={[
+        {
+          action_id: "patch-style",
+          action_class: "full_rebuild",
+          rule_id: "rule-table-treatment-group",
+          patch_type: "apply_three_line_table_style",
+          table_id: "table-1",
+          writeback_status: "applied",
+          validation_snapshot: {
+            status: "passed",
+          },
+          rollback_point: {
+            source_patch_id: "patch-style",
+          },
+          downgrade_reasons: [],
+        },
+      ]}
       executionSnapshot={{
         id: "snapshot-editing-review-1",
         manuscript_id: "manuscript-1",
@@ -2011,6 +2043,10 @@ test("editing detail page renders the shared review workspace with full text on 
   );
 
   assert.match(markup, /data-editing-layout="shared-review"/);
+  assert.match(markup, /运行时绑定与自动动作账本/u);
+  assert.match(markup, /full_rebuild/u);
+  assert.match(markup, /apply_three_line_table_style/u);
+  assert.match(markup, /验证 passed/u);
   assert.match(markup, /编辑共享审阅工作台/u);
   assert.match(markup, /左全文右问题的编辑审阅台/u);
   assert.match(markup, /稿件全文/u);
