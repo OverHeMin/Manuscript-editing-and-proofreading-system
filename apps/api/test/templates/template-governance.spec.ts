@@ -350,13 +350,126 @@ test("journal template profiles can be created under a base template family", as
   });
 
   assert.equal(created.status, 201);
-  assert.deepEqual(created.body, {
-    id: "journal-template-1",
-    template_family_id: family.body.id,
-    journal_key: "nejm",
-    journal_name: "New England Journal of Medicine",
-    status: "draft",
+  assert.equal(created.body.id, "journal-template-1");
+  assert.equal(created.body.template_family_id, family.body.id);
+  assert.equal(created.body.journal_key, "nejm");
+  assert.equal(created.body.journal_name, "New England Journal of Medicine");
+  assert.equal(created.body.status, "draft");
+  assert.equal(created.body.target_model_version_id, "journal-template-1-v1");
+  assert.equal(created.body.target_model_version_no, 1);
+  assert.deepEqual(created.body.journal_format_target_model?.skeleton, [
+    "front_matter",
+    "title",
+    "abstract",
+    "keywords",
+    "body",
+    "figures_tables",
+    "references",
+  ]);
+  assert.deepEqual(
+    created.body.journal_format_target_model?.target_blocks
+      .filter((block) =>
+        [
+          "author_bio",
+          "corresponding_author_bio",
+          "funding_statement",
+          "classification_code",
+          "document_code",
+        ].includes(block.block_key),
+      )
+      .map((block) => block.label),
+    ["作者简介", "通信作者简介", "基金项目", "中图分类号", "文献标志码"],
+  );
+  assert.equal(created.body.target_model_versions?.length, 1);
+  assert.equal(
+    created.body.target_model_versions?.[0]?.journal_format_target_model.target_blocks[0]
+      ?.block_key,
+    "author_line",
+  );
+});
+
+test("journal template profiles can be updated with versioned target model changes", async () => {
+  const { api } = createTemplateHarness(undefined, {
+    issuedIds: ["family-1", "journal-template-1"],
   });
+
+  const family = await api.createTemplateFamily({
+    manuscriptType: "review",
+    name: "Review journal parent family",
+  });
+  const created = await api.createJournalTemplateProfile({
+    templateFamilyId: family.body.id,
+    manuscriptType: "review",
+    journalKey: "nejm",
+    journalName: "New England Journal of Medicine",
+  });
+
+  const nextTargetModel = structuredClone(
+    created.body.journal_format_target_model,
+  );
+  assert.ok(nextTargetModel);
+  nextTargetModel.target_blocks = nextTargetModel.target_blocks.map((block) =>
+    block.block_key === "classification_code"
+      ? {
+          ...block,
+          required: true,
+          completion_gate: "block_on_missing",
+          format_policy: {
+            ...block.format_policy,
+            prefix: "中图分类号 ",
+          },
+        }
+      : block,
+  );
+  nextTargetModel.target_blocks.push({
+    block_key: "ethics_statement",
+    label: "伦理声明",
+    zone: "front_matter",
+    anchor: "before_reference",
+    order: 140,
+    required: true,
+    repeatable: false,
+    enabled: true,
+    format_policy: {
+      display_label: "伦理声明",
+      prefix: "伦理声明：",
+      target_position: "参考文献前",
+      style_requirements: ["独立成段"],
+      allow_auto_reorder: true,
+    },
+    content_source_policy: "must_harvest_existing",
+    completion_gate: "block_on_unresolved",
+  });
+
+  const updated = await api.updateJournalTemplateProfile({
+    journalTemplateProfileId: created.body.id,
+    input: {
+      journalName: "New England Journal of Medicine Updated",
+      journalFormatTargetModel: nextTargetModel,
+    },
+  });
+
+  assert.equal(updated.status, 200);
+  assert.equal(updated.body.journal_name, "New England Journal of Medicine Updated");
+  assert.equal(updated.body.target_model_version_id, "journal-template-1-v2");
+  assert.equal(updated.body.target_model_version_no, 2);
+  assert.equal(updated.body.target_model_versions?.length, 2);
+  assert.equal(
+    updated.body.target_model_versions?.[0]?.version_id,
+    "journal-template-1-v1",
+  );
+  assert.equal(
+    updated.body.journal_format_target_model?.target_blocks.find(
+      (block) => block.block_key === "classification_code",
+    )?.required,
+    true,
+  );
+  assert.equal(
+    updated.body.journal_format_target_model?.target_blocks.find(
+      (block) => block.block_key === "ethics_statement",
+    )?.label,
+    "伦理声明",
+  );
 });
 
 test("journal template profiles cannot point at a template family from a different manuscript type", async () => {

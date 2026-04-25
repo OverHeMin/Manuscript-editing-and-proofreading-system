@@ -414,6 +414,8 @@ test("editing service resolves governed rules and persists deterministic changes
           tables: [
             {
               table_id: "table-1",
+              row_count: 1,
+              column_count: 2,
               profile: {
                 is_three_line_table: true,
                 header_depth: 2,
@@ -428,6 +430,7 @@ test("editing service resolves governed rules and persists deterministic changes
                   row_index: 1,
                   column_index: 1,
                   header_path: ["Treatment group", "n (%)"],
+                  source_cell_id: "table-1-cell-0-1",
                   coordinate: {
                     table_id: "table-1",
                     target: "header_cell",
@@ -438,6 +441,80 @@ test("editing service resolves governed rules and persists deterministic changes
               ],
               data_cells: [],
               footnote_items: [],
+              grid_cells: [
+                {
+                  id: "table-1-cell-0-1",
+                  text: "n (%)",
+                  row_index: 0,
+                  column_index: 1,
+                  row_span: 1,
+                  column_span: 1,
+                  inferred_role: "header",
+                  style_evidence: {
+                    font_family: {
+                      availability: "authoritative",
+                      value: "Times New Roman",
+                    },
+                    font_size_pt: {
+                      availability: "authoritative",
+                      value: 10.5,
+                    },
+                    bold: {
+                      availability: "authoritative",
+                      value: true,
+                    },
+                    italic: {
+                      availability: "authoritative",
+                      value: false,
+                    },
+                    script_position: {
+                      availability: "authoritative",
+                      value: "baseline",
+                    },
+                    alignment: {
+                      availability: "authoritative",
+                      value: "center",
+                    },
+                    spacing_before_pt: {
+                      availability: "authoritative",
+                      value: 0,
+                    },
+                    spacing_after_pt: {
+                      availability: "authoritative",
+                      value: 0,
+                    },
+                    line_spacing: {
+                      availability: "authoritative",
+                      value: 1,
+                    },
+                    line_spacing_mode: {
+                      availability: "authoritative",
+                      value: "multiple",
+                    },
+                    left_indent_pt: {
+                      availability: "authoritative",
+                      value: 0,
+                    },
+                    right_indent_pt: {
+                      availability: "authoritative",
+                      value: 0,
+                    },
+                    first_line_indent_pt: {
+                      availability: "authoritative",
+                      value: 0,
+                    },
+                    hanging_indent_pt: {
+                      availability: "authoritative",
+                      value: 0,
+                    },
+                    vertical_alignment: {
+                      availability: "authoritative",
+                      value: "center",
+                    },
+                  },
+                  paragraphs: [],
+                },
+              ],
             },
           ],
           warnings: [],
@@ -494,6 +571,33 @@ test("editing service resolves governed rules and persists deterministic changes
                 match_reason:
                   'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)".',
               },
+              execution_path: "safe_patch",
+            },
+            {
+              patch_id: "patch-style",
+              rule_id: "rule-table-treatment-group",
+              table_id: "table-1",
+              patch_type: "apply_three_line_table_style",
+              grade: "A",
+              apply_scope: "editing_only",
+              semantic_target: "style_profile",
+              anchor: {
+                table_id: "table-1",
+                semantic_target: "style_profile",
+              },
+              required_snapshot_capabilities: ["style_profile", "grid_cells"],
+              proposed_before: "non_three_line_table",
+              proposed_after: "three_line_table",
+              rationale:
+                'Matched semantic target "style_profile" in table "table-1".',
+              evidence_pack: {
+                match_reason:
+                  'Matched semantic target "style_profile" in table "table-1".',
+              },
+              execution_path: "controlled_rebuild",
+              rebuild_payload: {
+                strategy: "three_line_table_normalization",
+              },
             },
           ],
           tablePatchResults: [
@@ -512,21 +616,22 @@ test("editing service resolves governed rules and persists deterministic changes
                 column_key: "Treatment group > n (%)",
               },
               required_snapshot_capabilities: ["header_cell"],
+              execution_path: "safe_patch",
             },
             {
               patch_id: "patch-style",
               rule_id: "rule-table-treatment-group",
               table_id: "table-1",
               patch_type: "apply_three_line_table_style",
-              status: "skipped_unsafe",
-              reason:
-                "Style patch family is not yet safe for deterministic DOCX auto-apply.",
+              status: "applied",
+              reason: "Controlled table rebuild applied.",
               semantic_target: "style_profile",
               anchor: {
                 table_id: "table-1",
                 semantic_target: "style_profile",
               },
-              required_snapshot_capabilities: ["style_profile"],
+              required_snapshot_capabilities: ["style_profile", "grid_cells"],
+              execution_path: "controlled_rebuild",
             },
           ],
         };
@@ -633,6 +738,8 @@ test("editing service resolves governed rules and persists deterministic changes
   assert.deepEqual(transformCalls[0]?.tableSnapshots, [
     {
       table_id: "table-1",
+      row_count: 1,
+      column_count: 2,
       profile: {
         is_three_line_table: true,
         header_depth: 2,
@@ -647,6 +754,7 @@ test("editing service resolves governed rules and persists deterministic changes
           row_index: 1,
           column_index: 1,
           header_path: ["Treatment group", "n (%)"],
+          source_cell_id: "table-1-cell-0-1",
           coordinate: {
             table_id: "table-1",
             target: "header_cell",
@@ -657,6 +765,80 @@ test("editing service resolves governed rules and persists deterministic changes
       ],
       data_cells: [],
       footnote_items: [],
+      grid_cells: [
+        {
+          id: "table-1-cell-0-1",
+          text: "n (%)",
+          row_index: 0,
+          column_index: 1,
+          row_span: 1,
+          column_span: 1,
+          inferred_role: "header",
+          style_evidence: {
+            font_family: {
+              availability: "authoritative",
+              value: "Times New Roman",
+            },
+            font_size_pt: {
+              availability: "authoritative",
+              value: 10.5,
+            },
+            bold: {
+              availability: "authoritative",
+              value: true,
+            },
+            italic: {
+              availability: "authoritative",
+              value: false,
+            },
+            script_position: {
+              availability: "authoritative",
+              value: "baseline",
+            },
+            alignment: {
+              availability: "authoritative",
+              value: "center",
+            },
+            spacing_before_pt: {
+              availability: "authoritative",
+              value: 0,
+            },
+            spacing_after_pt: {
+              availability: "authoritative",
+              value: 0,
+            },
+            line_spacing: {
+              availability: "authoritative",
+              value: 1,
+            },
+            line_spacing_mode: {
+              availability: "authoritative",
+              value: "multiple",
+            },
+            left_indent_pt: {
+              availability: "authoritative",
+              value: 0,
+            },
+            right_indent_pt: {
+              availability: "authoritative",
+              value: 0,
+            },
+            first_line_indent_pt: {
+              availability: "authoritative",
+              value: 0,
+            },
+            hanging_indent_pt: {
+              availability: "authoritative",
+              value: 0,
+            },
+            vertical_alignment: {
+              availability: "authoritative",
+              value: "center",
+            },
+          },
+          paragraphs: [],
+        },
+      ],
     },
   ]);
   assert.deepEqual(result.job.payload?.appliedRuleIds, ["rule-abstract-objective"]);
@@ -720,6 +902,33 @@ test("editing service resolves governed rules and persists deterministic changes
         match_reason:
           'Matched semantic target "header_cell" in table "table-1" for header path "Treatment group > n (%)".',
       },
+      execution_path: "safe_patch",
+    },
+    {
+      patch_id: "patch-style",
+      rule_id: "rule-table-treatment-group",
+      table_id: "table-1",
+      patch_type: "apply_three_line_table_style",
+      grade: "A",
+      apply_scope: "editing_only",
+      semantic_target: "style_profile",
+      anchor: {
+        table_id: "table-1",
+        semantic_target: "style_profile",
+      },
+      required_snapshot_capabilities: ["style_profile", "grid_cells"],
+      proposed_before: "non_three_line_table",
+      proposed_after: "three_line_table",
+      rationale:
+        'Matched semantic target "style_profile" in table "table-1".',
+      evidence_pack: {
+        match_reason:
+          'Matched semantic target "style_profile" in table "table-1".',
+      },
+      execution_path: "controlled_rebuild",
+      rebuild_payload: {
+        strategy: "three_line_table_normalization",
+      },
     },
   ]);
   assert.deepEqual(result.job.payload?.tablePatchResults, [
@@ -738,21 +947,22 @@ test("editing service resolves governed rules and persists deterministic changes
         column_key: "Treatment group > n (%)",
       },
       required_snapshot_capabilities: ["header_cell"],
+      execution_path: "safe_patch",
     },
     {
       patch_id: "patch-style",
       rule_id: "rule-table-treatment-group",
       table_id: "table-1",
       patch_type: "apply_three_line_table_style",
-      status: "skipped_unsafe",
-      reason:
-        "Style patch family is not yet safe for deterministic DOCX auto-apply.",
+      status: "applied",
+      reason: "Controlled table rebuild applied.",
       semantic_target: "style_profile",
       anchor: {
         table_id: "table-1",
         semantic_target: "style_profile",
       },
-      required_snapshot_capabilities: ["style_profile"],
+      required_snapshot_capabilities: ["style_profile", "grid_cells"],
+      execution_path: "controlled_rebuild",
     },
   ]);
   assert.deepEqual(result.job.payload?.manualReviewItems, [
@@ -816,8 +1026,34 @@ test("editing service resolves governed rules and persists deterministic changes
     "rule-table-treatment-group",
   );
   assert.equal(tablePatchMetrics.totals.governed_hit_count, 0);
-  assert.equal(tablePatchMetrics.totals.table_patch_applied_count, 1);
-  assert.equal(tablePatchMetrics.totals.table_patch_skipped_unsafe_count, 1);
+  assert.equal(tablePatchMetrics.totals.table_patch_applied_count, 2);
+  assert.equal(tablePatchMetrics.totals.table_patch_skipped_unsafe_count, 0);
+  const savedJob = await jobRepository.findById(result.job.id);
+  const savedJobPayload = savedJob?.payload as
+    | {
+        editingCompletionGateSummary?: {
+          observation_status?: string;
+          error?: string;
+        };
+      }
+    | undefined;
+  assert.equal(
+    savedJobPayload?.editingCompletionGateSummary?.observation_status,
+    "failed_open",
+  );
+  assert.equal(
+    savedJobPayload?.editingCompletionGateSummary?.error,
+    "Current manuscript does not have a published journal target model for slot governance.",
+  );
+  const persistedManuscript = await manuscriptRepository.findById("manuscript-1");
+  assert.equal(
+    persistedManuscript?.editing_completion_gate_summary?.observation_status,
+    "failed_open",
+  );
+  assert.equal(
+    persistedManuscript?.editing_completion_gate_summary?.error,
+    "Current manuscript does not have a published journal target model for slot governance.",
+  );
   assert.equal(createdAssets[0]?.storage_key, "edited/manuscript-1/output.docx");
   assert.equal(result.asset.id, "asset-edited-1");
 });

@@ -789,11 +789,11 @@ function classifyParagraphBlock(
     const prefix =
       role === "author_bio"
         ? "front-author-bio"
-        : role === "corresponding_author"
+        : role === "corresponding_author_bio"
           ? "front-corresponding"
           : role === "author_line"
             ? "front-author-line"
-            : role === "affiliation"
+            : role === "affiliation_line"
               ? "front-affiliation"
               : role === "classification_line"
                 ? "front-classification"
@@ -842,7 +842,7 @@ function classifyFrontMatterSemanticRole(normalized: string, rawText: string): s
     return "author_bio";
   }
   if (normalized.includes("通信作者") || normalized.includes("通訊作者") || normalized.includes("correspondingauthor")) {
-    return "corresponding_author";
+    return "corresponding_author_bio";
   }
   if (normalized.includes("中图分类号") || normalized.includes("文献标志码")) {
     return "classification_line";
@@ -851,7 +851,7 @@ function classifyFrontMatterSemanticRole(normalized: string, rawText: string): s
     return "author_line";
   }
   if (normalized.includes("医院") || normalized.includes("大学") || normalized.includes("学院") || normalized.includes("研究所") || normalized.includes("department")) {
-    return "affiliation";
+    return "affiliation_line";
   }
   return "front_matter";
 }

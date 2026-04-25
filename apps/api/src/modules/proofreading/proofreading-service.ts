@@ -15,7 +15,10 @@ import type { ResolvedEditorialRule } from "../editorial-rules/editorial-rule-re
 import {
   EditorialDocxTransformService,
 } from "../document-pipeline/editorial-docx-transform-service.ts";
-import type { DocumentStructureService } from "../document-pipeline/document-structure-service.ts";
+import type {
+  DocumentStructureObjectEvidence,
+  DocumentStructureService,
+} from "../document-pipeline/document-structure-service.ts";
 import type { AgentExecutionLogRecord } from "../agent-execution/agent-execution-record.ts";
 import {
   AgentExecutionLogNotFoundError,
@@ -1678,10 +1681,14 @@ export class ProofreadingService {
         version: entry.version,
       }),
     );
+    const objectRiskItems = buildProofreadingObjectRiskItems(
+      documentStructureSnapshot?.objects ?? [],
+    );
 
     return {
       inspectionResult: {
         ...proofreadingFindings,
+        riskItems: [...proofreadingFindings.riskItems, ...objectRiskItems],
         ...(qualityRun
           ? {
               qualityFindings: qualityRun.issues.map((issue) =>
@@ -3176,6 +3183,54 @@ function deriveProofreadingManuscriptFileName(
     : `${stem}-manuscript`;
 
   return `${manuscriptStem}.docx`;
+}
+
+function buildProofreadingObjectRiskItems(
+  objects: readonly DocumentStructureObjectEvidence[],
+): ProofreadingInspectionResult["riskItems"] {
+  return objects.map((item) => ({
+    reason: [
+      `高风险对象待人工核对：${formatProofreadingObjectKind(item.object_kind)}`,
+      `原始对象=${buildProofreadingObjectLabel(item)}`,
+      item.evidence_text ? `提取证据=${item.evidence_text}` : undefined,
+      item.surrounding_text ? `临近文本=${item.surrounding_text}` : undefined,
+      `意图目标=${item.intended_target ?? "未明确"}`,
+      "降级原因=object_type_not_safe",
+      `定位=${item.source_locator}`,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join("；"),
+    severity: "error",
+  }));
+}
+
+function buildProofreadingObjectLabel(
+  item: DocumentStructureObjectEvidence,
+): string {
+  const parts = [formatProofreadingObjectKind(item.object_kind), item.original_tag];
+  if (item.relationship_id) {
+    parts.push(item.relationship_id);
+  }
+  return parts.join("/");
+}
+
+function formatProofreadingObjectKind(
+  kind: DocumentStructureObjectEvidence["object_kind"],
+): string {
+  switch (kind) {
+    case "image":
+      return "图片对象";
+    case "equation":
+      return "公式对象";
+    case "embedded_object":
+      return "嵌入对象";
+    case "drawing":
+      return "绘图对象";
+    case "chart":
+      return "图表对象";
+    default:
+      return "未知对象";
+  }
 }
 
 function renderProofreadingReport(

@@ -1,5 +1,9 @@
 import type { JobRecord } from "../jobs/job-record.ts";
 import type { ModuleExecutionSnapshotViewRecord } from "../execution-tracking/execution-tracking-record.ts";
+import type {
+  EditingCompletionGateSummary,
+  EditingCompletionGateVerdict,
+} from "@medical/contracts";
 
 export const MAINLINE_SETTLEMENT_MODULES = [
   "screening",
@@ -15,6 +19,9 @@ export type ModuleMainlineSettlementDerivedStatus =
   | "job_in_progress"
   | "job_failed"
   | "business_completed_unlinked"
+  | "business_completed_needs_manual_resolution"
+  | "business_completed_blocked_by_missing_required_slots"
+  | "business_completed_blocked_by_high_risk_objects"
   | "business_completed_follow_up_pending"
   | "business_completed_follow_up_running"
   | "business_completed_follow_up_retryable"
@@ -27,6 +34,7 @@ export interface ModuleMainlineSettlementRecord {
   orchestration_completed: boolean;
   attention_required: boolean;
   reason: string;
+  editing_completion_gate_verdict?: EditingCompletionGateVerdict;
 }
 
 export interface ModuleExecutionOverviewRecord {
@@ -56,6 +64,7 @@ export interface ManuscriptMainlineReadinessSummaryRecord {
   derived_status?: ManuscriptMainlineReadinessDerivedStatus;
   active_module?: MainlineSettlementModule;
   next_module?: MainlineSettlementModule;
+  editing_completion_gate_verdict?: EditingCompletionGateVerdict;
   recovery_ready_at?: string;
   runtime_binding_status?: "ready" | "degraded" | "missing";
   runtime_binding_issue_count?: number;
@@ -82,6 +91,9 @@ export type MainlineAttentionItemKind =
   | "follow_up_running"
   | "follow_up_retryable"
   | "follow_up_failed"
+  | "editing_needs_manual_resolution"
+  | "editing_blocked_by_missing_required_slots"
+  | "editing_blocked_by_high_risk_objects"
   | "settlement_unlinked"
   | "job_failed"
   | "runtime_binding_degraded"
@@ -106,6 +118,7 @@ export interface ManuscriptMainlineAttentionHandoffPackRecord {
   focus_module?: MainlineSettlementModule;
   from_module?: MainlineSettlementModule;
   to_module?: MainlineSettlementModule;
+  editing_completion_gate_verdict?: EditingCompletionGateVerdict;
   latest_job_id?: string;
   latest_snapshot_id?: string;
   recovery_ready_at?: string;
@@ -180,8 +193,12 @@ export function createNotTrackedJobExecutionObservation(): JobExecutionTrackingO
 export function deriveModuleMainlineSettlement(input: {
   latestJob?: JobRecord;
   latestSnapshot?: ModuleExecutionSnapshotViewRecord;
+  editingCompletionGateSummary?: EditingCompletionGateSummary;
 }): ModuleMainlineSettlementRecord | undefined {
   const { latestJob, latestSnapshot } = input;
+  const editingCompletionGateSummary =
+    input.editingCompletionGateSummary ??
+    extractEditingCompletionGateSummary(latestJob);
 
   if (!latestJob && !latestSnapshot) {
     return undefined;
@@ -213,6 +230,13 @@ export function deriveModuleMainlineSettlement(input: {
   const observation = latestSnapshot.agent_execution;
   if (observation.observation_status !== "reported" || !observation.log) {
     if (isBareExecutionSettledCandidate({ latestJob, latestSnapshot })) {
+      const gateBlockedSettlement = buildEditingCompletionGateBlockedSettlement(
+        editingCompletionGateSummary,
+      );
+      if (gateBlockedSettlement) {
+        return gateBlockedSettlement;
+      }
+
       return {
         derived_status: "business_completed_settled",
         business_completed: true,
@@ -239,6 +263,14 @@ export function deriveModuleMainlineSettlement(input: {
 
   switch (completion.derived_status) {
     case "business_completed_settled":
+      {
+        const gateBlockedSettlement = buildEditingCompletionGateBlockedSettlement(
+          editingCompletionGateSummary,
+        );
+        if (gateBlockedSettlement) {
+          return gateBlockedSettlement;
+        }
+      }
       return {
         derived_status: "business_completed_settled",
         business_completed: true,
@@ -344,10 +376,16 @@ export function deriveManuscriptMainlineReadinessSummary(
 
     const shared = {
       observation_status: "reported" as const,
-      active_module: module,
-      recovery_ready_at: deriveModuleRecoveryReadyAt(moduleOverview),
-      ...deriveModuleRuntimeBindingSummary(moduleOverview),
-      reason: settlement.reason,
+        active_module: module,
+        ...(settlement.editing_completion_gate_verdict
+          ? {
+              editing_completion_gate_verdict:
+                settlement.editing_completion_gate_verdict,
+            }
+          : {}),
+        recovery_ready_at: deriveModuleRecoveryReadyAt(moduleOverview),
+        ...deriveModuleRuntimeBindingSummary(moduleOverview),
+        reason: settlement.reason,
     };
 
     if (settlement.derived_status === "job_in_progress") {
@@ -526,6 +564,12 @@ function deriveManuscriptMainlineAttentionHandoffPackUnsafe(input: {
     ...(focusModule ? { focus_module: focusModule } : {}),
     ...(fromModule ? { from_module: fromModule } : {}),
     ...(toModule ? { to_module: toModule } : {}),
+    ...(readiness.editing_completion_gate_verdict
+      ? {
+          editing_completion_gate_verdict:
+            readiness.editing_completion_gate_verdict,
+        }
+      : {}),
     ...(evidence.latest_job_id ? { latest_job_id: evidence.latest_job_id } : {}),
     ...(evidence.latest_snapshot_id
       ? { latest_snapshot_id: evidence.latest_snapshot_id }
@@ -797,6 +841,21 @@ function mapSettlementToAttentionItem(
         kind: "follow_up_failed",
         severity: "action_required",
       };
+    case "business_completed_needs_manual_resolution":
+      return {
+        kind: "editing_needs_manual_resolution",
+        severity: "action_required",
+      };
+    case "business_completed_blocked_by_missing_required_slots":
+      return {
+        kind: "editing_blocked_by_missing_required_slots",
+        severity: "action_required",
+      };
+    case "business_completed_blocked_by_high_risk_objects":
+      return {
+        kind: "editing_blocked_by_high_risk_objects",
+        severity: "action_required",
+      };
     case "business_completed_unlinked":
       return {
         kind: "settlement_unlinked",
@@ -811,6 +870,103 @@ function mapSettlementToAttentionItem(
     case "not_started":
       return undefined;
   }
+}
+
+function buildEditingCompletionGateBlockedSettlement(
+  summary: EditingCompletionGateSummary | undefined,
+): ModuleMainlineSettlementRecord | undefined {
+  if (!summary) {
+    return undefined;
+  }
+
+  if (summary.observation_status !== "reported" || !summary.verdict) {
+    if (summary.observation_status === "failed_open") {
+      return {
+        derived_status: "business_completed_follow_up_failed",
+        business_completed: true,
+        orchestration_completed: false,
+        attention_required: true,
+        reason:
+          summary.error ??
+          "Editing completion gate observation failed open after the business result was generated.",
+      };
+    }
+
+    return undefined;
+  }
+
+  if (summary.verdict === "passed") {
+    return undefined;
+  }
+
+  return {
+    derived_status: mapEditingCompletionGateVerdictToSettlementStatus(summary.verdict),
+    business_completed: true,
+    orchestration_completed: true,
+    attention_required: true,
+    reason: buildEditingCompletionGateReason(summary),
+    editing_completion_gate_verdict: summary.verdict,
+  };
+}
+
+function mapEditingCompletionGateVerdictToSettlementStatus(
+  verdict: EditingCompletionGateVerdict,
+): Extract<
+  ModuleMainlineSettlementDerivedStatus,
+  | "business_completed_needs_manual_resolution"
+  | "business_completed_blocked_by_missing_required_slots"
+  | "business_completed_blocked_by_high_risk_objects"
+> {
+  switch (verdict) {
+    case "needs_manual_resolution":
+      return "business_completed_needs_manual_resolution";
+    case "blocked_by_missing_required_slots":
+      return "business_completed_blocked_by_missing_required_slots";
+    case "blocked_by_high_risk_objects":
+      return "business_completed_blocked_by_high_risk_objects";
+    case "passed":
+      return "business_completed_needs_manual_resolution";
+  }
+}
+
+function buildEditingCompletionGateReason(
+  summary: EditingCompletionGateSummary,
+): string {
+  if (summary.verdict === "blocked_by_missing_required_slots") {
+    const labels = summary.unresolved_required_slots
+      .map((item) => item.summary.replace(/ 尚未解决$/u, ""))
+      .slice(0, 4);
+    return labels.length > 0
+      ? `编辑完成门禁被必填槽位阻断：${labels.join("、")}。`
+      : "编辑完成门禁被未解决的必填槽位阻断。";
+  }
+
+  if (summary.verdict === "blocked_by_high_risk_objects") {
+    return `编辑完成门禁仍有高风险问题：对象 ${summary.high_risk_object_items.length} 项，表格 ${summary.table_high_risk_items.length} 项，格式阻断 ${summary.blocking_format_failures.length} 项。`;
+  }
+
+  return `编辑完成门禁仍需人工处理 ${summary.pending_manual_resolution_items.length} 项。`;
+}
+
+function extractEditingCompletionGateSummary(
+  latestJob?: JobRecord,
+): EditingCompletionGateSummary | undefined {
+  if (!latestJob || latestJob.module !== "editing") {
+    return undefined;
+  }
+
+  const payload =
+    latestJob.payload &&
+    typeof latestJob.payload === "object" &&
+    !Array.isArray(latestJob.payload)
+      ? latestJob.payload
+      : undefined;
+  const summary = payload?.["editingCompletionGateSummary"];
+  if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
+    return undefined;
+  }
+
+  return structuredClone(summary as EditingCompletionGateSummary);
 }
 
 function formatRuntimeIssueSuffix(issueCount?: number): string {

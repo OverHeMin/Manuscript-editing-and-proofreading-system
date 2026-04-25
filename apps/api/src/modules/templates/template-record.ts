@@ -23,6 +23,70 @@ export type TemplateModule = Extract<
   ManuscriptModule,
   "screening" | "editing" | "proofreading"
 >;
+export type JournalFormatTargetZone =
+  | "front_matter"
+  | "title"
+  | "abstract"
+  | "keywords"
+  | "body"
+  | "figures_tables"
+  | "references";
+export type JournalFormatTargetAnchor =
+  | "before_title"
+  | "after_title"
+  | "after_author_line"
+  | "after_affiliation_line"
+  | "after_abstract"
+  | "after_keywords"
+  | "before_body"
+  | "after_body"
+  | "before_reference"
+  | "header_zone"
+  | "footer_zone";
+export type JournalFormatTargetContentSourcePolicy =
+  | "must_harvest_existing"
+  | "prefer_existing_with_manual_fill"
+  | "manual_only";
+export type JournalFormatTargetCompletionGate =
+  | "block_on_missing"
+  | "block_on_unresolved"
+  | "warn_only";
+
+export interface JournalFormatTargetBlockFormatPolicy {
+  display_label?: string;
+  prefix?: string;
+  suffix?: string;
+  separator?: string;
+  target_position?: string;
+  style_requirements?: string[];
+  allow_auto_reorder: boolean;
+}
+
+export interface JournalFormatTargetBlock {
+  block_key: string;
+  label: string;
+  zone: JournalFormatTargetZone;
+  anchor: JournalFormatTargetAnchor;
+  order: number;
+  required: boolean;
+  repeatable: boolean;
+  enabled: boolean;
+  format_policy: JournalFormatTargetBlockFormatPolicy;
+  content_source_policy: JournalFormatTargetContentSourcePolicy;
+  completion_gate: JournalFormatTargetCompletionGate;
+}
+
+export interface JournalFormatTargetModel {
+  skeleton: JournalFormatTargetZone[];
+  target_blocks: JournalFormatTargetBlock[];
+}
+
+export interface JournalFormatTargetModelVersionRecord {
+  version_id: string;
+  version_no: number;
+  created_at: string;
+  journal_format_target_model: JournalFormatTargetModel;
+}
 
 export interface TemplateFamilyRecord {
   id: string;
@@ -37,6 +101,10 @@ export interface JournalTemplateProfileRecord {
   journal_key: string;
   journal_name: string;
   status: JournalTemplateProfileStatus;
+  target_model_version_id?: string;
+  target_model_version_no?: number;
+  journal_format_target_model?: JournalFormatTargetModel;
+  target_model_versions?: JournalFormatTargetModelVersionRecord[];
 }
 
 export interface ModuleTemplateRecord {

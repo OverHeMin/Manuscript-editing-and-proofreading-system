@@ -30,6 +30,21 @@ export type GovernedExecutionModuleSummaryStatus =
   | "not_configured"
   | "failed_open";
 export type JournalTemplateSelectionState = "base_family_only" | "selected";
+export type GovernedRuleSourceLayer = "general" | "medical" | "journal";
+export type GovernedRuleActivationSourceKind =
+  | "template_family_rule_set"
+  | "general_package"
+  | "medical_package"
+  | "journal_template_rule_set";
+export type GovernedRuleExecutionPosture = "auto" | "guarded" | "inspect_only";
+export type GovernedKnowledgeBindingReason =
+  | "binding_rule"
+  | "template_family"
+  | "module_template"
+  | "general_package"
+  | "medical_package"
+  | "journal_template"
+  | "knowledge_item_binding";
 
 export type KnowledgeBindingMode = "profile_only" | "profile_plus_dynamic";
 export type ExecutionProfileStatus = "draft" | "active" | "archived";
@@ -45,6 +60,47 @@ export type HumanFeedbackType =
   | "manual_correction"
   | "manual_rejection";
 
+export interface GovernedRuleEffectiveScope {
+  manuscript_types?: ManuscriptType[];
+  sections?: string[];
+  object_granularity?: string[];
+}
+
+export interface GovernedResolvedRuleSummary {
+  rule_id: string;
+  rule_object: string;
+  rule_type: string;
+  coverage_key: string;
+  source_layer: GovernedRuleSourceLayer;
+  activation_source_kind: GovernedRuleActivationSourceKind;
+  activation_source_id: string;
+  overridden_rule_ids: string[];
+  resolution_reason: string;
+  execution_posture: GovernedRuleExecutionPosture;
+  effective_scope: GovernedRuleEffectiveScope;
+  supporting_knowledge_item_ids?: KnowledgeItemId[];
+  conflict_kind?: "merge" | "override";
+}
+
+export interface GovernedKnowledgeBindingMatchSummary {
+  reason: GovernedKnowledgeBindingReason;
+  source_id: string;
+  priority: number;
+}
+
+export interface GovernedKnowledgeSelectionSummary {
+  knowledge_item_id: KnowledgeItemId;
+  title: string;
+  match_source: KnowledgeHitMatchSource;
+  match_reasons: string[];
+  match_source_id?: string;
+  binding_rule_id?: KnowledgeBindingRuleId;
+  binding_priority?: number;
+  retrieval_score?: number;
+  primary_binding?: GovernedKnowledgeBindingMatchSummary;
+  binding_matches?: GovernedKnowledgeBindingMatchSummary[];
+}
+
 export interface GovernedExecutionModuleSummary {
   module: ModuleType;
   status: GovernedExecutionModuleSummaryStatus;
@@ -58,6 +114,11 @@ export interface GovernedExecutionModuleSummary {
   model_source?: string;
   provider_readiness_status?: "ok" | "warning";
   runtime_binding_readiness_status?: "ready" | "degraded" | "missing";
+  quality_package_ids?: string[];
+  resolved_rule_count?: number;
+  knowledge_selection_count?: number;
+  resolved_rules?: GovernedResolvedRuleSummary[];
+  knowledge_selections?: GovernedKnowledgeSelectionSummary[];
   warning_codes?: string[];
   error?: string;
 }
@@ -68,6 +129,8 @@ export interface GovernedExecutionContextSummary {
   base_template_family_id?: TemplateFamilyId;
   journal_template_selection_state: JournalTemplateSelectionState;
   journal_template_id?: JournalTemplateId;
+  journal_template_target_model_version_id?: string;
+  journal_template_target_model_version_no?: number;
   modules: GovernedExecutionModuleSummary[];
   error?: string;
 }

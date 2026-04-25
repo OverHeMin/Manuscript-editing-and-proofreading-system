@@ -67,12 +67,18 @@ import {
   buildAssetPreviewComments,
   buildAssetReportPreviewBody,
   buildEditingChangeLedgerEntries,
+  buildEditingCompletionGateSummary,
+  buildEditingDocumentBlocks,
   buildEditingGuardrailEntries,
+  buildEditingSlotGovernanceSummary,
   buildProofreadingConfirmationItems,
   buildProofreadingDocumentBlocks,
+  buildScreeningDocumentBlocks,
+  buildScreeningWorkspaceFocusItems,
   buildWorkbenchAssetCollectionHref,
   buildWorkbenchAssetDetailHref,
   ManuscriptWorkbenchAssetDetailPage,
+  type EditingSlotManualSaveInput,
   resolveManuscriptAssetDetailKind,
   type ProofreadingConfirmationDraftState,
   type ProofreadingConfirmationItemViewModel,
@@ -955,6 +961,9 @@ export function ManuscriptWorkbenchPage({
     Record<string, ProofreadingConfirmationDraftState>
   >({});
   const [activeProofreadingIssueId, setActiveProofreadingIssueId] = useState("");
+  const [savingEditingSlotKey, setSavingEditingSlotKey] = useState<string | null>(
+    null,
+  );
   const [isHumanFinalPublishing, setIsHumanFinalPublishing] = useState(false);
   const [manualFeedbackCategory, setManualFeedbackCategory] =
     useState<ManualFeedbackCategory | "">("");
@@ -1065,6 +1074,7 @@ export function ManuscriptWorkbenchPage({
     setDetailError("");
     setIsDetailLoading(false);
     setConfirmationState({});
+    setSavingEditingSlotKey(null);
     setIsHumanFinalPublishing(false);
     setProofreadingGovernanceHandoff(null);
   }, [normalizedPrefilledManuscriptId]);
@@ -1076,6 +1086,7 @@ export function ManuscriptWorkbenchPage({
     setDetailPreviewSession(null);
     setDetailError("");
     setConfirmationState({});
+    setSavingEditingSlotKey(null);
   }, [normalizedPrefilledAssetId]);
 
   useEffect(() => {
@@ -1154,6 +1165,7 @@ export function ManuscriptWorkbenchPage({
 
       if (
         detailKind === "report_preview" ||
+        detailKind === "screening_workspace" ||
         detailKind === "proofreading_workspace" ||
         detailKind === "proofreading_confirmation"
       ) {
@@ -1444,6 +1456,80 @@ export function ManuscriptWorkbenchPage({
       });
     } finally {
       setIsHumanFinalPublishing(false);
+    }
+  }
+
+  async function saveEditingSlotResolution(
+    currentWorkspace: ManuscriptWorkbenchWorkspace,
+    input: EditingSlotManualSaveInput,
+  ) {
+    setSavingEditingSlotKey(input.slotKey);
+    setError("");
+
+    try {
+      const result = await controller.saveEditingSlotResolutionAndLoad({
+        manuscriptId: currentWorkspace.manuscript.id,
+        actorRole,
+        slotKey: input.slotKey,
+        resolutionKind: input.resolutionKind,
+        ...(input.resolvedText ? { resolvedText: input.resolvedText } : {}),
+        ...(input.selectedCandidateId
+          ? { selectedCandidateId: input.selectedCandidateId }
+          : {}),
+        ...(input.note ? { note: input.note } : {}),
+      });
+      const nextWorkspace = await hydrateWorkbenchWorkspaceConcurrency(
+        controller,
+        result.workspace,
+      );
+      const message = `已保存槽位裁决：${input.slotKey}`;
+
+      setWorkspace(nextWorkspace);
+      setDetailJob((current) =>
+        attachEditingGovernanceSummariesToJob(current, {
+          slotSummary: result.resolution.summary,
+          completionGateSummary:
+            result.resolution.completion_gate_summary ??
+            nextWorkspace.manuscript.editing_completion_gate_summary,
+        }),
+      );
+      setStatus(message);
+      setLatestActionResult({
+        tone: "success",
+        actionLabel: "Save Editing Slot Resolution",
+        message,
+        details: [
+          {
+            label: "稿件",
+            value: nextWorkspace.manuscript.id,
+          },
+          {
+            label: "槽位",
+            value: input.slotKey,
+          },
+          {
+            label: "处理",
+            value:
+              input.resolutionKind === "picked_candidate"
+                ? "采用候选"
+                : input.resolutionKind === "manual_entry"
+                  ? "人工录入"
+                  : "人工豁免",
+          },
+        ],
+      });
+    } catch (nextError) {
+      const message = formatError(nextError);
+      setStatus("");
+      setError(message);
+      setLatestActionResult({
+        tone: "error",
+        actionLabel: "Save Editing Slot Resolution",
+        message,
+        details: [],
+      });
+    } finally {
+      setSavingEditingSlotKey(null);
     }
   }
 
@@ -2419,6 +2505,12 @@ function buildTemplateContextActionResult(
     />
   ) : null;
   const confirmationItems = buildProofreadingConfirmationItems(detailJob);
+  const screeningDocumentBlocks = buildScreeningDocumentBlocks(detailJob);
+  const screeningWorkspaceFocusItems = buildScreeningWorkspaceFocusItems({
+    job: detailJob,
+    documentBlocks: screeningDocumentBlocks,
+  });
+  const editingDocumentBlocks = buildEditingDocumentBlocks(detailJob);
   const proofreadingDocumentBlocks = buildProofreadingDocumentBlocks(detailJob);
   const confirmationReady =
     confirmationItems.length > 0 &&
@@ -2479,15 +2571,29 @@ function buildTemplateContextActionResult(
             reportBody={buildAssetReportPreviewBody(detailJob)}
             changeLedger={buildEditingChangeLedgerEntries(detailJob)}
             editingGuardrails={buildEditingGuardrailEntries(detailJob)}
+            editingSlotSummary={
+              buildEditingSlotGovernanceSummary(detailJob) ??
+              workspace.manuscript.editing_slot_governance_summary ??
+              null
+            }
+            editingCompletionGateSummary={
+              buildEditingCompletionGateSummary(detailJob) ??
+              workspace.manuscript.editing_completion_gate_summary ??
+              null
+            }
             executionSnapshot={detailExecutionTracking.snapshot}
             knowledgeHitLogs={detailExecutionTracking.knowledgeHitLogs}
             knowledgeReferences={workspace.knowledgeReferences}
             confirmationItems={confirmationItems}
             confirmationState={confirmationState}
+            screeningDocumentBlocks={screeningDocumentBlocks}
+            screeningWorkspaceFocusItems={screeningWorkspaceFocusItems}
+            editingDocumentBlocks={editingDocumentBlocks}
             proofreadingDocumentBlocks={proofreadingDocumentBlocks}
             activeProofreadingIssueId={activeProofreadingIssueId}
             isFinalizeEnabled={confirmationReady}
             isFinalizing={isHumanFinalPublishing}
+            savingEditingSlotKey={savingEditingSlotKey}
             onProofreadingIssueSelect={setActiveProofreadingIssueId}
             onConfirmationActionChange={(itemId, action) => {
               setConfirmationState((current) => ({
@@ -2521,6 +2627,13 @@ function buildTemplateContextActionResult(
                   note: value,
                 },
               }));
+            }}
+            onEditingSlotSave={(input) => {
+              if (!workspace) {
+                return;
+              }
+
+              void saveEditingSlotResolution(workspace, input);
             }}
             onFinalize={() => {
               if (!workspace || !selectedAsset || !confirmationReady) {
@@ -3258,7 +3371,7 @@ function ManuscriptWorkbenchResultPanel({
               </strong>
               <p>
                 {currentResultAsset
-                  ? "进入子页面查看全文、问题列表和人工确认操作。"
+                  ? resolveResultWorkspaceEntryCopy(mode)
                   : "处理完成后，这里会出现结果入口。"}
               </p>
             </div>
@@ -3379,11 +3492,11 @@ function resolveResultPanelDescription(
   mode: Exclude<ManuscriptWorkbenchMode, "submission">,
 ): string {
   if (mode === "screening") {
-    return "结果生成后，从这里进入子页面继续查看和确认。";
+    return "结果生成后，从这里进入子页面查看全文、风险和建议。";
   }
 
   if (mode === "editing") {
-    return "结果生成后，从这里进入子页面继续查看和确认。";
+    return "结果生成后，从这里进入子页面查看全文、问题和台账。";
   }
 
   return "结果生成后，从这里进入子页面查看全文、问题和人工确认项。";
@@ -3452,7 +3565,7 @@ function resolveMainlineResultDescription(input: {
   }
 
   if (input.currentResultAsset) {
-    return "结果已生成，可进入结果页查看全文、问题和人工确认操作。";
+    return `结果已生成，可${resolveResultWorkspaceEntryCopy(input.mode)}`;
   }
 
   const latestJobStatus =
@@ -3476,6 +3589,20 @@ function resolveMainlineResultDescription(input: {
   }
 
   return "先在上方执行当前模块，这里会显示处理结果。";
+}
+
+function resolveResultWorkspaceEntryCopy(
+  mode: Exclude<ManuscriptWorkbenchMode, "submission">,
+): string {
+  if (mode === "screening") {
+    return "进入子页面查看全文、风险和建议。";
+  }
+
+  if (mode === "editing") {
+    return "进入子页面查看全文、问题和台账。";
+  }
+
+  return "进入子页面查看全文、问题和人工确认操作。";
 }
 
 function buildWorkbenchStageResultName(
@@ -4370,6 +4497,46 @@ async function hydrateLatestWorkbenchJob(
 
 function normalizeOptionalText(value: string): string | undefined {
   return value.trim().length > 0 ? value : undefined;
+}
+
+function attachEditingGovernanceSummariesToJob(
+  job: AnyWorkbenchJob | null,
+  input: {
+    slotSummary?: NonNullable<
+      ManuscriptWorkbenchWorkspace["manuscript"]["editing_slot_governance_summary"]
+    >;
+    completionGateSummary?: NonNullable<
+      ManuscriptWorkbenchWorkspace["manuscript"]["editing_completion_gate_summary"]
+    >;
+  },
+): AnyWorkbenchJob | null {
+  if (!job) {
+    return null;
+  }
+
+  const payload =
+    job.payload && typeof job.payload === "object" && !Array.isArray(job.payload)
+      ? (job.payload as Record<string, unknown>)
+      : {};
+
+  return {
+    ...job,
+    payload: {
+      ...payload,
+      ...(input.slotSummary
+        ? {
+            slotGovernanceSummary: structuredClone(input.slotSummary),
+          }
+        : {}),
+      ...(input.completionGateSummary
+        ? {
+            editingCompletionGateSummary: structuredClone(
+              input.completionGateSummary,
+            ),
+          }
+        : {}),
+    },
+  };
 }
 
 export function resolveWorkbenchGeneratedAssetFileName(

@@ -726,6 +726,127 @@ test("persistent workbench upload auto-binds a governed review baseline when onl
   });
 });
 
+test("persistent manuscript http reads expose stored editing completion gate summaries", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migrate = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migrate.status,
+      0,
+      `Expected migrate to succeed for the temporary persistent workbench database.\n${migrate.stdout}\n${migrate.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentWorkbenchData(seedPool);
+      const persistedGateSummary = {
+        observation_status: "reported",
+        verdict: "blocked_by_high_risk_objects",
+        passed: false,
+        blocker_count: 2,
+        unresolved_required_slots: [],
+        pending_manual_resolution_items: [],
+        high_risk_object_items: [],
+        table_high_risk_items: [
+          {
+            item_key: "table:1",
+            category: "table_high_risk",
+            source: "table_inspection_finding",
+            summary: "表 1 三线表样式待人工确认",
+            detail: "重启后仍应保留这条表格高风险项。",
+            location_text: "结果表 1",
+            status: "pending",
+          },
+        ],
+        blocking_format_failures: [
+          {
+            item_key: "format:1",
+            category: "blocking_format_failure",
+            source: "table_patch_result",
+            summary: "表 1 样式落稿被阻断",
+            detail: "重启后仍应保留这条格式阻断项。",
+            location_text: "结果表 1",
+            status: "pending",
+          },
+        ],
+      };
+      await seedPool.query(
+        `
+          update manuscripts
+          set editing_completion_gate_summary = $1::jsonb
+          where id = $2
+        `,
+        [JSON.stringify(persistedGateSummary), seededIds.manuscriptId],
+      );
+
+      const pool = new Pool({ connectionString: databaseUrl });
+      const authRuntime = createPersistentHttpAuthRuntime({
+        client: pool,
+      });
+      const localServer = createApiHttpServer({
+        appEnv: "development",
+        allowedOrigins: ["http://127.0.0.1:4173"],
+        seedDemoKnowledgeReviewData: false,
+        runtime: createPersistentGovernanceRuntime({
+          client: pool,
+          authRuntime,
+          aiProviderCredentialCrypto: new AiProviderCredentialCrypto({
+            AI_PROVIDER_MASTER_KEY: TEST_AI_PROVIDER_MASTER_KEY,
+          }),
+          seedPersistentWorkbenchReviewBaseline: false,
+          mainlineAiRuntimeExecutor: persistentWorkbenchAiExecutor,
+        }),
+      });
+      localServer.on("close", () => {
+        void pool.end();
+      });
+      const server = await startHttpTestServer(localServer);
+      try {
+        const cookie = await loginAsPersistentUser(
+          server.baseUrl,
+          "persistent.admin",
+        );
+        const readResponse = await fetch(
+          `${server.baseUrl}/api/v1/manuscripts/${seededIds.manuscriptId}`,
+          {
+            headers: { Cookie: cookie },
+          },
+        );
+        const read = (await readResponse.json()) as {
+          editing_completion_gate_summary?: {
+            verdict?: string;
+            blocker_count: number;
+            table_high_risk_items: Array<{ item_key: string }>;
+            blocking_format_failures: Array<{ item_key: string }>;
+          };
+        };
+
+        assert.equal(readResponse.status, 200);
+        assert.equal(
+          read.editing_completion_gate_summary?.verdict,
+          "blocked_by_high_risk_objects",
+        );
+        assert.equal(read.editing_completion_gate_summary?.blocker_count, 2);
+        assert.deepEqual(
+          read.editing_completion_gate_summary?.table_high_risk_items.map(
+            (item) => item.item_key,
+          ),
+          ["table:1"],
+        );
+        assert.deepEqual(
+          read.editing_completion_gate_summary?.blocking_format_failures.map(
+            (item) => item.item_key,
+          ),
+          ["format:1"],
+        );
+      } finally {
+        await stopServer(server.server).catch(() => undefined);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 test("persistent workbench upload auto-binds a governed review baseline when the persistent store has no review families", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
     const uploadRootDir = await mkdtemp(

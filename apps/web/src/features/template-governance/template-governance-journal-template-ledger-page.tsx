@@ -246,7 +246,73 @@ export function TemplateGovernanceJournalTemplateLedgerPage({
                 )}
               </p>
             </div>
+            <div>
+              <span>目标模型版本</span>
+              <p>
+                {viewModel.selectedJournalTemplate.target_model_version_no != null
+                  ? `V${viewModel.selectedJournalTemplate.target_model_version_no}`
+                  : "未配置"}
+              </p>
+            </div>
+            <div>
+              <span>目标块数量</span>
+              <p>
+                {viewModel.selectedJournalTemplate.journal_format_target_model?.target_blocks
+                  .length ?? 0}
+              </p>
+            </div>
           </div>
+          {viewModel.selectedJournalTemplate.journal_format_target_model ? (
+            <div className="template-governance-ledger-section">
+              <header className="template-governance-ledger-section-header">
+                <h3>格式目标模型</h3>
+                <p>固定骨架由系统治理，目标块用于表达期刊差异与完成门禁。</p>
+              </header>
+              <div className="template-governance-actions">
+                {viewModel.selectedJournalTemplate.journal_format_target_model.skeleton.map(
+                  (zone) => (
+                    <span key={zone} className="template-governance-chip">
+                      {zone}
+                    </span>
+                  ),
+                )}
+              </div>
+              <div className="template-governance-ledger-table-shell">
+                <table className="template-governance-ledger-table">
+                  <thead>
+                    <tr>
+                      <th>目标块</th>
+                      <th>Zone</th>
+                      <th>Anchor</th>
+                      <th>顺序</th>
+                      <th>门禁</th>
+                      <th>状态</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {viewModel.selectedJournalTemplate.journal_format_target_model.target_blocks.map(
+                      (block) => (
+                        <tr key={block.block_key}>
+                          <td>{block.label}</td>
+                          <td>{block.zone}</td>
+                          <td>{block.anchor}</td>
+                          <td>{block.order}</td>
+                          <td>{block.completion_gate}</td>
+                          <td>
+                            {block.enabled
+                              ? block.required
+                                ? "启用 / 必填"
+                                : "启用 / 可选"
+                              : "停用"}
+                          </td>
+                        </tr>
+                      ),
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
           <div className="template-governance-actions">
             <button type="button" onClick={onActivateSelected}>
               启用模板

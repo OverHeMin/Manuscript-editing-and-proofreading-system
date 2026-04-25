@@ -13,7 +13,10 @@ import type {
   RulePackageWorkspaceSourceInput,
 } from "@medical/contracts";
 import { getEditorialRuleObjectCatalogEntry } from "./editorial-rule-object-catalog.ts";
-import { createEditorialRuleCoverageKey } from "./editorial-rule-resolution-service.ts";
+import {
+  createEditorialRuleComparisonKey,
+  createEditorialRuleCoverageKey,
+} from "./editorial-rule-resolution-service.ts";
 import type { EditorialRuleResolutionService } from "./editorial-rule-resolution-service.ts";
 import {
   EditorialRuleService,
@@ -45,6 +48,16 @@ const DEFAULT_PROJECTION_KINDS = [
   "checklist",
   "prompt_snippet",
 ] as const satisfies RulePackageCompileProjectionReadiness["projected_kinds"];
+const LEGACY_FRONT_MATTER_AUTHOR_LINE_SHADOW_TARGET_BLOCK_KEYS = [
+  "affiliation_line",
+  "corresponding_author_bio",
+] as const;
+const LEGACY_FRONT_MATTER_AUTHOR_LINE_LEGACY_ONLY_SEMANTIC_ROLES = [
+  "author_bio",
+  "funding_statement",
+  "classification_line",
+  "front_matter",
+] as const;
 type CompiledRuleSeedDraft = Omit<
   CompiledEditorialRuleSeed,
   "coverage_key" | "trigger" | "action"
@@ -78,15 +91,20 @@ export class RulePackageCompileService {
       journalTemplateId: input.journalTemplateId,
       module: input.module,
     });
-    const activeCoverageKeys = new Set(
-      existingResolution.resolved_rules.map((entry) => entry.coverage_key),
+    const activeResolutionKeys = new Set(
+      existingResolution.resolved_rules.flatMap((entry) => {
+        const comparisonKey = createEditorialRuleComparisonKey(entry.rule);
+        return comparisonKey
+          ? [entry.coverage_key, comparisonKey]
+          : [entry.coverage_key];
+      }),
     );
 
     const packages = input.packageDrafts.map((packageDraft) =>
       buildCompilePreviewEntry({
         packageDraft,
         source: input.source,
-        activeCoverageKeys,
+        activeResolutionKeys,
       }),
     );
 
@@ -278,7 +296,7 @@ async function resolveCompileTargetRuleSet(input: {
 function buildCompilePreviewEntry(input: {
   packageDraft: RulePackageDraft;
   source: RulePackageWorkspaceSourceInput;
-  activeCoverageKeys: Set<string>;
+  activeResolutionKeys: Set<string>;
 }): RulePackageCompilePreviewEntry {
   const readiness = evaluateCompileReadiness(input.packageDraft);
   const draftRuleSeeds =
@@ -286,15 +304,26 @@ function buildCompilePreviewEntry(input: {
       ? []
       : compileRulePackageDraft(input.packageDraft, input.source);
   const overridesPublishedCoverageKeys = draftRuleSeeds
-    .map((seed) => seed.coverage_key)
-    .filter((coverageKey) => input.activeCoverageKeys.has(coverageKey));
+    .filter((seed) => {
+      const comparisonKey = createCompiledRuleSeedComparisonKey(seed);
+      return (
+        input.activeResolutionKeys.has(seed.coverage_key) ||
+        (comparisonKey != null && input.activeResolutionKeys.has(comparisonKey))
+      );
+    })
+    .map((seed) => seed.coverage_key);
 
   return {
     package_id: input.packageDraft.package_id,
     readiness,
     draft_rule_seeds: draftRuleSeeds,
     overrides_published_coverage_keys: overridesPublishedCoverageKeys,
-    warnings: buildCompileWarnings(input.packageDraft, readiness, overridesPublishedCoverageKeys),
+    warnings: buildCompileWarnings(
+      input.packageDraft,
+      readiness,
+      overridesPublishedCoverageKeys,
+      draftRuleSeeds,
+    ),
   };
 }
 
@@ -435,6 +464,9 @@ function buildTitleSeed(
       title_pattern: titlePattern,
       casing_rule: casingRule,
       subtitle_handling: subtitleHandling,
+      ...buildLegacyFrontMatterBridgeAuthoringFields({
+        targetBlockKey: "title",
+      }),
     }),
     manual_review_reason_template: firstReviewReason(packageDraft),
   };
@@ -481,6 +513,16 @@ function buildAuthorLineSeed(
       separator: "、",
       affiliation_format: "superscript_marker",
       corresponding_author_rule: "required",
+      ...buildLegacyFrontMatterBridgeAuthoringFields({
+        targetBlockKey: "author_line",
+        slotKey: "author_line",
+        shadowTargetBlockKeys: [
+          ...LEGACY_FRONT_MATTER_AUTHOR_LINE_SHADOW_TARGET_BLOCK_KEYS,
+        ],
+        legacyOnlySemanticRoles: [
+          ...LEGACY_FRONT_MATTER_AUTHOR_LINE_LEGACY_ONLY_SEMANTIC_ROLES,
+        ],
+      }),
     }),
     example_before: firstBeforeExample(packageDraft),
     example_after: firstAfterExample(packageDraft),
@@ -950,6 +992,7 @@ function buildCompileWarnings(
   packageDraft: RulePackageDraft,
   readiness: RulePackageCompileReadiness,
   overridesPublishedCoverageKeys: string[],
+  draftRuleSeeds: readonly CompiledEditorialRuleSeed[],
 ): string[] {
   const warnings = [...readiness.reasons];
 
@@ -959,6 +1002,17 @@ function buildCompileWarnings(
 
   if (overridesPublishedCoverageKeys.length > 0) {
     warnings.push("Compiled coverage overlaps with currently resolved published rules.");
+  }
+
+  const legacyOnlySemanticRoles = uniqueStrings(
+    draftRuleSeeds.flatMap((seed) =>
+      readStringArray(seed.authoring_payload["legacy_only_semantic_roles"]) ?? [],
+    ),
+  );
+  if (legacyOnlySemanticRoles && legacyOnlySemanticRoles.length > 0) {
+    warnings.push(
+      `Legacy front-matter bridge still leaves these roles outside slot-native coverage: ${legacyOnlySemanticRoles.join(", ")}.`,
+    );
   }
 
   return warnings;
@@ -1147,6 +1201,43 @@ function buildCompiledAuthoringPayload(
     ...buildCompileTracePayload(packageDraft, source),
     ...fields,
   };
+}
+
+function buildLegacyFrontMatterBridgeAuthoringFields(input: {
+  targetBlockKey: string;
+  slotKey?: string;
+  shadowTargetBlockKeys?: string[];
+  legacyOnlySemanticRoles?: string[];
+}): Record<string, unknown> {
+  return {
+    compatibility_bridge_kind: "legacy_front_matter",
+    target_block_key: input.targetBlockKey,
+    ...(input.slotKey ? { slot_key: input.slotKey } : {}),
+    ...(input.shadowTargetBlockKeys && input.shadowTargetBlockKeys.length > 0
+      ? {
+          bridge_shadow_target_block_keys: [...input.shadowTargetBlockKeys],
+        }
+      : {}),
+    ...(input.legacyOnlySemanticRoles && input.legacyOnlySemanticRoles.length > 0
+      ? {
+          legacy_only_semantic_roles: [...input.legacyOnlySemanticRoles],
+        }
+      : {}),
+  };
+}
+
+function createCompiledRuleSeedComparisonKey(
+  seed: Pick<
+    CompiledEditorialRuleSeed,
+    "rule_object" | "selector" | "trigger" | "authoring_payload"
+  >,
+): string | undefined {
+  return createEditorialRuleComparisonKey({
+    rule_object: seed.rule_object,
+    selector: seed.selector as EditorialRuleRecord["selector"],
+    trigger: seed.trigger as EditorialRuleRecord["trigger"],
+    authoring_payload: seed.authoring_payload,
+  });
 }
 
 function createSemanticHash(packageDraft: RulePackageDraft): string {
@@ -1410,6 +1501,18 @@ function uniqueStrings(values: string[]): string[] | undefined {
     .filter((value): value is string => Boolean(value));
   const uniqueValues = Array.from(new Set(normalizedValues));
   return uniqueValues.length > 0 ? uniqueValues : undefined;
+}
+
+function readStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const normalized = value
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  return normalized.length > 0 ? normalized : undefined;
 }
 
 function normalizeText(value: string | undefined): string | undefined {

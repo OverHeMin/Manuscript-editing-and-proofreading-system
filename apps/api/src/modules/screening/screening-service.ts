@@ -582,6 +582,13 @@ export class ScreeningService {
               outputAssetId: asset.id,
               outputAssetType: "screening_report",
               screeningReport,
+              ...(sourceBlocks.length > 0
+                ? {
+                    screeningSourceBlocks: sourceBlocks.map((block) =>
+                      structuredClone(block),
+                    ),
+                  }
+                : {}),
               ...(qualityRun
                 ? {
                     qualityFindings: qualityRun.issues.map((issue) =>

@@ -65,6 +65,93 @@ function createEditingWorkspace(): ManuscriptWorkbenchWorkspace {
   } as unknown as ManuscriptWorkbenchWorkspace;
 }
 
+function createGovernedEditingWorkspace(): ManuscriptWorkbenchWorkspace {
+  const workspace = createEditingWorkspace() as ManuscriptWorkbenchWorkspace & {
+    manuscript: Record<string, unknown>;
+  };
+  workspace.manuscript.governed_execution_context_summary = {
+    observation_status: "reported",
+    manuscript_type: "review",
+    base_template_family_id: "family-1",
+    journal_template_selection_state: "selected",
+    journal_template_id: "journal-1",
+    journal_template_target_model_version_id: "journal-1-v2",
+    journal_template_target_model_version_no: 2,
+    modules: [
+      {
+        module: "editing",
+        status: "resolved",
+        quality_package_ids: ["general-package-1", "medical-package-1"],
+        resolved_rule_count: 2,
+        knowledge_selection_count: 2,
+        resolved_rules: [
+          {
+            rule_id: "rule-journal-title",
+            rule_object: "title",
+            rule_type: "format",
+            coverage_key: "title::journal",
+            source_layer: "journal",
+            activation_source_kind: "journal_template_rule_set",
+            activation_source_id: "rule-set-journal-1",
+            overridden_rule_ids: ["rule-general-title"],
+            resolution_reason: "Journal template override matched title coverage.",
+            execution_posture: "guarded",
+            effective_scope: {
+              sections: ["title"],
+            },
+          },
+          {
+            rule_id: "rule-general-table",
+            rule_object: "table",
+            rule_type: "format",
+            coverage_key: "table::general",
+            source_layer: "general",
+            activation_source_kind: "template_family_rule_set",
+            activation_source_id: "rule-set-general-1",
+            overridden_rule_ids: [],
+            resolution_reason: "Selected base published rule for table coverage.",
+            execution_posture: "inspect_only",
+            effective_scope: {
+              sections: ["results"],
+              object_granularity: ["table"],
+            },
+          },
+        ],
+        knowledge_selections: [
+          {
+            knowledge_item_id: "knowledge-journal-1",
+            title: "标题与基金项目位置",
+            match_source: "template_binding",
+            match_reasons: ["module", "template_binding", "journal_template"],
+            match_source_id: "journal_template:journal-1",
+            binding_priority: 7,
+            primary_binding: {
+              reason: "journal_template",
+              source_id: "journal_template:journal-1",
+              priority: 7,
+            },
+          },
+          {
+            knowledge_item_id: "knowledge-link-1",
+            title: "表格脚注写法",
+            match_source: "knowledge_item_binding",
+            match_reasons: ["knowledge_item_binding"],
+            match_source_id: "knowledge_item:knowledge-journal-1",
+            binding_priority: 7,
+            primary_binding: {
+              reason: "knowledge_item_binding",
+              source_id: "knowledge_item:knowledge-journal-1",
+              priority: 7,
+            },
+          },
+        ],
+      },
+    ],
+  };
+
+  return workspace as unknown as ManuscriptWorkbenchWorkspace;
+}
+
 function createScreeningWorkspace(): ManuscriptWorkbenchWorkspace {
   const reportAsset = {
     id: "asset-screening-report-1",
@@ -305,6 +392,93 @@ test("summary keeps compact cards and omits the oversized top summary strip", ()
   assert.match(markup, /\u5df2\u751f\u6210\u5904\u7406\u7ed3\u679c/u);
   assert.doesNotMatch(markup, /\u7a3f\u4ef6\u7f16\u53f7/u);
   assert.doesNotMatch(markup, /\u8c03\u8bd5\u5feb\u7167/u);
+});
+
+test("summary renders the governed rule and knowledge chain when execution context is available", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      mode="editing"
+      workspace={createGovernedEditingWorkspace()}
+      latestJob={null}
+      latestExport={null}
+    />,
+  );
+
+  assert.match(markup, /治理链路/u);
+  assert.match(markup, /目标模型版本/u);
+  assert.match(markup, /v2/u);
+  assert.match(markup, /规则层栈/u);
+  assert.match(markup, /通用 1 · 医学 0 · 期刊 1/u);
+  assert.match(markup, /知识激活/u);
+  assert.match(markup, /标题与基金项目位置/u);
+  assert.match(markup, /表格脚注写法/u);
+  assert.match(markup, /rule-journal-title/u);
+});
+
+test("summary renders editing completion gate blockers and operator next step guidance", () => {
+  const baseWorkspace = createEditingWorkspace();
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      mode="editing"
+      workspace={
+        {
+          ...baseWorkspace,
+          manuscript: {
+            ...baseWorkspace.manuscript,
+            editing_completion_gate_summary: {
+              observation_status: "reported",
+              verdict: "blocked_by_missing_required_slots",
+              passed: false,
+              blocker_count: 2,
+              unresolved_required_slots: [
+                {
+                  item_key: "slot:author_line",
+                  category: "required_slot",
+                  source: "slot_governance",
+                  summary: "作者署名 尚未解决",
+                  detail: "作者署名候选冲突，仍需人工裁决。",
+                  location_text: "锚点：after_title",
+                  related_slot_key: "author_line",
+                  status: "pending",
+                },
+              ],
+              pending_manual_resolution_items: [
+                {
+                  item_key: "manual:1",
+                  category: "manual_resolution",
+                  source: "manual_review_item",
+                  summary: "摘要目的仍需人工核对",
+                  detail: "AI 改写存在语义风险。",
+                  status: "pending",
+                },
+              ],
+              high_risk_object_items: [],
+              table_high_risk_items: [],
+              blocking_format_failures: [],
+            },
+            mainline_readiness_summary: {
+              observation_status: "reported",
+              derived_status: "attention_required",
+              active_module: "editing",
+              editing_completion_gate_verdict:
+                "blocked_by_missing_required_slots",
+              reason: "编辑完成门禁被必填槽位阻断：作者署名。",
+            },
+          },
+        } as ManuscriptWorkbenchWorkspace
+      }
+      latestJob={null}
+      latestExport={null}
+      latestActionResult={null}
+    />,
+  );
+
+  assert.match(markup, /编辑完成门禁/u);
+  assert.match(markup, /被必填槽位阻断/u);
+  assert.match(markup, /作者署名 尚未解决/u);
+  assert.match(markup, /槽位治理 · 锚点：after_title · 槽位 author_line/u);
+  assert.match(markup, /先补齐编辑必填槽位/u);
+  assert.match(markup, /编辑完成门禁被必填槽位阻断：作者署名。/u);
 });
 
 test("summary keeps the quality recovery handoff operator-facing while linking to the review workspace", () => {

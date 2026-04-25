@@ -12,6 +12,7 @@ import type {
   ModuleTemplateViewModel,
   TemplateCompositionViewModel,
   TemplateFamilyViewModel,
+  UpdateJournalTemplateProfileInput,
   UpdateContentModuleDraftInput,
   UpdateModuleTemplateDraftInput,
   UpdateTemplateCompositionDraftInput,
@@ -58,6 +59,18 @@ export function createJournalTemplateProfile(
   return client.request<JournalTemplateProfileViewModel>({
     method: "POST",
     url: "/api/v1/templates/journal-templates",
+    body: input,
+  });
+}
+
+export function updateJournalTemplateProfile(
+  client: TemplateHttpClient,
+  journalTemplateProfileId: string,
+  input: UpdateJournalTemplateProfileInput,
+) {
+  return client.request<JournalTemplateProfileViewModel>({
+    method: "POST",
+    url: `/api/v1/templates/journal-templates/${journalTemplateProfileId}/draft`,
     body: input,
   });
 }

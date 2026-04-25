@@ -512,6 +512,125 @@ test("resolution filters rules by manuscript type, section, and object granulari
   );
 });
 
+test("resolution lets a structured target-block rule override the legacy front-matter bridge even when coverage keys differ", async () => {
+  const repository = new InMemoryEditorialRuleRepository();
+  const service = new EditorialRuleResolutionService({
+    repository,
+  });
+
+  await seedPublishedRuleScopes(repository);
+  await repository.saveRule({
+    id: "base-rule-front-matter-legacy",
+    rule_set_id: "base-rule-set",
+    order_no: 70,
+    rule_object: "author_line",
+    rule_type: "format",
+    execution_mode: "apply_and_inspect",
+    scope: {
+      sections: ["front_matter"],
+      block_kind: "author_line",
+    },
+    selector: {
+      section_selector: "front_matter",
+      block_selector: "author_line",
+    },
+    trigger: {
+      kind: "author_line_pattern",
+      separator: "、",
+    },
+    action: {
+      kind: "inspect_author_line",
+      affiliation_format: "superscript_marker",
+      corresponding_author_rule: "required",
+    },
+    authoring_payload: {
+      source: "rule_package_compile",
+      compile_trace: {
+        package_kind: "front_matter",
+      },
+      compatibility_bridge_kind: "legacy_front_matter",
+      target_block_key: "author_line",
+      slot_key: "author_line",
+      bridge_shadow_target_block_keys: [
+        "affiliation_line",
+        "corresponding_author_bio",
+      ],
+      legacy_only_semantic_roles: [
+        "author_bio",
+        "funding_statement",
+        "classification_line",
+        "front_matter",
+      ],
+    },
+    confidence_policy: "manual_only",
+    severity: "warning",
+    enabled: true,
+  } as never);
+  await repository.saveRule({
+    id: "journal-rule-front-matter-structured",
+    rule_set_id: "journal-rule-set",
+    order_no: 71,
+    rule_object: "author_line",
+    rule_type: "format",
+    execution_mode: "apply_and_inspect",
+    scope: {
+      sections: ["front_matter"],
+      block_kind: "author_line",
+    },
+    selector: {
+      target_block_key: "author_line",
+    },
+    trigger: {
+      kind: "slot_resolution",
+      slot_key: "author_line",
+    },
+    action: {
+      kind: "inspect_author_line",
+      affiliation_format: "superscript_marker",
+      corresponding_author_rule: "required",
+    },
+    authoring_payload: {
+      target_block_key: "author_line",
+      slot_key: "author_line",
+    },
+    confidence_policy: "manual_only",
+    severity: "warning",
+    enabled: true,
+  } as never);
+
+  const baseResolved = await service.resolve({
+    templateFamilyId: "family-1",
+    module: "editing",
+  });
+  const baseLegacyRule = baseResolved.resolved_rules.find(
+    (entry) => entry.rule.id === "base-rule-front-matter-legacy",
+  );
+  assert.match(baseLegacyRule?.resolution_reason ?? "", /legacy front-matter bridge/i);
+  assert.match(baseLegacyRule?.resolution_reason ?? "", /remaining legacy-only roles/i);
+
+  const resolved = await service.resolve({
+    templateFamilyId: "family-1",
+    module: "editing",
+    journalTemplateId: "journal-template-1",
+  });
+  const structuredFrontMatterRule = resolved.resolved_rules.find(
+    (entry) => entry.rule.id === "journal-rule-front-matter-structured",
+  );
+
+  assert.ok(structuredFrontMatterRule);
+  assert.deepEqual(structuredFrontMatterRule?.overridden_rule_ids, [
+    "base-rule-front-matter-legacy",
+  ]);
+  assert.match(
+    structuredFrontMatterRule?.resolution_reason ?? "",
+    /comparison key "target_block::author_line"/i,
+  );
+  assert.equal(
+    resolved.rules.some((rule) => rule.id === "base-rule-front-matter-legacy"),
+    false,
+  );
+});
+
 test("resolution prefers active rule sets over legacy published rule sets in the same scope", async () => {
   const repository = new InMemoryEditorialRuleRepository();
   const service = new EditorialRuleResolutionService({

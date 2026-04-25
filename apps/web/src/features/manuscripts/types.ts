@@ -1,4 +1,7 @@
 import type {
+  EditingCompletionGateSummary,
+  EditingCompletionGateVerdict,
+  EditingSlotGovernanceSummary,
   GovernedExecutionContextSummary,
   ManuscriptQualityFindingSummary,
   ManuscriptQualityPackageVersionRef,
@@ -58,6 +61,9 @@ export type ModuleMainlineSettlementDerivedStatus =
   | "job_in_progress"
   | "job_failed"
   | "business_completed_unlinked"
+  | "business_completed_needs_manual_resolution"
+  | "business_completed_blocked_by_missing_required_slots"
+  | "business_completed_blocked_by_high_risk_objects"
   | "business_completed_follow_up_pending"
   | "business_completed_follow_up_running"
   | "business_completed_follow_up_retryable"
@@ -70,6 +76,7 @@ export interface ModuleMainlineSettlementViewModel {
   orchestration_completed: boolean;
   attention_required: boolean;
   reason: string;
+  editing_completion_gate_verdict?: EditingCompletionGateVerdict;
 }
 
 export type AgentExecutionCompletionDerivedStatus =
@@ -245,6 +252,7 @@ export interface ManuscriptMainlineReadinessSummaryViewModel {
   derived_status?: ManuscriptMainlineReadinessDerivedStatus;
   active_module?: MainlineSettlementModule;
   next_module?: MainlineSettlementModule;
+  editing_completion_gate_verdict?: EditingCompletionGateVerdict;
   recovery_ready_at?: string;
   runtime_binding_status?: RuntimeBindingReadinessStatus;
   runtime_binding_issue_count?: number;
@@ -267,6 +275,9 @@ export type MainlineAttentionItemKind =
   | "follow_up_running"
   | "follow_up_retryable"
   | "follow_up_failed"
+  | "editing_needs_manual_resolution"
+  | "editing_blocked_by_missing_required_slots"
+  | "editing_blocked_by_high_risk_objects"
   | "settlement_unlinked"
   | "job_failed"
   | "runtime_binding_degraded"
@@ -291,6 +302,7 @@ export interface ManuscriptMainlineAttentionHandoffPackViewModel {
   focus_module?: MainlineSettlementModule;
   from_module?: MainlineSettlementModule;
   to_module?: MainlineSettlementModule;
+  editing_completion_gate_verdict?: EditingCompletionGateVerdict;
   latest_job_id?: string;
   latest_snapshot_id?: string;
   recovery_ready_at?: string;
@@ -358,6 +370,8 @@ export interface ManuscriptViewModel {
   current_proofreading_asset_id?: string;
   current_template_family_id?: string;
   current_journal_template_id?: string;
+  editing_slot_governance_summary?: EditingSlotGovernanceSummary;
+  editing_completion_gate_summary?: EditingCompletionGateSummary;
   created_at: string;
   updated_at: string;
   result_asset_matrix: DocumentResultAssetMatrixViewModel;

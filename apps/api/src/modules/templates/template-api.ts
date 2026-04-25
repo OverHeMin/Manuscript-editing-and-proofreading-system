@@ -10,6 +10,7 @@ import type {
   CreateModuleTemplateDraftInput,
   CreateTemplateFamilyInput,
   UpdateContentModuleDraftInput,
+  UpdateJournalTemplateProfileInput,
   UpdateModuleTemplateDraftInput,
   UpdateTemplateCompositionDraftInput,
   UpdateTemplateFamilyInput,
@@ -98,6 +99,22 @@ export function createTemplateApi(options: CreateTemplateApiOptions) {
       return {
         status: 201,
         body: await templateService.createJournalTemplateProfile(input),
+      };
+    },
+
+    async updateJournalTemplateProfile({
+      journalTemplateProfileId,
+      input,
+    }: {
+      journalTemplateProfileId: string;
+      input: UpdateJournalTemplateProfileInput;
+    }): Promise<RouteResponse<JournalTemplateProfileRecord>> {
+      return {
+        status: 200,
+        body: await templateService.updateJournalTemplateProfile(
+          journalTemplateProfileId,
+          input,
+        ),
       };
     },
 

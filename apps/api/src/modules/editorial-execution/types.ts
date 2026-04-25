@@ -1,4 +1,5 @@
 import type {
+  EditingMetadataSourceZone,
   ManuscriptQualityFindingSummary,
   ManuscriptQualityIssue,
   ManuscriptQualityPackageVersionRef,
@@ -25,6 +26,10 @@ export interface EditorialTextBlock {
   text: string;
   section?: string;
   block_kind?: string;
+  source_zone?: EditingMetadataSourceZone | "body";
+  source_locator?: string;
+  semantic_role?: string;
+  confidence?: number;
 }
 
 export type TableAutoApplyMode =

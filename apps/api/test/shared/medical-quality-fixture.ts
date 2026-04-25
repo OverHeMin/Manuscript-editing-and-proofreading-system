@@ -28,7 +28,10 @@ import { InMemoryRuntimeBindingRepository } from "../../src/modules/runtime-bind
 import { RuntimeBindingService } from "../../src/modules/runtime-bindings/runtime-binding-service.ts";
 import { InMemorySandboxProfileRepository } from "../../src/modules/sandbox-profiles/in-memory-sandbox-profile-repository.ts";
 import { SandboxProfileService } from "../../src/modules/sandbox-profiles/sandbox-profile-service.ts";
-import { InMemoryModuleTemplateRepository } from "../../src/modules/templates/in-memory-template-family-repository.ts";
+import {
+  InMemoryModuleTemplateRepository,
+  InMemoryTemplateFamilyRepository,
+} from "../../src/modules/templates/in-memory-template-family-repository.ts";
 import { InMemoryToolGatewayRepository } from "../../src/modules/tool-gateway/in-memory-tool-gateway-repository.ts";
 import { ToolGatewayService } from "../../src/modules/tool-gateway/tool-gateway-service.ts";
 import { InMemoryToolPermissionPolicyRepository } from "../../src/modules/tool-permission-policies/in-memory-tool-permission-policy-repository.ts";
@@ -41,6 +44,7 @@ export const AFTER_HEADING = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09";
 export async function seedMedicalQualityFixture() {
   const manuscriptRepository = new InMemoryManuscriptRepository();
   const assetRepository = new InMemoryDocumentAssetRepository();
+  const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
   const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
   const promptSkillRegistryRepository = new InMemoryPromptSkillRegistryRepository();
   const knowledgeRepository = new InMemoryKnowledgeRepository();
@@ -211,6 +215,100 @@ export async function seedMedicalQualityFixture() {
       screening: "model-1",
       editing: "model-1",
       proofreading: "model-1",
+    },
+  });
+
+  await templateFamilyRepository.save({
+    id: "family-1",
+    manuscript_type: "clinical_study",
+    name: "Clinical Study Family",
+    status: "active",
+  });
+  await templateFamilyRepository.saveJournalTemplateProfile({
+    id: "journal-template-1",
+    template_family_id: "family-1",
+    journal_key: "clinical-default",
+    journal_name: "Clinical Default Journal",
+    status: "active",
+    target_model_version_id: "journal-template-1-v1",
+    target_model_version_no: 1,
+    journal_format_target_model: {
+      skeleton: [
+        "front_matter",
+        "title",
+        "abstract",
+        "keywords",
+        "body",
+        "figures_tables",
+        "references",
+      ],
+      target_blocks: [
+        {
+          block_key: "author_line",
+          label: "作者署名",
+          zone: "front_matter",
+          anchor: "after_title",
+          order: 10,
+          required: true,
+          repeatable: false,
+          enabled: true,
+          format_policy: { allow_auto_reorder: false },
+          content_source_policy: "must_harvest_existing",
+          completion_gate: "block_on_unresolved",
+        },
+        {
+          block_key: "affiliation_line",
+          label: "作者单位",
+          zone: "front_matter",
+          anchor: "after_author_line",
+          order: 20,
+          required: true,
+          repeatable: true,
+          enabled: true,
+          format_policy: { allow_auto_reorder: true },
+          content_source_policy: "must_harvest_existing",
+          completion_gate: "block_on_unresolved",
+        },
+        {
+          block_key: "funding_statement",
+          label: "基金项目",
+          zone: "front_matter",
+          anchor: "before_title",
+          order: 30,
+          required: false,
+          repeatable: true,
+          enabled: true,
+          format_policy: { allow_auto_reorder: true },
+          content_source_policy: "prefer_existing_with_manual_fill",
+          completion_gate: "warn_only",
+        },
+        {
+          block_key: "classification_code",
+          label: "中图分类号",
+          zone: "keywords",
+          anchor: "after_keywords",
+          order: 40,
+          required: false,
+          repeatable: false,
+          enabled: true,
+          format_policy: { allow_auto_reorder: true },
+          content_source_policy: "prefer_existing_with_manual_fill",
+          completion_gate: "warn_only",
+        },
+        {
+          block_key: "document_code",
+          label: "文献标志码",
+          zone: "keywords",
+          anchor: "after_keywords",
+          order: 50,
+          required: false,
+          repeatable: false,
+          enabled: true,
+          format_policy: { allow_auto_reorder: true },
+          content_source_policy: "prefer_existing_with_manual_fill",
+          completion_gate: "warn_only",
+        },
+      ],
     },
   });
 
@@ -636,6 +734,7 @@ export async function seedMedicalQualityFixture() {
   return {
     manuscriptRepository,
     assetRepository,
+    templateFamilyRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,

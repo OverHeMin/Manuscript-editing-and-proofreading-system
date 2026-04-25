@@ -1945,6 +1945,7 @@ test("workbench http screening route runs with the authenticated screener contex
     });
     const body = (await response.json()) as {
       job: {
+        id: string;
         module: string;
         requested_by: string;
       };
@@ -2037,6 +2038,7 @@ test("workbench http screening route runs with the authenticated screener contex
       runEvidence[0]?.uri,
       `/api/v1/document-assets/${body.asset.id}/download`,
     );
+
   } finally {
     await stopServer(server);
   }
@@ -2212,6 +2214,7 @@ test("workbench http editing route runs with the authenticated editor context", 
     });
     const body = (await response.json()) as {
       job: {
+        id: string;
         module: string;
         requested_by: string;
       };
@@ -2303,6 +2306,64 @@ test("workbench http editing route runs with the authenticated editor context", 
     assert.equal(
       runEvidence[0]?.uri,
       `/api/v1/document-assets/${body.asset.id}/download`,
+    );
+
+    const manuscriptResponse = await fetch(
+      `${baseUrl}/api/v1/manuscripts/${seededIds.manuscriptId}`,
+      {
+        headers: { Cookie: cookie },
+      },
+    );
+    const manuscript = (await manuscriptResponse.json()) as {
+      current_editing_asset_id?: string;
+      editing_completion_gate_summary?: {
+        observation_status: string;
+        passed: boolean;
+      };
+      module_execution_overview?: {
+        editing?: {
+          observation_status: string;
+          settlement?: {
+            derived_status: string;
+          };
+        };
+      };
+    };
+    const jobResponse = await fetch(`${baseUrl}/api/v1/jobs/${body.job.id}`, {
+      headers: { Cookie: cookie },
+    });
+    const job = (await jobResponse.json()) as {
+      payload?: {
+        editingCompletionGateSummary?: {
+          observation_status: string;
+          passed: boolean;
+        };
+      };
+    };
+
+    assert.equal(manuscriptResponse.status, 200);
+    assert.equal(jobResponse.status, 200);
+    assert.equal(manuscript.current_editing_asset_id, body.asset.id);
+    assert.equal(
+      manuscript.editing_completion_gate_summary?.observation_status,
+      "failed_open",
+    );
+    assert.equal(
+      typeof manuscript.editing_completion_gate_summary?.passed,
+      "boolean",
+    );
+    assert.ok(
+      ["reported", "failed_open"].includes(
+        manuscript.module_execution_overview?.editing?.observation_status ?? "",
+      ),
+    );
+    assert.equal(
+      job.payload?.editingCompletionGateSummary?.observation_status,
+      "failed_open",
+    );
+    assert.equal(
+      typeof job.payload?.editingCompletionGateSummary?.passed,
+      "boolean",
     );
   } finally {
     await stopServer(server);

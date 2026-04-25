@@ -83,10 +83,6 @@ export function TemplateGovernanceContentModuleLedgerPage({
     resolveSelectedRule(viewModel.selectedModuleRules, selectedRuleKey) ?? null;
   const selectedModuleRuleCount =
     selectedModule?.default_rule_count ?? viewModel.selectedModuleRules.length;
-  const advancedEditorHref = formatWorkbenchHash("template-governance", {
-    templateGovernanceView: "classic",
-    ruleCenterMode: "authoring",
-  });
   const authoringCreateHref = formatWorkbenchHash("template-governance", {
     templateGovernanceView: "authoring",
     ruleCenterMode: "authoring",
@@ -168,11 +164,6 @@ export function TemplateGovernanceContentModuleLedgerPage({
             <strong>先选规则包，再看默认规则，再决定是否编辑</strong>
             <p>这样能先确认当前包的复用范围，再避免把规则内容和包级摘要、适用边界混在一起修改。</p>
           </article>
-        </div>
-        <div className="template-governance-actions">
-          <a className="template-governance-link-button" href={advancedEditorHref}>
-            打开旧版高级工作台
-          </a>
         </div>
       </article>
 
@@ -350,12 +341,6 @@ export function TemplateGovernanceContentModuleLedgerPage({
                   表格、图片证据或包绑定。
                 </p>
               </article>
-              <article className="template-governance-rule-hint-card">
-                <strong>路径 3：打开旧版高级工作台</strong>
-                <p>
-                  适合集中核对老规则、对照旧布局批量检查，尤其是你已经熟悉旧工作台的时候。
-                </p>
-              </article>
             </div>
             <div className="template-governance-actions">
               <a className="template-governance-link-button" href={authoringCreateHref}>
@@ -363,9 +348,6 @@ export function TemplateGovernanceContentModuleLedgerPage({
               </a>
               <a className="template-governance-link-button" href={ruleLedgerHref}>
                 去规则台账找已有规则
-              </a>
-              <a className="template-governance-link-button" href={advancedEditorHref}>
-                打开旧版高级工作台
               </a>
             </div>
           </section>
@@ -384,9 +366,6 @@ export function TemplateGovernanceContentModuleLedgerPage({
                 <div className="template-governance-actions">
                   <a className="template-governance-link-button" href={ruleLedgerHref}>
                     在规则台账查看全部默认规则
-                  </a>
-                  <a className="template-governance-link-button" href={advancedEditorHref}>
-                    打开旧版高级工作台
                   </a>
                 </div>
                 <ul className="template-governance-list">
@@ -486,9 +465,6 @@ export function TemplateGovernanceContentModuleLedgerPage({
                 <div className="template-governance-actions">
                   <a className="template-governance-link-button" href={ruleLedgerHref}>
                     前往规则台账补齐默认规则
-                  </a>
-                  <a className="template-governance-link-button" href={advancedEditorHref}>
-                    打开旧版高级工作台
                   </a>
                 </div>
               </>

@@ -48,6 +48,9 @@ export interface DynamicKnowledgeSelection {
   matchSource: "template_binding" | "dynamic_routing";
   matchSourceId?: string;
   matchReasons: string[];
+  bindingPriority?: number;
+  primaryBinding?: KnowledgeBindingMatchDetail;
+  bindingMatches?: KnowledgeBindingMatchDetail[];
   retrievalScore?: number;
 }
 
@@ -61,6 +64,21 @@ interface ResolvedKnowledgeBindingMatch {
   matchReasons: string[];
   matchSourceId?: string;
   bindingPriority: number;
+  primaryBinding?: KnowledgeBindingMatchDetail;
+  bindingMatches: KnowledgeBindingMatchDetail[];
+}
+
+export interface KnowledgeBindingMatchDetail {
+  reason:
+    | "binding_rule"
+    | "template_family"
+    | "module_template"
+    | "journal_template"
+    | "general_package"
+    | "medical_package"
+    | "knowledge_item_binding";
+  sourceId: string;
+  priority: number;
 }
 
 interface MatchedKnowledgeBindingReason {
@@ -216,6 +234,15 @@ export function selectApprovedDynamicKnowledge(
               ? bindingMatch.matchReasons
               : ["dynamic_routing"]),
           ],
+          ...(bindingMatch.bindingPriority > 0
+            ? { bindingPriority: bindingMatch.bindingPriority }
+            : {}),
+          ...(bindingMatch.primaryBinding
+            ? { primaryBinding: bindingMatch.primaryBinding }
+            : {}),
+          ...(bindingMatch.bindingMatches.length > 0
+            ? { bindingMatches: bindingMatch.bindingMatches }
+            : {}),
           ...(retrievalScore !== undefined ? { retrievalScore } : {}),
         },
         bindingPriority: bindingMatch.bindingPriority,
@@ -291,7 +318,7 @@ function resolveKnowledgeBindingMatch(input: {
         targetIds: bindingTargets?.journal_template_ids,
         activeId: journalTemplateId,
         reason: "journal_template",
-        priority: 3,
+        priority: 7,
         matchedReasons,
       })
     ) {
@@ -333,7 +360,7 @@ function resolveKnowledgeBindingMatch(input: {
       matchedReasons.push({
         reason: "journal_template",
         sourceId: `journal_template:${legacyJournalTemplateId}`,
-        priority: 3,
+        priority: 7,
       });
     }
     if (legacyTemplateBindings.length > 0) {
@@ -354,6 +381,7 @@ function resolveKnowledgeBindingMatch(input: {
       usesBinding: false,
       matchReasons: [],
       bindingPriority: 0,
+      bindingMatches: [],
     };
   }
 
@@ -366,6 +394,8 @@ function resolveKnowledgeBindingMatch(input: {
     matchReasons: dedupeMatchReasons(matchedReasons),
     matchSourceId: primaryMatch.sourceId,
     bindingPriority: primaryMatch.priority,
+    primaryBinding: toKnowledgeBindingMatchDetail(primaryMatch),
+    bindingMatches: matchedReasons.map(toKnowledgeBindingMatchDetail),
   };
 }
 
@@ -424,7 +454,7 @@ function pushPackageBindingMatch(input: {
     input.matchedReasons.push({
       reason: input.reason,
       sourceId: `${input.reason}:${exactVersionMatchId}`,
-      priority: 5,
+      priority: input.reason === "general_package" ? 4 : 6,
     });
     return true;
   }
@@ -447,7 +477,7 @@ function pushPackageBindingMatch(input: {
   input.matchedReasons.push({
     reason: input.reason,
     sourceId: `${input.reason}_kind:${expectedPackageKind}:${kindMatchedPackage.packageId}`,
-    priority: 4,
+    priority: input.reason === "general_package" ? 3 : 5,
   });
   return true;
 }
@@ -483,6 +513,16 @@ function dedupeMatchReasons(
   matchedReasons: readonly MatchedKnowledgeBindingReason[],
 ): string[] {
   return [...new Set(matchedReasons.map((reason) => reason.reason))];
+}
+
+function toKnowledgeBindingMatchDetail(
+  reason: MatchedKnowledgeBindingReason,
+): KnowledgeBindingMatchDetail {
+  return {
+    reason: reason.reason,
+    sourceId: reason.sourceId,
+    priority: reason.priority,
+  };
 }
 
 export async function prepareModuleExecution(
@@ -589,6 +629,10 @@ function resolveBindingPriorityBoost(bindingPriority: number): number {
       return 0.24;
     case 5:
       return 0.27;
+    case 6:
+      return 0.3;
+    case 7:
+      return 0.33;
     default:
       return 0;
   }

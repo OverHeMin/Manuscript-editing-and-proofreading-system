@@ -328,8 +328,8 @@ export function TemplateGovernanceRuleWizardStepEntry({
               <p>先把规则正文、证据、适用范围和发布动作做对，避免首次录入时被低频参数打断。</p>
             </div>
             <div className="template-governance-rule-hint-card">
-              <strong>低频运行参数继续放在旧工作台</strong>
-              <p>当前向导优先解决建立和修订，结构化运行细节仍保留在旧版高级工作台，按需再进去补。</p>
+              <strong>低频高级项也在当前规则中心完成</strong>
+              <p>复杂绑定、发布动作和后续治理信息都继续留在这套向导与规则台账，不再分散到旧入口。</p>
             </div>
             <div className="template-governance-rule-hint-card">
               <strong>适用模块决定规则在哪个执行环节被调用</strong>

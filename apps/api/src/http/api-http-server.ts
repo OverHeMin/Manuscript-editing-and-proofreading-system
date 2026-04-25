@@ -175,6 +175,9 @@ import {
 } from "../modules/editorial-rules/index.ts";
 import {
   createEditingApi,
+  EditingSlotGovernanceUnavailableError,
+  EditingSlotManualResolutionInvalidError,
+  EditingSlotNotFoundError,
   EditingService,
 } from "../modules/editing/index.ts";
 import {
@@ -618,6 +621,9 @@ type HttpRouteMatch =
       route: "modules-editing-run";
     }
   | {
+      route: "modules-editing-save-slot-resolution";
+    }
+  | {
       route: "modules-proofreading-draft";
     }
   | {
@@ -870,6 +876,10 @@ type HttpRouteMatch =
     }
   | {
       route: "templates-create-journal-template";
+    }
+  | {
+      route: "templates-update-journal-template";
+      journalTemplateProfileId: string;
     }
   | {
       route: "templates-list-content-modules";
@@ -1773,6 +1783,7 @@ export function createInMemoryApiRuntime(input: {
   });
   const executionResolutionService = new ExecutionResolutionService({
     executionGovernanceService,
+    templateFamilyRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
@@ -2026,6 +2037,7 @@ export function createInMemoryApiRuntime(input: {
   const editingService = new EditingService({
     manuscriptRepository,
     assetRepository,
+    templateFamilyRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
@@ -2711,6 +2723,145 @@ function seedDemoWorkbenchData(input: {
     journal_key: "seeded-clinical-journal",
     journal_name: "Seeded Clinical Journal Overlay",
     status: "active",
+    target_model_version_id: "journal-template-seeded-1-v1",
+    target_model_version_no: 1,
+    journal_format_target_model: {
+      skeleton: [
+        "front_matter",
+        "title",
+        "abstract",
+        "keywords",
+        "body",
+        "figures_tables",
+        "references",
+      ],
+      target_blocks: [
+        {
+          block_key: "author_line",
+          label: "作者署名",
+          zone: "front_matter",
+          anchor: "after_title",
+          order: 10,
+          required: true,
+          repeatable: false,
+          enabled: true,
+          format_policy: { allow_auto_reorder: false },
+          content_source_policy: "must_harvest_existing",
+          completion_gate: "block_on_unresolved",
+        },
+        {
+          block_key: "affiliation_line",
+          label: "作者单位",
+          zone: "front_matter",
+          anchor: "after_author_line",
+          order: 20,
+          required: true,
+          repeatable: true,
+          enabled: true,
+          format_policy: { allow_auto_reorder: true },
+          content_source_policy: "must_harvest_existing",
+          completion_gate: "block_on_unresolved",
+        },
+        {
+          block_key: "funding_statement",
+          label: "基金项目",
+          zone: "front_matter",
+          anchor: "before_title",
+          order: 30,
+          required: false,
+          repeatable: true,
+          enabled: true,
+          format_policy: { allow_auto_reorder: false },
+          content_source_policy: "prefer_existing_with_manual_fill",
+          completion_gate: "warn_only",
+        },
+        {
+          block_key: "classification_code",
+          label: "中图分类号",
+          zone: "keywords",
+          anchor: "after_keywords",
+          order: 40,
+          required: false,
+          repeatable: false,
+          enabled: true,
+          format_policy: { allow_auto_reorder: false },
+          content_source_policy: "prefer_existing_with_manual_fill",
+          completion_gate: "warn_only",
+        },
+      ],
+    },
+    target_model_versions: [
+      {
+        version_id: "journal-template-seeded-1-v1",
+        version_no: 1,
+        created_at: "2026-03-31T07:56:30.000Z",
+        journal_format_target_model: {
+          skeleton: [
+            "front_matter",
+            "title",
+            "abstract",
+            "keywords",
+            "body",
+            "figures_tables",
+            "references",
+          ],
+          target_blocks: [
+            {
+              block_key: "author_line",
+              label: "作者署名",
+              zone: "front_matter",
+              anchor: "after_title",
+              order: 10,
+              required: true,
+              repeatable: false,
+              enabled: true,
+              format_policy: { allow_auto_reorder: false },
+              content_source_policy: "must_harvest_existing",
+              completion_gate: "block_on_unresolved",
+            },
+            {
+              block_key: "affiliation_line",
+              label: "作者单位",
+              zone: "front_matter",
+              anchor: "after_author_line",
+              order: 20,
+              required: true,
+              repeatable: true,
+              enabled: true,
+              format_policy: { allow_auto_reorder: true },
+              content_source_policy: "must_harvest_existing",
+              completion_gate: "block_on_unresolved",
+            },
+            {
+              block_key: "funding_statement",
+              label: "基金项目",
+              zone: "front_matter",
+              anchor: "before_title",
+              order: 30,
+              required: false,
+              repeatable: true,
+              enabled: true,
+              format_policy: { allow_auto_reorder: false },
+              content_source_policy: "prefer_existing_with_manual_fill",
+              completion_gate: "warn_only",
+            },
+            {
+              block_key: "classification_code",
+              label: "中图分类号",
+              zone: "keywords",
+              anchor: "after_keywords",
+              order: 40,
+              required: false,
+              repeatable: false,
+              enabled: true,
+              format_policy: { allow_auto_reorder: false },
+              content_source_policy: "prefer_existing_with_manual_fill",
+              completion_gate: "warn_only",
+            },
+          ],
+        },
+      },
+    ],
   });
 
   void input.moduleTemplateRepository.save({
@@ -4517,6 +4668,18 @@ async function handleRoute(
         actorRole: session.user.role,
       });
     }
+    case "modules-editing-save-slot-resolution": {
+      const session = await requirePermission(req, runtime, "workbench.editing");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.editingApi.saveSlotManualResolution
+      >[0];
+
+      return runtime.editingApi.saveSlotManualResolution({
+        ...body,
+        requestedBy: session.user.id,
+        actorRole: session.user.role,
+      });
+    }
     case "modules-proofreading-draft": {
       const session = await requirePermission(req, runtime, "workbench.proofreading");
       const body = (await readJsonBody(req)) as Parameters<
@@ -5053,6 +5216,14 @@ async function handleRoute(
           typeof runtime.templateApi.createJournalTemplateProfile
         >[0],
       );
+    case "templates-update-journal-template":
+      await requirePermission(req, runtime, "template-governance.manage");
+      return runtime.templateApi.updateJournalTemplateProfile({
+        journalTemplateProfileId: routeMatch.journalTemplateProfileId,
+        input: (await readJsonBody(req)) as Parameters<
+          typeof runtime.templateApi.updateJournalTemplateProfile
+        >[0]["input"],
+      });
     case "templates-create-template-composition-draft":
       await requirePermission(req, runtime, "template-governance.manage");
       return runtime.templateApi.createTemplateCompositionDraft(
@@ -6882,6 +7053,10 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "modules-editing-run" };
   }
 
+  if (method === "POST" && path === "/api/v1/modules/editing/slot-resolutions") {
+    return { route: "modules-editing-save-slot-resolution" };
+  }
+
   if (method === "POST" && path === "/api/v1/modules/proofreading/draft") {
     return { route: "modules-proofreading-draft" };
   }
@@ -6994,6 +7169,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
   if (method === "POST" && path === "/api/v1/templates/journal-templates") {
     return { route: "templates-create-journal-template" };
+  }
+
+  const updateJournalTemplateDraftMatch = path.match(
+    /^\/api\/v1\/templates\/journal-templates\/([^/]+)\/draft$/,
+  );
+  if (method === "POST" && updateJournalTemplateDraftMatch) {
+    return {
+      route: "templates-update-journal-template",
+      journalTemplateProfileId: updateJournalTemplateDraftMatch[1],
+    };
   }
 
   if (method === "POST" && path === "/api/v1/templates/template-compositions") {
@@ -8966,7 +9151,9 @@ export function mapErrorToHttpResponse(
     error instanceof TemplateRetrievalGoldSetVersionValidationError ||
     error instanceof DuplicateUsernameError ||
     error instanceof LastActiveAdminDisableError ||
-    error instanceof LastActiveAdminDemotionError
+    error instanceof LastActiveAdminDemotionError ||
+    error instanceof EditingSlotGovernanceUnavailableError ||
+    error instanceof EditingSlotNotFoundError
   ) {
     return [409, { error: "state_conflict", message: error.message }];
   }
@@ -9008,6 +9195,7 @@ export function mapErrorToHttpResponse(
     error instanceof HarnessIntegrationValidationError ||
     error instanceof ReviewItemDecisionActionNotSupportedError ||
     error instanceof ReviewItemDecisionInputInvalidError ||
+    error instanceof EditingSlotManualResolutionInvalidError ||
     error instanceof ResidualIssueExecutionLogRequiredError ||
     error instanceof ResidualIssueSourceAssetRequiredError ||
     error instanceof ResidualLearningServiceDependencyRequiredError ||
