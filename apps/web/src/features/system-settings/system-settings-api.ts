@@ -2,6 +2,7 @@ import type {
   CreateAiProviderConnectionInput,
   CreateSystemSettingsRegisteredModelInput,
   CreateSystemSettingsUserInput,
+  InternalTestProductionReadinessViewModel,
   SaveSystemSettingsModuleDefaultInput,
   SystemSettingsAiProviderConnectionViewModel,
   SystemSettingsModuleDefaultViewModel,
@@ -112,6 +113,13 @@ export function listSystemSettingsAiProviders(client: SystemSettingsHttpClient) 
   return client.request<SystemSettingsAiProviderConnectionViewModel[]>({
     method: "GET",
     url: "/api/v1/system-settings/ai-providers",
+  });
+}
+
+export function getInternalTestProductionReadiness(client: SystemSettingsHttpClient) {
+  return client.request<InternalTestProductionReadinessViewModel>({
+    method: "GET",
+    url: "/api/v1/production-readiness/internal-test",
   });
 }
 

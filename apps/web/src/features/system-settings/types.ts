@@ -73,6 +73,32 @@ export interface SystemSettingsSummary {
   adminUsers: number;
 }
 
+export type InternalTestProductionReadinessStatus = "ready" | "not_ready";
+
+export type InternalTestProductionReadinessCheckStatus = "ok" | "warning" | "failed";
+
+export interface InternalTestProductionReadinessCheckViewModel {
+  key: string;
+  label?: string;
+  status: InternalTestProductionReadinessCheckStatus;
+  blocking: boolean;
+  message?: string;
+  evidence?: unknown;
+}
+
+export interface InternalTestProductionReadinessSummaryViewModel {
+  total: number;
+  failed: number;
+  warning: number;
+  blocking_failed: number;
+}
+
+export interface InternalTestProductionReadinessViewModel {
+  status: InternalTestProductionReadinessStatus;
+  checks: InternalTestProductionReadinessCheckViewModel[];
+  summary: InternalTestProductionReadinessSummaryViewModel;
+}
+
 export interface SystemSettingsWorkbenchOverview {
   users: SystemSettingsUserViewModel[];
   summary: SystemSettingsSummary;
@@ -83,6 +109,7 @@ export interface SystemSettingsWorkbenchOverview {
   selectedConnection: SystemSettingsAiProviderConnectionViewModel | null;
   registeredModels: SystemSettingsRegisteredModelViewModel[];
   moduleDefaults: SystemSettingsModuleDefaultViewModel[];
+  internalTestProductionReadiness: InternalTestProductionReadinessViewModel | null;
 }
 
 export interface CreateSystemSettingsUserInput {

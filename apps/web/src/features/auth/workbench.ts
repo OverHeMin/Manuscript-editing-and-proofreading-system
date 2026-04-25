@@ -11,6 +11,7 @@ export type WorkbenchId =
   | "admin-console"
   | "evaluation-workbench"
   | "harness-datasets"
+  | "manuscript-harness"
   | "template-governance"
   | "system-settings";
 
@@ -138,6 +139,15 @@ export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
     roles: ["admin"],
   },
   {
+    id: "manuscript-harness",
+    label: "稿件 Harness",
+    navLabel: "稿件 Harness",
+    navGroup: "governance",
+    placement: "admin",
+    surfaces: ["web"],
+    roles: ["admin", "editor", "proofreader", "knowledge_reviewer"],
+  },
+  {
     id: "template-governance",
     label: "规则中心",
     navLabel: "规则中心",
@@ -250,18 +260,20 @@ export const ROLE_WORKBENCHES: Record<AuthRole, readonly WorkbenchId[]> = {
     "admin-console",
     "evaluation-workbench",
     "harness-datasets",
+    "manuscript-harness",
     "template-governance",
     "system-settings",
   ],
   screener: ["screening"],
-  editor: ["screening", "editing", "proofreading"],
-  proofreader: ["proofreading"],
+  editor: ["screening", "editing", "proofreading", "manuscript-harness"],
+  proofreader: ["proofreading", "manuscript-harness"],
   knowledge_reviewer: [
     "screening",
     "editing",
     "proofreading",
     "knowledge-library",
     "knowledge-review",
+    "manuscript-harness",
     "template-governance",
   ],
   user: ["submission"],

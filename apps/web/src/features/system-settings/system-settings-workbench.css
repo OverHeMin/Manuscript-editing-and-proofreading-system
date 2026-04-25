@@ -186,6 +186,71 @@
   font-size: 0.9rem;
 }
 
+.system-settings-readiness-panel {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.system-settings-readiness-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.system-settings-readiness-summary span {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 0.85rem;
+}
+
+.system-settings-readiness-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.system-settings-readiness-row {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  border-radius: 0.85rem;
+  border: 1px solid #d9dee8;
+  background: #f8fafc;
+}
+
+.system-settings-readiness-row strong {
+  color: #17324d;
+}
+
+.system-settings-readiness-row span,
+.system-settings-readiness-row p {
+  margin: 0;
+  color: #52606d;
+  font-size: 0.88rem;
+}
+
+.system-settings-readiness-row.is-ok {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.system-settings-readiness-row.is-warning {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.system-settings-readiness-row.is-failed {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
 .system-settings-stack {
   display: grid;
   gap: 0.85rem;

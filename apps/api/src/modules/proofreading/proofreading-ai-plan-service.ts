@@ -8,6 +8,9 @@ import type { AiGovernanceContext } from "../shared/ai-governance-context.ts";
 import { isAiGovernanceContextEmpty } from "../shared/ai-governance-context.ts";
 import type { MainlineAiRuntimeExecutor } from "../shared/mainline-ai-runtime-executor.ts";
 import type {
+  ProofreadingDeepPassKind,
+} from "./proofreading-pass-run-record.ts";
+import type {
   ProofreadingAiPlan,
   ProofreadingIssue,
   ProofreadingIssueAnchor,
@@ -79,6 +82,11 @@ export interface CreateProofreadingAiPlanInput {
     outputContract?: string;
   };
   governanceContext?: AiGovernanceContext;
+  passFocus?: {
+    passNo: number;
+    passKind: ProofreadingDeepPassKind;
+    instruction: string;
+  };
 }
 
 export class ProofreadingAiPlanService {
@@ -193,6 +201,7 @@ function buildProofreadingUserPayload(input: {
   knowledgeHits?: CreateProofreadingAiPlanInput["knowledgeHits"];
   promptGuardrails?: CreateProofreadingAiPlanInput["promptGuardrails"];
   governanceContext?: AiGovernanceContext;
+  passFocus?: CreateProofreadingAiPlanInput["passFocus"];
 }) {
   const governance =
     input.governanceContext && !isAiGovernanceContextEmpty(input.governanceContext)
@@ -203,6 +212,15 @@ function buildProofreadingUserPayload(input: {
     task: "proofreading_issue_plan",
     manuscriptId: input.manuscriptId,
     sourceFileName: input.sourceFileName,
+    ...(input.passFocus
+      ? {
+          passFocus: {
+            passNo: input.passFocus.passNo,
+            passKind: input.passFocus.passKind,
+            instruction: input.passFocus.instruction,
+          },
+        }
+      : {}),
     contextMode: input.planningContext.contextMode,
     fullDocumentBlocks: input.planningContext.fullDocumentBlocks,
     ...(input.planningContext.fullDocumentText

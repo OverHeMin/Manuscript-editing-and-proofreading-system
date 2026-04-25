@@ -9,6 +9,7 @@ import type {
   PublishProofreadingHumanFinalInput,
   SaveProofreadingConfirmationDraftInput,
 } from "./proofreading-service.ts";
+import type { ProofreadingPassRunRecord } from "./proofreading-pass-run-record.ts";
 
 interface RouteResponse<T> {
   status: number;
@@ -67,6 +68,17 @@ export function createProofreadingApi(options: CreateProofreadingApiOptions) {
       return {
         status: 200,
         body: await proofreadingService.getGovernanceHandoff(input),
+      };
+    },
+
+    async retryDeepPassRun(input: {
+      passRunId: string;
+      requestedBy: string;
+      actorRole: CreateProofreadingDraftInput["actorRole"];
+    }): Promise<RouteResponse<ProofreadingPassRunRecord>> {
+      return {
+        status: 200,
+        body: await proofreadingService.retryDeepPassRun(input),
       };
     },
   };

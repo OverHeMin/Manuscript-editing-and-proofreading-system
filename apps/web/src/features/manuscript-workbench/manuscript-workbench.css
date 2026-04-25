@@ -2779,6 +2779,309 @@
   }
 }
 
+.manuscript-harness-toolbar {
+  margin-bottom: 20px;
+}
+
+.manuscript-harness-module-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.manuscript-harness-summary-grid,
+.manuscript-harness-breakdown-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.manuscript-harness-breakdown-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.manuscript-harness-summary-card,
+.manuscript-harness-breakdown-card {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.82);
+  padding: 12px 14px;
+}
+
+.manuscript-harness-summary-card span {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.manuscript-harness-summary-card strong {
+  display: block;
+  margin-top: 6px;
+  color: #0f172a;
+  font-size: 24px;
+}
+
+.manuscript-harness-summary-card.is-success {
+  border-color: rgba(22, 163, 74, 0.28);
+}
+
+.manuscript-harness-summary-card.is-warning {
+  border-color: rgba(249, 115, 22, 0.32);
+}
+
+.manuscript-harness-summary-card.is-danger {
+  border-color: rgba(220, 38, 38, 0.28);
+}
+
+.manuscript-harness-breakdown-card h4 {
+  margin: 0 0 10px;
+  color: #0f172a;
+}
+
+.manuscript-harness-breakdown-card dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.manuscript-harness-breakdown-card div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.manuscript-harness-breakdown-card dt,
+.manuscript-harness-breakdown-card dd {
+  margin: 0;
+  color: #475569;
+  font-size: 12px;
+}
+
+.manuscript-harness-breakdown-card dd {
+  color: #0f172a;
+  font-weight: 800;
+}
+
+.manuscript-harness-module-card {
+  min-height: 100%;
+}
+
+.manuscript-harness-state-pill {
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.manuscript-harness-snapshot {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.manuscript-harness-snapshot div {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.manuscript-harness-snapshot dt {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.manuscript-harness-snapshot dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.manuscript-harness-item-list {
+  display: grid;
+  gap: 10px;
+}
+
+.manuscript-harness-item {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-left: 4px solid #94a3b8;
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.8);
+  padding: 10px 12px;
+}
+
+.manuscript-harness-item div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.manuscript-harness-item span {
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.manuscript-harness-item p {
+  color: #475569;
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.manuscript-harness-item-meta,
+.manuscript-harness-evidence dl {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+
+.manuscript-harness-item-meta div,
+.manuscript-harness-evidence dl div {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  align-items: start;
+  justify-content: stretch;
+  gap: 8px;
+}
+
+.manuscript-harness-item-meta dt,
+.manuscript-harness-evidence dt {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.manuscript-harness-item-meta dd,
+.manuscript-harness-evidence dd {
+  margin: 0;
+  color: #334155;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.manuscript-harness-item-tags {
+  font-size: 12px;
+}
+
+.manuscript-harness-decision-badge {
+  display: inline-flex;
+  width: fit-content;
+  border: 1px solid rgba(59, 130, 246, 0.24);
+  border-radius: 999px;
+  background: rgba(219, 234, 254, 0.78);
+  color: #1e40af;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 9px;
+}
+
+.manuscript-harness-evidence {
+  margin-top: 8px;
+}
+
+.manuscript-harness-evidence summary {
+  cursor: pointer;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.manuscript-harness-decision-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.manuscript-harness-decision-actions button {
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 10px;
+}
+
+.manuscript-harness-decision-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.manuscript-harness-missed-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px dashed rgba(249, 115, 22, 0.42);
+  border-radius: 12px;
+  background: rgba(255, 247, 237, 0.72);
+}
+
+.manuscript-harness-missed-form h4 {
+  margin: 0;
+  color: #9a3412;
+}
+
+.manuscript-harness-missed-form label {
+  display: grid;
+  gap: 5px;
+}
+
+.manuscript-harness-missed-form label span {
+  color: #9a3412;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.manuscript-harness-missed-form input,
+.manuscript-harness-missed-form textarea {
+  border: 1px solid rgba(154, 52, 18, 0.22);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.manuscript-harness-missed-form textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+.manuscript-harness-missed-form button {
+  justify-self: start;
+}
+
+.manuscript-harness-item.is-hit {
+  border-left-color: #16a34a;
+}
+
+.manuscript-harness-item.is-manual_added,
+.manuscript-harness-item.is-missed {
+  border-left-color: #f97316;
+}
+
+.manuscript-harness-item.is-false_positive {
+  border-left-color: #dc2626;
+}
+
+@media (max-width: 1024px) {
+  .manuscript-harness-summary-grid,
+  .manuscript-harness-breakdown-grid,
+  .manuscript-harness-module-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @keyframes manuscript-workbench-loading-pulse {
   0% {
     background-position: 200% 0;

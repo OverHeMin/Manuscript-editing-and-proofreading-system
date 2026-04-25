@@ -96,6 +96,7 @@ export interface ListReviewItemsInput {
   manuscriptId?: string;
   riskLevel?: NonNullable<ReviewItemRecord["risk_level"]>;
   reviewStatus?: ReviewItemReviewStatus;
+  includeDecided?: boolean;
 }
 
 export type DecideReviewItemInput =
@@ -264,7 +265,7 @@ export class ReviewItemsService {
 
     return [
       ...governedHits
-        .filter((item) => isGovernedHitQueueable(item))
+        .filter((item) => input.includeDecided || isGovernedHitQueueable(item))
         .map((item) => mapGovernedHitToReviewItem(item)),
       ...residualIssues
         .filter((issue) => isResidualIssueQueueable(issue))
