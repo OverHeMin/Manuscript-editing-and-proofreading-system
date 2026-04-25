@@ -728,6 +728,7 @@ export function createPersistentGovernanceRuntime(
   });
   const executionResolutionService = new ExecutionResolutionService({
     executionGovernanceService,
+    templateFamilyRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
@@ -854,6 +855,7 @@ export function createPersistentGovernanceRuntime(
   const editingService = new EditingService({
     manuscriptRepository,
     assetRepository,
+    templateFamilyRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,

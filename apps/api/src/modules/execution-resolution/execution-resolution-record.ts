@@ -2,11 +2,13 @@ import type {
   EditorialRuleRecord,
   EditorialRuleSetRecord,
 } from "../editorial-rules/editorial-rule-record.ts";
+import type { ResolvedEditorialRule } from "../editorial-rules/editorial-rule-resolution-service.ts";
 import type {
   KnowledgeBindingRuleRecord,
   ModuleExecutionProfileRecord,
 } from "../execution-governance/execution-governance-record.ts";
 import type { KnowledgeRecord } from "../knowledge/knowledge-record.ts";
+import type { KnowledgeBindingMatchDetail } from "../shared/module-run-support.ts";
 import type {
   ModelSelectionWarning,
   ResolvedAiProviderConnectionSummary,
@@ -58,6 +60,22 @@ export interface ProviderReadinessRecord {
   issues: ProviderReadinessIssueRecord[];
 }
 
+export interface ResolvedExecutionKnowledgeSelectionRecord {
+  knowledge_item: KnowledgeRecord;
+  match_source:
+    | "binding_rule"
+    | "template_binding"
+    | "dynamic_routing"
+    | "knowledge_item_binding";
+  match_source_id?: string;
+  binding_rule_id?: string;
+  match_reasons: string[];
+  binding_priority?: number;
+  retrieval_score?: number;
+  primary_binding?: KnowledgeBindingMatchDetail;
+  binding_matches?: KnowledgeBindingMatchDetail[];
+}
+
 export interface ResolvedExecutionBundleRecord {
   profile: ModuleExecutionProfileRecord;
   runtime_binding?: RuntimeBindingRecord;
@@ -67,6 +85,7 @@ export interface ResolvedExecutionBundleRecord {
   module_template: ModuleTemplateRecord;
   rule_set: EditorialRuleSetRecord;
   rules: EditorialRuleRecord[];
+  resolved_rules: ResolvedEditorialRule[];
   prompt_template: PromptTemplateRecord;
   skill_packages: SkillPackageRecord[];
   resolved_model: ModelRegistryRecord;
@@ -77,5 +96,6 @@ export interface ResolvedExecutionBundleRecord {
   warnings: ModelSelectionWarning[];
   knowledge_binding_rules: KnowledgeBindingRuleRecord[];
   knowledge_items: KnowledgeRecord[];
+  knowledge_selections: ResolvedExecutionKnowledgeSelectionRecord[];
   runtime_binding_readiness: RuntimeBindingReadinessObservationRecord;
 }

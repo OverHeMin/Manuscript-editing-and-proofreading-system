@@ -1,5 +1,8 @@
 import type { RoleKey } from "../../users/roles.ts";
-import type { ModuleExecutionMode } from "@medical/contracts";
+import type {
+  ManuscriptQualityPackageKind,
+  ModuleExecutionMode,
+} from "@medical/contracts";
 import type { AiGatewayService } from "../ai-gateway/ai-gateway-service.ts";
 import type { ResolvedModelSelection } from "../ai-gateway/ai-gateway-service.ts";
 import type { KnowledgeRecord } from "../knowledge/knowledge-record.ts";
@@ -45,7 +48,48 @@ export interface DynamicKnowledgeSelection {
   matchSource: "template_binding" | "dynamic_routing";
   matchSourceId?: string;
   matchReasons: string[];
+  bindingPriority?: number;
+  primaryBinding?: KnowledgeBindingMatchDetail;
+  bindingMatches?: KnowledgeBindingMatchDetail[];
   retrievalScore?: number;
+}
+
+export interface ActiveQualityPackageBindingContext {
+  packageId: string;
+  packageKind: ManuscriptQualityPackageKind;
+}
+
+interface ResolvedKnowledgeBindingMatch {
+  usesBinding: boolean;
+  matchReasons: string[];
+  matchSourceId?: string;
+  bindingPriority: number;
+  primaryBinding?: KnowledgeBindingMatchDetail;
+  bindingMatches: KnowledgeBindingMatchDetail[];
+}
+
+export interface KnowledgeBindingMatchDetail {
+  reason:
+    | "binding_rule"
+    | "template_family"
+    | "module_template"
+    | "journal_template"
+    | "general_package"
+    | "medical_package"
+    | "knowledge_item_binding";
+  sourceId: string;
+  priority: number;
+}
+
+interface MatchedKnowledgeBindingReason {
+  reason:
+    | "template_family"
+    | "module_template"
+    | "journal_template"
+    | "general_package"
+    | "medical_package";
+  sourceId: string;
+  priority: number;
 }
 
 export interface ModuleExecutionResult<TJob, TAsset> {
@@ -123,6 +167,8 @@ export function selectApprovedDynamicKnowledge(
     template: ModuleTemplateRecord;
     knowledgeItems: KnowledgeRecord[];
     retrievalPreset?: RetrievalPresetRecord;
+    qualityPackageVersionIds?: string[];
+    activeQualityPackages?: readonly ActiveQualityPackageBindingContext[];
   },
 ): DynamicKnowledgeSelection[] {
   const candidates = input.knowledgeItems
@@ -137,25 +183,28 @@ export function selectApprovedDynamicKnowledge(
         record.routing.manuscript_types === "any" ||
         record.routing.manuscript_types.includes(input.manuscript.manuscript_type),
     )
-    .filter(
-      (record) =>
-        !record.template_bindings ||
-        record.template_bindings.length === 0 ||
-        record.template_bindings.includes(input.template.id) ||
-        record.template_bindings.includes(input.manuscript.current_template_family_id ?? ""),
-    )
-    .reduce<DynamicKnowledgeSelection[]>((result, knowledgeItem) => {
-      const templateBindingSourceId = resolveTemplateBindingSourceId({
+    .reduce<
+      Array<{
+        selection: DynamicKnowledgeSelection;
+        bindingPriority: number;
+      }>
+    >((result, knowledgeItem) => {
+      const bindingMatch = resolveKnowledgeBindingMatch({
         manuscript: input.manuscript,
         template: input.template,
         knowledgeItem,
+        qualityPackageVersionIds: input.qualityPackageVersionIds,
+        activeQualityPackages: input.activeQualityPackages,
       });
-      const usesTemplateBinding = templateBindingSourceId != null;
+      if (!bindingMatch) {
+        return result;
+      }
+
       const retrievalScore = input.retrievalPreset
         ? scoreKnowledgeForPreset({
             knowledgeItem,
             retrievalPreset: input.retrievalPreset,
-            usesTemplateBinding,
+            bindingPriority: bindingMatch.bindingPriority,
           })
         : undefined;
       if (input.retrievalPreset && retrievalScore === undefined) {
@@ -163,62 +212,317 @@ export function selectApprovedDynamicKnowledge(
       }
 
       result.push({
-        knowledgeItem,
-        matchSource: usesTemplateBinding ? "template_binding" : "dynamic_routing",
-        ...(templateBindingSourceId ? { matchSourceId: templateBindingSourceId } : {}),
-        matchReasons: [
-          ...(knowledgeItem.routing.module_scope === input.module ? ["module"] : []),
-          ...(
-            knowledgeItem.routing.manuscript_types !== "any" &&
-            knowledgeItem.routing.manuscript_types.includes(
-              input.manuscript.manuscript_type,
-            )
-              ? ["manuscript_type"]
-              : []
-          ),
-          ...(usesTemplateBinding ? ["template_binding"] : ["dynamic_routing"]),
-        ],
-        ...(retrievalScore !== undefined ? { retrievalScore } : {}),
+        selection: {
+          knowledgeItem,
+          matchSource: bindingMatch.usesBinding
+            ? "template_binding"
+            : "dynamic_routing",
+          ...(bindingMatch.matchSourceId
+            ? { matchSourceId: bindingMatch.matchSourceId }
+            : {}),
+          matchReasons: [
+            ...(knowledgeItem.routing.module_scope === input.module ? ["module"] : []),
+            ...(
+              knowledgeItem.routing.manuscript_types !== "any" &&
+              knowledgeItem.routing.manuscript_types.includes(
+                input.manuscript.manuscript_type,
+              )
+                ? ["manuscript_type"]
+                : []
+            ),
+            ...(bindingMatch.usesBinding
+              ? bindingMatch.matchReasons
+              : ["dynamic_routing"]),
+          ],
+          ...(bindingMatch.bindingPriority > 0
+            ? { bindingPriority: bindingMatch.bindingPriority }
+            : {}),
+          ...(bindingMatch.primaryBinding
+            ? { primaryBinding: bindingMatch.primaryBinding }
+            : {}),
+          ...(bindingMatch.bindingMatches.length > 0
+            ? { bindingMatches: bindingMatch.bindingMatches }
+            : {}),
+          ...(retrievalScore !== undefined ? { retrievalScore } : {}),
+        },
+        bindingPriority: bindingMatch.bindingPriority,
       });
 
       return result;
     }, []);
 
   if (!input.retrievalPreset) {
-    return candidates.sort((left, right) =>
-      left.knowledgeItem.id.localeCompare(right.knowledgeItem.id),
-    );
+    return candidates
+      .sort(
+        (left, right) =>
+          right.bindingPriority - left.bindingPriority ||
+          left.selection.knowledgeItem.id.localeCompare(
+            right.selection.knowledgeItem.id,
+          ),
+      )
+      .map((candidate) => candidate.selection);
   }
 
   return candidates
     .sort(
       (left, right) =>
-        (right.retrievalScore ?? 0) - (left.retrievalScore ?? 0) ||
-        left.knowledgeItem.id.localeCompare(right.knowledgeItem.id),
+        (right.selection.retrievalScore ?? 0) - (left.selection.retrievalScore ?? 0) ||
+        right.bindingPriority - left.bindingPriority ||
+        left.selection.knowledgeItem.id.localeCompare(
+          right.selection.knowledgeItem.id,
+        ),
     )
-    .slice(0, input.retrievalPreset.top_k);
+    .slice(0, input.retrievalPreset.top_k)
+    .map((candidate) => candidate.selection);
 }
 
-function resolveTemplateBindingSourceId(input: {
+function resolveKnowledgeBindingMatch(input: {
   manuscript: ManuscriptRecord;
   template: ModuleTemplateRecord;
   knowledgeItem: KnowledgeRecord;
-}): string | undefined {
-  const bindings = input.knowledgeItem.template_bindings;
-  if (!bindings || bindings.length === 0) {
-    return undefined;
+  qualityPackageVersionIds?: string[];
+  activeQualityPackages?: readonly ActiveQualityPackageBindingContext[];
+}): ResolvedKnowledgeBindingMatch | undefined {
+  const matchedReasons: MatchedKnowledgeBindingReason[] = [];
+  const templateFamilyId = input.manuscript.current_template_family_id;
+  const journalTemplateId = input.manuscript.current_journal_template_id;
+  const qualityPackageVersionIds = new Set(input.qualityPackageVersionIds ?? []);
+  const activeQualityPackages = input.activeQualityPackages ?? [];
+  const bindingTargets = input.knowledgeItem.binding_targets;
+
+  if (hasStructuredBindingTargets(bindingTargets)) {
+    if (
+      !pushStructuredBindingMatch({
+        targetIds: bindingTargets?.template_family_ids,
+        activeId: templateFamilyId,
+        reason: "template_family",
+        priority: 1,
+        matchedReasons,
+      })
+    ) {
+      return undefined;
+    }
+    if (
+      !pushStructuredBindingMatch({
+        targetIds: bindingTargets?.module_template_ids,
+        activeId: input.template.id,
+        reason: "module_template",
+        priority: 2,
+        matchedReasons,
+      })
+    ) {
+      return undefined;
+    }
+    if (
+      !pushStructuredBindingMatch({
+        targetIds: bindingTargets?.journal_template_ids,
+        activeId: journalTemplateId,
+        reason: "journal_template",
+        priority: 7,
+        matchedReasons,
+      })
+    ) {
+      return undefined;
+    }
+    if (
+      !pushPackageBindingMatch({
+        targetIds: bindingTargets?.general_package_ids,
+        activeVersionIds: qualityPackageVersionIds,
+        activeQualityPackages,
+        reason: "general_package",
+        matchedReasons,
+      })
+    ) {
+      return undefined;
+    }
+    if (
+      !pushPackageBindingMatch({
+        targetIds: bindingTargets?.medical_package_ids,
+        activeVersionIds: qualityPackageVersionIds,
+        activeQualityPackages,
+        reason: "medical_package",
+        matchedReasons,
+      })
+    ) {
+      return undefined;
+    }
+  } else {
+    const legacyTemplateBindings =
+      input.knowledgeItem.template_bindings?.filter(
+        (binding) => typeof binding === "string" && binding.trim().length > 0,
+      ) ?? [];
+    const legacyJournalTemplateId =
+      input.knowledgeItem.projection_source?.projection_context?.journal_template_id;
+    if (legacyJournalTemplateId) {
+      if (journalTemplateId !== legacyJournalTemplateId) {
+        return undefined;
+      }
+      matchedReasons.push({
+        reason: "journal_template",
+        sourceId: `journal_template:${legacyJournalTemplateId}`,
+        priority: 7,
+      });
+    }
+    if (legacyTemplateBindings.length > 0) {
+      const legacyTemplateMatches = resolveLegacyTemplateBindingMatches({
+        manuscript: input.manuscript,
+        template: input.template,
+        templateBindings: legacyTemplateBindings,
+      });
+      if (legacyTemplateMatches.length === 0) {
+        return undefined;
+      }
+      matchedReasons.push(...legacyTemplateMatches);
+    }
   }
 
-  if (bindings.includes(input.template.id)) {
-    return `template:${input.template.id}`;
+  if (matchedReasons.length === 0) {
+    return {
+      usesBinding: false,
+      matchReasons: [],
+      bindingPriority: 0,
+      bindingMatches: [],
+    };
+  }
+
+  const primaryMatch = matchedReasons.reduce((highest, current) =>
+    current.priority > highest.priority ? current : highest,
+  );
+
+  return {
+    usesBinding: true,
+    matchReasons: dedupeMatchReasons(matchedReasons),
+    matchSourceId: primaryMatch.sourceId,
+    bindingPriority: primaryMatch.priority,
+    primaryBinding: toKnowledgeBindingMatchDetail(primaryMatch),
+    bindingMatches: matchedReasons.map(toKnowledgeBindingMatchDetail),
+  };
+}
+
+function hasStructuredBindingTargets(
+  bindingTargets: KnowledgeRecord["binding_targets"] | undefined,
+): boolean {
+  return Boolean(
+    bindingTargets?.template_family_ids?.length ||
+      bindingTargets?.module_template_ids?.length ||
+      bindingTargets?.journal_template_ids?.length ||
+      bindingTargets?.general_package_ids?.length ||
+      bindingTargets?.medical_package_ids?.length,
+  );
+}
+
+function pushStructuredBindingMatch(input: {
+  targetIds: readonly string[] | undefined;
+  activeId: string | undefined;
+  reason: MatchedKnowledgeBindingReason["reason"];
+  priority: number;
+  matchedReasons: MatchedKnowledgeBindingReason[];
+}): boolean {
+  const targetIds = input.targetIds ?? [];
+  if (targetIds.length === 0) {
+    return true;
+  }
+
+  if (!input.activeId || !targetIds.includes(input.activeId)) {
+    return false;
+  }
+
+  input.matchedReasons.push({
+    reason: input.reason,
+    sourceId: `${input.reason}:${input.activeId}`,
+    priority: input.priority,
+  });
+  return true;
+}
+
+function pushPackageBindingMatch(input: {
+  targetIds: readonly string[] | undefined;
+  activeVersionIds: ReadonlySet<string>;
+  activeQualityPackages: readonly ActiveQualityPackageBindingContext[];
+  reason: "general_package" | "medical_package";
+  matchedReasons: MatchedKnowledgeBindingReason[];
+}): boolean {
+  const targetIds = input.targetIds ?? [];
+  if (targetIds.length === 0) {
+    return true;
+  }
+
+  const exactVersionMatchId = targetIds.find((targetId) =>
+    input.activeVersionIds.has(targetId),
+  );
+  if (exactVersionMatchId) {
+    input.matchedReasons.push({
+      reason: input.reason,
+      sourceId: `${input.reason}:${exactVersionMatchId}`,
+      priority: input.reason === "general_package" ? 4 : 6,
+    });
+    return true;
+  }
+
+  const expectedPackageKind =
+    input.reason === "general_package"
+      ? "general_style_package"
+      : "medical_analyzer_package";
+  if (!targetIds.includes(expectedPackageKind)) {
+    return false;
+  }
+
+  const kindMatchedPackage = input.activeQualityPackages.find(
+    (record) => record.packageKind === expectedPackageKind,
+  );
+  if (!kindMatchedPackage) {
+    return false;
+  }
+
+  input.matchedReasons.push({
+    reason: input.reason,
+    sourceId: `${input.reason}_kind:${expectedPackageKind}:${kindMatchedPackage.packageId}`,
+    priority: input.reason === "general_package" ? 3 : 5,
+  });
+  return true;
+}
+
+function resolveLegacyTemplateBindingMatches(input: {
+  manuscript: ManuscriptRecord;
+  template: ModuleTemplateRecord;
+  templateBindings: readonly string[];
+}): MatchedKnowledgeBindingReason[] {
+  const matches: MatchedKnowledgeBindingReason[] = [];
+
+  if (input.templateBindings.includes(input.template.id)) {
+    matches.push({
+      reason: "module_template",
+      sourceId: `module_template:${input.template.id}`,
+      priority: 2,
+    });
   }
 
   const templateFamilyId = input.manuscript.current_template_family_id;
-  if (templateFamilyId && bindings.includes(templateFamilyId)) {
-    return `template_family:${templateFamilyId}`;
+  if (templateFamilyId && input.templateBindings.includes(templateFamilyId)) {
+    matches.push({
+      reason: "template_family",
+      sourceId: `template_family:${templateFamilyId}`,
+      priority: 1,
+    });
   }
 
-  return undefined;
+  return matches;
+}
+
+function dedupeMatchReasons(
+  matchedReasons: readonly MatchedKnowledgeBindingReason[],
+): string[] {
+  return [...new Set(matchedReasons.map((reason) => reason.reason))];
+}
+
+function toKnowledgeBindingMatchDetail(
+  reason: MatchedKnowledgeBindingReason,
+): KnowledgeBindingMatchDetail {
+  return {
+    reason: reason.reason,
+    sourceId: reason.sourceId,
+    priority: reason.priority,
+  };
 }
 
 export async function prepareModuleExecution(
@@ -277,7 +581,7 @@ export async function prepareModuleExecution(
 function scoreKnowledgeForPreset(input: {
   knowledgeItem: KnowledgeRecord;
   retrievalPreset?: RetrievalPresetRecord;
-  usesTemplateBinding: boolean;
+  bindingPriority: number;
 }): number | undefined {
   if (!input.retrievalPreset) {
     return undefined;
@@ -295,15 +599,12 @@ function scoreKnowledgeForPreset(input: {
     return undefined;
   }
 
-  let score = input.usesTemplateBinding ? 0.55 : 0.5;
+  let score = 0.5 + resolveBindingPriorityBoost(input.bindingPriority);
   if (sectionFilters.length > 0) {
     score += 0.2;
   }
   if (riskTagFilters.length > 0) {
     score += 0.2;
-  }
-  if (input.usesTemplateBinding) {
-    score += 0.1;
   }
 
   if (
@@ -314,6 +615,27 @@ function scoreKnowledgeForPreset(input: {
   }
 
   return Number(score.toFixed(3));
+}
+
+function resolveBindingPriorityBoost(bindingPriority: number): number {
+  switch (bindingPriority) {
+    case 1:
+      return 0.15;
+    case 2:
+      return 0.18;
+    case 3:
+      return 0.21;
+    case 4:
+      return 0.24;
+    case 5:
+      return 0.27;
+    case 6:
+      return 0.3;
+    case 7:
+      return 0.33;
+    default:
+      return 0;
+  }
 }
 
 function normalizeFilters(values: readonly string[] | undefined): string[] {

@@ -9,12 +9,16 @@ type QueryableClient = {
 
 export const SYSTEM_ROLES: RoleSeed[] = [
   { key: "admin", description: "Platform administrator with release and system controls." },
-  { key: "screener", description: "Handles screening workflows and screening reports." },
-  { key: "editor", description: "Handles medical editing workflows and edited manuscripts." },
-  { key: "proofreader", description: "Handles proofreading review and final issue reporting." },
+  { key: "screener", description: "Legacy screening-only compatibility role." },
+  {
+    key: "editor",
+    description: "Internal manuscript operator for screening, editing, and proofreading workflows.",
+  },
+  { key: "proofreader", description: "Legacy proofreading-only compatibility role." },
   {
     key: "knowledge_reviewer",
-    description: "Reviews knowledge items and learning candidates before approval.",
+    description:
+      "Internal knowledge governance operator with manuscript-operator access and knowledge review controls.",
   },
   { key: "user", description: "Standard manuscript submitter and case owner." },
 ];

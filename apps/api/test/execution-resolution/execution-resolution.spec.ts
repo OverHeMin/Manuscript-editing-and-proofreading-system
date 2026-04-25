@@ -14,7 +14,10 @@ import {
   InMemoryModelRoutingPolicyRepository,
 } from "../../src/modules/model-registry/in-memory-model-registry-repository.ts";
 import { InMemoryPromptSkillRegistryRepository } from "../../src/modules/prompt-skill-registry/in-memory-prompt-skill-repository.ts";
-import { InMemoryModuleTemplateRepository } from "../../src/modules/templates/in-memory-template-family-repository.ts";
+import {
+  InMemoryModuleTemplateRepository,
+  InMemoryTemplateFamilyRepository,
+} from "../../src/modules/templates/in-memory-template-family-repository.ts";
 import { InMemoryExecutionGovernanceRepository } from "../../src/modules/execution-governance/in-memory-execution-governance-repository.ts";
 import { ExecutionGovernanceService } from "../../src/modules/execution-governance/execution-governance-service.ts";
 import {
@@ -41,6 +44,7 @@ function createExecutionResolutionHarness(input?: {
 }) {
   const executionGovernanceRepository = new InMemoryExecutionGovernanceRepository();
   const editorialRuleRepository = new InMemoryEditorialRuleRepository();
+  const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
   const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
   const promptSkillRegistryRepository = new InMemoryPromptSkillRegistryRepository();
   const knowledgeRepository = new InMemoryKnowledgeRepository();
@@ -108,6 +112,7 @@ function createExecutionResolutionHarness(input?: {
   });
   const executionResolutionService = new ExecutionResolutionService({
     executionGovernanceService,
+    templateFamilyRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
@@ -124,6 +129,7 @@ function createExecutionResolutionHarness(input?: {
   return {
     executionGovernanceService,
     editorialRuleRepository,
+    templateFamilyRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
@@ -187,6 +193,7 @@ async function saveActivePolicy(input: {
 test("execution resolution expands the active profile into a concrete runtime bundle", async () => {
   const {
     executionGovernanceService,
+    templateFamilyRepository,
     editorialRuleRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
@@ -317,6 +324,7 @@ test("execution resolution expands the active profile into a concrete runtime bu
 test("execution resolution summarizes the operator-facing governed context across the three manuscript desks", async () => {
   const {
     executionGovernanceService,
+    templateFamilyRepository,
     editorialRuleRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
@@ -470,6 +478,10 @@ test("execution resolution summarizes the operator-facing governed context acros
     resolved_model_id: "model-editing-1",
     model_source: "template_family_policy",
     provider_readiness_status: "warning",
+    resolved_rule_count: 0,
+    knowledge_selection_count: 0,
+    resolved_rules: [],
+    knowledge_selections: [],
     warning_codes: ["legacy_unbound"],
   });
 });
@@ -625,6 +637,7 @@ test("execution resolution reads the approved revision when a bound asset has a 
 test("execution resolution reports runtime binding readiness when observation succeeds", async () => {
   const {
     executionGovernanceService,
+    templateFamilyRepository,
     editorialRuleRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
@@ -666,6 +679,7 @@ test("execution resolution reports runtime binding readiness when observation su
   };
   const executionResolutionService = new ExecutionResolutionService({
     executionGovernanceService,
+    templateFamilyRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
@@ -792,6 +806,7 @@ test("execution resolution surfaces missing runtime binding readiness reports wi
   };
   const {
     executionGovernanceService,
+    templateFamilyRepository,
     editorialRuleRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
@@ -802,6 +817,7 @@ test("execution resolution surfaces missing runtime binding readiness reports wi
   } = createExecutionResolutionHarness();
   const executionResolutionService = new ExecutionResolutionService({
     executionGovernanceService,
+    templateFamilyRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
@@ -889,6 +905,7 @@ test("execution resolution surfaces missing runtime binding readiness reports wi
 test("execution resolution fails open when runtime binding readiness observation throws unexpectedly", async () => {
   const {
     executionGovernanceService,
+    templateFamilyRepository,
     editorialRuleRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
@@ -899,6 +916,7 @@ test("execution resolution fails open when runtime binding readiness observation
   } = createExecutionResolutionHarness();
   const executionResolutionService = new ExecutionResolutionService({
     executionGovernanceService,
+    templateFamilyRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,

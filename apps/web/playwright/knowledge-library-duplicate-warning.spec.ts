@@ -300,6 +300,88 @@ test("knowledge library blocks continue-anyway when the draft changed after the 
   expect(submitAttemptCount).toBe(0);
 });
 
+test("knowledge library blocks classic submit on saved evidence gate issues before duplicate-check", async ({
+  page,
+  request,
+}) => {
+  const seededDraft = await seedKnowledgeLibraryDraft(request, {
+    label: `knowledge-evidence-gate-${Date.now()}`,
+  });
+  const adminCookie = await loginApiSession(request, "dev.admin");
+  const replaceResponse = await request.post(
+    `${apiBaseUrl}/api/v1/knowledge/revisions/${seededDraft.revisionId}/content-blocks/replace`,
+    {
+      headers: {
+        Cookie: adminCookie,
+        "Content-Type": "application/json",
+      },
+      data: {
+        blocks: [
+          {
+            blockType: "table_block",
+            orderNo: 0,
+            contentPayload: {
+              capture_mode: "word_html_exact",
+              exact_capture_failure_codes: ["run_style_incomplete"],
+            },
+            tableSemantics: {
+              capture_mode: "word_html_exact",
+              exact_capture_authoritative: false,
+              exact_capture_failure_codes: ["run_style_incomplete"],
+            },
+          },
+        ],
+      },
+    },
+  );
+  expect(replaceResponse.ok()).toBeTruthy();
+  await loginBrowserSession(page, request, "dev.admin");
+
+  let duplicateCheckRequestCount = 0;
+  let submitAttemptCount = 0;
+
+  await page.route("**/api/v1/knowledge/duplicate-check", async (route) => {
+    duplicateCheckRequestCount += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: "[]",
+    });
+  });
+  await page.route("**/api/v1/knowledge/revisions/*/submit", async (route) => {
+    submitAttemptCount += 1;
+    await route.abort();
+  });
+
+  await page.goto(
+    `/#knowledge-library?knowledgeView=classic&assetId=${seededDraft.assetId}&revisionId=${seededDraft.revisionId}`,
+    {
+      waitUntil: "domcontentloaded",
+    },
+  );
+
+  const statusRow = page.locator(".knowledge-library-duplicate-status-row");
+  const evidenceGate = page.locator('[data-entry-evidence-gate="knowledge"]');
+  const errorBanner = page.locator(".knowledge-library-banner-error");
+  const submitButton = page.getByRole("button", { name: submitLabel, exact: true });
+
+  await expect(page.locator(".knowledge-library-grid-toolbar")).toBeVisible();
+  await expect(statusRow).toContainText("No strong duplicate signals");
+  await expect(evidenceGate).toContainText("高精度证据预检");
+  await expect(evidenceGate).toContainText("表格块 #1");
+  await expect(evidenceGate).toContainText("阻断提交审核");
+  await expect(evidenceGate).toContainText("字形强调信息不完整");
+
+  const duplicateCheckCountBeforeClick = duplicateCheckRequestCount;
+
+  await submitButton.click();
+
+  await expect(errorBanner).toContainText("表格块 #1未满足提交审核条件");
+  await expect(errorBanner).toContainText("字形强调信息不完整");
+  await expect.poll(() => duplicateCheckRequestCount).toBe(duplicateCheckCountBeforeClick);
+  await expect.poll(() => submitAttemptCount).toBe(0);
+});
+
 async function seedKnowledgeLibraryDraft(
   request: APIRequestContext,
   input: { label: string },

@@ -177,6 +177,9 @@ import {
 } from "../modules/editorial-rules/index.ts";
 import {
   createEditingApi,
+  EditingSlotGovernanceUnavailableError,
+  EditingSlotManualResolutionInvalidError,
+  EditingSlotNotFoundError,
   EditingService,
 } from "../modules/editing/index.ts";
 import {
@@ -206,6 +209,7 @@ import {
   KnowledgeSemanticLayerNotFoundError,
   KnowledgeSemanticLayerService,
   KnowledgeRevisionNotFoundError,
+  KnowledgeRevisionReviewGateError,
   KnowledgeService,
   KnowledgeStatusTransitionError,
   KnowledgeUploadNotFoundError,
@@ -447,7 +451,10 @@ import {
   LastActiveAdminDisableError,
   UserAdminNotFoundError,
 } from "../users/index.ts";
-import type { RoleKey } from "../users/roles.ts";
+import {
+  INTERNAL_TEAM_ROLE_KEYS,
+  type RoleKey,
+} from "../users/roles.ts";
 
 type RouteResponse<TBody> = {
   status: number;
@@ -460,6 +467,15 @@ class RoleRouteAuthorizationError extends Error {
   constructor(role: RoleKey, routeSurface: string) {
     super(`Role "${role}" is not allowed to access "${routeSurface}".`);
     this.name = "RoleRouteAuthorizationError";
+  }
+}
+
+class InternalTeamRoleSelectionError extends Error {
+  constructor(role: string) {
+    super(
+      `Role "${role}" is not allowed for internal team accounts. Allowed roles: ${INTERNAL_TEAM_ROLE_KEYS.join(", ")}.`,
+    );
+    this.name = "InternalTeamRoleSelectionError";
   }
 }
 
@@ -608,6 +624,9 @@ type HttpRouteMatch =
     }
   | {
       route: "modules-editing-run";
+    }
+  | {
+      route: "modules-editing-save-slot-resolution";
     }
   | {
       route: "modules-proofreading-draft";
@@ -865,6 +884,10 @@ type HttpRouteMatch =
     }
   | {
       route: "templates-create-journal-template";
+    }
+  | {
+      route: "templates-update-journal-template";
+      journalTemplateProfileId: string;
     }
   | {
       route: "templates-list-content-modules";
@@ -1311,6 +1334,7 @@ const MANUSCRIPT_SURFACE_ROLES: readonly RoleKey[] = [
   "screener",
   "editor",
   "proofreader",
+  "knowledge_reviewer",
 ];
 
 export interface CreateApiHttpServerOptions {
@@ -1767,6 +1791,7 @@ export function createInMemoryApiRuntime(input: {
   });
   const executionResolutionService = new ExecutionResolutionService({
     executionGovernanceService,
+    templateFamilyRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
@@ -2016,6 +2041,7 @@ export function createInMemoryApiRuntime(input: {
   const editingService = new EditingService({
     manuscriptRepository,
     assetRepository,
+    templateFamilyRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     knowledgeRepository,
@@ -2706,6 +2732,152 @@ function seedDemoWorkbenchData(input: {
     manuscript_type: "clinical_study",
     name: "Seeded Clinical Study Family",
     status: "active",
+  });
+  void input.templateFamilyRepository.saveJournalTemplateProfile({
+    id: "journal-template-seeded-1",
+    template_family_id: "family-seeded-1",
+    journal_key: "seeded-clinical-journal",
+    journal_name: "Seeded Clinical Journal Overlay",
+    status: "active",
+    target_model_version_id: "journal-template-seeded-1-v1",
+    target_model_version_no: 1,
+    journal_format_target_model: {
+      skeleton: [
+        "front_matter",
+        "title",
+        "abstract",
+        "keywords",
+        "body",
+        "figures_tables",
+        "references",
+      ],
+      target_blocks: [
+        {
+          block_key: "author_line",
+          label: "作者署名",
+          zone: "front_matter",
+          anchor: "after_title",
+          order: 10,
+          required: true,
+          repeatable: false,
+          enabled: true,
+          format_policy: { allow_auto_reorder: false },
+          content_source_policy: "must_harvest_existing",
+          completion_gate: "block_on_unresolved",
+        },
+        {
+          block_key: "affiliation_line",
+          label: "作者单位",
+          zone: "front_matter",
+          anchor: "after_author_line",
+          order: 20,
+          required: true,
+          repeatable: true,
+          enabled: true,
+          format_policy: { allow_auto_reorder: true },
+          content_source_policy: "must_harvest_existing",
+          completion_gate: "block_on_unresolved",
+        },
+        {
+          block_key: "funding_statement",
+          label: "基金项目",
+          zone: "front_matter",
+          anchor: "before_title",
+          order: 30,
+          required: false,
+          repeatable: true,
+          enabled: true,
+          format_policy: { allow_auto_reorder: false },
+          content_source_policy: "prefer_existing_with_manual_fill",
+          completion_gate: "warn_only",
+        },
+        {
+          block_key: "classification_code",
+          label: "中图分类号",
+          zone: "keywords",
+          anchor: "after_keywords",
+          order: 40,
+          required: false,
+          repeatable: false,
+          enabled: true,
+          format_policy: { allow_auto_reorder: false },
+          content_source_policy: "prefer_existing_with_manual_fill",
+          completion_gate: "warn_only",
+        },
+      ],
+    },
+    target_model_versions: [
+      {
+        version_id: "journal-template-seeded-1-v1",
+        version_no: 1,
+        created_at: "2026-03-31T07:56:30.000Z",
+        journal_format_target_model: {
+          skeleton: [
+            "front_matter",
+            "title",
+            "abstract",
+            "keywords",
+            "body",
+            "figures_tables",
+            "references",
+          ],
+          target_blocks: [
+            {
+              block_key: "author_line",
+              label: "作者署名",
+              zone: "front_matter",
+              anchor: "after_title",
+              order: 10,
+              required: true,
+              repeatable: false,
+              enabled: true,
+              format_policy: { allow_auto_reorder: false },
+              content_source_policy: "must_harvest_existing",
+              completion_gate: "block_on_unresolved",
+            },
+            {
+              block_key: "affiliation_line",
+              label: "作者单位",
+              zone: "front_matter",
+              anchor: "after_author_line",
+              order: 20,
+              required: true,
+              repeatable: true,
+              enabled: true,
+              format_policy: { allow_auto_reorder: true },
+              content_source_policy: "must_harvest_existing",
+              completion_gate: "block_on_unresolved",
+            },
+            {
+              block_key: "funding_statement",
+              label: "基金项目",
+              zone: "front_matter",
+              anchor: "before_title",
+              order: 30,
+              required: false,
+              repeatable: true,
+              enabled: true,
+              format_policy: { allow_auto_reorder: false },
+              content_source_policy: "prefer_existing_with_manual_fill",
+              completion_gate: "warn_only",
+            },
+            {
+              block_key: "classification_code",
+              label: "中图分类号",
+              zone: "keywords",
+              anchor: "after_keywords",
+              order: 40,
+              required: false,
+              repeatable: false,
+              enabled: true,
+              format_policy: { allow_auto_reorder: false },
+              content_source_policy: "prefer_existing_with_manual_fill",
+              completion_gate: "warn_only",
+            },
+          ],
+        },
+      },
+    ],
   });
 
   void input.moduleTemplateRepository.save({
@@ -4037,6 +4209,7 @@ async function handleRoute(
       const body = (await readJsonBody(req)) as Parameters<
         typeof userAdminApi.createUser
       >[0]["input"];
+      assertAllowedInternalTeamRole(body.role);
 
       return userAdminApi.createUser({
         actorId: session.user.id,
@@ -4058,6 +4231,7 @@ async function handleRoute(
       const body = (await readJsonBody(req)) as Parameters<
         typeof userAdminApi.updateUserProfile
       >[0]["input"];
+      assertAllowedInternalTeamRole(body.role);
 
       return userAdminApi.updateUserProfile({
         actorId: session.user.id,
@@ -4517,6 +4691,18 @@ async function handleRoute(
         actorRole: session.user.role,
       });
     }
+    case "modules-editing-save-slot-resolution": {
+      const session = await requirePermission(req, runtime, "workbench.editing");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.editingApi.saveSlotManualResolution
+      >[0];
+
+      return runtime.editingApi.saveSlotManualResolution({
+        ...body,
+        requestedBy: session.user.id,
+        actorRole: session.user.role,
+      });
+    }
     case "modules-proofreading-draft": {
       const session = await requirePermission(req, runtime, "workbench.proofreading");
       const body = (await readJsonBody(req)) as Parameters<
@@ -4830,7 +5016,6 @@ async function handleRoute(
       });
     }
     case "manuscript-quality-package-list": {
-      await requirePermission(req, runtime, "permissions.manage");
       const requestUrl = new URL(req.url ?? "/", "http://localhost");
       const input: NonNullable<
         Parameters<typeof runtime.manuscriptQualityPackageApi.listPackageVersions>[0]
@@ -4847,6 +5032,21 @@ async function handleRoute(
       const status = coalesceOptionalString(
         requestUrl.searchParams.get("status") ?? undefined,
       );
+
+      if (status === "published") {
+        const session = await runtime.authRuntime.requireSession(req);
+        const canReadPublishedPackages =
+          runtime.permissionGuard.can(session.user.role, "permissions.manage") ||
+          runtime.permissionGuard.can(
+            session.user.role,
+            "template-governance.manage",
+          );
+        if (!canReadPublishedPackages) {
+          runtime.permissionGuard.assert(session.user.role, "permissions.manage");
+        }
+      } else {
+        await requirePermission(req, runtime, "permissions.manage");
+      }
 
       if (packageKind) {
         input.packageKind = packageKind as typeof input.packageKind;
@@ -5051,6 +5251,14 @@ async function handleRoute(
           typeof runtime.templateApi.createJournalTemplateProfile
         >[0],
       );
+    case "templates-update-journal-template":
+      await requirePermission(req, runtime, "template-governance.manage");
+      return runtime.templateApi.updateJournalTemplateProfile({
+        journalTemplateProfileId: routeMatch.journalTemplateProfileId,
+        input: (await readJsonBody(req)) as Parameters<
+          typeof runtime.templateApi.updateJournalTemplateProfile
+        >[0]["input"],
+      });
     case "templates-create-template-composition-draft":
       await requirePermission(req, runtime, "template-governance.manage");
       return runtime.templateApi.createTemplateCompositionDraft(
@@ -6884,6 +7092,10 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "modules-editing-run" };
   }
 
+  if (method === "POST" && path === "/api/v1/modules/editing/slot-resolutions") {
+    return { route: "modules-editing-save-slot-resolution" };
+  }
+
   if (method === "POST" && path === "/api/v1/modules/proofreading/draft") {
     return { route: "modules-proofreading-draft" };
   }
@@ -7000,6 +7212,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
   if (method === "POST" && path === "/api/v1/templates/journal-templates") {
     return { route: "templates-create-journal-template" };
+  }
+
+  const updateJournalTemplateDraftMatch = path.match(
+    /^\/api\/v1\/templates\/journal-templates\/([^/]+)\/draft$/,
+  );
+  if (method === "POST" && updateJournalTemplateDraftMatch) {
+    return {
+      route: "templates-update-journal-template",
+      journalTemplateProfileId: updateJournalTemplateDraftMatch[1],
+    };
   }
 
   if (method === "POST" && path === "/api/v1/templates/template-compositions") {
@@ -8622,6 +8844,15 @@ function resolveWorkbenchPermissionForModule(
   }
 }
 
+function assertAllowedInternalTeamRole(role: unknown): asserts role is RoleKey {
+  if (
+    typeof role !== "string" ||
+    !(INTERNAL_TEAM_ROLE_KEYS as readonly string[]).includes(role)
+  ) {
+    throw new InternalTeamRoleSelectionError(String(role));
+  }
+}
+
 function mapManualFeedbackCategoryToFeedbackType(
   category: ManualFeedbackCategory,
 ): "manual_confirmation" | "manual_correction" | "manual_rejection" {
@@ -9002,7 +9233,9 @@ export function mapErrorToHttpResponse(
     error instanceof TemplateRetrievalGoldSetVersionValidationError ||
     error instanceof DuplicateUsernameError ||
     error instanceof LastActiveAdminDisableError ||
-    error instanceof LastActiveAdminDemotionError
+    error instanceof LastActiveAdminDemotionError ||
+    error instanceof EditingSlotGovernanceUnavailableError ||
+    error instanceof EditingSlotNotFoundError
   ) {
     return [409, { error: "state_conflict", message: error.message }];
   }
@@ -9015,6 +9248,7 @@ export function mapErrorToHttpResponse(
       error instanceof LearningHumanFinalAssetRequiredError ||
       error instanceof KnowledgeContentBlockOrderError ||
       error instanceof KnowledgeContentBlockPayloadInvalidError ||
+      error instanceof KnowledgeRevisionReviewGateError ||
       error instanceof LearningDeidentificationRequiredError ||
     error instanceof LearningCandidateEvidenceRequiredError ||
     error instanceof LearningSnapshotDeidentificationRequiredError ||
@@ -9043,9 +9277,11 @@ export function mapErrorToHttpResponse(
     error instanceof HarnessIntegrationValidationError ||
     error instanceof ReviewItemDecisionActionNotSupportedError ||
     error instanceof ReviewItemDecisionInputInvalidError ||
+    error instanceof EditingSlotManualResolutionInvalidError ||
     error instanceof ResidualIssueExecutionLogRequiredError ||
     error instanceof ResidualIssueSourceAssetRequiredError ||
     error instanceof ResidualLearningServiceDependencyRequiredError ||
+    error instanceof InternalTeamRoleSelectionError ||
     error instanceof ManuscriptBatchUploadLimitExceededError
   ) {
     return [400, { error: "invalid_request", message: error.message }];

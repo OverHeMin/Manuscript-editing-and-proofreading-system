@@ -15,7 +15,10 @@ import type { ResolvedEditorialRule } from "../editorial-rules/editorial-rule-re
 import {
   EditorialDocxTransformService,
 } from "../document-pipeline/editorial-docx-transform-service.ts";
-import type { DocumentStructureService } from "../document-pipeline/document-structure-service.ts";
+import type {
+  DocumentStructureObjectEvidence,
+  DocumentStructureService,
+} from "../document-pipeline/document-structure-service.ts";
 import type { AgentExecutionLogRecord } from "../agent-execution/agent-execution-record.ts";
 import {
   AgentExecutionLogNotFoundError,
@@ -1835,10 +1838,14 @@ export class ProofreadingService {
         version: entry.version,
       }),
     );
+    const objectRiskItems = buildProofreadingObjectRiskItems(
+      documentStructureSnapshot?.objects ?? [],
+    );
 
     return {
       inspectionResult: {
         ...proofreadingFindings,
+        riskItems: [...proofreadingFindings.riskItems, ...objectRiskItems],
         ...(qualityRun
           ? {
               qualityFindings: qualityRun.issues.map((issue) =>
@@ -2749,7 +2756,7 @@ function buildHumanConfirmationResidualHint(
       suggestion: decision.replacementText,
       rationale: decision.note ?? "Human rejected the proofreading issue.",
       source_stage: "model_residual",
-      signal_breakdown: buildHumanConfirmationResidualSignalBreakdown(decision),
+      signal_breakdown: buildProofreadingConfirmationSignalBreakdown(decision),
     };
   }
 
@@ -2762,7 +2769,7 @@ function buildHumanConfirmationResidualHint(
         decision.note ??
         "Human adjusted the proofreading issue before final publication.",
       source_stage: "model_residual",
-      signal_breakdown: buildHumanConfirmationResidualSignalBreakdown(decision),
+      signal_breakdown: buildProofreadingConfirmationSignalBreakdown(decision),
     };
   }
 
@@ -2774,42 +2781,11 @@ function buildHumanConfirmationResidualHint(
       rationale:
         decision.note ?? "The issue still requires manual confirmation.",
       source_stage: "model_residual",
-      signal_breakdown: buildHumanConfirmationResidualSignalBreakdown(decision),
+      signal_breakdown: buildProofreadingConfirmationSignalBreakdown(decision),
     };
   }
 
   return undefined;
-}
-
-function buildHumanConfirmationResidualSignalBreakdown(
-  decision: NormalizedProofreadingConfirmationDecision,
-): ResidualIssueSignalBreakdown {
-  return {
-    promotion_evidence: {
-      source: "proofreading_confirmation",
-      decision_action: mapHumanConfirmationResidualDecisionAction(decision.action),
-      ...(decision.category
-        ? {
-            correction_category: decision.category,
-          }
-        : {}),
-    },
-  };
-}
-
-function mapHumanConfirmationResidualDecisionAction(
-  action: NormalizedProofreadingConfirmationDecision["action"],
-): string {
-  switch (action) {
-    case "accepted":
-      return "accept";
-    case "accepted_with_manual_edit":
-      return "accept_and_edit";
-    case "rejected":
-      return "reject";
-    default:
-      return action;
-  }
 }
 
 function isResidualReviewItemRecord(
@@ -2845,6 +2821,53 @@ function mapConfirmationDecisionToResidualIssueType(
   }
 
   return "style_consistency_gap";
+}
+
+function buildProofreadingConfirmationSignalBreakdown(
+  decision: NormalizedProofreadingConfirmationDecision,
+): ResidualIssueSignalBreakdown {
+  return {
+    promotion_evidence: {
+      source: "proofreading_confirmation",
+      decision_action: mapProofreadingConfirmationPromotionAction(decision.action),
+      correction_category:
+        normalizeProofreadingCorrectionCategory(decision.category) ?? "style",
+    },
+  };
+}
+
+function mapProofreadingConfirmationPromotionAction(
+  action: NormalizedProofreadingConfirmationDecision["action"],
+): string {
+  switch (action) {
+    case "accepted":
+      return "accept";
+    case "accepted_with_manual_edit":
+      return "accept_and_edit";
+    case "rejected":
+      return "reject";
+    case "manual_only":
+      return "manual_only";
+    case "escalated":
+      return "escalated";
+    case "route_to_rule_candidate":
+      return "route_to_rule_candidate";
+    case "route_to_knowledge_candidate":
+      return "route_to_knowledge_candidate";
+    default:
+      return action;
+  }
+}
+
+function normalizeProofreadingCorrectionCategory(
+  value: string | undefined,
+): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : undefined;
 }
 
 function buildStoredProofreadingPlan(
@@ -3667,6 +3690,54 @@ function deriveProofreadingManuscriptFileName(
     : `${stem}-manuscript`;
 
   return `${manuscriptStem}.docx`;
+}
+
+function buildProofreadingObjectRiskItems(
+  objects: readonly DocumentStructureObjectEvidence[],
+): ProofreadingInspectionResult["riskItems"] {
+  return objects.map((item) => ({
+    reason: [
+      `高风险对象待人工核对：${formatProofreadingObjectKind(item.object_kind)}`,
+      `原始对象=${buildProofreadingObjectLabel(item)}`,
+      item.evidence_text ? `提取证据=${item.evidence_text}` : undefined,
+      item.surrounding_text ? `临近文本=${item.surrounding_text}` : undefined,
+      `意图目标=${item.intended_target ?? "未明确"}`,
+      "降级原因=object_type_not_safe",
+      `定位=${item.source_locator}`,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join("；"),
+    severity: "error",
+  }));
+}
+
+function buildProofreadingObjectLabel(
+  item: DocumentStructureObjectEvidence,
+): string {
+  const parts = [formatProofreadingObjectKind(item.object_kind), item.original_tag];
+  if (item.relationship_id) {
+    parts.push(item.relationship_id);
+  }
+  return parts.join("/");
+}
+
+function formatProofreadingObjectKind(
+  kind: DocumentStructureObjectEvidence["object_kind"],
+): string {
+  switch (kind) {
+    case "image":
+      return "图片对象";
+    case "equation":
+      return "公式对象";
+    case "embedded_object":
+      return "嵌入对象";
+    case "drawing":
+      return "绘图对象";
+    case "chart":
+      return "图表对象";
+    default:
+      return "未知对象";
+  }
 }
 
 function renderProofreadingReport(

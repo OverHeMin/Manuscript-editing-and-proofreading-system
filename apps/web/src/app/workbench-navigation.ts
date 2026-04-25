@@ -57,7 +57,7 @@ const GROUP_META: Record<
   },
   "core-workbench": {
     label: "核心流程",
-    description: "初筛、编辑、校对与知识库主线协同",
+    description: "初筛、编辑、校对与按角色开放的核心工作区",
     prominence: "primary",
   },
   "supporting-workbench": {

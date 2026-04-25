@@ -1,4 +1,11 @@
 import type { ReactNode } from "react";
+import type {
+  GovernedExecutionContextSummary,
+  GovernedExecutionModuleSummary,
+  GovernedKnowledgeBindingMatchSummary,
+  GovernedKnowledgeSelectionSummary,
+  GovernedResolvedRuleSummary,
+} from "@medical/contracts";
 import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import { resolveBrowserApiUrl } from "../../lib/browser-http-client.ts";
 import type { ManualFeedbackCategory } from "../feedback-governance/index.ts";
@@ -36,7 +43,10 @@ import {
   formatWorkbenchAssetTypeLabel,
   resolveWorkbenchAssetDownloadLabel,
 } from "./manuscript-workbench-asset-labels.ts";
-import { buildWorkbenchAssetDetailHref } from "./manuscript-workbench-detail.tsx";
+import {
+  buildEditingCompletionGateSummary,
+  buildWorkbenchAssetDetailHref,
+} from "./manuscript-workbench-detail.tsx";
 import type { ManuscriptWorkbenchHighRiskReviewItemViewModel } from "./manuscript-workbench-high-risk-review.ts";
 import type {
   ManuscriptWorkbenchKnowledgeReferenceViewModel,
@@ -251,6 +261,96 @@ export function buildGovernedExecutionTrustDetails(input: {
       ),
     },
   ];
+}
+
+interface GovernanceTraceCardViewModel {
+  moduleSummary: GovernedExecutionModuleSummary;
+  targetModelVersionLabel: string;
+  qualityPackageLabel: string;
+  ruleLayerSummary: string;
+  knowledgeActivationSummary: string;
+  resolvedRules: GovernedResolvedRuleSummary[];
+  knowledgeSelections: GovernedKnowledgeSelectionSummary[];
+}
+
+function buildGovernanceTraceCardViewModel(input: {
+  mode: ManuscriptWorkbenchMode;
+  workspace: ManuscriptWorkbenchWorkspace;
+}): GovernanceTraceCardViewModel | null {
+  if (input.mode === "submission") {
+    return null;
+  }
+
+  const executionContext = input.workspace.manuscript
+    .governed_execution_context_summary as GovernedExecutionContextSummary | undefined;
+  if (!executionContext || executionContext.observation_status !== "reported") {
+    return null;
+  }
+
+  const moduleSummary = executionContext.modules.find(
+    (candidate) => candidate.module === input.mode && candidate.status === "resolved",
+  );
+  if (!moduleSummary || moduleSummary.status !== "resolved") {
+    return null;
+  }
+
+  const resolvedRules = moduleSummary.resolved_rules ?? [];
+  const knowledgeSelections = moduleSummary.knowledge_selections ?? [];
+  const ruleLayerCounts = {
+    general: 0,
+    medical: 0,
+    journal: 0,
+  };
+  resolvedRules.forEach((rule) => {
+    ruleLayerCounts[rule.source_layer] += 1;
+  });
+  const primaryBindingCounts = {
+    bindingRule: 0,
+    generalPackage: 0,
+    medicalPackage: 0,
+    journalTemplate: 0,
+    linkedKnowledge: 0,
+  };
+  knowledgeSelections.forEach((selection) => {
+    const reason = selection.primary_binding?.reason;
+    if (reason === "binding_rule") {
+      primaryBindingCounts.bindingRule += 1;
+      return;
+    }
+    if (reason === "general_package") {
+      primaryBindingCounts.generalPackage += 1;
+      return;
+    }
+    if (reason === "medical_package") {
+      primaryBindingCounts.medicalPackage += 1;
+      return;
+    }
+    if (reason === "journal_template") {
+      primaryBindingCounts.journalTemplate += 1;
+      return;
+    }
+    if (reason === "knowledge_item_binding") {
+      primaryBindingCounts.linkedKnowledge += 1;
+    }
+  });
+
+  return {
+    moduleSummary,
+    targetModelVersionLabel:
+      executionContext.journal_template_target_model_version_no != null
+        ? `v${executionContext.journal_template_target_model_version_no}`
+        : executionContext.journal_template_id
+          ? "已选期刊模板，未登记版本"
+          : "仅基础模板",
+    qualityPackageLabel:
+      moduleSummary.quality_package_ids && moduleSummary.quality_package_ids.length > 0
+        ? moduleSummary.quality_package_ids.join("、")
+        : "未启用",
+    ruleLayerSummary: `通用 ${ruleLayerCounts.general} · 医学 ${ruleLayerCounts.medical} · 期刊 ${ruleLayerCounts.journal}`,
+    knowledgeActivationSummary: `共 ${knowledgeSelections.length} 条 · 绑定规则 ${primaryBindingCounts.bindingRule} · 通用包 ${primaryBindingCounts.generalPackage} · 医学包 ${primaryBindingCounts.medicalPackage} · 期刊模板 ${primaryBindingCounts.journalTemplate} · 关联知识 ${primaryBindingCounts.linkedKnowledge}`,
+    resolvedRules,
+    knowledgeSelections,
+  };
 }
 
 function formatOperatorFacingExecutionMode(
@@ -561,6 +661,15 @@ export function buildManuscriptMainlineReadinessDetails(
     });
   }
 
+  if (summary.editing_completion_gate_verdict) {
+    details.push({
+      label: "编辑完成门禁",
+      value: formatEditingCompletionGateVerdictLabel(
+        summary.editing_completion_gate_verdict,
+      ),
+    });
+  }
+
   if (summary.recovery_ready_at) {
     details.push({
       label: "恢复可用时间",
@@ -655,6 +764,15 @@ export function buildManuscriptMainlineAttentionHandoffPackDetails(
     details.push({
       label: "主要关注原因",
       value: formatOperatorFacingReason(pack.reason),
+    });
+  }
+
+  if (pack.editing_completion_gate_verdict) {
+    details.push({
+      label: "编辑完成门禁",
+      value: formatEditingCompletionGateVerdictLabel(
+        pack.editing_completion_gate_verdict,
+      ),
     });
   }
 
@@ -775,6 +893,11 @@ export function ManuscriptWorkbenchSummary({
     resolveWorkbenchMainlineReadinessPill(mainlineReadinessSummary);
   const mainlineAttentionHandoffPill =
     resolveWorkbenchAttentionStatusPill(mainlineAttentionHandoffPack);
+  const editingCompletionGateSummary =
+    mode === "editing"
+      ? buildEditingCompletionGateSummary(latestJob) ??
+        workspace.manuscript.editing_completion_gate_summary
+      : undefined;
   const recommendedNextStep = buildRecommendedNextStep(
     mode,
     workspace,
@@ -805,6 +928,10 @@ export function ManuscriptWorkbenchSummary({
   const governedExecutionTrustDetails = buildGovernedExecutionTrustDetails({
     executionContext,
     latestJob,
+  });
+  const governanceTrace = buildGovernanceTraceCardViewModel({
+    mode,
+    workspace,
   });
   const resultAssetMatrix =
     latestExport?.matrix ?? workspace.manuscript.result_asset_matrix;
@@ -930,6 +1057,134 @@ export function ManuscriptWorkbenchSummary({
                 value={detail.value}
               />
             ))}
+          </SummaryCard>
+        ) : null}
+
+        {governanceTrace ? (
+          <SummaryCard title="治理链路">
+            <SummaryMetric label="目标模型版本" value={governanceTrace.targetModelVersionLabel} />
+            <SummaryMetric label="质量包" value={governanceTrace.qualityPackageLabel} />
+            <SummaryMetric label="规则层栈" value={governanceTrace.ruleLayerSummary} />
+            <SummaryMetric
+              label="知识激活"
+              value={governanceTrace.knowledgeActivationSummary}
+            />
+            {governanceTrace.resolvedRules.length > 0 ? (
+              <div className="manuscript-workbench-metric manuscript-workbench-activity-section">
+                <span>规则明细</span>
+                <ul className="manuscript-workbench-activity-list">
+                  {governanceTrace.resolvedRules.slice(0, 5).map((rule) => (
+                    <li key={rule.rule_id}>
+                      <strong>
+                        {formatGovernedRuleLayerLabel(rule.source_layer)} · {rule.rule_object} ·{" "}
+                        {rule.rule_id}
+                      </strong>
+                      <small>
+                        {formatGovernedRuleExecutionPostureLabel(
+                          rule.execution_posture,
+                        )}
+                        {rule.effective_scope.sections?.length
+                          ? ` · ${rule.effective_scope.sections.join("、")}`
+                          : ""}
+                        {rule.overridden_rule_ids.length > 0
+                          ? ` · 覆盖 ${rule.overridden_rule_ids.length} 条`
+                          : ""}
+                      </small>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="manuscript-workbench-empty">
+                当前模块还没有记录规则栈摘要。
+              </p>
+            )}
+            {governanceTrace.knowledgeSelections.length > 0 ? (
+              <div className="manuscript-workbench-metric manuscript-workbench-activity-section">
+                <span>知识明细</span>
+                <ul className="manuscript-workbench-activity-list">
+                  {governanceTrace.knowledgeSelections.slice(0, 5).map((selection) => (
+                    <li key={selection.knowledge_item_id}>
+                      <strong>{selection.title}</strong>
+                      <small>
+                        {formatGovernedKnowledgeBindingReasonLabel(
+                          selection.primary_binding?.reason,
+                        )}
+                        {selection.match_source_id
+                          ? ` · ${selection.match_source_id}`
+                          : ` · ${formatGovernedKnowledgeMatchSourceLabel(
+                              selection.match_source,
+                            )}`}
+                      </small>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="manuscript-workbench-empty">
+                当前模块还没有记录知识激活摘要。
+              </p>
+            )}
+          </SummaryCard>
+        ) : null}
+
+        {editingCompletionGateSummary ? (
+          <SummaryCard title="编辑完成门禁">
+            <SummaryMetric
+              label="门禁判定"
+              value={
+                editingCompletionGateSummary.observation_status === "failed_open"
+                  ? "观测失败打开"
+                  : formatEditingCompletionGateVerdictLabel(
+                      editingCompletionGateSummary.verdict,
+                    )
+              }
+            />
+            <SummaryMetric
+              label="阻断总数"
+              value={String(editingCompletionGateSummary.blocker_count)}
+            />
+            <SummaryMetric
+              label="通过状态"
+              value={editingCompletionGateSummary.passed ? "已通过" : "未通过"}
+            />
+            {editingCompletionGateSummary.target_model_version_no != null ? (
+              <SummaryMetric
+                label="目标模型版本"
+                value={`v${editingCompletionGateSummary.target_model_version_no}`}
+              />
+            ) : null}
+            {editingCompletionGateSummary.observation_status === "failed_open" ? (
+              <p className="manuscript-workbench-empty">
+                {editingCompletionGateSummary.error ??
+                  "编辑完成门禁 failed open，当前结果不能视为可信完成。"}
+              </p>
+            ) : editingCompletionGateSummary.passed ? (
+              <p className="manuscript-workbench-empty">
+                当前编辑结果已通过完成门禁，可继续交接到下一环节。
+              </p>
+            ) : (
+              buildEditingCompletionGateSections(editingCompletionGateSummary).map(
+                (section) => (
+                  <div
+                    key={section.key}
+                    className="manuscript-workbench-metric manuscript-workbench-activity-section"
+                  >
+                    <span>{section.title}</span>
+                    <ul className="manuscript-workbench-activity-list">
+                      {section.items.map((item) => (
+                        <li key={item.item_key}>
+                          <strong>{item.summary}</strong>
+                          <small>
+                            {formatEditingCompletionGatePendingItemSummary(item)}
+                          </small>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ),
+              )
+            )}
           </SummaryCard>
         ) : null}
 
@@ -1553,6 +1808,70 @@ function SummaryMetric({ label, value }: SummaryMetricProps) {
   );
 }
 
+function formatGovernedRuleLayerLabel(
+  value: GovernedResolvedRuleSummary["source_layer"],
+): string {
+  switch (value) {
+    case "journal":
+      return "期刊";
+    case "medical":
+      return "医学";
+    default:
+      return "通用";
+  }
+}
+
+function formatGovernedRuleExecutionPostureLabel(
+  value: GovernedResolvedRuleSummary["execution_posture"],
+): string {
+  switch (value) {
+    case "auto":
+      return "自动执行";
+    case "inspect_only":
+      return "仅核查";
+    default:
+      return "受控执行";
+  }
+}
+
+function formatGovernedKnowledgeBindingReasonLabel(
+  value: GovernedKnowledgeBindingMatchSummary["reason"] | undefined,
+): string {
+  switch (value) {
+    case "binding_rule":
+      return "绑定规则";
+    case "general_package":
+      return "通用包";
+    case "medical_package":
+      return "医学包";
+    case "journal_template":
+      return "期刊模板";
+    case "template_family":
+      return "模板族";
+    case "module_template":
+      return "模块模板";
+    case "knowledge_item_binding":
+      return "关联知识";
+    default:
+      return "动态激活";
+  }
+}
+
+function formatGovernedKnowledgeMatchSourceLabel(
+  value: GovernedKnowledgeSelectionSummary["match_source"],
+): string {
+  switch (value) {
+    case "binding_rule":
+      return "绑定规则";
+    case "template_binding":
+      return "结构绑定";
+    case "knowledge_item_binding":
+      return "关联知识";
+    default:
+      return "动态路由";
+  }
+}
+
 function renderMainlineAttemptLedgerSection(
   ledger?: ManuscriptMainlineAttemptLedgerViewModel,
 ): ReactNode | null {
@@ -1837,6 +2156,24 @@ function resolveWorkbenchSettlementPill(
   settlement: string,
 ): WorkbenchStatusPillViewModel | null {
   switch (settlement) {
+    case "业务已完成，仍需人工处理":
+    case "Business complete, manual resolution required":
+      return {
+        tone: "error",
+        label: "仍需人工处理",
+      };
+    case "业务已完成，被必填槽位阻断":
+    case "Business complete, blocked by required slots":
+      return {
+        tone: "error",
+        label: "必填槽位阻断",
+      };
+    case "业务已完成，被高风险对象/表格/格式阻断":
+    case "Business complete, blocked by high-risk objects":
+      return {
+        tone: "error",
+        label: "高风险阻断",
+      };
     case "已结算":
     case "Settled":
       return {
@@ -2251,6 +2588,15 @@ function buildMainlineReadinessRecommendedNextStep(
   }
 
   if (summary.derived_status === "attention_required") {
+    const gateRecommendation = buildEditingCompletionGateRecommendedNextStep({
+      verdict: summary.editing_completion_gate_verdict,
+      localizedReason,
+      details,
+    });
+    if (gateRecommendation) {
+      return gateRecommendation;
+    }
+
     return {
       focus: `继续前请检查${formatWorkbenchModeLabel(summary.active_module ?? mode)}态势`,
       guidance:
@@ -2664,6 +3010,14 @@ function buildModuleSettlementRecommendedNextStep(input: {
         targetMode: input.nextMode,
         targetLabel: `前往${formatWorkbenchModeLabel(input.nextMode)}工作台`,
       };
+    case "business_completed_needs_manual_resolution":
+    case "business_completed_blocked_by_missing_required_slots":
+    case "business_completed_blocked_by_high_risk_objects":
+      return buildEditingCompletionGateRecommendedNextStep({
+        verdict: overview.settlement.editing_completion_gate_verdict,
+        localizedReason: formatOperatorFacingReason(overview.settlement.reason),
+        details,
+      });
     case "business_completed_follow_up_pending":
     case "business_completed_follow_up_running":
       return {
@@ -2747,6 +3101,16 @@ function buildLatestJobExecutionTrackingRecommendedNextStep(input: {
         targetMode: input.nextMode,
         targetLabel: `前往${formatWorkbenchModeLabel(input.nextMode)}工作台`,
       };
+    case "business_completed_needs_manual_resolution":
+    case "business_completed_blocked_by_missing_required_slots":
+    case "business_completed_blocked_by_high_risk_objects":
+      return buildEditingCompletionGateRecommendedNextStep({
+        verdict: executionTracking.settlement.editing_completion_gate_verdict,
+        localizedReason: formatOperatorFacingReason(
+          executionTracking.settlement.reason,
+        ),
+        details,
+      });
     case "business_completed_follow_up_pending":
     case "business_completed_follow_up_running":
       return {
@@ -2801,6 +3165,15 @@ function buildSettlementDetails(
     },
   ];
 
+  if (overview.settlement?.editing_completion_gate_verdict) {
+    details.push({
+      label: "编辑完成门禁",
+      value: formatEditingCompletionGateVerdictLabel(
+        overview.settlement.editing_completion_gate_verdict,
+      ),
+    });
+  }
+
   const recoveryPosture = describeModuleExecutionRecoveryPosture(overview);
   if (recoveryPosture) {
     details.push({
@@ -2854,6 +3227,15 @@ function buildLatestJobExecutionTrackingSettlementDetails(
     },
   ];
 
+  if (executionTracking.settlement?.editing_completion_gate_verdict) {
+    details.push({
+      label: "编辑完成门禁",
+      value: formatEditingCompletionGateVerdictLabel(
+        executionTracking.settlement.editing_completion_gate_verdict,
+      ),
+    });
+  }
+
   const recoveryPosture = describeExecutionTrackingRecoveryPosture(executionTracking);
   if (recoveryPosture) {
     details.push({
@@ -2895,6 +3277,151 @@ function buildLatestJobExecutionTrackingSettlementDetails(
   }
 
   return details;
+}
+
+function buildEditingCompletionGateRecommendedNextStep(input: {
+  verdict:
+    | ManuscriptMainlineReadinessSummaryViewModel["editing_completion_gate_verdict"]
+    | ManuscriptMainlineAttentionHandoffPackViewModel["editing_completion_gate_verdict"]
+    | NonNullable<
+        ModuleExecutionOverviewViewModel["settlement"]
+      >["editing_completion_gate_verdict"];
+  localizedReason?: string;
+  details: WorkbenchActionResultDetail[];
+}): RecommendedNextStepViewModel | undefined {
+  switch (input.verdict) {
+    case "blocked_by_missing_required_slots":
+      return {
+        focus: "先补齐编辑必填槽位",
+        guidance:
+          input.localizedReason ??
+          "编辑结果已生成，但必填槽位仍未解决，当前不能继续交接。",
+        details: input.details,
+      };
+    case "blocked_by_high_risk_objects":
+      return {
+        focus: "先处理高风险表格、对象和格式阻断项",
+        guidance:
+          input.localizedReason ??
+          "编辑结果已生成，但仍有高风险对象、表格或格式阻断项。",
+        details: input.details,
+      };
+    case "needs_manual_resolution":
+      return {
+        focus: "先处理编辑人工核对项",
+        guidance:
+          input.localizedReason ??
+          "编辑结果已生成，但仍有人工处理项未完成。",
+        details: input.details,
+      };
+    default:
+      return undefined;
+  }
+}
+
+function buildEditingCompletionGateSections(
+  summary: NonNullable<
+    ManuscriptWorkbenchWorkspace["manuscript"]["editing_completion_gate_summary"]
+  >,
+): Array<{
+  key: string;
+  title: string;
+  items: NonNullable<
+    ManuscriptWorkbenchWorkspace["manuscript"]["editing_completion_gate_summary"]
+  >["unresolved_required_slots"];
+}> {
+  return [
+    {
+      key: "required-slots",
+      title: "必填槽位阻断",
+      items: summary.unresolved_required_slots,
+    },
+    {
+      key: "manual-resolution",
+      title: "人工处理项",
+      items: summary.pending_manual_resolution_items,
+    },
+    {
+      key: "high-risk-objects",
+      title: "高风险对象",
+      items: summary.high_risk_object_items,
+    },
+    {
+      key: "table-high-risk",
+      title: "表格高风险项",
+      items: summary.table_high_risk_items,
+    },
+    {
+      key: "blocking-format-failures",
+      title: "格式阻断项",
+      items: summary.blocking_format_failures,
+    },
+  ].filter((section) => section.items.length > 0);
+}
+
+function formatEditingCompletionGateVerdictLabel(
+  value:
+    | ManuscriptMainlineReadinessSummaryViewModel["editing_completion_gate_verdict"]
+    | ManuscriptMainlineAttentionHandoffPackViewModel["editing_completion_gate_verdict"]
+    | NonNullable<
+        ManuscriptWorkbenchWorkspace["manuscript"]["editing_completion_gate_summary"]
+      >["verdict"],
+): string {
+  switch (value) {
+    case "passed":
+      return "已通过";
+    case "needs_manual_resolution":
+      return "仍需人工处理";
+    case "blocked_by_missing_required_slots":
+      return "被必填槽位阻断";
+    case "blocked_by_high_risk_objects":
+      return "被高风险对象/表格/格式阻断";
+    default:
+      return "未判定";
+  }
+}
+
+function formatEditingCompletionGatePendingItemSummary(
+  item: NonNullable<
+    ManuscriptWorkbenchWorkspace["manuscript"]["editing_completion_gate_summary"]
+  >["unresolved_required_slots"][number],
+): string {
+  const parts = [
+    formatEditingCompletionGateSourceLabel(item.source),
+    item.location_text,
+    item.related_slot_key ? `槽位 ${item.related_slot_key}` : undefined,
+    item.related_rule_id ? `规则 ${item.related_rule_id}` : undefined,
+    item.review_item_id ? `复核项 ${item.review_item_id}` : undefined,
+  ].filter((value): value is string => Boolean(value));
+
+  return item.detail ? [item.detail, ...parts].join(" · ") : parts.join(" · ");
+}
+
+function formatEditingCompletionGateSourceLabel(
+  value: NonNullable<
+    ManuscriptWorkbenchWorkspace["manuscript"]["editing_completion_gate_summary"]
+  >["unresolved_required_slots"][number]["source"],
+): string {
+  switch (value) {
+    case "slot_governance":
+      return "槽位治理";
+    case "manual_review_item":
+      return "人工复核";
+    case "content_rule_candidate":
+      return "内容规则候选";
+    case "quality_finding":
+      return "质量问题";
+    case "table_inspection_finding":
+      return "表格核查";
+    case "table_patch_result":
+      return "表格落稿";
+    case "editing_guardrail":
+      return "编辑守门";
+    case "skipped_ai_replacement":
+      return "跳过改写";
+    default:
+      return value;
+  }
 }
 
 function formatMainlineModuleLabel(module: MainlineSettlementModule): string {
@@ -3237,6 +3764,15 @@ function formatJournalOverrideStateLabel(value: string): string {
 
 function formatSettlementStatusValue(value: string): string {
   switch (value) {
+    case "Business complete, manual resolution required":
+    case "business_completed_needs_manual_resolution":
+      return "业务已完成，仍需人工处理";
+    case "Business complete, blocked by required slots":
+    case "business_completed_blocked_by_missing_required_slots":
+      return "业务已完成，被必填槽位阻断";
+    case "Business complete, blocked by high-risk objects":
+    case "business_completed_blocked_by_high_risk_objects":
+      return "业务已完成，被高风险对象/表格/格式阻断";
     case "Settled":
     case "business_completed_settled":
       return "已结算";
@@ -3341,6 +3877,12 @@ function formatAttentionItemKindLabel(
   kind: MainlineAttentionItemViewModel["kind"],
 ): string {
   switch (kind) {
+    case "editing_needs_manual_resolution":
+      return "编辑仍需人工处理";
+    case "editing_blocked_by_missing_required_slots":
+      return "编辑被必填槽位阻断";
+    case "editing_blocked_by_high_risk_objects":
+      return "编辑被高风险对象/表格/格式阻断";
     case "job_in_progress":
       return "任务进行中";
     case "follow_up_pending":
@@ -3372,6 +3914,12 @@ function formatSettlementStatusLabel(
   status: ModuleMainlineSettlementDerivedStatus | undefined,
 ): string {
   switch (status) {
+    case "business_completed_needs_manual_resolution":
+      return "业务已完成，仍需人工处理";
+    case "business_completed_blocked_by_missing_required_slots":
+      return "业务已完成，被必填槽位阻断";
+    case "business_completed_blocked_by_high_risk_objects":
+      return "业务已完成，被高风险对象/表格/格式阻断";
     case "business_completed_settled":
       return "已结算";
     case "business_completed_follow_up_pending":

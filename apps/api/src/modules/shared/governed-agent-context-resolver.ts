@@ -31,6 +31,10 @@ import type {
 } from "../ai-provider-runtime/ai-provider-runtime-record.ts";
 import type { AiProviderRuntimeService } from "../ai-provider-runtime/ai-provider-runtime-service.ts";
 import {
+  ModuleManuscriptNotFoundError,
+  ModuleTemplateFamilyNotConfiguredError,
+} from "./module-run-support.ts";
+import {
   type GovernedModuleContext,
   type ResolveGovernedModuleContextInput,
   resolveGovernedModuleContext,
@@ -107,18 +111,33 @@ export class GovernedAgentContextConsistencyError extends Error {
 export async function resolveGovernedAgentContext(
   input: ResolveGovernedAgentContextInput,
 ): Promise<GovernedAgentContext> {
-  const moduleContext = await resolveGovernedModuleContext(input);
-  const aiProviderRuntime = await maybeResolveAiProviderRuntime({
-    aiProviderRuntimeService: input.aiProviderRuntimeService,
-    cutoverEnabled: input.aiProviderRuntimeCutoverEnabled ?? false,
-    modelSelection: moduleContext.modelSelection,
-  });
+  const manuscript = await input.manuscriptRepository.findById(input.manuscriptId);
+  if (!manuscript) {
+    throw new ModuleManuscriptNotFoundError(input.manuscriptId);
+  }
+  if (!manuscript.current_template_family_id) {
+    throw new ModuleTemplateFamilyNotConfiguredError(input.manuscriptId);
+  }
 
   const activeBinding = await findActiveRuntimeBinding({
     runtimeBindingService: input.runtimeBindingService,
     module: input.module,
-    manuscriptType: moduleContext.manuscript.manuscript_type,
-    templateFamilyId: moduleContext.executionProfile.template_family_id,
+    manuscriptType: manuscript.manuscript_type,
+    templateFamilyId: manuscript.current_template_family_id,
+  });
+  const activeQualityPackages =
+    await input.runtimeBindingService.resolveActiveQualityPackageContext(
+      activeBinding.quality_package_version_ids ?? [],
+    );
+  const moduleContext = await resolveGovernedModuleContext({
+    ...input,
+    qualityPackageVersionIds: activeBinding.quality_package_version_ids,
+    activeQualityPackages,
+  });
+  const aiProviderRuntime = await maybeResolveAiProviderRuntime({
+    aiProviderRuntimeService: input.aiProviderRuntimeService,
+    cutoverEnabled: input.aiProviderRuntimeCutoverEnabled ?? false,
+    modelSelection: moduleContext.modelSelection,
   });
 
   const runtime = await requireActiveRuntime(

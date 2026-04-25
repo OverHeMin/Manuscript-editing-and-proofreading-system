@@ -16,6 +16,7 @@ const {
   createRuleWizardEntryFormState,
   createRuleWizardEntryFormStateFromDetail,
   createRuleWizardBindingInputs,
+  createRuleWizardEvidenceGateSummary,
   confirmSemanticLayerInput,
   loadRuleWizardBindingOptions,
   saveRuleWizardEntryDraft,
@@ -36,11 +37,10 @@ test("rule wizard entry step explains high-frequency parameters and advanced tag
   );
 
   assert.match(markup, /这版向导只开放高频治理参数/u);
-  assert.match(markup, /低频运行参数继续放在旧工作台/u);
+  assert.match(markup, /低频高级项也在当前规则中心完成/u);
   assert.match(markup, /适用模块决定规则在哪个执行环节被调用/u);
   assert.match(markup, /章节标签和风险标签放到高级标签里补充/u);
-  assert.match(markup, /打开旧版高级工作台/u);
-  assert.match(markup, /templateGovernanceView=classic/u);
+  assert.doesNotMatch(markup, /打开旧版高级工作台/u);
 });
 
 test("rule wizard confirm step explains semantic confirmation parameters", () => {
@@ -131,6 +131,7 @@ test("rule wizard binding and publish steps explain package and release choices"
   );
 
   assert.match(bindingMarkup, /规则包决定这条规则先落到哪个复用容器/u);
+  assert.match(bindingMarkup, /按包类型激活/u);
   assert.match(bindingMarkup, /模板族决定哪些稿件默认看见这条规则/u);
   assert.match(bindingMarkup, /复用策略只处理挂到现有包还是新建绑定/u);
   assert.match(publishMarkup, /保存草稿适合先留给当前编辑人继续补充/u);
@@ -741,6 +742,79 @@ test("rule wizard confirm input keeps semantic summary and retrieval terms align
   );
 });
 
+test("rule wizard evidence gate summary blocks non-authoritative exact-capture tables before review submission", () => {
+  const summary = createRuleWizardEvidenceGateSummary({
+    releaseAction: "submit_review",
+    blocks: [
+      {
+        id: "table-block-1",
+        revision_id: "knowledge-1-revision-1",
+        block_type: "table_block",
+        order_no: 0,
+        status: "active",
+        content_payload: {
+          rows: [["列 1", "列 2"]],
+          capture_mode: "html_table_clipboard",
+          capture_environment: "windows_chromium",
+          source_application: "word",
+          exact_capture_failure_codes: ["exact_capture_not_authoritative"],
+        },
+        table_semantics: {
+          snapshot_type: "table_style_snapshot",
+          exact_capture_authoritative: false,
+          exact_capture_failure_codes: ["exact_capture_not_authoritative"],
+        },
+      },
+    ],
+  });
+
+  assert.equal(summary.hasBlockingIssues, true);
+  assert.equal(summary.blockingItemCount, 1);
+  assert.equal(summary.items[0]?.statusLabel, "阻断提交审核");
+  assert.match(summary.items[0]?.detail ?? "", /不是权威 exact-capture/u);
+  assert.match(summary.blockingMessage ?? "", /表格块 #1/u);
+});
+
+test("rule wizard evidence gate summary allows pending-review symbol snapshots for review but blocks direct publish", () => {
+  const blocks = [
+    {
+      id: "image-block-1",
+      revision_id: "knowledge-1-revision-1",
+      block_type: "image_block" as const,
+      order_no: 1,
+      status: "active" as const,
+      content_payload: {
+        source_kind: "inline_symbol_image",
+        upload_id: "upload-1",
+        local_context: "统计方法段落",
+        review_state: "pending_review",
+      },
+      image_understanding: {
+        snapshot_type: "visual_symbol_snapshot",
+        source_kind: "inline_symbol_image",
+        review_state: "pending_review",
+        local_context: "统计方法段落",
+        image_id: "upload-1",
+      },
+    },
+  ];
+
+  const reviewSummary = createRuleWizardEvidenceGateSummary({
+    releaseAction: "submit_review",
+    blocks,
+  });
+  const publishSummary = createRuleWizardEvidenceGateSummary({
+    releaseAction: "publish_now",
+    blocks,
+  });
+
+  assert.equal(reviewSummary.hasBlockingIssues, false);
+  assert.equal(reviewSummary.items[0]?.statusLabel, "可提交审核");
+  assert.equal(publishSummary.hasBlockingIssues, true);
+  assert.equal(publishSummary.items[0]?.statusLabel, "阻断直接发布");
+  assert.match(publishSummary.items[0]?.detail ?? "", /审核状态未确认/u);
+});
+
 test("rule wizard binding and publish steps render package and release controls", () => {
   const Wizard = TemplateGovernanceRuleWizard as unknown as (
     props: Record<string, unknown>,
@@ -769,15 +843,71 @@ test("rule wizard binding and publish steps render package and release controls"
   assert.match(bindingMarkup, /\u8fdb\u5165\u54ea\u4e2a\u89c4\u5219\u5305/u);
   assert.match(bindingMarkup, /\u901a\u7528\u6821\u5bf9\u5305/u);
   assert.match(bindingMarkup, /\u533b\u5b66\u4e13\u4e1a\u6821\u5bf9\u5305/u);
+  assert.match(bindingMarkup, /\u76f4\u7ed1\u671f\u520a\u6a21\u677f/u);
   assert.match(bindingMarkup, /业务调用模块/u);
   assert.match(bindingMarkup, /推荐复用/u);
   assert.match(bindingMarkup, /影响预览/u);
   assert.match(publishMarkup, /\u53d1\u5e03\u65b9\u5f0f/u);
   assert.match(publishMarkup, /\u63d0\u4ea4\u5ba1\u6838/u);
   assert.match(publishMarkup, /最终摘要/u);
+  assert.match(publishMarkup, /高精度证据预检/u);
   assert.match(publishMarkup, /提交前检查/u);
   assert.match(publishMarkup, /提交发布/u);
   assert.match(publishMarkup, /\u5b8c\u6210\u5e76\u8fd4\u56de\u89c4\u5219\u4e2d\u5fc3/u);
+});
+
+test("rule wizard publish step surfaces blocking high-fidelity evidence before submission", () => {
+  const Wizard = TemplateGovernanceRuleWizard as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    <Wizard
+      state={{
+        mode: "create",
+        step: "publish",
+        dirty: true,
+        draftRevisionId: "knowledge-1-revision-1",
+      }}
+      entryFormState={createRuleWizardEntryFormState({
+        title: "表格格式规则",
+        ruleBody: "表格需要按三线表规范录入。",
+        sourceBasis: "期刊表格规范",
+        supplementalBlocks: [
+          {
+            id: "table-block-1",
+            revision_id: "knowledge-1-revision-1",
+            block_type: "table_block",
+            order_no: 0,
+            status: "active",
+            content_payload: {
+              rows: [["列 1", "列 2"]],
+              capture_mode: "html_table_clipboard",
+              capture_environment: "windows_chromium",
+              source_application: "word",
+              exact_capture_failure_codes: [
+                "border_profile_incomplete",
+                "exact_capture_not_authoritative",
+              ],
+            },
+            table_semantics: {
+              snapshot_type: "table_style_snapshot",
+              exact_capture_authoritative: false,
+              exact_capture_failure_codes: [
+                "border_profile_incomplete",
+                "exact_capture_not_authoritative",
+              ],
+            },
+          },
+        ],
+      })}
+    />,
+  );
+
+  assert.match(markup, /高精度证据预检/u);
+  assert.match(markup, /表格块 #1/u);
+  assert.match(markup, /阻断提交审核/u);
+  assert.match(markup, /边框轮廓不完整/u);
+  assert.match(markup, /不是权威 exact-capture/u);
 });
 
 test("rule wizard binding selections map into package and template family bindings", () => {
@@ -786,29 +916,42 @@ test("rule wizard binding selections map into package and template family bindin
       selectedPackageKind: "medical_package",
       selectedPackageId: "pkg-medical",
       selectedPackageLabel: "\u533b\u5b66\u4e13\u4e1a\u6821\u5bf9\u5305",
+      reuseStrategy: "reuse_existing",
       selectedTemplateFamilies: [
         {
           id: "family-clinical",
           name: "\u8bba\u8457\u57fa\u7840\u65cf",
         },
       ],
+      selectedJournalTemplates: [
+        {
+          id: "journal-template-1",
+          name: "\u4e2d\u56fd\u5faa\u73af\u6742\u5fd7",
+        },
+      ],
+      selectedKnowledgeItems: [],
     }),
     [
       {
         bindingKind: "medical_package",
         bindingTargetId: "pkg-medical",
-        bindingTargetLabel: "\u533b\u5b66\u4e13\u4e1a\u6821\u5bf9\u5305",
+        bindingTargetLabel: "\u533b\u5b66\u4e13\u4e1a\u6821\u5bf9\u5305\uff08\u9501\u5b9a\u5177\u4f53\u7248\u672c\uff09",
       },
       {
         bindingKind: "template_family",
         bindingTargetId: "family-clinical",
         bindingTargetLabel: "\u8bba\u8457\u57fa\u7840\u65cf",
       },
+      {
+        bindingKind: "journal_template",
+        bindingTargetId: "journal-template-1",
+        bindingTargetLabel: "\u4e2d\u56fd\u5faa\u73af\u6742\u5fd7",
+      },
     ],
   );
 });
 
-test("rule wizard binding step renders an explicit linked knowledge selector", () => {
+test("rule wizard binding step renders explicit journal-template and linked-knowledge selectors", () => {
   const Wizard = TemplateGovernanceRuleWizard as unknown as (
     props: Record<string, unknown>,
   ) => React.ReactElement;
@@ -840,6 +983,15 @@ test("rule wizard binding step renders an explicit linked knowledge selector", (
             manuscriptType: "clinical_study",
           },
         ],
+        journalTemplates: [
+          {
+            id: "journal-template-1",
+            label: "Journal Alpha",
+            familyId: "family-clinical",
+            familyName: "Clinical Family",
+            journalKey: "journal-alpha",
+          },
+        ],
         knowledgeItems: [
           {
             id: "knowledge-asset-1",
@@ -857,6 +1009,12 @@ test("rule wizard binding step renders an explicit linked knowledge selector", (
         selectedPackageLabel: "Medical Package",
         reuseStrategy: "reuse_existing",
         selectedTemplateFamilies: [],
+        selectedJournalTemplates: [
+          {
+            id: "journal-template-1",
+            name: "Journal Alpha",
+          },
+        ],
         selectedKnowledgeItems: [
           {
             id: "knowledge-asset-1",
@@ -867,6 +1025,13 @@ test("rule wizard binding step renders an explicit linked knowledge selector", (
     />,
   );
 
+  assert.match(markup, /data-rule-wizard-journal-templates="list"/u);
+  assert.match(markup, /data-searchable-multi-select-input="rule-wizard-journal-templates"/u);
+  assert.match(markup, /placeholder="搜索期刊模板"/u);
+  assert.match(markup, /Journal Alpha/u);
+  assert.match(markup, /这里展示已激活的真实期刊模板/u);
+  assert.match(markup, /Clinical Family（1）/u);
+  assert.match(markup, /Clinical Family \/ journal-alpha/u);
   assert.match(markup, /data-rule-wizard-linked-knowledge="list"/u);
   assert.match(markup, /data-searchable-multi-select-input="rule-wizard-linked-knowledge"/u);
   assert.match(markup, /placeholder="搜索关联知识条目"/u);
@@ -889,14 +1054,19 @@ test("rule wizard binding options load approved knowledge items for linking", as
 
       if (
         input.method === "GET" &&
-        input.url === "/api/v1/templates/content-modules?moduleClass=general"
+        input.url ===
+          "/api/v1/manuscript-quality-packages?packageKind=general_style_package&status=published"
       ) {
         return {
           status: 200,
           body: [
             {
               id: "pkg-general",
-              name: "General Package",
+              package_name: "General Package",
+              package_kind: "general_style_package",
+              target_scopes: ["general_proofreading"],
+              version: 3,
+              status: "published",
             },
           ] as TResponse,
         };
@@ -905,14 +1075,18 @@ test("rule wizard binding options load approved knowledge items for linking", as
       if (
         input.method === "GET" &&
         input.url ===
-          "/api/v1/templates/content-modules?moduleClass=medical_specialized"
+          "/api/v1/manuscript-quality-packages?packageKind=medical_analyzer_package&status=published"
       ) {
         return {
           status: 200,
           body: [
             {
               id: "pkg-medical",
-              name: "Medical Package",
+              package_name: "Medical Package",
+              package_kind: "medical_analyzer_package",
+              target_scopes: ["medical_specialized"],
+              version: 7,
+              status: "published",
             },
           ] as TResponse,
         };
@@ -926,6 +1100,32 @@ test("rule wizard binding options load approved knowledge items for linking", as
               id: "family-clinical",
               name: "Clinical Family",
               manuscript_type: "clinical_study",
+              status: "active",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/templates/families/family-clinical/journal-templates"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "journal-template-1",
+              template_family_id: "family-clinical",
+              journal_key: "journal-alpha",
+              journal_name: "Journal Alpha",
+              status: "active",
+            },
+            {
+              id: "journal-template-2",
+              template_family_id: "family-clinical",
+              journal_key: "journal-beta",
+              journal_name: "Journal Beta",
+              status: "archived",
             },
           ] as TResponse,
         };
@@ -977,10 +1177,40 @@ test("rule wizard binding options load approved knowledge items for linking", as
   });
 
   assert.deepEqual(requests.map((request) => `${request.method} ${request.url}`), [
-    "GET /api/v1/templates/content-modules?moduleClass=general",
-    "GET /api/v1/templates/content-modules?moduleClass=medical_specialized",
+    "GET /api/v1/manuscript-quality-packages?packageKind=general_style_package&status=published",
+    "GET /api/v1/manuscript-quality-packages?packageKind=medical_analyzer_package&status=published",
     "GET /api/v1/templates/families",
     "GET /api/v1/knowledge/library",
+    "GET /api/v1/templates/families/family-clinical/journal-templates",
+  ]);
+  assert.deepEqual((result as { generalPackages?: unknown }).generalPackages, [
+    {
+      id: "pkg-general",
+      label: "General Package v3 / 通用包（锁定具体版本）",
+    },
+    {
+      id: "general_style_package",
+      label: "按通用包类型激活（不锁版本）",
+    },
+  ]);
+  assert.deepEqual((result as { medicalPackages?: unknown }).medicalPackages, [
+    {
+      id: "pkg-medical",
+      label: "Medical Package v7 / 医用包（锁定具体版本）",
+    },
+    {
+      id: "medical_analyzer_package",
+      label: "按医用包类型激活（不锁版本）",
+    },
+  ]);
+  assert.deepEqual((result as { journalTemplates?: unknown }).journalTemplates, [
+    {
+      id: "journal-template-1",
+      label: "Journal Alpha",
+      familyId: "family-clinical",
+      familyName: "Clinical Family",
+      journalKey: "journal-alpha",
+    },
   ]);
   assert.deepEqual(
     (result as { knowledgeItems?: unknown }).knowledgeItems,
@@ -1010,6 +1240,12 @@ test("rule wizard binding selections map linked knowledge items into knowledge i
           name: "Clinical Family",
         },
       ],
+      selectedJournalTemplates: [
+        {
+          id: "journal-template-1",
+          name: "Journal Alpha",
+        },
+      ],
       selectedKnowledgeItems: [
         {
           id: "knowledge-asset-1",
@@ -1021,12 +1257,17 @@ test("rule wizard binding selections map linked knowledge items into knowledge i
       {
         bindingKind: "medical_package",
         bindingTargetId: "pkg-medical",
-        bindingTargetLabel: "Medical Package",
+        bindingTargetLabel: "Medical Package（锁定具体版本）",
       },
       {
         bindingKind: "template_family",
         bindingTargetId: "family-clinical",
         bindingTargetLabel: "Clinical Family",
+      },
+      {
+        bindingKind: "journal_template",
+        bindingTargetId: "journal-template-1",
+        bindingTargetLabel: "Journal Alpha",
       },
       {
         bindingKind: "knowledge_item",
@@ -1052,6 +1293,15 @@ test("rule wizard binding form state restores linked knowledge selections from d
           id: "family-clinical",
           name: "Clinical Family",
           manuscriptType: "clinical_study",
+        },
+      ],
+      journalTemplates: [
+        {
+          id: "journal-template-1",
+          label: "Journal Alpha",
+          familyId: "family-clinical",
+          familyName: "Clinical Family",
+          journalKey: "journal-alpha",
         },
       ],
       knowledgeItems: [
@@ -1085,6 +1335,14 @@ test("rule wizard binding form state restores linked knowledge selections from d
           {
             id: "binding-3",
             revision_id: "knowledge-1-revision-1",
+            binding_kind: "journal_template",
+            binding_target_id: "journal-template-1",
+            binding_target_label: "Journal Alpha",
+            created_at: "2026-04-16T08:00:00.000Z",
+          },
+          {
+            id: "binding-4",
+            revision_id: "knowledge-1-revision-1",
             binding_kind: "knowledge_item",
             binding_target_id: "knowledge-asset-1",
             binding_target_label: "Table checklist",
@@ -1101,4 +1359,37 @@ test("rule wizard binding form state restores linked knowledge selections from d
       title: "Table checklist",
     },
   ]);
+  assert.deepEqual((state as { selectedJournalTemplates?: unknown }).selectedJournalTemplates, [
+    {
+      id: "journal-template-1",
+      name: "Journal Alpha",
+    },
+  ]);
+});
+
+test("rule wizard binding form state prefers an exact package version over the package-kind fallback by default", () => {
+  const state = createRuleWizardBindingFormState({
+    options: {
+      generalPackages: [
+        {
+          id: "general_style_package",
+          label: "按通用包类型激活（不锁版本）",
+        },
+        {
+          id: "pkg-general",
+          label: "General Package v3 / 通用包（锁定具体版本）",
+        },
+      ],
+      medicalPackages: [],
+      templateFamilies: [],
+      journalTemplates: [],
+      knowledgeItems: [],
+    },
+  } as never);
+
+  assert.equal((state as { selectedPackageId?: unknown }).selectedPackageId, "pkg-general");
+  assert.equal(
+    (state as { selectedPackageLabel?: unknown }).selectedPackageLabel,
+    "General Package v3 / 通用包（锁定具体版本）",
+  );
 });

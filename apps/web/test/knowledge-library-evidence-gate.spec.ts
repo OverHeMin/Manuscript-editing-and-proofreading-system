@@ -1,0 +1,124 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+const { createKnowledgeLibraryEvidenceGateSummary } = await import(
+  "../src/features/knowledge-library/knowledge-library-evidence-gate.ts"
+);
+
+test("knowledge library evidence gate blocks submit review when exact-capture or visual-symbol evidence is incomplete", () => {
+  const summary = createKnowledgeLibraryEvidenceGateSummary({
+    releaseAction: "submit_review",
+    blocks: [
+      {
+        id: "table-1",
+        revision_id: "revision-1",
+        block_type: "table_block",
+        order_no: 0,
+        status: "active",
+        content_payload: {
+          capture_mode: "plain_text_grid",
+          rows: [["A", "B"]],
+          exact_capture_failure_codes: [
+            "merged_cell_map_incomplete",
+            "border_profile_incomplete",
+          ],
+        },
+      },
+      {
+        id: "image-1",
+        revision_id: "revision-1",
+        block_type: "image_block",
+        order_no: 1,
+        status: "active",
+        content_payload: {
+          source_kind: "inline_symbol_image",
+        },
+      },
+    ],
+  });
+
+  assert.equal(summary.itemCount, 2);
+  assert.equal(summary.blockingItemCount, 2);
+  assert.equal(summary.readyItemCount, 0);
+  assert.equal(summary.hasBlockingIssues, true);
+  assert.match(
+    summary.items[0]?.detail ?? "",
+    /合并单元格信息不完整.*边框轮廓不完整/u,
+  );
+  assert.match(summary.items[1]?.detail ?? "", /缺少结构化视觉符号证据/u);
+  assert.match(summary.blockingMessage ?? "", /表格块 #1/u);
+});
+
+test("knowledge library evidence gate keeps draft save non-blocking and marks ready submit-review evidence", () => {
+  const saveDraftSummary = createKnowledgeLibraryEvidenceGateSummary({
+    releaseAction: "save_draft",
+    blocks: [
+      {
+        id: "table-1",
+        revision_id: "revision-1",
+        block_type: "table_block",
+        order_no: 0,
+        status: "active",
+        content_payload: {
+          capture_mode: "plain_text_grid",
+          rows: [["A", "B"]],
+          exact_capture_failure_codes: ["run_style_incomplete"],
+        },
+      },
+    ],
+  });
+
+  assert.equal(saveDraftSummary.hasBlockingIssues, false);
+  assert.equal(saveDraftSummary.items[0]?.blocking, false);
+  assert.equal(saveDraftSummary.items[0]?.statusLabel, "草稿可保存");
+  assert.match(
+    saveDraftSummary.items[0]?.detail ?? "",
+    /当前可先存草稿，提交审核前仍需补齐/u,
+  );
+
+  const readySubmitSummary = createKnowledgeLibraryEvidenceGateSummary({
+    releaseAction: "submit_review",
+    blocks: [
+      {
+        id: "table-2",
+        revision_id: "revision-1",
+        block_type: "table_block",
+        order_no: 0,
+        status: "active",
+        content_payload: {
+          capture_mode: "html_table_clipboard",
+          exact_capture_failure_codes: [],
+        },
+        table_semantics: {
+          exact_capture_authoritative: true,
+          exact_capture_failure_codes: [],
+        },
+      },
+      {
+        id: "image-2",
+        revision_id: "revision-1",
+        block_type: "image_block",
+        order_no: 1,
+        status: "active",
+        content_payload: {
+          source_kind: "inline_symbol_image",
+          upload_id: "upload-image-2",
+        },
+        image_understanding: {
+          snapshot_type: "visual_symbol_snapshot",
+          source_kind: "inline_symbol_image",
+          review_state: "pending_review",
+          local_context: "统计方法段落中的检验名称",
+          image_id: "upload-image-2",
+        },
+      },
+    ],
+  });
+
+  assert.equal(readySubmitSummary.itemCount, 2);
+  assert.equal(readySubmitSummary.hasBlockingIssues, false);
+  assert.equal(readySubmitSummary.readyItemCount, 2);
+  assert.equal(readySubmitSummary.items[0]?.statusLabel, "可提交审核");
+  assert.equal(readySubmitSummary.items[1]?.statusLabel, "可提交审核");
+  assert.equal(readySubmitSummary.blockingMessage, null);
+});

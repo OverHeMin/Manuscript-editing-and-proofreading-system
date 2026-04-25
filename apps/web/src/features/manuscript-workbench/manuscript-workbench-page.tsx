@@ -13,6 +13,10 @@ import {
   type DocumentPreviewLocateTargetViewModel,
   type DocumentPreviewSessionViewModel,
 } from "../document-preview/index.ts";
+import type {
+  KnowledgeHitLogViewModel,
+  ModuleExecutionSnapshotViewModel as ExecutionTrackingSnapshotViewModel,
+} from "../execution-tracking/types.ts";
 import { formatWorkbenchRequestError } from "./manuscript-workbench-error-format.ts";
 import type { AuthRole } from "../auth/index.ts";
 import type {
@@ -69,11 +73,18 @@ import {
   buildAssetReportPreviewBody,
   buildEditingChangeLedgerEntries,
   buildProofreadingConfirmationDraftState,
+  buildEditingCompletionGateSummary,
+  buildEditingDocumentBlocks,
+  buildEditingGuardrailEntries,
+  buildEditingSlotGovernanceSummary,
   buildProofreadingConfirmationItems,
   buildProofreadingDocumentBlocks,
+  buildScreeningDocumentBlocks,
+  buildScreeningWorkspaceFocusItems,
   buildWorkbenchAssetCollectionHref,
   buildWorkbenchAssetDetailHref,
   ManuscriptWorkbenchAssetDetailPage,
+  type EditingSlotManualSaveInput,
   resolveManuscriptAssetDetailKind,
   type ManuscriptAssetDetailKind,
   type ProofreadingConfirmationDraftState,
@@ -528,6 +539,18 @@ export function buildPublishedHumanFinalActionResult(input: {
   };
 }
 
+export interface WorkbenchDetailExecutionTrackingViewModel {
+  snapshot: ExecutionTrackingSnapshotViewModel | null;
+  knowledgeHitLogs: KnowledgeHitLogViewModel[];
+}
+
+function createEmptyWorkbenchDetailExecutionTracking(): WorkbenchDetailExecutionTrackingViewModel {
+  return {
+    snapshot: null,
+    knowledgeHitLogs: [],
+  };
+}
+
 function isManualFeedbackCategory(
   value: string,
 ): value is ManualFeedbackCategory {
@@ -690,6 +713,85 @@ export async function hydrateWorkbenchDetailJob(
 
     return null;
   }
+}
+
+function hasExecutionTrackingObservation(
+  job: AnyWorkbenchJob | null | undefined,
+): job is JobViewModel {
+  return job != null && "execution_tracking" in job;
+}
+
+function resolveWorkbenchDetailInlineExecutionSnapshot(
+  job: AnyWorkbenchJob | null | undefined,
+): ExecutionTrackingSnapshotViewModel | null {
+  if (!hasExecutionTrackingObservation(job)) {
+    return null;
+  }
+
+  const observation = job.execution_tracking;
+  if (observation?.observation_status !== "reported" || !observation.snapshot) {
+    return null;
+  }
+
+  return observation.snapshot;
+}
+
+function resolveWorkbenchDetailSnapshotId(
+  job: AnyWorkbenchJob | null | undefined,
+): string | null {
+  const inlineSnapshotId =
+    resolveWorkbenchDetailInlineExecutionSnapshot(job)?.id?.trim() ?? "";
+  if (inlineSnapshotId.length > 0) {
+    return inlineSnapshotId;
+  }
+
+  const snapshotId = job?.payload?.snapshotId;
+  return typeof snapshotId === "string" && snapshotId.trim().length > 0
+    ? snapshotId.trim()
+    : null;
+}
+
+export async function hydrateWorkbenchDetailExecutionTracking(
+  controller: Partial<
+    Pick<
+      ManuscriptWorkbenchController,
+      "loadExecutionSnapshot" | "loadKnowledgeHitLogsBySnapshotId"
+    >
+  >,
+  sourceJob: AnyWorkbenchJob | null | undefined,
+): Promise<WorkbenchDetailExecutionTrackingViewModel> {
+  const inlineSnapshot = resolveWorkbenchDetailInlineExecutionSnapshot(sourceJob);
+  const snapshotId = resolveWorkbenchDetailSnapshotId(sourceJob);
+
+  if (!snapshotId) {
+    return {
+      snapshot: inlineSnapshot,
+      knowledgeHitLogs: [],
+    };
+  }
+
+  let snapshot = inlineSnapshot;
+  if (!snapshot && typeof controller.loadExecutionSnapshot === "function") {
+    try {
+      snapshot = (await controller.loadExecutionSnapshot(snapshotId)) ?? null;
+    } catch {
+      snapshot = null;
+    }
+  }
+
+  let knowledgeHitLogs: KnowledgeHitLogViewModel[] = [];
+  if (typeof controller.loadKnowledgeHitLogsBySnapshotId === "function") {
+    try {
+      knowledgeHitLogs = await controller.loadKnowledgeHitLogsBySnapshotId(snapshotId);
+    } catch {
+      knowledgeHitLogs = [];
+    }
+  }
+
+  return {
+    snapshot,
+    knowledgeHitLogs,
+  };
 }
 
 export function pruneConfirmationState(
@@ -1066,6 +1168,10 @@ export function ManuscriptWorkbenchPage({
   const [detailJob, setDetailJob] = useState<AnyWorkbenchJob | null>(null);
   const [detailConfirmationJob, setDetailConfirmationJob] =
     useState<AnyWorkbenchJob | null>(null);
+  const [detailExecutionTracking, setDetailExecutionTracking] =
+    useState<WorkbenchDetailExecutionTrackingViewModel>(
+      createEmptyWorkbenchDetailExecutionTracking,
+    );
   const [detailPreviewSession, setDetailPreviewSession] =
     useState<DocumentPreviewSessionViewModel | null>(null);
   const [detailError, setDetailError] = useState("");
@@ -1079,6 +1185,9 @@ export function ManuscriptWorkbenchPage({
     useState("");
   const [activeProofreadingIssueId, setActiveProofreadingIssueId] = useState("");
   const [isConfirmationDraftSaving, setIsConfirmationDraftSaving] = useState(false);
+  const [savingEditingSlotKey, setSavingEditingSlotKey] = useState<string | null>(
+    null,
+  );
   const [isHumanFinalPublishing, setIsHumanFinalPublishing] = useState(false);
   const [manualFeedbackCategory, setManualFeedbackCategory] =
     useState<ManualFeedbackCategory | "">("");
@@ -1191,6 +1300,7 @@ export function ManuscriptWorkbenchPage({
     setSelectedAssetId(normalizedPrefilledAssetId);
     setDetailJob(null);
     setDetailConfirmationJob(null);
+    setDetailExecutionTracking(createEmptyWorkbenchDetailExecutionTracking());
     setDetailPreviewSession(null);
     setDetailError("");
     setIsDetailLoading(false);
@@ -1198,6 +1308,7 @@ export function ManuscriptWorkbenchPage({
     setSavedConfirmationDraftSignature("");
     setSavedConfirmationDraftLabel("");
     setIsConfirmationDraftSaving(false);
+    setSavingEditingSlotKey(null);
     setIsHumanFinalPublishing(false);
     setProofreadingGovernanceHandoff(null);
   }, [normalizedPrefilledManuscriptId]);
@@ -1206,6 +1317,11 @@ export function ManuscriptWorkbenchPage({
     setSelectedAssetId(normalizedPrefilledAssetId);
     setDetailJob(null);
     setDetailConfirmationJob(null);
+    setDetailExecutionTracking(createEmptyWorkbenchDetailExecutionTracking());
+    setDetailPreviewSession(null);
+    setDetailError("");
+    setConfirmationState({});
+    setSavingEditingSlotKey(null);
     setDetailPreviewSession(null);
     setDetailError("");
     setConfirmationState({});
@@ -1227,6 +1343,7 @@ export function ManuscriptWorkbenchPage({
     if (!workspace || selectedAssetId.trim().length === 0) {
       setDetailJob(null);
       setDetailConfirmationJob(null);
+      setDetailExecutionTracking(createEmptyWorkbenchDetailExecutionTracking());
       setDetailPreviewSession(null);
       setDetailError("");
       setIsDetailLoading(false);
@@ -1241,6 +1358,7 @@ export function ManuscriptWorkbenchPage({
     if (!selectedAsset) {
       setDetailJob(null);
       setDetailConfirmationJob(null);
+      setDetailExecutionTracking(createEmptyWorkbenchDetailExecutionTracking());
       setDetailPreviewSession(null);
       setDetailError(`Asset ${selectedAssetId} is no longer available in this workspace.`);
       setIsDetailLoading(false);
@@ -1255,6 +1373,7 @@ export function ManuscriptWorkbenchPage({
     let cancelled = false;
     setIsDetailLoading(true);
     setDetailError("");
+    setDetailExecutionTracking(createEmptyWorkbenchDetailExecutionTracking());
 
     void (async () => {
       const detailKind = resolveManuscriptAssetDetailKind({
@@ -1285,6 +1404,15 @@ export function ManuscriptWorkbenchPage({
 
       setDetailJob(sourceJob);
       setDetailConfirmationJob(confirmationJob);
+      const nextDetailExecutionTracking =
+        await hydrateWorkbenchDetailExecutionTracking(controller, sourceJob);
+      if (cancelled) {
+        return;
+      }
+      setDetailExecutionTracking(nextDetailExecutionTracking);
+      if (cancelled) {
+        return;
+      }
       const nextConfirmationItems = buildProofreadingConfirmationItems(sourceJob);
       const persistedDraftState = pruneConfirmationState(
         buildProofreadingConfirmationDraftState(confirmationJob ?? sourceJob),
@@ -1316,7 +1444,11 @@ export function ManuscriptWorkbenchPage({
         actorRole,
       });
 
-      if (!previewRequest) {
+      if (
+        detailKind === "report_preview" ||
+        detailKind === "screening_workspace" ||
+        !previewRequest
+      ) {
         setDetailPreviewSession(null);
         setIsDetailLoading(false);
         return;
@@ -1661,6 +1793,80 @@ export function ManuscriptWorkbenchPage({
       });
     } finally {
       setIsConfirmationDraftSaving(false);
+    }
+  }
+
+  async function saveEditingSlotResolution(
+    currentWorkspace: ManuscriptWorkbenchWorkspace,
+    input: EditingSlotManualSaveInput,
+  ) {
+    setSavingEditingSlotKey(input.slotKey);
+    setError("");
+
+    try {
+      const result = await controller.saveEditingSlotResolutionAndLoad({
+        manuscriptId: currentWorkspace.manuscript.id,
+        actorRole,
+        slotKey: input.slotKey,
+        resolutionKind: input.resolutionKind,
+        ...(input.resolvedText ? { resolvedText: input.resolvedText } : {}),
+        ...(input.selectedCandidateId
+          ? { selectedCandidateId: input.selectedCandidateId }
+          : {}),
+        ...(input.note ? { note: input.note } : {}),
+      });
+      const nextWorkspace = await hydrateWorkbenchWorkspaceConcurrency(
+        controller,
+        result.workspace,
+      );
+      const message = `已保存槽位裁决：${input.slotKey}`;
+
+      setWorkspace(nextWorkspace);
+      setDetailJob((current) =>
+        attachEditingGovernanceSummariesToJob(current, {
+          slotSummary: result.resolution.summary,
+          completionGateSummary:
+            result.resolution.completion_gate_summary ??
+            nextWorkspace.manuscript.editing_completion_gate_summary,
+        }),
+      );
+      setStatus(message);
+      setLatestActionResult({
+        tone: "success",
+        actionLabel: "Save Editing Slot Resolution",
+        message,
+        details: [
+          {
+            label: "稿件",
+            value: nextWorkspace.manuscript.id,
+          },
+          {
+            label: "槽位",
+            value: input.slotKey,
+          },
+          {
+            label: "处理",
+            value:
+              input.resolutionKind === "picked_candidate"
+                ? "采用候选"
+                : input.resolutionKind === "manual_entry"
+                  ? "人工录入"
+                  : "人工豁免",
+          },
+        ],
+      });
+    } catch (nextError) {
+      const message = formatError(nextError);
+      setStatus("");
+      setError(message);
+      setLatestActionResult({
+        tone: "error",
+        actionLabel: "Save Editing Slot Resolution",
+        message,
+        details: [],
+      });
+    } finally {
+      setSavingEditingSlotKey(null);
     }
   }
 
@@ -2717,6 +2923,12 @@ function buildTemplateContextActionResult(
     />
   ) : null;
   const confirmationItems = buildProofreadingConfirmationItems(detailJob);
+  const screeningDocumentBlocks = buildScreeningDocumentBlocks(detailJob);
+  const screeningWorkspaceFocusItems = buildScreeningWorkspaceFocusItems({
+    job: detailJob,
+    documentBlocks: screeningDocumentBlocks,
+  });
+  const editingDocumentBlocks = buildEditingDocumentBlocks(detailJob);
   const proofreadingDocumentBlocks = buildProofreadingDocumentBlocks(detailJob);
   const activeProofreadingIssueSelection = resolveProofreadingIssueSelection({
     items: confirmationItems,
@@ -2862,8 +3074,25 @@ function buildTemplateContextActionResult(
             previewSession={detailPreviewSession}
             reportBody={buildAssetReportPreviewBody(detailJob)}
             changeLedger={buildEditingChangeLedgerEntries(detailJob)}
+            editingGuardrails={buildEditingGuardrailEntries(detailJob)}
+            editingSlotSummary={
+              buildEditingSlotGovernanceSummary(detailJob) ??
+              workspace.manuscript.editing_slot_governance_summary ??
+              null
+            }
+            editingCompletionGateSummary={
+              buildEditingCompletionGateSummary(detailJob) ??
+              workspace.manuscript.editing_completion_gate_summary ??
+              null
+            }
+            executionSnapshot={detailExecutionTracking.snapshot}
+            knowledgeHitLogs={detailExecutionTracking.knowledgeHitLogs}
+            knowledgeReferences={workspace.knowledgeReferences}
             confirmationItems={confirmationItems}
             confirmationState={confirmationState}
+            screeningDocumentBlocks={screeningDocumentBlocks}
+            screeningWorkspaceFocusItems={screeningWorkspaceFocusItems}
+            editingDocumentBlocks={editingDocumentBlocks}
             proofreadingDocumentBlocks={proofreadingDocumentBlocks}
             activeProofreadingIssueId={activeProofreadingIssueSelection.issueId}
             activeProofreadingLocateTarget={activeProofreadingIssueSelection.locateTarget}
@@ -2882,6 +3111,7 @@ function buildTemplateContextActionResult(
             draftSaveLabel={canSaveConfirmationDraft ? confirmationDraftStatusLabel : ""}
             isDraftSaving={isConfirmationDraftSaving}
             isFinalizing={isHumanFinalPublishing}
+            savingEditingSlotKey={savingEditingSlotKey}
             onProofreadingIssueSelect={(itemId) => {
               const nextSelection = resolveProofreadingIssueSelection({
                 items: confirmationItems,
@@ -2921,6 +3151,13 @@ function buildTemplateContextActionResult(
                   note: value,
                 },
               }));
+            }}
+            onEditingSlotSave={(input) => {
+              if (!workspace) {
+                return;
+              }
+
+              void saveEditingSlotResolution(workspace, input);
             }}
             onFinalize={() => {
               if (!workspace || !selectedAsset || !confirmationReady) {
@@ -3677,7 +3914,7 @@ function ManuscriptWorkbenchResultPanel({
               </strong>
               <p>
                 {currentResultAsset
-                  ? "进入子页面查看全文、问题列表和人工确认操作。"
+                  ? resolveResultWorkspaceEntryCopy(mode)
                   : "处理完成后，这里会出现结果入口。"}
               </p>
             </div>
@@ -3798,11 +4035,11 @@ function resolveResultPanelDescription(
   mode: Exclude<ManuscriptWorkbenchMode, "submission">,
 ): string {
   if (mode === "screening") {
-    return "结果生成后，从这里进入子页面继续查看和确认。";
+    return "结果生成后，从这里进入子页面查看全文、风险和建议。";
   }
 
   if (mode === "editing") {
-    return "结果生成后，从这里进入子页面继续查看和确认。";
+    return "结果生成后，从这里进入子页面查看全文、问题和台账。";
   }
 
   return "结果生成后，从这里进入子页面查看全文、问题和人工确认项。";
@@ -3871,7 +4108,7 @@ function resolveMainlineResultDescription(input: {
   }
 
   if (input.currentResultAsset) {
-    return "结果已生成，可进入结果页查看全文、问题和人工确认操作。";
+    return `结果已生成，可${resolveResultWorkspaceEntryCopy(input.mode)}`;
   }
 
   const latestJobStatus =
@@ -3895,6 +4132,20 @@ function resolveMainlineResultDescription(input: {
   }
 
   return "先在上方执行当前模块，这里会显示处理结果。";
+}
+
+function resolveResultWorkspaceEntryCopy(
+  mode: Exclude<ManuscriptWorkbenchMode, "submission">,
+): string {
+  if (mode === "screening") {
+    return "进入子页面查看全文、风险和建议。";
+  }
+
+  if (mode === "editing") {
+    return "进入子页面查看全文、问题和台账。";
+  }
+
+  return "进入子页面查看全文、问题和人工确认操作。";
 }
 
 function buildWorkbenchStageResultName(
@@ -4805,6 +5056,46 @@ async function hydrateLatestWorkbenchJob(
 
 function normalizeOptionalText(value: string): string | undefined {
   return value.trim().length > 0 ? value : undefined;
+}
+
+function attachEditingGovernanceSummariesToJob(
+  job: AnyWorkbenchJob | null,
+  input: {
+    slotSummary?: NonNullable<
+      ManuscriptWorkbenchWorkspace["manuscript"]["editing_slot_governance_summary"]
+    >;
+    completionGateSummary?: NonNullable<
+      ManuscriptWorkbenchWorkspace["manuscript"]["editing_completion_gate_summary"]
+    >;
+  },
+): AnyWorkbenchJob | null {
+  if (!job) {
+    return null;
+  }
+
+  const payload =
+    job.payload && typeof job.payload === "object" && !Array.isArray(job.payload)
+      ? (job.payload as Record<string, unknown>)
+      : {};
+
+  return {
+    ...job,
+    payload: {
+      ...payload,
+      ...(input.slotSummary
+        ? {
+            slotGovernanceSummary: structuredClone(input.slotSummary),
+          }
+        : {}),
+      ...(input.completionGateSummary
+        ? {
+            editingCompletionGateSummary: structuredClone(
+              input.completionGateSummary,
+            ),
+          }
+        : {}),
+    },
+  };
 }
 
 export function resolveWorkbenchGeneratedAssetFileName(

@@ -63,6 +63,130 @@ test("knowledge library ledger flow supports draft authoring, AI semantic assist
   await expect(ledgerRow).toContainText(pendingReviewLabel);
 });
 
+test("knowledge library ledger create board shows real structured binding controls", async ({
+  page,
+  request,
+}) => {
+  await loginBrowserSession(page, request, "dev.admin");
+
+  await page.goto("/#knowledge-library?knowledgeView=ledger", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await page.locator('[data-toolbar-action="create"]').click();
+
+  await expect(page.getByRole("heading", { name: "结构化绑定" })).toBeVisible();
+  await expect(
+    page.locator('[data-knowledge-binding-multi-select="binding-sections"]'),
+  ).toBeVisible();
+  await expect(
+    page.locator('[data-searchable-multi-select-input="ledger-binding-sections"]'),
+  ).toBeVisible();
+});
+
+test("knowledge library ledger blocks submit review when high-precision table evidence is incomplete", async ({
+  page,
+  request,
+}) => {
+  const title = `knowledge-ledger-evidence-${Date.now()}`;
+  let submitCalled = false;
+
+  await loginBrowserSession(page, request, "dev.admin");
+  await page.route("**/api/v1/knowledge/duplicate-check", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: "[]",
+    });
+  });
+  page.on("request", (browserRequest) => {
+    if (
+      browserRequest.url().includes("/api/v1/knowledge/revisions/") &&
+      browserRequest.url().endsWith("/submit")
+    ) {
+      submitCalled = true;
+    }
+  });
+
+  await page.goto("/#knowledge-library?knowledgeView=ledger", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await page.locator('[data-toolbar-action="create"]').click();
+  await page.getByRole("textbox", { name: titleFieldLabel }).fill(title);
+  await page
+    .getByRole("textbox", { name: canonicalTextFieldLabel })
+    .fill("Table format evidence must be exact before this knowledge can enter review.");
+
+  await page.locator('[data-board-tab="materials"]').click();
+  await page.locator('[data-block-action="add-table"]').click();
+  await page
+    .locator('[data-block-type="table_block"] textarea')
+    .fill("field\tvalue\ncheckpoint\tincomplete exact capture");
+  await page.locator('[data-board-action="save-draft"]').click();
+
+  await page.locator('[data-board-tab="semantic"]').click();
+  await page.locator('[data-semantic-action="generate"]').click();
+  await expect(
+    page.locator('[data-semantic-field="page-summary"] textarea'),
+  ).toHaveValue(/.+/);
+  await page.locator('[data-semantic-action="apply"]').click();
+
+  await expect(page.locator('[data-entry-evidence-gate="knowledge"]')).toContainText(
+    "高精度证据预检",
+  );
+  await expect(page.locator('[data-entry-evidence-gate="knowledge"]')).toContainText(
+    "表格块 #1",
+  );
+
+  await page.locator('[data-board-action="submit-review"]').click();
+
+  await expect(page.locator(".knowledge-library-ledger-page__notice.is-error")).toContainText(
+    "表格块 #1未满足提交审核条件",
+  );
+  await page.waitForTimeout(200);
+  expect(submitCalled).toBeFalsy();
+});
+
+test("knowledge library ledger structured bindings expose package-kind fallback options", async ({
+  page,
+  request,
+}) => {
+  await loginBrowserSession(page, request, "dev.admin");
+
+  await page.goto("/#knowledge-library?knowledgeView=ledger", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await page.locator('[data-toolbar-action="create"]').click();
+
+  await expect(page.getByRole("heading", { name: "结构化绑定" })).toBeVisible();
+  await expect(
+    page.locator('[data-searchable-multi-select="binding-general-packages"]'),
+  ).toContainText("按通用包类型激活（不锁版本）");
+  await expect(
+    page.locator('[data-searchable-multi-select="binding-medical-packages"]'),
+  ).toContainText("按医用包类型激活（不锁版本）");
+});
+
+test("knowledge reviewer can open structured bindings without admin-only package errors", async ({
+  page,
+  request,
+}) => {
+  await loginBrowserSession(page, request, "dev.knowledge-reviewer");
+
+  await page.goto("/#knowledge-library?knowledgeView=ledger", {
+    waitUntil: "domcontentloaded",
+  });
+
+  await page.locator('[data-toolbar-action="create"]').click();
+
+  await expect(page.getByRole("heading", { name: "结构化绑定" })).toBeVisible();
+  await expect(page.locator(".knowledge-library-ledger-page__board")).not.toContainText(
+    "HTTP 403",
+  );
+});
+
 test("knowledge library ledger semantic assist uploads image blocks and surfaces analyzed materials", async ({
   page,
   request,

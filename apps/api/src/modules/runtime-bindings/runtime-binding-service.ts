@@ -169,6 +169,47 @@ export class RuntimeBindingService {
     return this.requireBinding(bindingId);
   }
 
+  async resolveActiveQualityPackageContext(
+    qualityPackageVersionIds: readonly string[],
+  ): Promise<Array<{
+    packageId: string;
+    packageKind: "general_style_package" | "medical_analyzer_package";
+  }>> {
+    if (
+      !this.manuscriptQualityPackageRepository ||
+      qualityPackageVersionIds.length === 0
+    ) {
+      return [];
+    }
+
+    const resolvedPackages = await Promise.all(
+      dedupePreserveOrder([...qualityPackageVersionIds]).map(async (packageId) => {
+        const record = await this.manuscriptQualityPackageRepository?.findById(packageId);
+        if (
+          !record ||
+          (record.package_kind !== "general_style_package" &&
+            record.package_kind !== "medical_analyzer_package")
+        ) {
+          return undefined;
+        }
+
+        return {
+          packageId: record.id,
+          packageKind: record.package_kind,
+        };
+      }),
+    );
+
+    return resolvedPackages.filter(
+      (
+        record,
+      ): record is {
+        packageId: string;
+        packageKind: "general_style_package" | "medical_analyzer_package";
+      } => record != null,
+    );
+  }
+
   async activateBinding(
     bindingId: string,
     actorRole: RoleKey,

@@ -3395,6 +3395,353 @@ test("manuscript workbench controller loads proofreading governance handoff with
   );
 });
 
+test("manuscript workbench controller loads execution snapshot details and knowledge hit logs for detail explanations", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/execution-tracking/snapshots/snapshot-output-1"
+      ) {
+        return {
+          status: 200,
+          body: {
+            id: "snapshot-output-1",
+            manuscript_id: "manuscript-1",
+            module: "editing",
+            job_id: "job-editing-1",
+            execution_profile_id: "execution-profile-editing-1",
+            module_template_id: "template-editing-1",
+            module_template_version_no: 2,
+            prompt_template_id: "prompt-editing-1",
+            prompt_template_version: "2026-04-24",
+            skill_package_ids: [],
+            skill_package_versions: [],
+            model_id: "gpt-5.4",
+            quality_packages: [
+              {
+                package_id: "pkg-general-1",
+                package_name: "通用样式包",
+                package_kind: "general_style_package",
+                target_scopes: ["general_proofreading"],
+                version: 3,
+              },
+            ],
+            knowledge_item_ids: ["knowledge-1"],
+            created_asset_ids: ["asset-edited-1"],
+            quality_findings_summary: {
+              total_issue_count: 2,
+              issue_count_by_scope: {
+                general_proofreading: 2,
+              },
+              issue_count_by_action: {
+                manual_review: 2,
+              },
+              issue_count_by_severity: {
+                high: 1,
+                medium: 1,
+              },
+              highest_action: "manual_review",
+              representative_issue_ids: ["issue-1"],
+            },
+            created_at: "2026-04-24T09:00:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url ===
+          "/api/v1/execution-tracking/snapshots/snapshot-output-1/knowledge-hit-logs"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "hit-1",
+              snapshot_id: "snapshot-output-1",
+              knowledge_item_id: "knowledge-1",
+              binding_rule_id: "rule-table-1",
+              match_source: "knowledge_item_binding",
+              match_reasons: ["命中期刊表格说明"],
+              section: "结果",
+              created_at: "2026-04-24T09:01:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const snapshot = await controller.loadExecutionSnapshot?.("snapshot-output-1");
+  const knowledgeHitLogs =
+    await controller.loadKnowledgeHitLogsBySnapshotId?.("snapshot-output-1");
+
+  assert.deepEqual(snapshot, {
+    id: "snapshot-output-1",
+    manuscript_id: "manuscript-1",
+    module: "editing",
+    job_id: "job-editing-1",
+    execution_profile_id: "execution-profile-editing-1",
+    module_template_id: "template-editing-1",
+    module_template_version_no: 2,
+    prompt_template_id: "prompt-editing-1",
+    prompt_template_version: "2026-04-24",
+    skill_package_ids: [],
+    skill_package_versions: [],
+    model_id: "gpt-5.4",
+    quality_packages: [
+      {
+        package_id: "pkg-general-1",
+        package_name: "通用样式包",
+        package_kind: "general_style_package",
+        target_scopes: ["general_proofreading"],
+        version: 3,
+      },
+    ],
+    knowledge_item_ids: ["knowledge-1"],
+    created_asset_ids: ["asset-edited-1"],
+    quality_findings_summary: {
+      total_issue_count: 2,
+      issue_count_by_scope: {
+        general_proofreading: 2,
+      },
+      issue_count_by_action: {
+        manual_review: 2,
+      },
+      issue_count_by_severity: {
+        high: 1,
+        medium: 1,
+      },
+      highest_action: "manual_review",
+      representative_issue_ids: ["issue-1"],
+    },
+    created_at: "2026-04-24T09:00:00.000Z",
+  });
+  assert.deepEqual(knowledgeHitLogs, [
+    {
+      id: "hit-1",
+      snapshot_id: "snapshot-output-1",
+      knowledge_item_id: "knowledge-1",
+      binding_rule_id: "rule-table-1",
+      match_source: "knowledge_item_binding",
+      match_reasons: ["命中期刊表格说明"],
+      section: "结果",
+      created_at: "2026-04-24T09:01:00.000Z",
+    },
+  ]);
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "GET /api/v1/execution-tracking/snapshots/snapshot-output-1",
+      "GET /api/v1/execution-tracking/snapshots/snapshot-output-1/knowledge-hit-logs",
+    ],
+  );
+});
+
+test("manuscript workbench controller saves editing slot resolutions and reloads the workspace", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/modules/editing/slot-resolutions"
+      ) {
+        return {
+          status: 200,
+          body: {
+            manuscript_id: "manuscript-slot-1",
+            summary: {
+              observation_status: "reported",
+              target_model_version_no: 2,
+              unresolved_required_count: 0,
+              blocking_slot_keys: [],
+              slots: [
+                {
+                  slot_key: "author_line",
+                  label: "作者署名",
+                  required: true,
+                  enabled: true,
+                  zone: "front_matter",
+                  anchor: "after_title",
+                  completion_gate: "block_on_unresolved",
+                  state: "resolved_manual",
+                  resolution_reason: "已记录人工槽位裁决，并采用指定候选。",
+                  resolved_text: "李四, 王五",
+                  candidate_count: 1,
+                  candidates: [
+                    {
+                      candidate_id: "candidate-author-2",
+                      slot_key: "author_line",
+                      raw_text: "李四, 王五",
+                      normalized_text: "李四, 王五",
+                      source_zone: "front_matter",
+                      source_locator: "body:p:2",
+                      semantic_role: "author_line",
+                      confidence: 0.93,
+                      recommended_action: "auto_place_candidate",
+                    },
+                  ],
+                  manual_resolution: {
+                    slot_key: "author_line",
+                    resolution_kind: "picked_candidate",
+                    selected_candidate_id: "candidate-author-2",
+                  },
+                },
+              ],
+              manual_resolutions: [
+                {
+                  slot_key: "author_line",
+                  resolution_kind: "picked_candidate",
+                  selected_candidate_id: "candidate-author-2",
+                },
+              ],
+            },
+            completion_gate_summary: {
+              observation_status: "reported",
+              verdict: "passed",
+              passed: true,
+              blocker_count: 0,
+              unresolved_required_slots: [],
+              pending_manual_resolution_items: [],
+              high_risk_object_items: [],
+              table_high_risk_items: [],
+              blocking_format_failures: [],
+            },
+          } as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/manuscripts/manuscript-slot-1") {
+        return {
+          status: 200,
+          body: {
+            id: "manuscript-slot-1",
+            title: "Slot manuscript",
+            manuscript_type: "review",
+            status: "processing",
+            created_by: "editor-1",
+            current_editing_asset_id: "asset-edit-slot-1",
+            editing_slot_governance_summary: {
+              observation_status: "reported",
+              target_model_version_no: 2,
+              unresolved_required_count: 0,
+              blocking_slot_keys: [],
+              slots: [
+                {
+                  slot_key: "author_line",
+                  label: "作者署名",
+                  required: true,
+                  enabled: true,
+                  zone: "front_matter",
+                  anchor: "after_title",
+                  completion_gate: "block_on_unresolved",
+                  state: "resolved_manual",
+                  resolution_reason: "已记录人工槽位裁决，并采用指定候选。",
+                  resolved_text: "李四, 王五",
+                  candidate_count: 1,
+                  candidates: [],
+                },
+              ],
+            },
+            editing_completion_gate_summary: {
+              observation_status: "reported",
+              verdict: "passed",
+              passed: true,
+              blocker_count: 0,
+              unresolved_required_slots: [],
+              pending_manual_resolution_items: [],
+              high_risk_object_items: [],
+              table_high_risk_items: [],
+              blocking_format_failures: [],
+            },
+            created_at: "2026-04-24T09:00:00.000Z",
+            updated_at: "2026-04-24T09:05:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/manuscripts/manuscript-slot-1/assets"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "asset-edit-slot-1",
+              manuscript_id: "manuscript-slot-1",
+              asset_type: "edited_docx",
+              status: "active",
+              storage_key: "runs/editing/slot-output.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              source_module: "editing",
+              created_by: "editor-1",
+              version_no: 2,
+              is_current: true,
+              file_name: "slot-output.docx",
+              created_at: "2026-04-24T09:00:00.000Z",
+              updated_at: "2026-04-24T09:05:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const result = await controller.saveEditingSlotResolutionAndLoad({
+    manuscriptId: "manuscript-slot-1",
+    actorRole: "editor",
+    slotKey: "author_line",
+    resolutionKind: "picked_candidate",
+    selectedCandidateId: "candidate-author-2",
+    note: "采用前置区作者行。",
+  });
+
+  assert.equal(result.resolution.summary.unresolved_required_count, 0);
+  assert.equal(result.resolution.completion_gate_summary?.verdict, "passed");
+  assert.equal(
+    result.workspace.manuscript.editing_slot_governance_summary?.slots[0]?.state,
+    "resolved_manual",
+  );
+  assert.equal(
+    result.workspace.manuscript.editing_completion_gate_summary?.verdict,
+    "passed",
+  );
+  assert.equal(result.workspace.currentAsset?.id, "asset-edit-slot-1");
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "POST /api/v1/modules/editing/slot-resolutions",
+      "GET /api/v1/manuscripts/manuscript-slot-1",
+      "GET /api/v1/manuscripts/manuscript-slot-1/assets",
+    ],
+  );
+  assert.deepEqual(requests[0]?.body, {
+    manuscriptId: "manuscript-slot-1",
+    slotKey: "author_line",
+    resolutionKind: "picked_candidate",
+    selectedCandidateId: "candidate-author-2",
+    note: "采用前置区作者行。",
+  });
+});
+
 test("manuscript workbench controller can route proofreading residual issues to governed knowledge candidates", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const controller = createManuscriptWorkbenchController({
@@ -3465,4 +3812,3 @@ test("manuscript workbench controller can route proofreading residual issues to 
     proposalText: undefined,
   });
 });
-

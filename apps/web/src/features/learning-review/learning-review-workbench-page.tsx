@@ -109,11 +109,11 @@ function formatActorRoleLabel(role: AuthRole): string {
     case "screener":
       return "初筛员";
     case "editor":
-      return "编辑";
+      return "稿件处理员";
     case "proofreader":
       return "校对员";
     case "knowledge_reviewer":
-      return "知识审核员";
+      return "知识治理员";
     case "user":
     default:
       return "普通用户";

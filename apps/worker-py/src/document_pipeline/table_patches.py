@@ -5,19 +5,25 @@ from xml.etree import ElementTree as ET
 
 from .parse_docx import (
     NS,
+    extract_cell_vertical_alignment,
     extract_grid_span,
     extract_node_text,
+    extract_paragraph_snapshot,
+    extract_table_cell_paragraphs,
     extract_table_border_hints,
     is_table_caption,
     is_table_note,
     qualify,
 )
+from .materialize_docx import build_paragraph_node
 from .table_semantics import build_table_semantic_snapshot
 
 
 @dataclass
 class TableRuntimeContext:
     table_id: str
+    body_node: ET.Element
+    table_position: int
     table_node: ET.Element
     caption: str | None
     caption_paragraph: ET.Element | None = None
@@ -44,7 +50,7 @@ def build_table_runtime_contexts(root: ET.Element) -> list[TableRuntimeContext]:
     pending_caption: str | None = None
     pending_caption_paragraph: ET.Element | None = None
 
-    for child in list(body):
+    for child_index, child in enumerate(list(body)):
         if child.tag == qualify("p"):
             text = extract_node_text(child).strip()
             if not text:
@@ -68,6 +74,8 @@ def build_table_runtime_contexts(root: ET.Element) -> list[TableRuntimeContext]:
         contexts.append(
             TableRuntimeContext(
                 table_id=f"table-{len(contexts) + 1}",
+                body_node=body,
+                table_position=child_index,
                 table_node=child,
                 caption=pending_caption,
                 caption_paragraph=pending_caption_paragraph,
@@ -83,7 +91,16 @@ def build_table_runtime_contexts(root: ET.Element) -> list[TableRuntimeContext]:
             table_index=int(context.table_id.split("-")[-1]),
             rows=context.raw_rows,
             caption=context.caption,
+            caption_paragraphs=(
+                [extract_paragraph_snapshot(context.caption_paragraph)]
+                if context.caption_paragraph is not None
+                else []
+            ),
             notes=context.note_texts,
+            note_paragraphs=[
+                extract_paragraph_snapshot(paragraph)
+                for paragraph in context.note_paragraphs
+            ],
             border_hints=context.border_hints,
         )
         context.expanded_rows = _expand_table_rows_with_nodes(context.table_node)
@@ -133,11 +150,7 @@ def _apply_single_patch(
     if patch_type == "replace_table_note_text":
         return apply_note_zone_patch(context, patch)
     if patch_type == "apply_three_line_table_style":
-        return build_patch_result(
-            patch,
-            "skipped_unsafe",
-            "Style patch family is not yet safe for deterministic DOCX auto-apply.",
-        )
+        return apply_three_line_table_rebuild(context, patch)
     if patch_type == "normalize_unit_text":
         return apply_unit_marker_patch(context, patch)
     return apply_footnote_patch(context, patch)
@@ -388,6 +401,337 @@ def apply_note_zone_patch(context: TableRuntimeContext, patch: dict) -> dict:
     return build_patch_result(patch, "applied", "Note zone patch applied.")
 
 
+def apply_three_line_table_rebuild(context: TableRuntimeContext, patch: dict) -> dict:
+    snapshot = resolve_rebuild_snapshot(context, patch)
+    if snapshot is None:
+        return build_patch_result(
+            patch,
+            "skipped_unsafe",
+            "Controlled rebuild payload is missing a valid table snapshot.",
+        )
+
+    grid_cells = snapshot.get("grid_cells")
+    if not isinstance(grid_cells, list) or len(grid_cells) == 0:
+        return build_patch_result(
+            patch,
+            "skipped_unsafe",
+            "Controlled rebuild requires grid cell evidence and cannot fall back to approximation.",
+        )
+
+    replacement = build_three_line_table_node(snapshot)
+    replace_table_node(context, replacement)
+    replace_caption_and_note_zone(context, snapshot)
+    context.snapshot = snapshot
+    context.expanded_rows = _expand_table_rows_with_nodes(context.table_node)
+    return build_patch_result(
+        patch,
+        "applied",
+        "Controlled table rebuild applied.",
+    )
+
+
+def resolve_rebuild_snapshot(context: TableRuntimeContext, patch: dict) -> dict | None:
+    rebuild_payload = patch.get("rebuild_payload")
+    if isinstance(rebuild_payload, dict):
+        table_snapshot = rebuild_payload.get("table_snapshot")
+        if isinstance(table_snapshot, dict):
+            return table_snapshot
+
+    return context.snapshot if isinstance(context.snapshot, dict) else None
+
+
+def replace_table_node(context: TableRuntimeContext, replacement: ET.Element) -> None:
+    children = list(context.body_node)
+    try:
+        table_index = children.index(context.table_node)
+    except ValueError:
+        table_index = context.table_position
+
+    context.body_node.remove(context.table_node)
+    context.body_node.insert(table_index, replacement)
+    context.table_node = replacement
+
+
+def replace_caption_and_note_zone(context: TableRuntimeContext, snapshot: dict) -> None:
+    if context.caption_paragraph is not None and _is_child_of(context.body_node, context.caption_paragraph):
+        context.body_node.remove(context.caption_paragraph)
+
+    for paragraph in [*context.note_paragraphs]:
+        if _is_child_of(context.body_node, paragraph):
+            context.body_node.remove(paragraph)
+
+    inserted_caption = build_snapshot_paragraph_nodes(
+        _read_caption_paragraph_snapshots(snapshot)
+    )
+    table_index = list(context.body_node).index(context.table_node)
+    for paragraph in reversed(inserted_caption):
+        context.body_node.insert(table_index, paragraph)
+
+    inserted_notes = build_snapshot_paragraph_nodes(
+        _read_note_paragraph_snapshots(snapshot)
+    )
+    table_index = list(context.body_node).index(context.table_node)
+    for offset, paragraph in enumerate(inserted_notes, start=1):
+        context.body_node.insert(table_index + offset, paragraph)
+
+    context.caption_paragraph = inserted_caption[0] if inserted_caption else None
+    context.note_paragraphs = inserted_notes
+    context.caption = _read_snapshot_caption_text(snapshot)
+    context.note_texts = [
+        extract_node_text(paragraph).strip()
+        for paragraph in inserted_notes
+        if extract_node_text(paragraph).strip()
+    ]
+
+
+def build_snapshot_paragraph_nodes(paragraph_snapshots: list[dict]) -> list[ET.Element]:
+    return [build_paragraph_node(snapshot) for snapshot in paragraph_snapshots]
+
+
+def _read_caption_paragraph_snapshots(snapshot: dict) -> list[dict]:
+    caption_fields = snapshot.get("caption_fields")
+    if not isinstance(caption_fields, dict):
+        return []
+
+    paragraphs = caption_fields.get("paragraphs")
+    return paragraphs if isinstance(paragraphs, list) else []
+
+
+def _read_note_paragraph_snapshots(snapshot: dict) -> list[dict]:
+    note_zone = snapshot.get("note_zone")
+    if isinstance(note_zone, dict) and isinstance(note_zone.get("paragraphs"), list):
+        return note_zone["paragraphs"]
+
+    footnote_items = snapshot.get("footnote_items")
+    if not isinstance(footnote_items, list):
+        return []
+
+    paragraphs: list[dict] = []
+    for item in footnote_items:
+        if not isinstance(item, dict):
+            continue
+        item_paragraphs = item.get("paragraphs")
+        if isinstance(item_paragraphs, list):
+            paragraphs.extend(
+                paragraph for paragraph in item_paragraphs if isinstance(paragraph, dict)
+            )
+    return paragraphs
+
+
+def _read_snapshot_caption_text(snapshot: dict) -> str | None:
+    caption_fields = snapshot.get("caption_fields")
+    if not isinstance(caption_fields, dict):
+        return None
+
+    text = caption_fields.get("text")
+    return text if isinstance(text, str) and text.strip() else None
+
+
+def build_three_line_table_node(snapshot: dict) -> ET.Element:
+    table = ET.Element(qualify("tbl"))
+    table_properties = ET.SubElement(table, qualify("tblPr"))
+    borders = ET.SubElement(table_properties, qualify("tblBorders"))
+    _append_border(borders, "top", "single")
+    _append_border(borders, "bottom", "single")
+    _append_border(borders, "left", "nil")
+    _append_border(borders, "right", "nil")
+    _append_border(borders, "insideH", "nil")
+    _append_border(borders, "insideV", "nil")
+
+    row_count = _read_table_dimension(snapshot, "row_count")
+    column_count = _read_table_dimension(snapshot, "column_count")
+    profile = snapshot.get("profile") if isinstance(snapshot.get("profile"), dict) else {}
+    header_depth = profile.get("header_depth") if isinstance(profile, dict) else 0
+    header_depth = header_depth if isinstance(header_depth, int) else 0
+    grid_cells = snapshot.get("grid_cells") if isinstance(snapshot.get("grid_cells"), list) else []
+
+    for row_index in range(row_count):
+        row = ET.SubElement(table, qualify("tr"))
+        column_index = 0
+        while column_index < column_count:
+            starting_cell = _find_starting_grid_cell(grid_cells, row_index, column_index)
+            if starting_cell is not None:
+                row.append(
+                    _build_grid_cell_node(
+                        starting_cell,
+                        apply_header_rule=row_index == max(header_depth - 1, 0),
+                    )
+                )
+                column_index += read_int(starting_cell.get("column_span"), default=1)
+                continue
+
+            covering_cell = _find_covering_grid_cell(grid_cells, row_index, column_index)
+            if (
+                covering_cell is not None
+                and read_int(covering_cell.get("column_index"), default=-1) == column_index
+            ):
+                row.append(
+                    _build_vertical_merge_continue_cell(
+                        covering_cell,
+                        apply_header_rule=row_index == max(header_depth - 1, 0),
+                    )
+                )
+                column_index += read_int(covering_cell.get("column_span"), default=1)
+                continue
+
+            column_index += 1
+
+    return table
+
+
+def _find_starting_grid_cell(
+    grid_cells: list[dict],
+    row_index: int,
+    column_index: int,
+) -> dict | None:
+    for cell in grid_cells:
+        if not isinstance(cell, dict):
+            continue
+        if (
+            read_int(cell.get("row_index"), default=-1) == row_index
+            and read_int(cell.get("column_index"), default=-1) == column_index
+        ):
+            return cell
+    return None
+
+
+def _find_covering_grid_cell(
+    grid_cells: list[dict],
+    row_index: int,
+    column_index: int,
+) -> dict | None:
+    for cell in grid_cells:
+        if not isinstance(cell, dict):
+            continue
+        start_row = read_int(cell.get("row_index"), default=-1)
+        start_column = read_int(cell.get("column_index"), default=-1)
+        row_span = read_int(cell.get("row_span"), default=1)
+        column_span = read_int(cell.get("column_span"), default=1)
+        if start_row < row_index < start_row + row_span and start_column == column_index:
+            return cell
+        if start_row == row_index and start_column < column_index < start_column + column_span:
+            return cell
+    return None
+
+
+def _build_grid_cell_node(cell_snapshot: dict, apply_header_rule: bool) -> ET.Element:
+    cell = ET.Element(qualify("tc"))
+    properties = ET.SubElement(cell, qualify("tcPr"))
+    column_span = read_int(cell_snapshot.get("column_span"), default=1)
+    row_span = read_int(cell_snapshot.get("row_span"), default=1)
+    if column_span > 1:
+        grid_span = ET.SubElement(properties, qualify("gridSpan"))
+        grid_span.set(qualify("val"), str(column_span))
+    if row_span > 1:
+        vertical_merge = ET.SubElement(properties, qualify("vMerge"))
+        vertical_merge.set(qualify("val"), "restart")
+
+    vertical_alignment = _read_style_fact_value(
+        (
+            cell_snapshot.get("style_evidence", {})
+            if isinstance(cell_snapshot.get("style_evidence"), dict)
+            else {}
+        ).get("vertical_alignment")
+    )
+    if isinstance(vertical_alignment, str) and vertical_alignment:
+        align = ET.SubElement(properties, qualify("vAlign"))
+        align.set(qualify("val"), vertical_alignment)
+
+    if apply_header_rule:
+        _apply_bottom_border(properties)
+
+    paragraphs = cell_snapshot.get("paragraphs")
+    if isinstance(paragraphs, list) and paragraphs:
+        for paragraph in paragraphs:
+            if isinstance(paragraph, dict):
+                cell.append(build_paragraph_node(paragraph))
+    else:
+        cell.append(build_paragraph_node({"text": cell_snapshot.get("text") or ""}))
+
+    return cell
+
+
+def _build_vertical_merge_continue_cell(
+    cell_snapshot: dict,
+    apply_header_rule: bool,
+) -> ET.Element:
+    cell = ET.Element(qualify("tc"))
+    properties = ET.SubElement(cell, qualify("tcPr"))
+    column_span = read_int(cell_snapshot.get("column_span"), default=1)
+    if column_span > 1:
+        grid_span = ET.SubElement(properties, qualify("gridSpan"))
+        grid_span.set(qualify("val"), str(column_span))
+    ET.SubElement(properties, qualify("vMerge"))
+    if apply_header_rule:
+        _apply_bottom_border(properties)
+    cell.append(build_paragraph_node({"text": ""}))
+    return cell
+
+
+def _apply_bottom_border(properties: ET.Element) -> None:
+    borders = ET.SubElement(properties, qualify("tcBorders"))
+    bottom = ET.SubElement(borders, qualify("bottom"))
+    bottom.set(qualify("val"), "single")
+
+
+def _append_border(parent: ET.Element, side: str, value: str) -> None:
+    border = ET.SubElement(parent, qualify(side))
+    border.set(qualify("val"), value)
+
+
+def _read_style_fact_value(value: object) -> object | None:
+    if not isinstance(value, dict):
+        return None
+    if value.get("availability") not in {"authoritative", "mixed"}:
+        return None
+    return value.get("value")
+
+
+def _read_table_dimension(snapshot: dict, key: str) -> int:
+    value = snapshot.get(key)
+    if isinstance(value, int) and value > 0:
+        return value
+
+    grid_cells = snapshot.get("grid_cells")
+    if not isinstance(grid_cells, list):
+        return 0
+
+    if key == "row_count":
+        return max(
+            (
+                read_int(cell.get("row_index"), default=0)
+                + read_int(cell.get("row_span"), default=1)
+                for cell in grid_cells
+                if isinstance(cell, dict)
+            ),
+            default=0,
+        )
+
+    return max(
+        (
+            read_int(cell.get("column_index"), default=0)
+            + read_int(cell.get("column_span"), default=1)
+            for cell in grid_cells
+            if isinstance(cell, dict)
+        ),
+        default=0,
+    )
+
+
+def read_int(value: object, *, default: int) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    return default
+
+
+def _is_child_of(parent: ET.Element, target: ET.Element) -> bool:
+    return any(child is target for child in list(parent))
+
+
 def find_header_cell_node(
     context: TableRuntimeContext,
     anchor: dict,
@@ -584,6 +928,9 @@ def build_patch_result(patch: dict, status: str, reason: str) -> dict:
     elif isinstance(patch.get("semantic_target"), str):
         result["semantic_target"] = patch["semantic_target"]
 
+    if isinstance(patch.get("execution_path"), str):
+        result["execution_path"] = patch["execution_path"]
+
     return result
 
 
@@ -601,12 +948,19 @@ def _extract_raw_rows(table_node: ET.Element) -> list[list[dict]]:
     for row in rows:
         raw_row: list[dict] = []
         for cell in row.findall("./w:tc", NS):
+            paragraphs = extract_table_cell_paragraphs(cell)
             raw_row.append(
                 {
-                    "text": extract_node_text(cell).strip(),
+                    "text": "\n".join(
+                        paragraph.get("text", "")
+                        for paragraph in paragraphs
+                        if (paragraph.get("text") or "").strip()
+                    ).strip(),
                     "column_span": extract_grid_span(cell),
                     "row_span": _extract_row_span(cell),
                     "borders": _extract_cell_borders(cell),
+                    "vertical_alignment": extract_cell_vertical_alignment(cell),
+                    "paragraphs": paragraphs,
                 }
             )
         raw_rows.append(raw_row)

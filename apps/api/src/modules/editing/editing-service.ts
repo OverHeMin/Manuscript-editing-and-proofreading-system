@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type {
+  EditingCompletionGateSummary,
+  EditingSlotGovernanceSummary,
+  EditingSlotManualResolutionKind,
   ManuscriptQualityIssue,
   ModuleExecutionMode,
 } from "@medical/contracts";
@@ -7,7 +10,10 @@ import { PermissionGuard } from "../../auth/permission-guard.ts";
 import type { RoleKey } from "../../users/roles.ts";
 import type { DocumentAssetRecord } from "../assets/document-asset-record.ts";
 import type { DocumentAssetRepository } from "../assets/document-asset-repository.ts";
-import { DocumentAssetService } from "../assets/document-asset-service.ts";
+import {
+  DocumentAssetService,
+  ManuscriptNotFoundError,
+} from "../assets/document-asset-service.ts";
 import type { AiGatewayService } from "../ai-gateway/ai-gateway-service.ts";
 import type { AiProviderRuntimeService } from "../ai-provider-runtime/ai-provider-runtime-service.ts";
 import type { AgentExecutionService } from "../agent-execution/agent-execution-service.ts";
@@ -20,6 +26,7 @@ import {
   EditorialDocxTransformService,
 } from "../document-pipeline/editorial-docx-transform-service.ts";
 import type {
+  DocumentStructureObjectEvidence,
   DocumentStructureService,
   DocumentStructureTableSnapshot,
 } from "../document-pipeline/document-structure-service.ts";
@@ -80,6 +87,15 @@ import {
   EditingAiPlanService,
   type EditingAiPlan,
 } from "./editing-ai-plan-service.ts";
+import {
+  applyEditingSlotManualResolution,
+  buildEditingSlotGovernanceSummary,
+} from "./editing-slot-governance.ts";
+import {
+  buildEditingCompletionGateSummary,
+  refreshEditingCompletionGateSummaryWithSlotSummary,
+} from "./editing-completion-gate.ts";
+import type { TemplateFamilyRepository } from "../templates/template-repository.ts";
 
 export interface RunEditingInput {
   manuscriptId: string;
@@ -91,9 +107,50 @@ export interface RunEditingInput {
   executionMode?: ModuleExecutionMode;
 }
 
+export interface SaveEditingSlotManualResolutionInput {
+  manuscriptId: string;
+  slotKey: string;
+  resolutionKind: EditingSlotManualResolutionKind;
+  requestedBy: string;
+  actorRole: RoleKey;
+  resolvedText?: string;
+  selectedCandidateId?: string;
+  note?: string;
+}
+
+export interface SaveEditingSlotManualResolutionResult {
+  manuscript_id: string;
+  summary: EditingSlotGovernanceSummary;
+  completion_gate_summary?: EditingCompletionGateSummary;
+}
+
+export class EditingSlotGovernanceUnavailableError extends Error {
+  constructor(manuscriptId: string) {
+    super(
+      `Manuscript ${manuscriptId} does not have an editable slot governance summary yet.`,
+    );
+    this.name = "EditingSlotGovernanceUnavailableError";
+  }
+}
+
+export class EditingSlotNotFoundError extends Error {
+  constructor(manuscriptId: string, slotKey: string) {
+    super(`Slot "${slotKey}" was not found on manuscript ${manuscriptId}.`);
+    this.name = "EditingSlotNotFoundError";
+  }
+}
+
+export class EditingSlotManualResolutionInvalidError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EditingSlotManualResolutionInvalidError";
+  }
+}
+
 export interface EditingServiceOptions {
   manuscriptRepository: ManuscriptRepository;
   assetRepository: DocumentAssetRepository;
+  templateFamilyRepository?: Pick<TemplateFamilyRepository, "findJournalTemplateProfileById">;
   moduleTemplateRepository: ModuleTemplateRepository;
   promptSkillRegistryRepository: PromptSkillRegistryRepository;
   knowledgeRepository: KnowledgeRepository;
@@ -152,6 +209,10 @@ const DOCX_MIME =
 export class EditingService {
   private readonly manuscriptRepository: ManuscriptRepository;
   private readonly jobRepository: JobRepository;
+  private readonly templateFamilyRepository?: Pick<
+    TemplateFamilyRepository,
+    "findJournalTemplateProfileById"
+  >;
   private readonly moduleTemplateRepository: ModuleTemplateRepository;
   private readonly promptSkillRegistryRepository: PromptSkillRegistryRepository;
   private readonly knowledgeRepository: KnowledgeRepository;
@@ -214,6 +275,7 @@ export class EditingService {
   constructor(options: EditingServiceOptions) {
     this.manuscriptRepository = options.manuscriptRepository;
     this.jobRepository = options.jobRepository;
+    this.templateFamilyRepository = options.templateFamilyRepository;
     this.moduleTemplateRepository = options.moduleTemplateRepository;
     this.promptSkillRegistryRepository = options.promptSkillRegistryRepository;
     this.knowledgeRepository = options.knowledgeRepository;
@@ -483,6 +545,27 @@ export class EditingService {
               sourceAsset?.file_name ?? input.fileName ?? input.parentAssetId,
           })
         : undefined;
+      const journalTemplate = manuscript.current_journal_template_id
+        ? await this.templateFamilyRepository?.findJournalTemplateProfileById(
+            manuscript.current_journal_template_id,
+          )
+        : undefined;
+      const slotGovernanceTimestamp = this.now().toISOString();
+      const slotGovernanceSummary = buildEditingSlotGovernanceSummary({
+        journalTemplateId: manuscript.current_journal_template_id,
+        targetModelVersionId: journalTemplate?.target_model_version_id,
+        targetModelVersionNo: journalTemplate?.target_model_version_no,
+        targetModel: journalTemplate?.journal_format_target_model,
+        sourceBlocks,
+        documentStructureSnapshot,
+        previousSummary: manuscript.editing_slot_governance_summary,
+        generatedAt: slotGovernanceTimestamp,
+      });
+      await context.manuscriptRepository.save({
+        ...manuscript,
+        editing_slot_governance_summary: structuredClone(slotGovernanceSummary),
+        updated_at: slotGovernanceTimestamp,
+      });
       const qualityRun = await this.runManuscriptQualityChecks({
         manuscriptId: input.manuscriptId,
         assetId: input.parentAssetId,
@@ -536,6 +619,8 @@ export class EditingService {
         deterministicTransform.tableInspectionFindings ?? [];
       const tablePatchPlans = deterministicTransform.tablePatchPlans ?? [];
       const tablePatchResults = deterministicTransform.tablePatchResults ?? [];
+      const skippedAiReplacements =
+        deterministicTransform.skippedAiReplacements ?? [];
       await this.activationMetricsService?.recordTablePatchResults(
         tablePatchResults,
       );
@@ -624,6 +709,40 @@ export class EditingService {
         tableInspectionFindings,
         reviewItemIdBySourceKey,
       );
+      const objectRiskItems = buildEditingObjectRiskItems(
+        documentStructureSnapshot?.objects ?? [],
+      );
+      const editingCompletionGateSummary = buildEditingCompletionGateSummary({
+        journalTemplateId: manuscript.current_journal_template_id,
+        targetModelVersionId: journalTemplate?.target_model_version_id,
+        targetModelVersionNo: journalTemplate?.target_model_version_no,
+        sourceJobId: jobId,
+        currentAssetId: asset.id,
+        generatedAt: this.now().toISOString(),
+        slotGovernanceSummary,
+        planManualReviewItems: editingPlan.manualReviewItems,
+        manualReviewItems: annotatedManualReviewItems,
+        contentRuleCandidates: annotatedContentRuleCandidates,
+        qualityFindings: annotatedQualityFindings,
+        tableInspectionFindings: annotatedTableInspectionFindings,
+        tablePatchResults,
+        skippedAiReplacements,
+        objectRiskItems,
+        previousSummary: manuscript.editing_completion_gate_summary,
+      });
+      const manuscriptAfterAssetSave = await context.manuscriptRepository.findById(
+        input.manuscriptId,
+      );
+      if (manuscriptAfterAssetSave) {
+        await context.manuscriptRepository.save({
+          ...manuscriptAfterAssetSave,
+          editing_slot_governance_summary: structuredClone(slotGovernanceSummary),
+          editing_completion_gate_summary: structuredClone(
+            editingCompletionGateSummary,
+          ),
+          updated_at: this.now().toISOString(),
+        });
+      }
 
       const finishedTimestamp = this.now().toISOString();
       const completedJob: JobRecord = {
@@ -709,6 +828,17 @@ export class EditingService {
                 ),
               }
             : {}),
+          ...(sourceBlocks.length > 0
+            ? {
+                editingSourceBlocks: sourceBlocks.map((block) =>
+                  structuredClone(block),
+                ),
+              }
+            : {}),
+          slotGovernanceSummary: structuredClone(slotGovernanceSummary),
+          editingCompletionGateSummary: structuredClone(
+            editingCompletionGateSummary,
+          ),
           snapshotId: snapshot.id,
           outputAssetId: asset.id,
           outputAssetType: "edited_docx",
@@ -755,6 +885,16 @@ export class EditingService {
           tablePatchResults: tablePatchResults.map((result) =>
             structuredClone(result),
           ),
+          skippedAiReplacements: skippedAiReplacements.map((entry) =>
+            structuredClone(entry),
+          ),
+          ...(documentStructureSnapshot?.objects?.length
+            ? {
+                documentObjectEvidence: documentStructureSnapshot.objects.map((entry) =>
+                  structuredClone(entry),
+                ),
+              }
+            : {}),
         },
         attempt_count: 1,
         started_at: runningJob.started_at,
@@ -803,6 +943,100 @@ export class EditingService {
     });
 
     return committed.response;
+  }
+
+  async saveSlotManualResolution(
+    input: SaveEditingSlotManualResolutionInput,
+  ): Promise<SaveEditingSlotManualResolutionResult> {
+    this.permissionGuard.assert(input.actorRole, "workbench.editing");
+
+    const manuscript = await this.manuscriptRepository.findById(input.manuscriptId);
+    if (!manuscript) {
+      throw new ManuscriptNotFoundError(input.manuscriptId);
+    }
+
+    const summary = manuscript.editing_slot_governance_summary;
+    if (!summary || summary.observation_status !== "reported") {
+      throw new EditingSlotGovernanceUnavailableError(input.manuscriptId);
+    }
+
+    const slot = summary.slots.find((entry) => entry.slot_key === input.slotKey);
+    if (!slot) {
+      throw new EditingSlotNotFoundError(input.manuscriptId, input.slotKey);
+    }
+
+    const normalizedResolvedText = input.resolvedText?.trim();
+    const normalizedSelectedCandidateId = input.selectedCandidateId?.trim();
+    const normalizedNote = input.note?.trim();
+
+    if (input.resolutionKind === "manual_entry" && !normalizedResolvedText) {
+      throw new EditingSlotManualResolutionInvalidError(
+        `Slot "${input.slotKey}" requires manual text before it can be saved.`,
+      );
+    }
+
+    if (input.resolutionKind === "picked_candidate") {
+      if (!normalizedSelectedCandidateId) {
+        throw new EditingSlotManualResolutionInvalidError(
+          `Slot "${input.slotKey}" requires a selected candidate id.`,
+        );
+      }
+
+      if (
+        !slot.candidates.some(
+          (candidate) => candidate.candidate_id === normalizedSelectedCandidateId,
+        )
+      ) {
+        throw new EditingSlotManualResolutionInvalidError(
+          `Candidate "${normalizedSelectedCandidateId}" does not exist on slot "${input.slotKey}".`,
+        );
+      }
+    }
+
+    const appliedAt = this.now().toISOString();
+    const nextSummary = applyEditingSlotManualResolution({
+      summary,
+      resolution: {
+        slot_key: input.slotKey,
+        resolution_kind: input.resolutionKind,
+        ...(normalizedResolvedText ? { resolved_text: normalizedResolvedText } : {}),
+        ...(normalizedSelectedCandidateId
+          ? { selected_candidate_id: normalizedSelectedCandidateId }
+          : {}),
+        ...(normalizedNote ? { note: normalizedNote } : {}),
+        applied_by: input.requestedBy,
+        applied_at: appliedAt,
+      },
+      generatedAt: appliedAt,
+    });
+    const nextCompletionGateSummary = refreshEditingCompletionGateSummaryWithSlotSummary({
+      previousSummary: manuscript.editing_completion_gate_summary,
+      slotGovernanceSummary: nextSummary,
+      generatedAt: appliedAt,
+    });
+
+    await this.manuscriptRepository.save({
+      ...manuscript,
+      editing_slot_governance_summary: structuredClone(nextSummary),
+      ...(nextCompletionGateSummary
+        ? {
+            editing_completion_gate_summary: structuredClone(
+              nextCompletionGateSummary,
+            ),
+          }
+        : {}),
+      updated_at: appliedAt,
+    });
+
+    return {
+      manuscript_id: manuscript.id,
+      summary: structuredClone(nextSummary),
+      ...(nextCompletionGateSummary
+        ? {
+            completion_gate_summary: structuredClone(nextCompletionGateSummary),
+          }
+        : {}),
+    };
   }
 
   private async runManuscriptQualityChecks(input: {
@@ -932,6 +1166,55 @@ function buildEditingExecutionGovernedHitInputs(input: {
         },
       })),
   ];
+}
+
+function buildEditingObjectRiskItems(
+  objects: readonly DocumentStructureObjectEvidence[],
+) {
+  return objects.map((item) => ({
+    item_key: `object-risk:${item.object_id}`,
+    category: "high_risk_object" as const,
+    source: "editing_guardrail" as const,
+    summary: `高风险对象待人工确认：${formatDocumentObjectKind(item.object_kind)}`,
+    detail: [
+      `原始对象：${buildDocumentObjectLabel(item)}`,
+      item.evidence_text ? `提取证据：${item.evidence_text}` : undefined,
+      item.surrounding_text ? `临近文本：${item.surrounding_text}` : undefined,
+      `意图目标：${item.intended_target ?? "未明确"}`,
+      "降级原因：object_type_not_safe",
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join("；"),
+    location_text: item.source_locator,
+    status: "pending" as const,
+  }));
+}
+
+function buildDocumentObjectLabel(item: DocumentStructureObjectEvidence): string {
+  const parts = [formatDocumentObjectKind(item.object_kind), item.original_tag];
+  if (item.relationship_id) {
+    parts.push(item.relationship_id);
+  }
+  return parts.join(" / ");
+}
+
+function formatDocumentObjectKind(
+  kind: DocumentStructureObjectEvidence["object_kind"],
+): string {
+  switch (kind) {
+    case "image":
+      return "图片对象";
+    case "equation":
+      return "公式对象";
+    case "embedded_object":
+      return "嵌入对象";
+    case "drawing":
+      return "绘图对象";
+    case "chart":
+      return "图表对象";
+    default:
+      return "未知对象";
+  }
 }
 
 function annotateEditingManualReviewItems(

@@ -118,6 +118,7 @@ export class EditorialDocxTransformService {
         tableInspectionFindings,
         tablePatchPlans: tablePatchPlanBundle.plans,
         tablePatchResults: tablePatchPlanBundle.results,
+        skippedAiReplacements: [],
       };
     }
 
@@ -208,7 +209,10 @@ async function runApplyRulesWorker(input: {
 }): Promise<
   Pick<
     DeterministicDocxTransformResult,
-    "appliedRuleIds" | "appliedChanges" | "tablePatchResults"
+    | "appliedRuleIds"
+    | "appliedChanges"
+    | "tablePatchResults"
+    | "skippedAiReplacements"
   >
 > {
   let lastError: Error | undefined;
@@ -247,7 +251,10 @@ function runPythonScript(
 ): Promise<
   Pick<
     DeterministicDocxTransformResult,
-    "appliedRuleIds" | "appliedChanges" | "tablePatchResults"
+    | "appliedRuleIds"
+    | "appliedChanges"
+    | "tablePatchResults"
+    | "skippedAiReplacements"
   >
 > {
   return new Promise((resolve, reject) => {
@@ -309,10 +316,18 @@ function runPythonScript(
           : Array.isArray(parsedRecord.table_patch_results)
             ? (parsedRecord.table_patch_results as DeterministicDocxTransformResult["tablePatchResults"])
             : [];
+        const skippedAiReplacements = Array.isArray(parsed.skippedAiReplacements)
+          ? parsed.skippedAiReplacements
+          : Array.isArray(parsedRecord.skipped_ai_replacements)
+            ? (parsedRecord.skipped_ai_replacements as DeterministicDocxTransformResult["skippedAiReplacements"])
+            : [];
         resolve({
           appliedRuleIds: [...appliedRuleIds],
           appliedChanges: [...appliedChanges],
           tablePatchResults: tablePatchResults.map((entry) => structuredClone(entry)),
+          skippedAiReplacements: skippedAiReplacements.map((entry) =>
+            structuredClone(entry),
+          ),
         });
       } catch (error) {
         reject(
@@ -332,14 +347,9 @@ function resolveRulesForTableProcessing(
     return input.resolvedRules;
   }
 
-  return input.rules.filter((rule) => rule.enabled).map((rule) => ({
-    rule,
-    coverage_key: rule.id,
-    source_layer: "base" as const,
-    overridden_rule_ids: [],
-    resolution_reason: "runtime fallback",
-    execution_posture: "guarded" as const,
-  }));
+  return input.rules
+    .filter((rule) => rule.enabled)
+    .map((rule) => createFallbackResolvedRule(rule));
 }
 
 function buildTableInspectionFindings(input: {
@@ -357,10 +367,7 @@ function buildTableInspectionFindings(input: {
       ? input.resolvedRules
       : input.rules
           .filter((rule) => rule.enabled)
-          .map((rule) => ({
-            rule,
-            source_layer: "base" as const,
-          }));
+          .map((rule) => createFallbackResolvedRule(rule));
 
   return resolvedRules.flatMap((entry) => {
     if (!entry.rule.enabled || entry.rule.rule_object !== "table") {
@@ -411,6 +418,24 @@ function toSemanticHitEvidence(
         }
       : {}),
     override_source: sourceLayer,
+  };
+}
+
+function createFallbackResolvedRule(
+  rule: ApplyDeterministicDocxRulesInput["rules"][number],
+): ResolvedEditorialRule {
+  return {
+    rule,
+    coverage_key: rule.id,
+    source_layer: "base",
+    overridden_rule_ids: [],
+    resolution_reason: "runtime fallback",
+    execution_posture: "guarded",
+    activation_source: {
+      kind: "template_family_rule_set",
+      id: rule.rule_set_id,
+    },
+    overridden_sources: [],
   };
 }
 

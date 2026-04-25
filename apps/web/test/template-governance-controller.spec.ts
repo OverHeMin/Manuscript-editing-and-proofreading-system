@@ -86,7 +86,10 @@ test("template governance controller loads template families, retrieval insights
                 module_scope: "screening",
                 manuscript_types: ["clinical_study"],
               },
-              template_bindings: ["template-screening-1"],
+              binding_targets: {
+                module_template_ids: ["template-screening-1"],
+              },
+              template_bindings: [],
             },
             {
               id: "knowledge-2",
@@ -166,6 +169,286 @@ test("template governance controller loads template families, retrieval insights
       "GET /api/v1/templates/families/family-1/retrieval-quality-runs/latest",
       "GET /api/v1/knowledge/retrieval-snapshots/retrieval-snapshot-2",
     ],
+  );
+});
+
+test("template governance controller loads and updates journal target models through the selected journal template", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const journalTemplateProfile = {
+    id: "journal-1",
+    template_family_id: "family-1",
+    journal_key: "nejm",
+    journal_name: "New England Journal of Medicine",
+    status: "draft" as const,
+    target_model_version_id: "journal-1-v2",
+    target_model_version_no: 2,
+    journal_format_target_model: {
+      skeleton: [
+        "front_matter",
+        "title",
+        "abstract",
+        "keywords",
+        "body",
+        "figures_tables",
+        "references",
+      ],
+      target_blocks: [
+        {
+          block_key: "author_bio",
+          label: "作者简介",
+          zone: "front_matter",
+          anchor: "before_title",
+          order: 10,
+          required: false,
+          repeatable: true,
+          enabled: true,
+          format_policy: {
+            display_label: "作者简介",
+            prefix: "作者简介：",
+            target_position: "标题上方",
+            style_requirements: ["独立成段"],
+            allow_auto_reorder: true,
+          },
+          content_source_policy: "prefer_existing_with_manual_fill",
+          completion_gate: "warn_only",
+        },
+      ],
+    },
+    target_model_versions: [
+      {
+        version_id: "journal-1-v1",
+        version_no: 1,
+        created_at: "2026-04-24T08:00:00.000Z",
+        journal_format_target_model: {
+          skeleton: [
+            "front_matter",
+            "title",
+            "abstract",
+            "keywords",
+            "body",
+            "figures_tables",
+            "references",
+          ],
+          target_blocks: [],
+        },
+      },
+      {
+        version_id: "journal-1-v2",
+        version_no: 2,
+        created_at: "2026-04-24T08:10:00.000Z",
+        journal_format_target_model: {
+          skeleton: [
+            "front_matter",
+            "title",
+            "abstract",
+            "keywords",
+            "body",
+            "figures_tables",
+            "references",
+          ],
+          target_blocks: [
+            {
+              block_key: "author_bio",
+              label: "作者简介",
+              zone: "front_matter",
+              anchor: "before_title",
+              order: 10,
+              required: false,
+              repeatable: true,
+              enabled: true,
+              format_policy: {
+                display_label: "作者简介",
+                prefix: "作者简介：",
+                target_position: "标题上方",
+                style_requirements: ["独立成段"],
+                allow_auto_reorder: true,
+              },
+              content_source_policy: "prefer_existing_with_manual_fill",
+              completion_gate: "warn_only",
+            },
+          ],
+        },
+      },
+    ],
+  };
+  const updatedJournalTemplateProfile = {
+    ...journalTemplateProfile,
+    target_model_version_id: "journal-1-v3",
+    target_model_version_no: 3,
+    journal_format_target_model: {
+      ...journalTemplateProfile.journal_format_target_model,
+      target_blocks: [
+        ...journalTemplateProfile.journal_format_target_model.target_blocks,
+        {
+          block_key: "classification_code",
+          label: "中图分类号",
+          zone: "keywords",
+          anchor: "after_keywords",
+          order: 20,
+          required: true,
+          repeatable: false,
+          enabled: true,
+          format_policy: {
+            display_label: "中图分类号",
+            prefix: "中图分类号：",
+            target_position: "关键词下方",
+            style_requirements: ["与文献标志码对齐"],
+            allow_auto_reorder: true,
+          },
+          content_source_policy: "must_harvest_existing",
+          completion_gate: "block_on_missing",
+        },
+      ],
+    },
+    target_model_versions: [
+      ...journalTemplateProfile.target_model_versions,
+      {
+        version_id: "journal-1-v3",
+        version_no: 3,
+        created_at: "2026-04-24T08:20:00.000Z",
+        journal_format_target_model: {
+          skeleton: [
+            "front_matter",
+            "title",
+            "abstract",
+            "keywords",
+            "body",
+            "figures_tables",
+            "references",
+          ],
+          target_blocks: [
+            ...journalTemplateProfile.journal_format_target_model.target_blocks,
+            {
+              block_key: "classification_code",
+              label: "中图分类号",
+              zone: "keywords",
+              anchor: "after_keywords",
+              order: 20,
+              required: true,
+              repeatable: false,
+              enabled: true,
+              format_policy: {
+                display_label: "中图分类号",
+                prefix: "中图分类号：",
+                target_position: "关键词下方",
+                style_requirements: ["与文献标志码对齐"],
+                allow_auto_reorder: true,
+              },
+              content_source_policy: "must_harvest_existing",
+              completion_gate: "block_on_missing",
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  const controller = createTemplateGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/templates/families") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "family-1",
+              manuscript_type: "review",
+              name: "Review Family",
+              status: "active",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/editorial-rules/rule-sets") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/prompt-skill-registry/prompt-templates") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/templates/families/family-1/journal-templates") {
+        return {
+          status: 200,
+          body: [updatedJournalTemplateProfile] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/templates/families/family-1/module-templates") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      if (
+        input.url === "/api/v1/templates/journal-templates/journal-1/draft" &&
+        input.method === "POST"
+      ) {
+        return {
+          status: 200,
+          body: updatedJournalTemplateProfile as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/templates/families/family-1/retrieval-quality-runs/latest") {
+        throw createNotFoundRetrievalError(input.url);
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const overview = await controller.loadOverview({
+    selectedTemplateFamilyId: "family-1",
+    selectedJournalTemplateId: "journal-1",
+  });
+
+  assert.equal(overview.selectedJournalTemplateProfile?.target_model_version_no, 3);
+  assert.equal(
+    overview.selectedJournalTemplateProfile?.journal_format_target_model?.target_blocks[1]
+      ?.label,
+    "中图分类号",
+  );
+
+  const result = await controller.updateJournalTemplateProfileAndReload({
+    journalTemplateProfileId: "journal-1",
+    input: {
+      journalName: "New England Journal of Medicine Updated",
+      journalFormatTargetModel: updatedJournalTemplateProfile.journal_format_target_model,
+    },
+    selectedTemplateFamilyId: "family-1",
+    selectedJournalTemplateId: "journal-1",
+  });
+
+  assert.equal(result.journalTemplateProfile.target_model_version_id, "journal-1-v3");
+  assert.equal(result.overview.selectedJournalTemplateProfile?.target_model_version_no, 3);
+  assert.equal(
+    requests.some(
+      (request) =>
+        request.method === "POST" &&
+        request.url === "/api/v1/templates/journal-templates/journal-1/draft",
+    ),
+    true,
   );
 });
 

@@ -494,6 +494,9 @@ test("postgres knowledge repository persists revision-governed assets and approv
       source_type: "guideline",
       source_link: "https://example.org/revision-draft",
       aliases: ["draft revision"],
+      binding_targets: {
+        module_template_ids: ["template-screening-core-v2"],
+      },
       template_bindings: ["template-screening-core-v2"],
     });
     assert.deepEqual(projectedApproved, {
@@ -511,6 +514,9 @@ test("postgres knowledge repository persists revision-governed assets and approv
       source_type: "guideline",
       source_link: "https://example.org/revision-approved",
       aliases: ["approved revision"],
+      binding_targets: {
+        module_template_ids: ["template-screening-core"],
+      },
       template_bindings: ["template-screening-core"],
     });
     assert.deepEqual(

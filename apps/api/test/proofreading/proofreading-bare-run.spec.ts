@@ -101,6 +101,34 @@ test("proofreading bare mode draft succeeds without a current template family wh
         };
       },
     } as never,
+    documentStructureService: {
+      async extract() {
+        return {
+          manuscript_id: "manuscript-1",
+          asset_id: harness.originalAssetId,
+          file_name: "proofreading-bare.docx",
+          status: "ready",
+          parser: "python_docx",
+          sections: [],
+          metadata_candidates: [],
+          tables: [],
+          objects: [
+            {
+              object_id: "object-1",
+              object_kind: "image",
+              container_kind: "paragraph",
+              source_zone: "body",
+              source_locator: "body:p:4",
+              original_tag: "drawing",
+              relationship_id: "rId8",
+              evidence_text: "卡方检验符号图片",
+              intended_target: "χ²",
+            },
+          ],
+          warnings: [],
+        };
+      },
+    },
     residualLearningService,
     proofreadingSourceBlockResolver: {
       async resolveBlocks() {
@@ -195,6 +223,18 @@ test("proofreading bare mode draft succeeds without a current template family wh
     | undefined;
 
   assert.match(proofreadingPayload?.reportMarkdown ?? "", /\S/u);
+  assert.match(
+    proofreadingPayload?.reportMarkdown ?? "",
+    /高风险对象待人工核对：图片对象/u,
+  );
+  assert.match(
+    proofreadingPayload?.reportMarkdown ?? "",
+    /原始对象=图片对象\/drawing\/rId8/u,
+  );
+  assert.match(
+    proofreadingPayload?.reportMarkdown ?? "",
+    /意图目标=χ²/u,
+  );
   assert.ok(
     proofreadingPayload?.proofreadingPlan,
     "Expected proofreading bare runs to persist an AI correction plan.",

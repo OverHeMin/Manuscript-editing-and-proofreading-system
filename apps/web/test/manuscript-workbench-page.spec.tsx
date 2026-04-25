@@ -30,6 +30,7 @@ import {
   pruneConfirmationState,
   resolveQueueActivityLabel,
   buildTemplateFamilyOptions,
+  hydrateWorkbenchDetailExecutionTracking,
   hydrateWorkbenchDetailJob,
   loadPrefilledWorkbenchPageData,
   ManuscriptWorkbenchFocusCanvas,
@@ -2269,4 +2270,212 @@ test("editing table inspection findings expose semantic evidence and rule routin
     ruleId: "rule-table-treatment-group",
     semantic_hit: item?.location,
   });
+});
+
+test("editing guardrail downgrade reasons become inspect-only high-risk review cards", () => {
+  const items = buildHighRiskReviewItemsFromJob({
+    id: "job-editing-guardrail-1",
+    manuscript_id: "manuscript-1",
+    module: "editing",
+    job_type: "editing_run",
+    status: "completed",
+    requested_by: "editor-1",
+    attempt_count: 1,
+    payload: {
+      editingPlan: {
+        manualReviewItems: [
+          "editing_guardrail:anchor_not_precise:摘要 目的",
+          "editing_guardrail:insufficient_style_evidence:Introduction",
+          "Verify the rewritten heading against the journal template.",
+        ],
+      },
+      skippedAiReplacements: [
+        {
+          replacementId: "ai-replacement-1",
+          reason: "anchor_not_precise",
+          targetText: "摘要 目的",
+        },
+        {
+          replacementId: "ai-replacement-2",
+          reason: "insufficient_style_evidence",
+          targetText: "Table 1",
+        },
+      ],
+    },
+    created_at: "2026-04-24T10:00:00.000Z",
+    updated_at: "2026-04-24T10:01:00.000Z",
+  } as never);
+
+  assert.equal(items.length, 4);
+  assert.ok(items.every((item) => item.candidate_posture === "inspect_only"));
+  assert.ok(items.every((item) => item.recommendedRoute === "rule_candidate"));
+  assert.ok(
+    items.every((item) => item.originPayload?.source === "editing_guardrail"),
+  );
+
+  const planningItem = items.find(
+    (item) =>
+      item.originPayload?.sourceStage === "planning" &&
+      item.originPayload?.reasonCode === "anchor_not_precise",
+  );
+  assert.ok(planningItem);
+  assert.match(planningItem.summary ?? "", /anchor_not_precise/);
+  assert.match(planningItem.rationale ?? "", /anchor_not_precise/);
+  assert.equal(planningItem.locationText, "待人工定位");
+
+  const docxItem = items.find(
+    (item) =>
+      item.originPayload?.sourceStage === "docx_transform" &&
+      item.originPayload?.reasonCode === "insufficient_style_evidence",
+  );
+  assert.ok(docxItem);
+  assert.equal(docxItem.excerpt, "Table 1");
+  assert.equal(docxItem.originPayload?.replacementId, "ai-replacement-2");
+  assert.match(docxItem.summary ?? "", /insufficient_style_evidence/);
+  assert.match(docxItem.rationale ?? "", /insufficient_style_evidence/);
+});
+
+test("detail execution tracking hydration reuses inline snapshots and loads knowledge hit logs", async () => {
+  const calls: string[] = [];
+  const result = await hydrateWorkbenchDetailExecutionTracking(
+    {
+      loadExecutionSnapshot: async () => {
+        calls.push("snapshot");
+        throw new Error("inline snapshot should be reused");
+      },
+      loadKnowledgeHitLogsBySnapshotId: async (snapshotId) => {
+        calls.push(`hits:${snapshotId}`);
+        return [
+          {
+            id: "hit-1",
+            snapshot_id: snapshotId,
+            knowledge_item_id: "knowledge-1",
+            match_source: "knowledge_item_binding",
+            match_reasons: ["命中期刊表格说明"],
+            created_at: "2026-04-24T09:01:00.000Z",
+          },
+        ];
+      },
+    },
+    {
+      id: "job-editing-1",
+      manuscript_id: "manuscript-1",
+      module: "editing",
+      job_type: "editing_run",
+      status: "completed",
+      requested_by: "editor-1",
+      attempt_count: 1,
+      payload: {},
+      created_at: "2026-04-24T09:00:00.000Z",
+      updated_at: "2026-04-24T09:05:00.000Z",
+      execution_tracking: {
+        observation_status: "reported",
+        snapshot: {
+          id: "snapshot-inline-1",
+          manuscript_id: "manuscript-1",
+          module: "editing",
+          job_id: "job-editing-1",
+          execution_profile_id: "execution-profile-editing-1",
+          module_template_id: "template-editing-1",
+          module_template_version_no: 2,
+          prompt_template_id: "prompt-editing-1",
+          prompt_template_version: "2026-04-24",
+          skill_package_ids: [],
+          skill_package_versions: [],
+          model_id: "gpt-5.4",
+          knowledge_item_ids: ["knowledge-1"],
+          created_asset_ids: ["asset-edited-1"],
+          created_at: "2026-04-24T09:00:00.000Z",
+          agent_execution: {
+            observation_status: "not_linked",
+          },
+          runtime_binding_readiness: {
+            observation_status: "failed_open",
+            error: "not used",
+          },
+        },
+      },
+    } as never,
+  );
+
+  assert.equal(result.snapshot?.id, "snapshot-inline-1");
+  assert.deepEqual(result.knowledgeHitLogs, [
+    {
+      id: "hit-1",
+      snapshot_id: "snapshot-inline-1",
+      knowledge_item_id: "knowledge-1",
+      match_source: "knowledge_item_binding",
+      match_reasons: ["命中期刊表格说明"],
+      created_at: "2026-04-24T09:01:00.000Z",
+    },
+  ]);
+  assert.deepEqual(calls, ["hits:snapshot-inline-1"]);
+});
+
+test("detail execution tracking hydration falls back to snapshot id in payload when the job lacks inline snapshot data", async () => {
+  const calls: string[] = [];
+  const result = await hydrateWorkbenchDetailExecutionTracking(
+    {
+      loadExecutionSnapshot: async (snapshotId) => {
+        calls.push(`snapshot:${snapshotId}`);
+        return {
+          id: snapshotId,
+          manuscript_id: "manuscript-1",
+          module: "proofreading",
+          job_id: "job-proofreading-1",
+          execution_profile_id: "execution-profile-proofreading-1",
+          module_template_id: "template-proofreading-1",
+          module_template_version_no: 1,
+          prompt_template_id: "prompt-proofreading-1",
+          prompt_template_version: "2026-04-24",
+          skill_package_ids: [],
+          skill_package_versions: [],
+          model_id: "gpt-5.4",
+          quality_packages: [
+            {
+              package_id: "pkg-medical-1",
+              package_name: "医学分析包",
+              package_kind: "medical_analyzer_package",
+              target_scopes: ["medical_specialized"],
+              version: 5,
+            },
+          ],
+          knowledge_item_ids: [],
+          created_asset_ids: ["asset-proof-1"],
+          created_at: "2026-04-24T09:00:00.000Z",
+          agent_execution: {
+            observation_status: "not_linked",
+          },
+          runtime_binding_readiness: {
+            observation_status: "failed_open",
+            error: "not used",
+          },
+        };
+      },
+      loadKnowledgeHitLogsBySnapshotId: async (snapshotId) => {
+        calls.push(`hits:${snapshotId}`);
+        return [];
+      },
+    },
+    {
+      id: "job-proofreading-1",
+      manuscript_id: "manuscript-1",
+      module: "proofreading",
+      job_type: "proofreading_draft",
+      status: "completed",
+      requested_by: "proofreader-1",
+      attempt_count: 1,
+      payload: {
+        snapshotId: "snapshot-fallback-1",
+      },
+      created_at: "2026-04-24T09:00:00.000Z",
+      updated_at: "2026-04-24T09:05:00.000Z",
+    } as never,
+  );
+
+  assert.equal(result.snapshot?.id, "snapshot-fallback-1");
+  assert.deepEqual(calls, [
+    "snapshot:snapshot-fallback-1",
+    "hits:snapshot-fallback-1",
+  ]);
 });

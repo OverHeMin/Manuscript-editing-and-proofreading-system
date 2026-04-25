@@ -80,6 +80,14 @@ export interface KnowledgeRoutingRecord {
   discipline_tags?: string[];
 }
 
+export interface KnowledgeBindingTargetsRecord {
+  template_family_ids?: string[];
+  module_template_ids?: string[];
+  journal_template_ids?: string[];
+  general_package_ids?: string[];
+  medical_package_ids?: string[];
+}
+
 export interface KnowledgeRecord {
   id: string;
   title: string;
@@ -92,6 +100,7 @@ export interface KnowledgeRecord {
   source_type?: KnowledgeSourceType;
   source_link?: string;
   aliases?: string[];
+  binding_targets?: KnowledgeBindingTargetsRecord;
   template_bindings?: string[];
   linked_knowledge_item_ids?: string[];
   source_learning_candidate_id?: string;

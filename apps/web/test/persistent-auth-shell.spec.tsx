@@ -48,9 +48,9 @@ test("persistent auth shell renders the approved homepage hero hierarchy for una
   assert.match(html, /auth-shell-visual/);
   assert.match(html, /auth-shell-brand/);
   assert.match(html, /<h1>医学稿件处理系统<\/h1>/u);
-  assert.match(html, /初筛、编辑、校对与知识入库的一体化工作台/u);
+  assert.match(html, /覆盖稿件主链路与治理协作的一体化工作台/u);
   assert.doesNotMatch(html, /为筛查、编辑、校对与知识入库提供稳定一致的工作入口/u);
-  assert.match(html, /登录后进入初筛、编辑、校对与知识库工作区/u);
+  assert.match(html, /登录后按角色进入对应工作区/u);
   assert.match(html, /name="username"/);
   assert.match(html, /name="password"/);
   assert.match(html, /账号或密码不正确/u);

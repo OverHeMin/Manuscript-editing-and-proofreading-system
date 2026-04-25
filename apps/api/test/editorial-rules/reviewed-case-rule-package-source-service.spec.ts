@@ -1,6 +1,10 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { createEditorialRuleApi } from "../../src/modules/editorial-rules/editorial-rule-api.ts";
+import { InMemoryDocumentAssetRepository } from "../../src/modules/assets/in-memory-document-asset-repository.ts";
 import { InMemoryEditorialRuleRepository } from "../../src/modules/editorial-rules/in-memory-editorial-rule-repository.ts";
 import { EditorialRulePreviewService } from "../../src/modules/editorial-rules/editorial-rule-preview-service.ts";
 import { EditorialRuleResolutionService } from "../../src/modules/editorial-rules/editorial-rule-resolution-service.ts";
@@ -148,4 +152,94 @@ test("reviewed-case source rejects snapshots that did not pass de-identification
       }),
     LearningDeidentificationRequiredError,
   );
+});
+
+test("reviewed-case source normalizes front-matter semantic roles toward target-block names", async () => {
+  const reviewedCaseSnapshotRepository = new InMemoryReviewedCaseSnapshotRepository();
+  const assetRepository = new InMemoryDocumentAssetRepository();
+  const rootDir = await mkdtemp(path.join(tmpdir(), "reviewed-case-front-matter-"));
+
+  try {
+    await writeFile(
+      path.join(rootDir, "front-matter.json"),
+      JSON.stringify({
+        status: "ready",
+        sections: [],
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "作者简介：张三，博士，主任医师",
+          },
+          {
+            kind: "paragraph",
+            text: "通信作者：李四，主任医师，Email: demo@example.com",
+          },
+          {
+            kind: "paragraph",
+            text: "上海交通大学医学院附属瑞金医院",
+          },
+        ],
+        tables: [],
+        warnings: [],
+      }),
+      "utf8",
+    );
+
+    const sharedAssetFields = {
+      manuscript_id: "manuscript-demo-3",
+      asset_type: "learning_snapshot_attachment" as const,
+      status: "active" as const,
+      storage_key: "front-matter.json",
+      mime_type: "application/json",
+      source_module: "editing" as const,
+      created_by: "editor-1",
+      version_no: 1,
+      is_current: true,
+      file_name: "front-matter.json",
+      created_at: "2026-04-10T10:00:00.000Z",
+      updated_at: "2026-04-10T10:00:00.000Z",
+    };
+    await assetRepository.save({
+      id: "snapshot-demo-3",
+      ...sharedAssetFields,
+    });
+    await assetRepository.save({
+      id: "human-final-demo-3",
+      ...sharedAssetFields,
+    });
+    await reviewedCaseSnapshotRepository.save({
+      id: "reviewed-case-snapshot-demo-3",
+      manuscript_id: "manuscript-demo-3",
+      module: "editing",
+      manuscript_type: "clinical_study",
+      human_final_asset_id: "human-final-demo-3",
+      deidentification_passed: true,
+      snapshot_asset_id: "snapshot-demo-3",
+      created_by: "editor-1",
+      created_at: "2026-04-10T10:00:00.000Z",
+    });
+
+    const sourceService = new ReviewedCaseRulePackageSourceService({
+      snapshotRepository: reviewedCaseSnapshotRepository,
+      assetRepository,
+      rootDir,
+    });
+    const pair = await sourceService.buildExamplePair({
+      reviewedCaseSnapshotId: "reviewed-case-snapshot-demo-3",
+    });
+
+    assert.ok(
+      pair.original.blocks.some((block) => block.semantic_role === "author_bio"),
+    );
+    assert.ok(
+      pair.original.blocks.some(
+        (block) => block.semantic_role === "corresponding_author_bio",
+      ),
+    );
+    assert.ok(
+      pair.original.blocks.some((block) => block.semantic_role === "affiliation_line"),
+    );
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
 });

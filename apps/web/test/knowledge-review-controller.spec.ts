@@ -72,6 +72,14 @@ test("knowledge review controller enriches the queue with asset and revision ide
                   binding_target_label: "Proofreading Template",
                   created_at: "2026-04-08T08:20:00.000Z",
                 },
+                {
+                  id: "knowledge-1-revision-2-binding-2",
+                  revision_id: "knowledge-1-revision-2",
+                  binding_kind: "general_package",
+                  binding_target_id: "general_style_package",
+                  binding_target_label: "通用包（按类型）",
+                  created_at: "2026-04-08T08:21:00.000Z",
+                },
               ],
               created_at: "2026-04-08T08:20:00.000Z",
               updated_at: "2026-04-08T08:20:00.000Z",
@@ -111,6 +119,14 @@ test("knowledge review controller enriches the queue with asset and revision ide
   assert.equal(desk.selectedItem?.id, "knowledge-1-revision-2");
   assert.equal(desk.selectedItem?.asset_id, "knowledge-1");
   assert.equal(desk.selectedItem?.revision_id, "knowledge-1-revision-2");
+  assert.deepEqual(desk.selectedItem?.binding_targets, {
+    module_template_ids: ["template-proofreading-1"],
+    general_package_ids: ["general_style_package"],
+  });
+  assert.deepEqual(desk.selectedItem?.template_bindings, [
+    "template-proofreading-1",
+    "general_style_package",
+  ]);
   assert.equal(history.revisionId, "knowledge-1-revision-2");
   assert.equal(history.actions[0]?.revision_id, "knowledge-1-revision-2");
   assert.deepEqual(

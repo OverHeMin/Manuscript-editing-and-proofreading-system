@@ -6,6 +6,7 @@ import path from "node:path";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { InMemoryDocumentAssetRepository } from "../../src/modules/assets/in-memory-document-asset-repository.ts";
 import { EditorialDocxTransformService } from "../../src/modules/document-pipeline/editorial-docx-transform-service.ts";
+import type { TableDocxPatchPlan } from "../../src/modules/document-pipeline/table-docx-patch-plan.ts";
 
 const BEFORE_HEADING = "摘要 目的";
 const AFTER_HEADING = "摘要：目的";
@@ -590,6 +591,75 @@ test("editorial docx transform service applies executable table patches through 
   }
 });
 
+test("editorial docx transform service applies controlled table rebuild patches through the worker", async () => {
+  const rootDir = await mkdtemp(
+    path.join(os.tmpdir(), "editorial-docx-transform-table-rebuild-"),
+  );
+
+  try {
+    const assetRepository = new InMemoryDocumentAssetRepository();
+    await assetRepository.save({
+      id: "asset-original-5",
+      manuscript_id: "manuscript-5",
+      asset_type: "original",
+      status: "active",
+      storage_key: "uploads/manuscript-5/original.docx",
+      mime_type:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      source_module: "upload",
+      created_by: "user-1",
+      version_no: 1,
+      is_current: true,
+      file_name: "original.docx",
+      created_at: "2026-04-24T10:30:00.000Z",
+      updated_at: "2026-04-24T10:30:00.000Z",
+    });
+
+    const sourcePath = path.join(rootDir, "uploads", "manuscript-5", "original.docx");
+    await mkdir(path.dirname(sourcePath), { recursive: true });
+    writeAdvancedTableDocxFixture(sourcePath);
+
+    const service = new EditorialDocxTransformService({
+      assetRepository,
+      rootDir,
+      tablePatchPlanner: {
+        plan() {
+          return {
+            plans: [buildControlledRebuildPlan()],
+            results: [],
+          };
+        },
+      },
+    });
+
+    const result = await service.applyDeterministicRules({
+      manuscriptId: "manuscript-5",
+      sourceAssetId: "asset-original-5",
+      outputStorageKey: "outputs/manuscript-5/edited.docx",
+      tableAutoApplyMode: "editing_safe_apply",
+      rules: [],
+    });
+
+    assert.equal(result.tablePatchPlans[0]?.execution_path, "controlled_rebuild");
+    assert.equal(result.tablePatchResults[0]?.execution_path, "controlled_rebuild");
+    assert.equal(result.tablePatchResults[0]?.status, "applied");
+
+    const outputXml = await readDocumentXml(
+      path.join(rootDir, "outputs", "manuscript-5", "edited.docx"),
+    );
+    assert.match(outputXml, /Table 1 /u);
+    assert.match(outputXml, /Demographic characteristics/u);
+    assert.match(outputXml, /Item/u);
+    assert.match(outputXml, /Value/u);
+    assert.match(outputXml, /Age/u);
+    assert.match(outputXml, /54\.2/u);
+    assert.match(outputXml, /insideV/u);
+    assert.match(outputXml, /03C7/u);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
 async function readDocumentXml(docxPath: string): Promise<string> {
   const bytes = await readFile(docxPath);
   const script = [
@@ -605,6 +675,226 @@ async function readDocumentXml(docxPath: string): Promise<string> {
   });
 }
 
+function buildControlledRebuildPlan(): TableDocxPatchPlan {
+  return {
+    patch_id: "patch-style-rebuild",
+    rule_id: "rule-style-rebuild",
+    table_id: "table-1",
+    patch_type: "apply_three_line_table_style",
+    grade: "A",
+    apply_scope: "editing_only",
+    semantic_target: "style_profile",
+    anchor: {
+      table_id: "table-1",
+      semantic_target: "style_profile",
+    },
+    required_snapshot_capabilities: ["style_profile", "grid_cells"],
+    proposed_before: "non_three_line_table",
+    proposed_after: "three_line_table",
+    rationale: "rebuild table into deterministic journal layout",
+    evidence_pack: {
+      match_reason: "style profile matched controlled rebuild path",
+    },
+    execution_path: "controlled_rebuild",
+    rebuild_payload: {
+      strategy: "three_line_table_normalization",
+      objectives: [
+        "preserve_table_content_and_merged_structure",
+        "normalize_caption_above_table",
+        "normalize_note_zone_below_table",
+        "normalize_intra_cell_rich_text_runs",
+        "enforce_three_line_table_borders",
+      ],
+      table_snapshot: buildControlledRebuildSnapshot(),
+    },
+  };
+}
+
+function buildControlledRebuildSnapshot() {
+  return {
+    table_id: "table-1",
+    row_count: 2,
+    column_count: 2,
+    profile: {
+      is_three_line_table: false,
+      header_depth: 1,
+      has_stub_column: false,
+      has_statistical_footnotes: true,
+      has_unit_markers: false,
+    },
+    caption_fields: {
+      text: "Table 1 Demographic characteristics",
+      label_text: "Table 1",
+      title_text: "Demographic characteristics",
+      paragraphs: [
+        {
+          id: "caption-paragraph-1",
+          text: "Table 1 Demographic characteristics",
+          style: buildParagraphStyle("center"),
+          fragments: [
+            buildTextFragment("caption-fragment-1", "Table 1 ", {
+              fontFamily: "Times New Roman",
+              fontSizePt: 12,
+              bold: true,
+            }),
+            buildTextFragment("caption-fragment-2", "Demographic characteristics", {
+              fontFamily: "Times New Roman",
+              fontSizePt: 12,
+              italic: true,
+            }),
+          ],
+        },
+      ],
+    },
+    note_zone: {
+      text: "Note: χ2 compared with control",
+      line_texts: ["Note: χ2 compared with control"],
+      footnote_ids: ["table-1-footnote-1"],
+      coordinate: {
+        table_id: "table-1",
+        target: "note_zone",
+      },
+      paragraphs: [
+        {
+          id: "note-paragraph-1",
+          text: "Note: χ2 compared with control",
+          style: buildParagraphStyle("left"),
+          fragments: [
+            buildTextFragment("note-fragment-1", "Note: "),
+            {
+              id: "note-fragment-2",
+              kind: "symbol",
+              text: "",
+              symbol_font: "Symbol",
+              symbol_char: "03C7",
+              style: buildInlineStyle({
+                fontFamily: "Symbol",
+              }),
+            },
+          ],
+        },
+      ],
+    },
+    footnote_items: [
+      {
+        id: "table-1-footnote-1",
+        text: "Note: χ2 compared with control",
+        note_kind: "statistical_significance",
+        marker: "*",
+        coordinate: {
+          table_id: "table-1",
+          target: "footnote_item",
+          footnote_anchor: "*",
+        },
+      },
+    ],
+    grid_cells: [
+      buildGridCellSnapshot("grid-cell-1", "Item", 0, 0, "header", "center"),
+      buildGridCellSnapshot("grid-cell-2", "Value", 0, 1, "header", "center"),
+      buildGridCellSnapshot("grid-cell-3", "Age", 1, 0, "data", "left"),
+      buildGridCellSnapshot("grid-cell-4", "54.2", 1, 1, "data", "right"),
+    ],
+  };
+}
+
+function buildGridCellSnapshot(
+  id: string,
+  text: string,
+  rowIndex: number,
+  columnIndex: number,
+  inferredRole: "header" | "data",
+  alignment: string,
+) {
+  return {
+    id,
+    text,
+    row_index: rowIndex,
+    column_index: columnIndex,
+    row_span: 1,
+    column_span: 1,
+    inferred_role: inferredRole,
+    style_evidence: {
+      font_family: styleFact("Times New Roman"),
+      font_size_pt: styleFact(10.5),
+      bold: styleFact(false),
+      italic: styleFact(false),
+      script_position: styleFact("baseline"),
+      alignment: styleFact(alignment),
+      spacing_before_pt: styleFact(0),
+      spacing_after_pt: styleFact(0),
+      line_spacing: styleFact(1),
+      line_spacing_mode: styleFact("multiple"),
+      left_indent_pt: styleFact(0),
+      right_indent_pt: styleFact(0),
+      first_line_indent_pt: styleFact(0),
+      hanging_indent_pt: styleFact(0),
+      vertical_alignment: styleFact("center"),
+    },
+    paragraphs: [
+      {
+        id: `${id}-paragraph`,
+        text,
+        style: buildParagraphStyle(alignment),
+        fragments: [buildTextFragment(`${id}-fragment`, text)],
+      },
+    ],
+  };
+}
+
+function buildParagraphStyle(alignment: string) {
+  return {
+    alignment: styleFact(alignment),
+    spacing_before_pt: styleFact(0),
+    spacing_after_pt: styleFact(0),
+    line_spacing: styleFact(1),
+    line_spacing_mode: styleFact("multiple"),
+    left_indent_pt: styleFact(0),
+    right_indent_pt: styleFact(0),
+    first_line_indent_pt: styleFact(0),
+    hanging_indent_pt: styleFact(0),
+  };
+}
+
+function buildTextFragment(
+  id: string,
+  text: string,
+  input: {
+    fontFamily?: string;
+    fontSizePt?: number;
+    bold?: boolean;
+    italic?: boolean;
+  } = {},
+) {
+  return {
+    id,
+    kind: "text",
+    text,
+    style: buildInlineStyle(input),
+  };
+}
+
+function buildInlineStyle(input: {
+  fontFamily?: string;
+  fontSizePt?: number;
+  bold?: boolean;
+  italic?: boolean;
+} = {}) {
+  return {
+    font_family: styleFact(input.fontFamily ?? "Times New Roman"),
+    font_size_pt: styleFact(input.fontSizePt ?? 10.5),
+    bold: styleFact(input.bold ?? false),
+    italic: styleFact(input.italic ?? false),
+    script_position: styleFact("baseline"),
+  };
+}
+
+function styleFact<T>(value: T) {
+  return {
+    availability: "authoritative" as const,
+    value,
+  };
+}
+
 function writeTableDocxFixture(outputPath: string): void {
   const script = [
     "import zipfile",
@@ -612,6 +902,28 @@ function writeTableDocxFixture(outputPath: string): void {
     `output = Path(r'''${outputPath.replace(/'/g, "''")}''')`,
     "output.parent.mkdir(parents=True, exist_ok=True)",
     "document_xml = '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body><w:p><w:r><w:t>表1 基线特征比较</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblBorders><w:top w:val=\"single\"/><w:bottom w:val=\"single\"/><w:insideV w:val=\"nil\"/></w:tblBorders></w:tblPr><w:tr><w:tc><w:p><w:r><w:t>项目</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:gridSpan w:val=\"2\"/></w:tcPr><w:p><w:r><w:t>Treatment group</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcBorders><w:bottom w:val=\"single\"/></w:tcBorders></w:tcPr><w:p><w:r><w:t>男性</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcBorders><w:bottom w:val=\"single\"/></w:tcBorders></w:tcPr><w:p><w:r><w:t>n</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcBorders><w:bottom w:val=\"single\"/></w:tcBorders></w:tcPr><w:p><w:r><w:t>Rate (%)</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>基线</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>18</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>60.0</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t>*P&lt;0.05 vs control</w:t></w:r></w:p></w:body></w:document>'''",
+    "entries = {",
+    "  '[Content_Types].xml': '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/><Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/><Override PartName=\"/docProps/app.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.extended-properties+xml\"/></Types>''',",
+    "  '_rels/.rels': '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/><Relationship Id=\"rId3\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties\" Target=\"docProps/app.xml\"/></Relationships>''',",
+    "  'docProps/core.xml': '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:dcterms=\"http://purl.org/dc/terms/\" xmlns:dcmitype=\"http://purl.org/dc/dcmitype/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"><dc:title>Medical Manuscript Artifact</dc:title></cp:coreProperties>''',",
+    "  'docProps/app.xml': '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\" xmlns:vt=\"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes\"><Application>Codex Medical Manuscript System</Application></Properties>''',",
+    "  'word/document.xml': document_xml,",
+    "}",
+    "with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as archive:",
+    "    for name, content in entries.items():",
+    "        archive.writestr(name, content)",
+  ].join("\n");
+
+  execFileSync(process.platform === "win32" ? "py" : "python3", ["-c", script]);
+}
+
+function writeAdvancedTableDocxFixture(outputPath: string): void {
+  const script = [
+    "import zipfile",
+    "from pathlib import Path",
+    `output = Path(r'''${outputPath.replace(/'/g, "''")}''')`,
+    "output.parent.mkdir(parents=True, exist_ok=True)",
+    "document_xml = '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body><w:p><w:r><w:t>Table 1 Baseline characteristics</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblBorders><w:top w:val=\"single\"/><w:bottom w:val=\"single\"/><w:insideV w:val=\"single\"/></w:tblBorders></w:tblPr><w:tr><w:tc><w:p><w:r><w:t>Item</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Value</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>Age</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>54.2</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t>Note: P&lt;0.05 vs control</w:t></w:r></w:p></w:body></w:document>'''",
     "entries = {",
     "  '[Content_Types].xml': '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/><Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/><Override PartName=\"/docProps/app.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.extended-properties+xml\"/></Types>''',",
     "  '_rels/.rels': '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/><Relationship Id=\"rId3\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties\" Target=\"docProps/app.xml\"/></Relationships>''',",

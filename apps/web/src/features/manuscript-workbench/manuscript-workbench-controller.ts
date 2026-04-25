@@ -1,5 +1,13 @@
 import type { AuthRole } from "../auth/index.ts";
-import type { ModuleExecutionMode } from "@medical/contracts";
+import type { EditingSlotManualResolutionKind, ModuleExecutionMode } from "@medical/contracts";
+import {
+  getExecutionSnapshot,
+  listKnowledgeHitLogsBySnapshotId,
+} from "../execution-tracking/execution-tracking-api.ts";
+import type {
+  KnowledgeHitLogViewModel,
+  ModuleExecutionSnapshotViewModel as ExecutionTrackingSnapshotViewModel,
+} from "../execution-tracking/types.ts";
 import {
   type HumanFeedbackRecordViewModel,
   type ManualFeedbackCategory,
@@ -38,7 +46,9 @@ import {
 } from "../templates/index.ts";
 import {
   runEditing,
+  saveEditingSlotManualResolution,
   type EditingRunResultViewModel,
+  type SaveEditingSlotManualResolutionResultViewModel,
 } from "../editing/index.ts";
 import {
   confirmProofreadingFinal,
@@ -225,6 +235,21 @@ export interface SaveProofreadingConfirmationDraftInput {
   confirmationDecisions: ProofreadingConfirmationDecisionInput[];
 }
 
+export interface SaveEditingSlotResolutionAndLoadInput {
+  manuscriptId: string;
+  actorRole: AuthRole;
+  slotKey: string;
+  resolutionKind: EditingSlotManualResolutionKind;
+  resolvedText?: string;
+  selectedCandidateId?: string;
+  note?: string;
+}
+
+export interface SaveEditingSlotResolutionAndLoadResult {
+  resolution: SaveEditingSlotManualResolutionResultViewModel;
+  workspace: ManuscriptWorkbenchWorkspace;
+}
+
 export interface ManuscriptWorkbenchProofreadingGovernanceHandoffOptions {
   snapshotId?: string;
 }
@@ -245,6 +270,12 @@ export interface ManuscriptWorkbenchController {
     manuscriptId: string,
     options?: ManuscriptWorkbenchProofreadingGovernanceHandoffOptions,
   ): Promise<ManuscriptWorkbenchProofreadingGovernanceHandoffViewModel>;
+  loadExecutionSnapshot?(
+    snapshotId: string,
+  ): Promise<ExecutionTrackingSnapshotViewModel | undefined>;
+  loadKnowledgeHitLogsBySnapshotId?(
+    snapshotId: string,
+  ): Promise<KnowledgeHitLogViewModel[]>;
   loadTemplateContext?(
     templateFamilyId: string,
   ): Promise<ManuscriptWorkbenchTemplateContext>;
@@ -267,6 +298,9 @@ export interface ManuscriptWorkbenchController {
   saveProofreadingConfirmationDraft(
     input: SaveProofreadingConfirmationDraftInput,
   ): Promise<ProofreadingConfirmationDraftSaveResultViewModel>;
+  saveEditingSlotResolutionAndLoad(
+    input: SaveEditingSlotResolutionAndLoadInput,
+  ): Promise<SaveEditingSlotResolutionAndLoadResult>;
   submitManualFeedbackForReview(
     input: SubmitManualFeedbackForReviewInput,
   ): Promise<SubmitManualFeedbackForReviewResult>;
@@ -315,6 +349,14 @@ export function createManuscriptWorkbenchController(
     },
     loadProofreadingGovernanceHandoff(manuscriptId, options) {
       return loadProofreadingGovernanceHandoff(client, manuscriptId, options);
+    },
+    async loadExecutionSnapshot(snapshotId) {
+      const response = await getExecutionSnapshot(client, snapshotId);
+      return response.body;
+    },
+    async loadKnowledgeHitLogsBySnapshotId(snapshotId) {
+      const response = await listKnowledgeHitLogsBySnapshotId(client, snapshotId);
+      return response.body;
     },
     async loadTemplateContext(templateFamilyId) {
       const [availableTemplateFamilies, templateFamily, journalTemplateProfiles] =
@@ -447,6 +489,26 @@ export function createManuscriptWorkbenchController(
       });
 
       return response.body;
+    },
+    async saveEditingSlotResolutionAndLoad(input) {
+      const response = await saveEditingSlotManualResolution(client, {
+        manuscriptId: input.manuscriptId,
+        slotKey: input.slotKey,
+        resolutionKind: input.resolutionKind,
+        ...(input.resolvedText ? { resolvedText: input.resolvedText } : {}),
+        ...(input.selectedCandidateId
+          ? { selectedCandidateId: input.selectedCandidateId }
+          : {}),
+        ...(input.note ? { note: input.note } : {}),
+      });
+
+      return {
+        resolution: response.body,
+        workspace: await loadWorkspaceWithKnowledge(input.manuscriptId, {
+          actorRole: input.actorRole,
+          mode: "editing",
+        }),
+      };
     },
     async submitManualFeedbackForReview(input) {
       const response = await submitGovernedHit(client, input);

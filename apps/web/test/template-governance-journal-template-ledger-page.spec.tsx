@@ -28,6 +28,59 @@ const journalFixture = {
       journal_key: "zxyjhzz",
       journal_name: "《中西医结合杂志》",
       status: "active" as const,
+      target_model_version_id: "journal-1-v2",
+      target_model_version_no: 2,
+      journal_format_target_model: {
+        skeleton: [
+          "front_matter",
+          "title",
+          "abstract",
+          "keywords",
+          "body",
+          "figures_tables",
+          "references",
+        ],
+        target_blocks: [
+          {
+            block_key: "author_bio",
+            label: "作者简介",
+            zone: "front_matter" as const,
+            anchor: "before_title" as const,
+            order: 10,
+            required: false,
+            repeatable: true,
+            enabled: true,
+            format_policy: {
+              display_label: "作者简介",
+              prefix: "作者简介：",
+              target_position: "标题上方",
+              style_requirements: ["独立成段"],
+              allow_auto_reorder: true,
+            },
+            content_source_policy: "prefer_existing_with_manual_fill" as const,
+            completion_gate: "warn_only" as const,
+          },
+          {
+            block_key: "classification_code",
+            label: "中图分类号",
+            zone: "keywords" as const,
+            anchor: "after_keywords" as const,
+            order: 20,
+            required: true,
+            repeatable: false,
+            enabled: true,
+            format_policy: {
+              display_label: "中图分类号",
+              prefix: "中图分类号：",
+              target_position: "关键词下方",
+              style_requirements: ["与文献标志码并列"],
+              allow_auto_reorder: true,
+            },
+            content_source_policy: "must_harvest_existing" as const,
+            completion_gate: "block_on_missing" as const,
+          },
+        ],
+      },
     },
   ],
   selectedJournalTemplateId: "journal-1",
@@ -37,6 +90,59 @@ const journalFixture = {
     journal_key: "zxyjhzz",
     journal_name: "《中西医结合杂志》",
     status: "active" as const,
+    target_model_version_id: "journal-1-v2",
+    target_model_version_no: 2,
+    journal_format_target_model: {
+      skeleton: [
+        "front_matter",
+        "title",
+        "abstract",
+        "keywords",
+        "body",
+        "figures_tables",
+        "references",
+      ],
+      target_blocks: [
+        {
+          block_key: "author_bio",
+          label: "作者简介",
+          zone: "front_matter" as const,
+          anchor: "before_title" as const,
+          order: 10,
+          required: false,
+          repeatable: true,
+          enabled: true,
+          format_policy: {
+            display_label: "作者简介",
+            prefix: "作者简介：",
+            target_position: "标题上方",
+            style_requirements: ["独立成段"],
+            allow_auto_reorder: true,
+          },
+          content_source_policy: "prefer_existing_with_manual_fill" as const,
+          completion_gate: "warn_only" as const,
+        },
+        {
+          block_key: "classification_code",
+          label: "中图分类号",
+          zone: "keywords" as const,
+          anchor: "after_keywords" as const,
+          order: 20,
+          required: true,
+          repeatable: false,
+          enabled: true,
+          format_policy: {
+            display_label: "中图分类号",
+            prefix: "中图分类号：",
+            target_position: "关键词下方",
+            style_requirements: ["与文献标志码并列"],
+            allow_auto_reorder: true,
+          },
+          content_source_policy: "must_harvest_existing" as const,
+          completion_gate: "block_on_missing" as const,
+        },
+      ],
+    },
   },
   summary: {
     familyCount: 1,
@@ -56,6 +162,9 @@ test("journal template ledger renders family-scoped journal rows", () => {
   assert.match(markup, /所属大模板/u);
   assert.match(markup, /期刊键/u);
   assert.match(markup, /《中西医结合杂志》/u);
+  assert.match(markup, /目标模型版本/u);
+  assert.match(markup, /作者简介/u);
+  assert.match(markup, /中图分类号/u);
   assert.match(markup, /新增期刊模板/u);
 });
 
@@ -82,6 +191,9 @@ test("journal template ledger renders inline edit form and search results when r
         templateFamilyId: "family-1",
         journalName: "《中西医结合杂志》",
         journalKey: "zxyjhzz",
+        targetModel: journalFixture.selectedJournalTemplate.journal_format_target_model,
+        targetModelVersionId: "journal-1-v2",
+        targetModelVersionNo: 2,
       }}
       searchState={searchState}
     />,

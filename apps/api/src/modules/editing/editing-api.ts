@@ -1,5 +1,10 @@
 import { EditingService } from "./editing-service.ts";
-import type { EditingRunResult, RunEditingInput } from "./editing-service.ts";
+import type {
+  EditingRunResult,
+  RunEditingInput,
+  SaveEditingSlotManualResolutionInput,
+  SaveEditingSlotManualResolutionResult,
+} from "./editing-service.ts";
 
 interface RouteResponse<T> {
   status: number;
@@ -20,6 +25,14 @@ export function createEditingApi(options: CreateEditingApiOptions) {
       return {
         status: 201,
         body: await editingService.run(input),
+      };
+    },
+    async saveSlotManualResolution(
+      input: SaveEditingSlotManualResolutionInput,
+    ): Promise<RouteResponse<SaveEditingSlotManualResolutionResult>> {
+      return {
+        status: 200,
+        body: await editingService.saveSlotManualResolution(input),
       };
     },
   };

@@ -6,6 +6,8 @@ import type {
 } from "./template-repository.ts";
 import type {
   GovernedContentModuleRecord,
+  JournalFormatTargetModel,
+  JournalFormatTargetModelVersionRecord,
   JournalTemplateProfileRecord,
   ModuleTemplateRecord,
   TemplateCompositionRecord,
@@ -34,7 +36,43 @@ function cloneModuleTemplateRecord(
 function cloneJournalTemplateProfileRecord(
   record: JournalTemplateProfileRecord,
 ): JournalTemplateProfileRecord {
-  return { ...record };
+  return {
+    ...record,
+    journal_format_target_model: record.journal_format_target_model
+      ? cloneJournalFormatTargetModel(record.journal_format_target_model)
+      : undefined,
+    target_model_versions: record.target_model_versions
+      ? record.target_model_versions.map(cloneJournalFormatTargetModelVersionRecord)
+      : undefined,
+  };
+}
+
+function cloneJournalFormatTargetModel(
+  model: JournalFormatTargetModel,
+): JournalFormatTargetModel {
+  return {
+    skeleton: [...model.skeleton],
+    target_blocks: model.target_blocks.map((block) => ({
+      ...block,
+      format_policy: {
+        ...block.format_policy,
+        style_requirements: block.format_policy.style_requirements
+          ? [...block.format_policy.style_requirements]
+          : undefined,
+      },
+    })),
+  };
+}
+
+function cloneJournalFormatTargetModelVersionRecord(
+  record: JournalFormatTargetModelVersionRecord,
+): JournalFormatTargetModelVersionRecord {
+  return {
+    ...record,
+    journal_format_target_model: cloneJournalFormatTargetModel(
+      record.journal_format_target_model,
+    ),
+  };
 }
 
 function cloneGovernedContentModuleRecord(

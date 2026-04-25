@@ -16,10 +16,14 @@ def build_table_semantic_snapshot(
     table_index: int,
     rows: list[list[dict]],
     caption: str | None = None,
+    caption_paragraphs: list[dict] | None = None,
     notes: list[str] | None = None,
+    note_paragraphs: list[dict] | None = None,
     border_hints: dict | None = None,
 ) -> dict:
     notes = notes or []
+    caption_paragraphs = caption_paragraphs or []
+    note_paragraphs = note_paragraphs or []
     border_hints = border_hints or {}
     expanded_rows = _expand_rows(rows)
     header_depth = infer_header_depth(expanded_rows)
@@ -27,7 +31,18 @@ def build_table_semantic_snapshot(
     data_rows = expanded_rows[header_depth:]
     column_paths = build_column_paths(header_rows)
     table_id = f"table-{table_index}"
-    caption_fields = build_caption_fields(caption)
+    row_count = len(rows)
+    column_count = calculate_column_count(rows)
+    grid_cells, cell_id_by_position = build_grid_cells(
+        table_id=table_id,
+        rows=rows,
+        header_depth=header_depth,
+    )
+    caption_fields = build_caption_fields(
+        caption,
+        caption_paragraphs=caption_paragraphs,
+        table_id=table_id,
+    )
 
     header_cells: list[dict] = []
     for column_index, header_path in enumerate(column_paths):
@@ -38,6 +53,9 @@ def build_table_semantic_snapshot(
                 "row_index": max(header_depth - 1, 0),
                 "column_index": column_index,
                 "header_path": header_path,
+                "source_cell_id": cell_id_by_position.get(
+                    (max(header_depth - 1, 0), column_index)
+                ),
                 "coordinate": {
                     "table_id": table_id,
                     "target": "header_cell",
@@ -60,6 +78,9 @@ def build_table_semantic_snapshot(
                     "id": f"{table_id}-stub-{row_offset}",
                     "text": row_key,
                     "row_key": row_key,
+                    "source_cell_id": cell_id_by_position.get(
+                        (header_depth + row_offset, 0)
+                    ),
                     "coordinate": {
                         "table_id": table_id,
                         "target": "stub_column",
@@ -83,6 +104,9 @@ def build_table_semantic_snapshot(
                     "column_index": column_index,
                     "row_key": row_key,
                     "column_key": column_key,
+                    "source_cell_id": cell_id_by_position.get(
+                        (header_depth + row_offset, column_index)
+                    ),
                     "coordinate": {
                         "table_id": table_id,
                         "target": "data_cell",
@@ -124,6 +148,12 @@ def build_table_semantic_snapshot(
                 "text": note_text,
                 "note_kind": classify_note_kind(note_text),
                 "marker": anchor,
+                "paragraphs": materialize_paragraph_snapshots(
+                    [note_paragraphs[note_index]]
+                    if note_index < len(note_paragraphs)
+                    else [],
+                    f"{table_id}-footnote-{note_index}",
+                ),
                 "coordinate": {
                     "table_id": table_id,
                     "target": "footnote_item",
@@ -133,11 +163,18 @@ def build_table_semantic_snapshot(
         )
 
     merged_relations = build_merged_relations(table_id, rows)
-    note_zone = build_note_zone(table_id, notes, footnote_items)
+    note_zone = build_note_zone(
+        table_id,
+        notes,
+        footnote_items,
+        note_paragraphs=note_paragraphs,
+    )
 
     snapshot = {
         "table_id": table_id,
         "caption": caption,
+        "row_count": row_count,
+        "column_count": column_count,
         "profile": {
             "is_three_line_table": bool(expanded_rows),
             "header_depth": header_depth,
@@ -155,6 +192,7 @@ def build_table_semantic_snapshot(
         "unit_markers": unit_markers,
         "footnote_items": footnote_items,
         "merged_relations": merged_relations,
+        "grid_cells": grid_cells,
         "style_profile": build_style_profile(
             table_id=table_id,
             rows=rows,
@@ -254,17 +292,28 @@ def build_merged_relations(table_id: str, rows: list[list[dict]]) -> list[dict]:
     return relations
 
 
-def build_caption_fields(caption: str | None) -> dict | None:
+def build_caption_fields(
+    caption: str | None,
+    *,
+    caption_paragraphs: list[dict] | None = None,
+    table_id: str | None = None,
+) -> dict | None:
     text = (caption or "").strip()
     if not text:
         return None
 
     label_text, title_text = split_caption_parts(text)
     fields = {"text": text}
+    paragraph_snapshots = materialize_paragraph_snapshots(
+        caption_paragraphs or [],
+        f"{table_id or 'table'}-caption",
+    )
     if label_text:
         fields["label_text"] = label_text
     if title_text:
         fields["title_text"] = title_text
+    if paragraph_snapshots:
+        fields["paragraphs"] = paragraph_snapshots
     return fields
 
 
@@ -282,12 +331,14 @@ def build_note_zone(
     table_id: str,
     notes: list[str],
     footnote_items: list[dict],
+    *,
+    note_paragraphs: list[dict] | None = None,
 ) -> dict | None:
     line_texts = [note.strip() for note in notes if note and note.strip()]
     if not line_texts:
         return None
 
-    return {
+    note_zone = {
         "text": "\n".join(line_texts),
         "line_texts": line_texts,
         "footnote_ids": [item["id"] for item in footnote_items],
@@ -296,6 +347,13 @@ def build_note_zone(
             "target": "note_zone",
         },
     }
+    paragraph_snapshots = materialize_paragraph_snapshots(
+        note_paragraphs or [],
+        f"{table_id}-note-zone",
+    )
+    if paragraph_snapshots:
+        note_zone["paragraphs"] = paragraph_snapshots
+    return note_zone
 
 
 def build_style_profile(
@@ -319,6 +377,264 @@ def build_style_profile(
             "table_id": table_id,
             "target": "style_profile",
         },
+    }
+
+
+def calculate_column_count(rows: list[list[dict]]) -> int:
+    return max(
+        (sum(int(cell.get("column_span") or 1) for cell in row) for row in rows),
+        default=0,
+    )
+
+
+def build_grid_cells(
+    *,
+    table_id: str,
+    rows: list[list[dict]],
+    header_depth: int,
+) -> tuple[list[dict], dict[tuple[int, int], str]]:
+    grid_cells: list[dict] = []
+    cell_id_by_position: dict[tuple[int, int], str] = {}
+
+    for row_index, row in enumerate(rows):
+        column_index = 0
+        for raw_cell in row:
+            row_span = int(raw_cell.get("row_span") or 1)
+            column_span = int(raw_cell.get("column_span") or 1)
+            cell_id = f"{table_id}-cell-{row_index}-{column_index}"
+            paragraphs = materialize_paragraph_snapshots(
+                raw_cell.get("paragraphs"),
+                cell_id,
+            )
+            cell_payload = {
+                "id": cell_id,
+                "text": (raw_cell.get("text") or "").strip(),
+                "row_index": row_index,
+                "column_index": column_index,
+                "row_span": row_span,
+                "column_span": column_span,
+                "inferred_role": infer_grid_cell_role(
+                    row_index=row_index,
+                    column_index=column_index,
+                    header_depth=header_depth,
+                ),
+                "style_evidence": build_cell_style_evidence(
+                    paragraphs,
+                    raw_cell.get("vertical_alignment"),
+                ),
+                "paragraphs": paragraphs,
+            }
+            borders = _copy_border_flags(raw_cell.get("borders"))
+            if borders:
+                cell_payload["border_hints"] = borders
+            grid_cells.append(cell_payload)
+            cell_id_by_position[(row_index, column_index)] = cell_id
+            column_index += column_span
+
+    return grid_cells, cell_id_by_position
+
+
+def infer_grid_cell_role(*, row_index: int, column_index: int, header_depth: int) -> str:
+    if row_index < header_depth:
+        return "header"
+    if column_index == 0:
+        return "stub"
+    return "data"
+
+
+def materialize_paragraph_snapshots(value: object, prefix: str) -> list[dict]:
+    if not isinstance(value, list):
+        return []
+
+    snapshots: list[dict] = []
+    for index, entry in enumerate(value):
+        if not isinstance(entry, dict):
+            continue
+        paragraph_id = f"{prefix}-paragraph-{index}"
+        fragments = materialize_inline_fragments(
+            entry.get("fragments"),
+            paragraph_id,
+        )
+        snapshots.append(
+            {
+                "id": paragraph_id,
+                "text": entry.get("text") or "",
+                "style": normalize_paragraph_style_evidence(entry.get("style")),
+                "fragments": fragments,
+            }
+        )
+    return snapshots
+
+
+def materialize_inline_fragments(value: object, prefix: str) -> list[dict]:
+    if not isinstance(value, list):
+        return []
+
+    fragments: list[dict] = []
+    for index, entry in enumerate(value):
+        if not isinstance(entry, dict):
+            continue
+        fragment = {
+            "id": f"{prefix}-fragment-{index}",
+            "kind": normalize_fragment_kind(entry.get("kind")),
+            "text": entry.get("text") or "",
+            "style": normalize_inline_style_evidence(entry.get("style")),
+        }
+        if entry.get("symbol_font"):
+            fragment["symbol_font"] = entry.get("symbol_font")
+        if entry.get("symbol_char"):
+            fragment["symbol_char"] = entry.get("symbol_char")
+        fragments.append(fragment)
+    return fragments
+
+
+def normalize_fragment_kind(value: object) -> str:
+    if value in {"text", "symbol", "tab", "line_break"}:
+        return value  # type: ignore[return-value]
+    return "text"
+
+
+def normalize_inline_style_evidence(value: object) -> dict:
+    record = value if isinstance(value, dict) else {}
+    return {
+        "font_family": normalize_style_fact(record.get("font_family")),
+        "font_size_pt": normalize_style_fact(record.get("font_size_pt")),
+        "bold": normalize_style_fact(record.get("bold")),
+        "italic": normalize_style_fact(record.get("italic")),
+        "script_position": normalize_style_fact(record.get("script_position")),
+    }
+
+
+def normalize_paragraph_style_evidence(value: object) -> dict:
+    record = value if isinstance(value, dict) else {}
+    return {
+        "alignment": normalize_style_fact(record.get("alignment")),
+        "spacing_before_pt": normalize_style_fact(record.get("spacing_before_pt")),
+        "spacing_after_pt": normalize_style_fact(record.get("spacing_after_pt")),
+        "line_spacing": normalize_style_fact(record.get("line_spacing")),
+        "line_spacing_mode": normalize_style_fact(record.get("line_spacing_mode")),
+        "left_indent_pt": normalize_style_fact(record.get("left_indent_pt")),
+        "right_indent_pt": normalize_style_fact(record.get("right_indent_pt")),
+        "first_line_indent_pt": normalize_style_fact(record.get("first_line_indent_pt")),
+        "hanging_indent_pt": normalize_style_fact(record.get("hanging_indent_pt")),
+    }
+
+
+def build_cell_style_evidence(paragraphs: list[dict], vertical_alignment: object) -> dict:
+    fragments = [
+        fragment
+        for paragraph in paragraphs
+        for fragment in paragraph.get("fragments", [])
+        if isinstance(fragment, dict)
+    ]
+    return {
+        "font_family": summarize_style_fact(
+            [fragment.get("style", {}).get("font_family") for fragment in fragments]
+        ),
+        "font_size_pt": summarize_style_fact(
+            [fragment.get("style", {}).get("font_size_pt") for fragment in fragments]
+        ),
+        "bold": summarize_style_fact(
+            [fragment.get("style", {}).get("bold") for fragment in fragments]
+        ),
+        "italic": summarize_style_fact(
+            [fragment.get("style", {}).get("italic") for fragment in fragments]
+        ),
+        "script_position": summarize_style_fact(
+            [fragment.get("style", {}).get("script_position") for fragment in fragments]
+        ),
+        "alignment": summarize_style_fact(
+            [paragraph.get("style", {}).get("alignment") for paragraph in paragraphs]
+        ),
+        "spacing_before_pt": summarize_style_fact(
+            [paragraph.get("style", {}).get("spacing_before_pt") for paragraph in paragraphs]
+        ),
+        "spacing_after_pt": summarize_style_fact(
+            [paragraph.get("style", {}).get("spacing_after_pt") for paragraph in paragraphs]
+        ),
+        "line_spacing": summarize_style_fact(
+            [paragraph.get("style", {}).get("line_spacing") for paragraph in paragraphs]
+        ),
+        "line_spacing_mode": summarize_style_fact(
+            [paragraph.get("style", {}).get("line_spacing_mode") for paragraph in paragraphs]
+        ),
+        "left_indent_pt": summarize_style_fact(
+            [paragraph.get("style", {}).get("left_indent_pt") for paragraph in paragraphs]
+        ),
+        "right_indent_pt": summarize_style_fact(
+            [paragraph.get("style", {}).get("right_indent_pt") for paragraph in paragraphs]
+        ),
+        "first_line_indent_pt": summarize_style_fact(
+            [
+                paragraph.get("style", {}).get("first_line_indent_pt")
+                for paragraph in paragraphs
+            ]
+        ),
+        "hanging_indent_pt": summarize_style_fact(
+            [paragraph.get("style", {}).get("hanging_indent_pt") for paragraph in paragraphs]
+        ),
+        "vertical_alignment": summarize_style_fact(
+            [normalize_style_fact_from_value(vertical_alignment)]
+            if vertical_alignment
+            else []
+        ),
+    }
+
+
+def normalize_style_fact(value: object) -> dict:
+    if not isinstance(value, dict):
+        return {"availability": "unavailable"}
+
+    availability = value.get("availability")
+    if availability not in {"authoritative", "mixed", "unavailable"}:
+        return {"availability": "unavailable"}
+
+    normalized = {"availability": availability}
+    if availability != "unavailable" and "value" in value:
+        normalized["value"] = value.get("value")
+    return normalized
+
+
+def normalize_style_fact_from_value(value: object) -> dict:
+    if value is None:
+        return {"availability": "unavailable"}
+    return {
+        "availability": "authoritative",
+        "value": value,
+    }
+
+
+def summarize_style_fact(facts: list[object]) -> dict:
+    authoritative_values: list[object] = []
+    saw_unknown = False
+
+    for fact in facts:
+        normalized = normalize_style_fact(fact)
+        availability = normalized["availability"]
+        if availability == "authoritative":
+            authoritative_values.append(normalized.get("value"))
+            continue
+        if availability == "mixed":
+            return normalized
+        saw_unknown = True
+
+    authoritative_values = [value for value in authoritative_values if value is not None]
+    if not authoritative_values:
+        return {"availability": "unavailable"}
+
+    first_value = authoritative_values[0]
+    if any(value != first_value for value in authoritative_values[1:]):
+        return {"availability": "mixed"}
+
+    if saw_unknown:
+        return {
+            "availability": "mixed",
+            "value": first_value,
+        }
+
+    return {
+        "availability": "authoritative",
+        "value": first_value,
     }
 
 

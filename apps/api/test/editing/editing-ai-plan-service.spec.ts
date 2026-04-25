@@ -124,3 +124,112 @@ test("editing AI planner forwards governed rule and knowledge context to the mai
     },
   });
 });
+
+test("editing AI planner blocks risky replacements and records guardrail reasons", async () => {
+  const service = new EditingAiPlanService({
+    mainlineAiRuntimeExecutor: {
+      async executeJson<T>(): Promise<T> {
+        return {
+          summary: "Risky editing plan.",
+          replacements: [
+            {
+              targetText: "ALT remained stable.",
+              replacementText: "Alanine aminotransferase remained stable.",
+              reason: "Expand abbreviation.",
+            },
+            {
+              targetText: "Introduction ,",
+              replacementText: "Introduction,",
+              reason: "Normalize punctuation.",
+            },
+          ],
+          manualReviewItems: [],
+        } as T;
+      },
+    } as never,
+  });
+
+  const result = await service.createPlan({
+    manuscriptId: "manuscript-2",
+    sourceBlocks: [
+      {
+        section: "introduction",
+        block_kind: "paragraph",
+        text: "Introduction ,",
+      },
+      {
+        section: "results",
+        block_kind: "paragraph",
+        text: "ALT remained stable.",
+      },
+    ],
+  } as never);
+
+  assert.deepEqual(result.replacements, [
+    {
+      targetText: "Introduction ,",
+      replacementText: "Introduction,",
+      reason: "Normalize punctuation.",
+    },
+  ]);
+  assert.deepEqual(result.manualReviewItems, [
+    "editing_guardrail:medical_entity_present:ALT remained stable.",
+  ]);
+});
+
+test("editing AI planner records malformed replacements as explicit guardrail reason codes", async () => {
+  const service = new EditingAiPlanService({
+    mainlineAiRuntimeExecutor: {
+      async executeJson<T>(): Promise<T> {
+        return {
+          summary: "Malformed editing plan.",
+          replacements: [
+            {
+              replacementText: "（摘要 目的）",
+              reason: "Normalize heading punctuation.",
+            },
+            {
+              targetText: "摘要 目的",
+              reason: "Normalize heading punctuation.",
+            },
+            {
+              targetText: "Introduction",
+              replacementText: "Introduction:",
+            },
+          ],
+          manualReviewItems: [],
+        } as T;
+      },
+    } as never,
+  });
+
+  const result = await service.createPlan({
+    manuscriptId: "manuscript-guardrail-1",
+  } as never);
+
+  assert.deepEqual(result.replacements, []);
+  assert.deepEqual(result.manualReviewItems, [
+    "editing_guardrail:anchor_not_precise:（摘要 目的）",
+    "editing_guardrail:insufficient_style_evidence:摘要 目的",
+    "editing_guardrail:insufficient_style_evidence:Introduction",
+  ]);
+});
+
+test("editing AI planner fallback stays inspect-first when runtime is unavailable", async () => {
+  const service = new EditingAiPlanService({});
+
+  const result = await service.createPlan({
+    manuscriptId: "manuscript-3",
+    sourceBlocks: [
+      {
+        section: "abstract",
+        block_kind: "paragraph",
+        text: "摘要目的",
+      },
+    ],
+  } as never);
+
+  assert.equal(result.summary, "No AI editing replacements were proposed for manuscript-3.");
+  assert.deepEqual(result.replacements, []);
+  assert.deepEqual(result.manualReviewItems, []);
+});

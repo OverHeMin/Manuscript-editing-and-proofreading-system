@@ -22,6 +22,10 @@ import {
   type UpdateKnowledgeDraftInput,
 } from "../knowledge/index.ts";
 import {
+  buildKnowledgeBindingSummaries,
+  formatKnowledgeBindingSummary,
+} from "../knowledge/knowledge-binding-presenter.ts";
+import {
   listLearningCandidates,
   type LearningCandidateViewModel,
   type LearningReviewHttpClient,
@@ -105,6 +109,7 @@ import {
   listTemplateFamilies,
   publishModuleTemplate,
   updateContentModuleDraft,
+  updateJournalTemplateProfile,
   updateModuleTemplateDraft,
   updateTemplateCompositionDraft,
   updateTemplateFamily,
@@ -123,6 +128,7 @@ import {
   type TemplateFamilyViewModel,
   type TemplateHttpClient,
   type UpdateContentModuleDraftInput,
+  type UpdateJournalTemplateProfileInput,
   type UpdateModuleTemplateDraftInput,
   type UpdateTemplateCompositionDraftInput,
   type UpdateTemplateFamilyInput,
@@ -321,6 +327,13 @@ export interface TemplateGovernanceWorkbenchController {
   createJournalTemplateProfileAndReload(
     input: CreateJournalTemplateProfileInput & TemplateGovernanceReloadContext,
   ): Promise<{
+    journalTemplateProfile: JournalTemplateProfileViewModel;
+    overview: TemplateGovernanceWorkbenchOverview;
+  }>;
+  updateJournalTemplateProfileAndReload(input: {
+    journalTemplateProfileId: string;
+    input: UpdateJournalTemplateProfileInput;
+  } & TemplateGovernanceReloadContext): Promise<{
     journalTemplateProfile: JournalTemplateProfileViewModel;
     overview: TemplateGovernanceWorkbenchOverview;
   }>;
@@ -732,6 +745,29 @@ export function createTemplateGovernanceWorkbenchController(
           selectedInstructionTemplateId,
           selectedKnowledgeItemId,
           filters,
+        }),
+      };
+    },
+    async updateJournalTemplateProfileAndReload(input) {
+      const journalTemplateProfile = (
+        await updateJournalTemplateProfile(
+          client,
+          input.journalTemplateProfileId,
+          input.input,
+        )
+      ).body;
+
+      return {
+        journalTemplateProfile,
+        overview: await loadTemplateGovernanceOverview(client, {
+          selectedTemplateFamilyId:
+            input.selectedTemplateFamilyId ?? journalTemplateProfile.template_family_id,
+          selectedJournalTemplateId:
+            input.selectedJournalTemplateId ?? journalTemplateProfile.id,
+          selectedRuleSetId: input.selectedRuleSetId,
+          selectedInstructionTemplateId: input.selectedInstructionTemplateId,
+          selectedKnowledgeItemId: input.selectedKnowledgeItemId,
+          filters: input.filters,
         }),
       };
     },
@@ -1565,6 +1601,11 @@ function filterKnowledgeItems(
       ...(item.routing.risk_tags ?? []),
       ...(item.routing.discipline_tags ?? []),
       ...(item.aliases ?? []),
+      ...buildKnowledgeBindingSummaries(item).flatMap((summary) => [
+        summary.label,
+        ...summary.values,
+        formatKnowledgeBindingSummary(summary),
+      ]),
       ...(item.template_bindings ?? []),
     ];
 
@@ -1580,6 +1621,23 @@ function isKnowledgeItemBoundToFamily(
 ): boolean {
   if (selectedTemplateFamilyId == null) {
     return false;
+  }
+
+  if (item.binding_targets?.template_family_ids?.includes(selectedTemplateFamilyId)) {
+    return true;
+  }
+  if (
+    selectedJournalTemplateId != null &&
+    item.binding_targets?.journal_template_ids?.includes(selectedJournalTemplateId)
+  ) {
+    return true;
+  }
+  if (
+    item.binding_targets?.module_template_ids?.some((bindingTargetId) =>
+      moduleTemplates.some((template) => template.id === bindingTargetId),
+    )
+  ) {
+    return true;
   }
 
   const bindings = new Set(item.template_bindings ?? []);

@@ -79,6 +79,10 @@ export function projectRuntimeKnowledgeRecord(input: {
       .filter((binding) => binding.binding_kind === "knowledge_item")
       .map((binding) => binding.binding_target_id),
   );
+  const bindingTargets = buildKnowledgeBindingTargets(input.bindings);
+  const flattenedTemplateBindings = dedupePreserveOrder(
+    input.bindings.map((binding) => binding.binding_target_id),
+  );
 
   return {
     id: input.revision.asset_id,
@@ -117,12 +121,9 @@ export function projectRuntimeKnowledgeRecord(input: {
       ? { source_link: input.revision.source_link }
       : {}),
     ...(input.revision.aliases ? { aliases: [...input.revision.aliases] } : {}),
-    ...(input.bindings.length > 0
-      ? {
-          template_bindings: input.bindings.map(
-            (binding) => binding.binding_target_id,
-          ),
-        }
+    ...(bindingTargets ? { binding_targets: bindingTargets } : {}),
+    ...(flattenedTemplateBindings.length > 0
+      ? { template_bindings: flattenedTemplateBindings }
       : {}),
     ...(linkedKnowledgeItemIds.length > 0
       ? {
@@ -158,6 +159,55 @@ export function buildSemanticRetrievalText(
   ]);
 
   return parts.length > 0 ? parts.join("\n") : undefined;
+}
+
+function buildKnowledgeBindingTargets(
+  bindings: readonly KnowledgeRevisionBindingRecord[],
+): KnowledgeRecord["binding_targets"] | undefined {
+  const templateFamilyIds = collectBindingTargets(bindings, "template_family");
+  const moduleTemplateIds = collectBindingTargets(bindings, "module_template");
+  const journalTemplateIds = collectBindingTargets(bindings, "journal_template");
+  const generalPackageIds = collectBindingTargets(bindings, "general_package");
+  const medicalPackageIds = collectBindingTargets(bindings, "medical_package");
+
+  if (
+    templateFamilyIds.length === 0 &&
+    moduleTemplateIds.length === 0 &&
+    journalTemplateIds.length === 0 &&
+    generalPackageIds.length === 0 &&
+    medicalPackageIds.length === 0
+  ) {
+    return undefined;
+  }
+
+  return {
+    ...(templateFamilyIds.length > 0
+      ? { template_family_ids: templateFamilyIds }
+      : {}),
+    ...(moduleTemplateIds.length > 0
+      ? { module_template_ids: moduleTemplateIds }
+      : {}),
+    ...(journalTemplateIds.length > 0
+      ? { journal_template_ids: journalTemplateIds }
+      : {}),
+    ...(generalPackageIds.length > 0
+      ? { general_package_ids: generalPackageIds }
+      : {}),
+    ...(medicalPackageIds.length > 0
+      ? { medical_package_ids: medicalPackageIds }
+      : {}),
+  };
+}
+
+function collectBindingTargets(
+  bindings: readonly KnowledgeRevisionBindingRecord[],
+  bindingKind: KnowledgeRevisionBindingRecord["binding_kind"],
+): string[] {
+  return dedupePreserveOrder(
+    bindings
+      .filter((binding) => binding.binding_kind === bindingKind)
+      .map((binding) => binding.binding_target_id),
+  );
 }
 
 function collectSemanticPayloadTexts(value: unknown): string[] {

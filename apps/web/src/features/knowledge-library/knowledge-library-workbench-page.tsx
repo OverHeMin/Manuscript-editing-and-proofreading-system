@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import { WorkbenchCoreStrip } from "../../app/workbench-core-strip.tsx";
 import { createBrowserHttpClient } from "../../lib/browser-http-client.ts";
@@ -28,7 +28,21 @@ import {
   createKnowledgeLibraryWorkbenchController,
   type KnowledgeLibraryWorkbenchController,
 } from "./knowledge-library-controller.ts";
+import {
+  listJournalTemplateProfilesByTemplateFamilyId,
+  listModuleTemplatesByTemplateFamilyId,
+  listTemplateFamilies,
+} from "../templates/template-api.ts";
+import { listManuscriptQualityPackages } from "../manuscript-quality-packages/manuscript-quality-packages-api.ts";
+import {
+  buildQualityPackageKindBindingKeywords,
+  formatQualityPackageBindingDisplayLabel,
+  formatQualityPackageExactBindingLabel,
+  formatQualityPackageKindBindingLabel,
+  formatQualityPackageKindBindingMeta,
+} from "../manuscript-quality-packages/binding-kind-options.ts";
 import { KnowledgeLibraryDuplicatePanel } from "./knowledge-library-duplicate-panel.tsx";
+import { createKnowledgeLibraryEvidenceGateSummary } from "./knowledge-library-evidence-gate.ts";
 import { KnowledgeLibraryGridTable } from "./knowledge-library-grid-table.tsx";
 import { KnowledgeLibraryGridToolbar } from "./knowledge-library-grid-toolbar.tsx";
 import { KnowledgeLibraryRecordDrawer } from "./knowledge-library-record-drawer.tsx";
@@ -69,7 +83,7 @@ export interface KnowledgeLibraryWorkbenchPageProps {
   prefilledRevisionId?: string;
 }
 
-interface KnowledgeLibraryFormState {
+export interface KnowledgeLibraryFormState {
   title: string;
   canonicalText: string;
   summary: string;
@@ -85,7 +99,7 @@ interface KnowledgeLibraryFormState {
   sourceLink: string;
   effectiveAt: string;
   expiresAt: string;
-  bindingsText: string;
+  bindings: KnowledgeRevisionBindingInput[];
 }
 
 interface DuplicateCheckDraftFields {
@@ -99,7 +113,17 @@ interface DuplicateCheckDraftFields {
   riskTags: string[];
   disciplineTags: string[];
   aliases: string[];
-  bindingsText: string;
+  bindings: KnowledgeRevisionBindingInput[];
+}
+
+interface KnowledgeLibraryBindingCatalog {
+  templateFamilyOptions: SearchableMultiSelectOption[];
+  moduleTemplateOptions: SearchableMultiSelectOption[];
+  journalTemplateOptions: SearchableMultiSelectOption[];
+  generalPackageOptions: SearchableMultiSelectOption[];
+  medicalPackageOptions: SearchableMultiSelectOption[];
+  knowledgeItemOptions: SearchableMultiSelectOption[];
+  sectionOptions: SearchableMultiSelectOption[];
 }
 
 interface ImmediateDuplicateCheckContext {
@@ -107,9 +131,9 @@ interface ImmediateDuplicateCheckContext {
   duplicateCheckSignature: string | null;
 }
 
-const defaultController = createKnowledgeLibraryWorkbenchController(
-  createBrowserHttpClient(),
-);
+const defaultHttpClient = createBrowserHttpClient();
+
+const defaultController = createKnowledgeLibraryWorkbenchController(defaultHttpClient);
 
 const knowledgeKindEntryOptions: readonly KnowledgeKind[] = KNOWLEDGE_ENTRY_KIND_OPTIONS;
 
@@ -123,6 +147,64 @@ const sourceTypeOptions = EDITORIAL_KNOWLEDGE_SOURCE_TYPE_OPTIONS;
 const manuscriptTypeOptions: readonly ManuscriptType[] = EDITORIAL_MANUSCRIPT_TYPE_OPTIONS;
 
 const sectionOptions = EDITORIAL_SECTION_OPTIONS;
+
+const knowledgeLibraryBindingFieldDefinitions: ReadonlyArray<{
+  kind: KnowledgeRevisionBindingKind;
+  label: string;
+  helpText: string;
+  dataKey: string;
+  getOptions(catalog: KnowledgeLibraryBindingCatalog): SearchableMultiSelectOption[];
+}> = [
+  {
+    kind: "template_family",
+    label: "模板族",
+    helpText: "决定哪些模板族会默认命中这条知识。",
+    dataKey: "binding-template-families",
+    getOptions: (catalog) => catalog.templateFamilyOptions,
+  },
+  {
+    kind: "module_template",
+    label: "模块模板",
+    helpText: "把知识直接挂到具体执行模块模板上。",
+    dataKey: "binding-module-templates",
+    getOptions: (catalog) => catalog.moduleTemplateOptions,
+  },
+  {
+    kind: "journal_template",
+    label: "期刊模板",
+    helpText: "把知识绑定到具体期刊格式模板。",
+    dataKey: "binding-journal-templates",
+    getOptions: (catalog) => catalog.journalTemplateOptions,
+  },
+  {
+    kind: "general_package",
+    label: "通用包",
+    helpText: "校对和编辑通用规则会从这里按包复用。",
+    dataKey: "binding-general-packages",
+    getOptions: (catalog) => catalog.generalPackageOptions,
+  },
+  {
+    kind: "medical_package",
+    label: "医学专用包",
+    helpText: "医学专用规则和知识会从这里按包复用。",
+    dataKey: "binding-medical-packages",
+    getOptions: (catalog) => catalog.medicalPackageOptions,
+  },
+  {
+    kind: "knowledge_item",
+    label: "关联知识项",
+    helpText: "把这条知识和其他已批准知识建立复用关系。",
+    dataKey: "binding-knowledge-items",
+    getOptions: (catalog) => catalog.knowledgeItemOptions,
+  },
+  {
+    kind: "section",
+    label: "绑定章节",
+    helpText: "这里是复用命中章节，不等于上面的章节标签。",
+    dataKey: "binding-sections",
+    getOptions: (catalog) => catalog.sectionOptions,
+  },
+];
 
 const defaultFormState: KnowledgeLibraryFormState = {
   title: "",
@@ -140,8 +222,162 @@ const defaultFormState: KnowledgeLibraryFormState = {
   sourceLink: "",
   effectiveAt: "",
   expiresAt: "",
-  bindingsText: "",
+  bindings: [],
 };
+
+function createInitialKnowledgeLibraryBindingCatalog(): KnowledgeLibraryBindingCatalog {
+  return {
+    templateFamilyOptions: [],
+    moduleTemplateOptions: [],
+    journalTemplateOptions: [],
+    generalPackageOptions: [],
+    medicalPackageOptions: [],
+    knowledgeItemOptions: [],
+    sectionOptions: sectionOptions.map((section) => ({
+      value: section,
+      label: formatKnowledgeLibrarySection(section),
+      keywords: [section, formatKnowledgeLibrarySection(section)],
+    })),
+  };
+}
+
+async function loadKnowledgeLibraryBindingCatalog(
+  client = defaultHttpClient,
+): Promise<KnowledgeLibraryBindingCatalog> {
+  const templateFamiliesResponse = await listTemplateFamilies(client);
+  const templateFamilies = templateFamiliesResponse.body.filter(
+    (family) => family.status !== "archived",
+  );
+
+  const [
+    moduleTemplatesByFamily,
+    journalTemplatesByFamily,
+    generalPackagesResponse,
+    medicalPackagesResponse,
+  ] = await Promise.all([
+    Promise.all(
+      templateFamilies.map(async (family) => ({
+        family,
+        templates: (
+          await listModuleTemplatesByTemplateFamilyId(client, family.id)
+        ).body.filter((template) => template.status === "published"),
+      })),
+    ),
+    Promise.all(
+      templateFamilies.map(async (family) => ({
+        family,
+        templates: (
+          await listJournalTemplateProfilesByTemplateFamilyId(client, family.id)
+        ).body.filter((template) => template.status === "active"),
+      })),
+    ),
+    listManuscriptQualityPackages(client, {
+      packageKind: "general_style_package",
+      status: "published",
+    }),
+    listManuscriptQualityPackages(client, {
+      packageKind: "medical_analyzer_package",
+      status: "published",
+    }),
+  ]);
+
+  return {
+    templateFamilyOptions: sortSearchableOptions(
+      templateFamilies.map((family) => ({
+        value: family.id,
+        label: family.name,
+        meta: `${formatKnowledgeLibraryManuscriptType(family.manuscript_type)} · ${formatKnowledgeLibraryTemplateFamilyStatus(family.status)}`,
+        group: formatKnowledgeLibraryManuscriptType(family.manuscript_type),
+        keywords: [family.name, family.id, family.manuscript_type],
+      })),
+    ),
+    moduleTemplateOptions: sortSearchableOptions(
+      moduleTemplatesByFamily.flatMap(({ family, templates }) =>
+        templates.map((template) => ({
+          value: template.id,
+          label: `${formatKnowledgeLibraryModuleScope(template.module)} v${template.version_no}`,
+          meta: `${family.name} · ${formatKnowledgeLibraryManuscriptType(template.manuscript_type)}`,
+          group: family.name,
+          keywords: [
+            template.id,
+            family.name,
+            template.module,
+            template.manuscript_type,
+            `${template.version_no}`,
+          ],
+        })),
+      ),
+    ),
+    journalTemplateOptions: sortSearchableOptions(
+      journalTemplatesByFamily.flatMap(({ family, templates }) =>
+        templates.map((template) => ({
+          value: template.id,
+          label: template.journal_name,
+          meta: `${family.name} · ${template.journal_key}`,
+          group: family.name,
+          keywords: [
+            template.id,
+            template.journal_name,
+            template.journal_key,
+            family.name,
+          ],
+        })),
+      ),
+    ),
+    generalPackageOptions: sortSearchableOptions(
+      generalPackagesResponse.body
+        .map((record) => ({
+          value: record.id,
+          label: formatQualityPackageExactBindingLabel({
+            packageName: record.package_name,
+            version: record.version,
+            packageKind: record.package_kind,
+          }),
+          meta: "通用包 · 锁定具体版本",
+          keywords: [
+            record.id,
+            record.package_name,
+            `${record.version}`,
+            "通用包",
+            "锁定具体版本",
+          ],
+        }))
+        .concat({
+          value: "general_style_package",
+          label: formatQualityPackageKindBindingLabel("general_style_package"),
+          meta: formatQualityPackageKindBindingMeta("general_style_package"),
+          keywords: buildQualityPackageKindBindingKeywords("general_style_package"),
+        }),
+    ),
+    medicalPackageOptions: sortSearchableOptions(
+      medicalPackagesResponse.body
+        .map((record) => ({
+          value: record.id,
+          label: formatQualityPackageExactBindingLabel({
+            packageName: record.package_name,
+            version: record.version,
+            packageKind: record.package_kind,
+          }),
+          meta: "医学专用包 · 锁定具体版本",
+          keywords: [
+            record.id,
+            record.package_name,
+            `${record.version}`,
+            "医学专用包",
+            "锁定具体版本",
+          ],
+        }))
+        .concat({
+          value: "medical_analyzer_package",
+          label: formatQualityPackageKindBindingLabel("medical_analyzer_package"),
+          meta: formatQualityPackageKindBindingMeta("medical_analyzer_package"),
+          keywords: buildQualityPackageKindBindingKeywords("medical_analyzer_package"),
+        }),
+    ),
+    knowledgeItemOptions: [],
+    sectionOptions: createInitialKnowledgeLibraryBindingCatalog().sectionOptions,
+  };
+}
 
 export function KnowledgeLibraryWorkbenchPage({
   controller = defaultController,
@@ -191,6 +427,13 @@ export function KnowledgeLibraryWorkbenchPage({
   const [semanticLayerDraft, setSemanticLayerDraft] = useState<
     KnowledgeSemanticLayerViewModel | undefined
   >(() => initialViewModel?.detail?.selected_revision.semantic_layer);
+  const [bindingCatalog, setBindingCatalog] = useState<KnowledgeLibraryBindingCatalog>(
+    () => createInitialKnowledgeLibraryBindingCatalog(),
+  );
+  const [bindingCatalogStatus, setBindingCatalogStatus] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [bindingCatalogError, setBindingCatalogError] = useState<string | null>(null);
   const duplicateCheckRequestIdRef = useRef(0);
   const latestDuplicateCheckContextRef =
     useRef<ImmediateDuplicateCheckContext>({
@@ -200,6 +443,33 @@ export function KnowledgeLibraryWorkbenchPage({
 
   const normalizedPrefilledAssetId = prefilledAssetId?.trim() ?? "";
   const normalizedPrefilledRevisionId = prefilledRevisionId?.trim() ?? "";
+
+  useEffect(() => {
+    let isActive = true;
+    setBindingCatalogStatus("loading");
+    setBindingCatalogError(null);
+    void loadKnowledgeLibraryBindingCatalog()
+      .then((catalog) => {
+        if (!isActive) {
+          return;
+        }
+        setBindingCatalog(catalog);
+        setBindingCatalogStatus("ready");
+      })
+      .catch((error: unknown) => {
+        if (!isActive) {
+          return;
+        }
+        setBindingCatalogStatus("error");
+        setBindingCatalogError(
+          error instanceof Error ? error.message : "绑定选项加载失败。",
+        );
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (initialViewModel) {
@@ -250,6 +520,17 @@ export function KnowledgeLibraryWorkbenchPage({
     duplicateCheckSignature != null &&
     lastCheckedDuplicateSignature != null &&
     duplicateCheckSignature !== lastCheckedDuplicateSignature;
+  const resolvedBindingCatalog = useMemo(
+    () =>
+      resolveKnowledgeLibraryBindingCatalog({
+        catalog: bindingCatalog,
+        bindings: formState.bindings,
+        libraryItems: viewModel?.library ?? [],
+        selectedAssetId: viewModel?.selectedAssetId ?? null,
+      }),
+    [bindingCatalog, formState.bindings, viewModel?.library, viewModel?.selectedAssetId],
+  );
+  const normalizedStructuredBindings = normalizeKnowledgeBindings(formState.bindings) ?? [];
 
   useEffect(() => {
     latestFormDraftSignatureRef.current = confirmationCurrentDraftSignature;
@@ -522,6 +803,18 @@ export function KnowledgeLibraryWorkbenchPage({
       return;
     }
 
+    if (selectedRevisionEvidenceGateSummary.hasBlockingIssues) {
+      setPendingSubmitStrongMatches([]);
+      setIsDuplicateSubmitConfirmationOpen(false);
+      setDuplicateConfirmationDraftSignature(null);
+      setStatusMessage(null);
+      setErrorMessage(
+        selectedRevisionEvidenceGateSummary.blockingMessage ??
+          "当前已保存富文本版本还有高精度证据未补齐，暂时不能提交审核。",
+      );
+      return;
+    }
+
     const submitCheckContext: ImmediateDuplicateCheckContext = {
       selectedRevisionId: revisionId,
       duplicateCheckSignature,
@@ -591,6 +884,18 @@ export function KnowledgeLibraryWorkbenchPage({
       setErrorMessage(null);
       setStatusMessage(
         "Draft changed since the duplicate warning opened. Review refreshed duplicate signals before continuing.",
+      );
+      return;
+    }
+
+    if (selectedRevisionEvidenceGateSummary.hasBlockingIssues) {
+      setIsDuplicateSubmitConfirmationOpen(false);
+      setPendingSubmitStrongMatches([]);
+      setDuplicateConfirmationDraftSignature(null);
+      setStatusMessage(null);
+      setErrorMessage(
+        selectedRevisionEvidenceGateSummary.blockingMessage ??
+          "当前已保存富文本版本还有高精度证据未补齐，暂时不能提交审核。",
       );
       return;
     }
@@ -776,6 +1081,14 @@ export function KnowledgeLibraryWorkbenchPage({
 
   const selectedRevision = viewModel?.detail?.selected_revision ?? null;
   const selectedApprovedRevision = viewModel?.detail?.current_approved_revision ?? null;
+  const selectedRevisionEvidenceGateSummary = useMemo(
+    () =>
+      createKnowledgeLibraryEvidenceGateSummary({
+        blocks: selectedRevision?.content_blocks ?? [],
+        releaseAction: "submit_review",
+      }),
+    [selectedRevision?.content_blocks],
+  );
   const isDraftSelected = selectedRevision?.status === "draft";
   const reviewHash =
     selectedRevision == null
@@ -891,6 +1204,44 @@ export function KnowledgeLibraryWorkbenchPage({
               isStale={isDuplicateResultStale}
               checkErrorMessage={duplicateCheckErrorMessage}
             />
+            <section
+              className="knowledge-library-evidence-gate"
+              data-entry-evidence-gate="knowledge"
+            >
+              <div className="knowledge-library-evidence-gate-header">
+                <h3>高精度证据预检</h3>
+                <p>
+                  按当前已保存富文本版本计算；未保存的富文本改动不会参与提交审核。
+                </p>
+              </div>
+
+              {selectedRevisionEvidenceGateSummary.itemCount === 0 ? (
+                <p className="knowledge-library-empty">
+                  当前已保存富文本版本里还没有会触发高精度门禁的表格或视觉符号证据。
+                </p>
+              ) : (
+                <div className="knowledge-library-evidence-gate-body">
+                  <p
+                    className={`knowledge-library-evidence-summary${selectedRevisionEvidenceGateSummary.hasBlockingIssues ? " is-blocking" : ""}`}
+                  >
+                    {selectedRevisionEvidenceGateSummary.hasBlockingIssues
+                      ? `当前已保存富文本版本有 ${selectedRevisionEvidenceGateSummary.blockingItemCount} 条高精度证据未满足提交审核条件。`
+                      : "当前已保存富文本版本已满足提交审核条件。"}
+                  </p>
+                  <ul className="knowledge-library-evidence-list">
+                    {selectedRevisionEvidenceGateSummary.items.map((item) => (
+                      <li key={item.blockId} className="knowledge-library-evidence-item">
+                        <div className="knowledge-library-evidence-item-header">
+                          <strong>{item.title}</strong>
+                          <span>{item.statusLabel}</span>
+                        </div>
+                        <p>{item.detail}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </section>
 
             <div className="knowledge-library-form-grid">
               <label>
@@ -1251,32 +1602,58 @@ export function KnowledgeLibraryWorkbenchPage({
           <section className="knowledge-library-panel knowledge-library-bindings knowledge-library-drawer-section">
             <header className="knowledge-library-panel-header">
               <div>
-                <h2>Structured Bindings</h2>
+                <h2>结构化绑定</h2>
                 <p>
-                  Edit bindings as one line per record using{" "}
-                  <code>binding_kind | target_id | label</code>.
+                  直接选择真实的模板、包、章节和知识项，不再手填伪绑定文本。
                 </p>
               </div>
             </header>
-            <textarea
-              rows={8}
-              value={formState.bindingsText}
-              onChange={(event) =>
-                updateDraftFormState((current) => ({
-                  ...current,
-                  bindingsText: event.target.value,
-                }))
-              }
-              placeholder="module_template | template-screening-1 | Screening Template"
-            />
-            <ul className="knowledge-library-binding-list">
-              {parseBindings(formState.bindingsText).map((binding) => (
-                <li key={`${binding.bindingKind}:${binding.bindingTargetId}`}>
-                  <strong>{binding.bindingTargetLabel}</strong>
-                  <span>{binding.bindingKind}</span>
-                </li>
-              ))}
-            </ul>
+            {bindingCatalogStatus === "loading" ? (
+              <p className="knowledge-library-empty">正在加载绑定目录…</p>
+            ) : null}
+            {bindingCatalogError ? (
+              <p className="knowledge-library-empty">{bindingCatalogError}</p>
+            ) : null}
+            <div className="knowledge-library-form-grid">
+              {knowledgeLibraryBindingFieldDefinitions.map((definition) => {
+                const options = definition.getOptions(resolvedBindingCatalog);
+                return (
+                  <KnowledgeLibraryBindingMultiSelectField
+                    key={definition.kind}
+                    label={definition.label}
+                    helpText={definition.helpText}
+                    value={getKnowledgeBindingSelectionValues(
+                      formState.bindings,
+                      definition.kind,
+                    )}
+                    options={options}
+                    dataKey={definition.dataKey}
+                    onToggleValue={(value) =>
+                      updateDraftFormState((current) => ({
+                        ...current,
+                        bindings: toggleKnowledgeBindingSelection(
+                          current.bindings,
+                          definition.kind,
+                          resolveBindingOptionByValue(options, value),
+                        ),
+                      }))
+                    }
+                  />
+                );
+              })}
+            </div>
+            {normalizedStructuredBindings.length > 0 ? (
+              <ul className="knowledge-library-binding-list">
+                {normalizedStructuredBindings.map((binding) => (
+                  <li key={`${binding.bindingKind}:${binding.bindingTargetId}`}>
+                    <strong>{binding.bindingTargetLabel}</strong>
+                    <span>{formatKnowledgeLibraryBindingKind(binding.bindingKind)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="knowledge-library-empty">尚未添加结构化绑定。</p>
+            )}
           </section>
         </section>
 
@@ -1573,12 +1950,11 @@ export function createKnowledgeLibraryFormState(
     sourceLink: revision.source_link ?? "",
     effectiveAt: revision.effective_at ?? "",
     expiresAt: revision.expires_at ?? "",
-    bindingsText: revision.bindings
-      .map(
-        (binding) =>
-          `${binding.binding_kind} | ${binding.binding_target_id} | ${binding.binding_target_label}`,
-      )
-      .join("\n"),
+    bindings: revision.bindings.map((binding) => ({
+      bindingKind: binding.binding_kind,
+      bindingTargetId: binding.binding_target_id,
+      bindingTargetLabel: binding.binding_target_label,
+    })),
   };
 }
 
@@ -1603,8 +1979,14 @@ function toCreateInput(formState: KnowledgeLibraryFormState): CreateKnowledgeLib
     sourceLink: optionalTrimmedValue(formState.sourceLink),
     effectiveAt: optionalTrimmedValue(formState.effectiveAt),
     expiresAt: optionalTrimmedValue(formState.expiresAt),
-    bindings: parseBindings(formState.bindingsText),
+    bindings: normalizeKnowledgeBindings(formState.bindings),
   };
+}
+
+export function createKnowledgeLibraryDraftInput(
+  formState: KnowledgeLibraryFormState,
+): CreateKnowledgeLibraryDraftInput {
+  return toCreateInput(formState);
 }
 
 function toUpdateInput(formState: KnowledgeLibraryFormState): UpdateKnowledgeLibraryDraftInput {
@@ -1625,7 +2007,7 @@ function toDuplicateCheckDraftFields(
     riskTags: normalizeStringArray(formState.riskTags) ?? [],
     disciplineTags: normalizeStringArray(formState.disciplineTags) ?? [],
     aliases: normalizeStringArray(formState.aliases) ?? [],
-    bindingsText: formState.bindingsText,
+    bindings: normalizeKnowledgeBindings(formState.bindings) ?? [],
   };
 }
 
@@ -1652,7 +2034,7 @@ function createDuplicateCheckInput(
     riskTags: normalizeStringArray(formState.riskTags),
     disciplineTags: normalizeStringArray(formState.disciplineTags),
     aliases: normalizeStringArray(formState.aliases),
-    bindings: parseBindings(formState.bindingsText),
+    bindings: normalizeKnowledgeBindings(formState.bindings),
     currentAssetId: input.currentAssetId?.trim() || undefined,
     currentRevisionId: input.currentRevisionId?.trim() || undefined,
   };
@@ -1686,48 +2068,64 @@ function serializeConfirmationDraftSignature(formState: KnowledgeLibraryFormStat
   return JSON.stringify(formState);
 }
 
-function parseBindings(value: string): KnowledgeRevisionBindingInput[] {
-  return value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .flatMap((line) => {
-      const [bindingKind, bindingTargetId, bindingTargetLabel] = line
-        .split("|")
-        .map((part) => part.trim());
-      if (!bindingKind || !bindingTargetId || !bindingTargetLabel) {
-        return [];
-      }
-
-      return [
-        {
-          bindingKind: bindingKind as KnowledgeRevisionBindingKind,
-          bindingTargetId,
-          bindingTargetLabel,
-        },
-      ];
-    });
-}
-
 function normalizeDuplicateCheckBindings(
   bindings: DuplicateKnowledgeCheckInput["bindings"],
 ): KnowledgeRevisionBindingInput[] {
-  return (bindings ?? []).flatMap((binding) => {
-    const bindingKind = binding.bindingKind;
+  return normalizeKnowledgeBindings(bindings) ?? [];
+}
+
+export function normalizeKnowledgeBindings(
+  bindings: readonly KnowledgeRevisionBindingInput[] | undefined,
+): KnowledgeRevisionBindingInput[] | undefined {
+  if (!bindings) {
+    return undefined;
+  }
+
+  const deduped = new Map<string, KnowledgeRevisionBindingInput>();
+  for (const binding of bindings) {
     const bindingTargetId = binding.bindingTargetId.trim();
-    const bindingTargetLabel = binding.bindingTargetLabel.trim();
-    if (!bindingKind || !bindingTargetId || !bindingTargetLabel) {
-      return [];
+    if (bindingTargetId.length === 0) {
+      continue;
     }
 
-    return [
-      {
-        bindingKind,
+    const normalizedBinding: KnowledgeRevisionBindingInput = {
+      bindingKind: binding.bindingKind,
+      bindingTargetId,
+      bindingTargetLabel: formatKnowledgeBindingTargetLabel({
+        bindingKind: binding.bindingKind,
         bindingTargetId,
-        bindingTargetLabel,
-      },
-    ];
-  });
+        bindingTargetLabel: binding.bindingTargetLabel,
+      }),
+    };
+    const key = `${normalizedBinding.bindingKind}:${normalizedBinding.bindingTargetId}`;
+    if (!deduped.has(key)) {
+      deduped.set(key, normalizedBinding);
+    }
+  }
+
+  return deduped.size > 0 ? [...deduped.values()] : undefined;
+}
+
+function formatKnowledgeBindingTargetLabel(input: {
+  bindingKind: KnowledgeRevisionBindingKind;
+  bindingTargetId: string;
+  bindingTargetLabel: string;
+}): string {
+  const bindingTargetId = input.bindingTargetId.trim();
+  const bindingTargetLabel = input.bindingTargetLabel.trim();
+
+  if (
+    input.bindingKind === "general_package" ||
+    input.bindingKind === "medical_package"
+  ) {
+    return formatQualityPackageBindingDisplayLabel({
+      bindingKind: input.bindingKind,
+      bindingTargetId,
+      bindingTargetLabel,
+    });
+  }
+
+  return bindingTargetLabel || bindingTargetId;
 }
 
 function normalizeStringArray(values: string[] | undefined): string[] | undefined {
@@ -1812,6 +2210,177 @@ function formatKnowledgeLibrarySourceType(value: string): string {
   );
 }
 
+function formatKnowledgeLibraryBindingKind(value: KnowledgeRevisionBindingKind): string {
+  switch (value) {
+    case "template_family":
+      return "模板族";
+    case "module_template":
+      return "模块模板";
+    case "journal_template":
+      return "期刊模板";
+    case "general_package":
+      return "通用包";
+    case "medical_package":
+      return "医学专用包";
+    case "knowledge_item":
+      return "关联知识项";
+    case "section":
+      return "绑定章节";
+    default:
+      return value;
+  }
+}
+
+function formatKnowledgeLibraryTemplateFamilyStatus(
+  status: "draft" | "active" | "archived",
+): string {
+  switch (status) {
+    case "active":
+      return "已启用";
+    case "draft":
+      return "草稿";
+    case "archived":
+    default:
+      return "已归档";
+  }
+}
+
+function resolveKnowledgeLibraryBindingCatalog(input: {
+  catalog: KnowledgeLibraryBindingCatalog;
+  bindings: readonly KnowledgeRevisionBindingInput[];
+  libraryItems: readonly KnowledgeLibraryWorkbenchViewModel["library"][number][];
+  selectedAssetId: string | null;
+}): KnowledgeLibraryBindingCatalog {
+  const knowledgeItemOptions = sortSearchableOptions(
+    input.libraryItems
+      .filter(
+        (item) => item.status === "approved" && item.id !== input.selectedAssetId,
+      )
+      .map((item) => ({
+        value: item.id,
+        label: item.title,
+        meta: `${formatKnowledgeLibraryKnowledgeKind(item.knowledge_kind)} · ${formatKnowledgeLibraryModuleScope(item.module_scope)}`,
+        keywords: [
+          item.id,
+          item.title,
+          item.knowledge_kind,
+          item.module_scope,
+          ...(item.manuscript_types === "any" ? ["any"] : item.manuscript_types),
+        ],
+      })),
+  );
+
+  return {
+    templateFamilyOptions: mergeBindingOptions(
+      input.catalog.templateFamilyOptions,
+      input.bindings,
+      "template_family",
+    ),
+    moduleTemplateOptions: mergeBindingOptions(
+      input.catalog.moduleTemplateOptions,
+      input.bindings,
+      "module_template",
+    ),
+    journalTemplateOptions: mergeBindingOptions(
+      input.catalog.journalTemplateOptions,
+      input.bindings,
+      "journal_template",
+    ),
+    generalPackageOptions: mergeBindingOptions(
+      input.catalog.generalPackageOptions,
+      input.bindings,
+      "general_package",
+    ),
+    medicalPackageOptions: mergeBindingOptions(
+      input.catalog.medicalPackageOptions,
+      input.bindings,
+      "medical_package",
+    ),
+    knowledgeItemOptions: mergeBindingOptions(
+      knowledgeItemOptions,
+      input.bindings,
+      "knowledge_item",
+    ),
+    sectionOptions: mergeBindingOptions(input.catalog.sectionOptions, input.bindings, "section"),
+  };
+}
+
+function mergeBindingOptions(
+  options: readonly SearchableMultiSelectOption[],
+  bindings: readonly KnowledgeRevisionBindingInput[],
+  kind: KnowledgeRevisionBindingKind,
+): SearchableMultiSelectOption[] {
+  const merged = new Map<string, SearchableMultiSelectOption>();
+  for (const option of options) {
+    merged.set(option.value, option);
+  }
+
+  for (const binding of bindings) {
+    if (binding.bindingKind !== kind || merged.has(binding.bindingTargetId)) {
+      continue;
+    }
+
+    const label = formatKnowledgeBindingTargetLabel(binding);
+    merged.set(binding.bindingTargetId, {
+      value: binding.bindingTargetId,
+      label,
+      meta: "已绑定但当前目录未返回",
+      keywords: [binding.bindingTargetId, label],
+    });
+  }
+
+  return sortSearchableOptions([...merged.values()]);
+}
+
+function sortSearchableOptions(
+  options: readonly SearchableMultiSelectOption[],
+): SearchableMultiSelectOption[] {
+  return [...options].sort((left, right) => left.label.localeCompare(right.label, "zh-CN"));
+}
+
+function getKnowledgeBindingSelectionValues(
+  bindings: readonly KnowledgeRevisionBindingInput[],
+  kind: KnowledgeRevisionBindingKind,
+): string[] {
+  return (normalizeKnowledgeBindings(bindings) ?? [])
+    .filter((binding) => binding.bindingKind === kind)
+    .map((binding) => binding.bindingTargetId);
+}
+
+function resolveBindingOptionByValue(
+  options: readonly SearchableMultiSelectOption[],
+  value: string,
+): SearchableMultiSelectOption {
+  return options.find((option) => option.value === value) ?? { value, label: value };
+}
+
+function toggleKnowledgeBindingSelection(
+  bindings: readonly KnowledgeRevisionBindingInput[],
+  kind: KnowledgeRevisionBindingKind,
+  option: SearchableMultiSelectOption,
+): KnowledgeRevisionBindingInput[] {
+  const normalized = normalizeKnowledgeBindings(bindings) ?? [];
+  const exists = normalized.some(
+    (binding) =>
+      binding.bindingKind === kind && binding.bindingTargetId === option.value,
+  );
+  if (exists) {
+    return normalized.filter(
+      (binding) =>
+        binding.bindingKind !== kind || binding.bindingTargetId !== option.value,
+    );
+  }
+
+  return [
+    ...normalized,
+    {
+      bindingKind: kind,
+      bindingTargetId: option.value,
+      bindingTargetLabel: option.label,
+    },
+  ];
+}
+
 function KnowledgeLibraryMultiSelectField(props: {
   label: string;
   value: string[] | "any";
@@ -1844,6 +2413,40 @@ function KnowledgeLibraryMultiSelectField(props: {
       onToggleValue={props.onToggleValue}
       onSelectAny={props.onSelectAny}
       noResultsText="\u672a\u627e\u5230\u5339\u914d\u7684\u9009\u9879\u3002"
+    />
+  );
+}
+
+function KnowledgeLibraryBindingMultiSelectField(props: {
+  label: string;
+  helpText: string;
+  value: string[];
+  options: readonly SearchableMultiSelectOption[];
+  dataKey: string;
+  onToggleValue(value: string): void;
+}) {
+  return (
+    <SearchableMultiSelectField
+      label={props.label}
+      helpText={props.helpText}
+      value={props.value}
+      options={props.options}
+      dataKey={props.dataKey}
+      rootDataAttributeName="data-knowledge-binding-multi-select"
+      className="knowledge-library-structured-field knowledge-library-form-full"
+      headerClassName="knowledge-library-structured-field-header"
+      searchFieldClassName="knowledge-library-grid-search"
+      searchPlaceholder={`搜索${props.label}`}
+      optionsClassName="knowledge-library-toggle-group"
+      optionClassName="knowledge-library-toggle-chip"
+      emptyClassName="knowledge-library-structured-empty"
+      emptyOptionsText="当前没有可用绑定项。"
+      noResultsText="未找到匹配的绑定项。"
+      showSelectedSummary
+      selectedListClassName="knowledge-library-toggle-group"
+      selectedChipClassName="knowledge-library-toggle-chip is-active"
+      selectedEmptyText="尚未选择。"
+      onToggleValue={props.onToggleValue}
     />
   );
 }
@@ -1906,9 +2509,9 @@ function formatActorRole(role: AuthRole): string {
     case "admin":
       return "\u7ba1\u7406\u5458";
     case "knowledge_reviewer":
-      return "\u77e5\u8bc6\u5ba1\u6838";
+      return "\u77e5\u8bc6\u6cbb\u7406\u5458";
     case "editor":
-      return "\u7f16\u8f91";
+      return "\u7a3f\u4ef6\u5904\u7406\u5458";
     case "proofreader":
       return "\u6821\u5bf9";
     case "screener":

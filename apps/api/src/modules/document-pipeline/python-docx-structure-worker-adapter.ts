@@ -3,13 +3,21 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { DocumentAssetRepository } from "../assets/document-asset-repository.ts";
 import type {
+  DocumentStructureObjectEvidence,
+  DocumentStructureTableCellStyleEvidence,
   DocumentStructureSection,
   DocumentStructureTableDataCell,
   DocumentStructureTableFootnoteItem,
+  DocumentStructureTableGridCell,
   DocumentStructureTableHeaderCell,
+  DocumentStructureTableInlineFragment,
+  DocumentStructureTableInlineStyleEvidence,
   DocumentStructureTableMergedRelation,
+  DocumentStructureTableParagraphSnapshot,
+  DocumentStructureTableParagraphStyleEvidence,
   DocumentStructureTableSemanticCoordinate,
   DocumentStructureTableSnapshot,
+  DocumentStructureTableStyleFact,
   DocumentStructureTableStubColumn,
   DocumentStructureTableUnitMarker,
   DocumentStructureWorkerAdapter,
@@ -20,6 +28,7 @@ import {
   buildWorkspaceChildProcessEnv,
   isCommandUnavailableError,
 } from "../shared/windows-command-runtime.ts";
+import { buildMetadataCandidatesFromBlocks } from "./docx-metadata-hunter.ts";
 
 const EXTRACT_DOCX_STRUCTURE_SCRIPT = path.resolve(
   import.meta.dirname,
@@ -83,6 +92,7 @@ function buildManualReviewResult(message: string): DocumentStructureWorkerResult
     status: "needs_manual_review",
     parser: "python_docx",
     sections: [],
+    metadata_candidates: [],
     tables: [],
     warnings: [message],
   };
@@ -182,7 +192,9 @@ function normalizeWorkerResult(raw: unknown): DocumentStructureWorkerResult {
     status: normalizeStatus(record.status),
     parser: normalizeParser(record.parser),
     sections: normalizeSections(record.sections),
+    metadata_candidates: buildMetadataCandidatesFromBlocks(record.blocks),
     tables: normalizeTables(record.tables),
+    objects: normalizeObjects(record.objects),
     warnings: normalizeStringArray(record.warnings),
   };
 }
@@ -269,6 +281,8 @@ function normalizeTables(value: unknown): DocumentStructureTableSnapshot[] {
       data_cells: normalizeDataCells(semantic.data_cells),
       footnote_items: normalizeFootnoteItems(semantic.footnote_items),
     };
+    const rowCount = readOptionalNumber(semantic.row_count);
+    const columnCount = readOptionalNumber(semantic.column_count);
     const tableLabel = normalizeTextAnchor(semantic.table_label, tableId, "table_label");
     const tableTitle = normalizeTextAnchor(semantic.table_title, tableId, "table_title");
     const captionFields = normalizeCaptionFields(semantic.caption_fields);
@@ -277,6 +291,14 @@ function normalizeTables(value: unknown): DocumentStructureTableSnapshot[] {
     const stubColumns = normalizeStubColumns(semantic.stub_columns);
     const unitMarkers = normalizeUnitMarkers(semantic.unit_markers);
     const mergedRelations = normalizeMergedRelations(semantic.merged_relations);
+    const gridCells = normalizeGridCells(semantic.grid_cells);
+
+    if (rowCount !== undefined) {
+      snapshot.row_count = rowCount;
+    }
+    if (columnCount !== undefined) {
+      snapshot.column_count = columnCount;
+    }
 
     if (tableLabel) {
       snapshot.table_label = tableLabel;
@@ -302,11 +324,80 @@ function normalizeTables(value: unknown): DocumentStructureTableSnapshot[] {
     if (mergedRelations?.length) {
       snapshot.merged_relations = mergedRelations;
     }
+    if (gridCells?.length) {
+      snapshot.grid_cells = gridCells;
+    }
 
     tables.push(snapshot);
   });
 
   return tables;
+}
+
+function normalizeObjects(value: unknown): DocumentStructureObjectEvidence[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const objects: DocumentStructureObjectEvidence[] = [];
+
+  value.forEach((entry, index) => {
+    const record = isRecord(entry) ? entry : {};
+    const objectId = readOptionalString(record.object_id) ?? `object-${index + 1}`;
+    const objectKind = readOptionalString(record.object_kind);
+    const containerKind = readOptionalString(record.container_kind);
+    const sourceZone = readOptionalString(record.source_zone);
+    const sourceLocator = readOptionalString(record.source_locator);
+    const originalTag = readOptionalString(record.original_tag);
+
+    if (
+      !sourceLocator ||
+      !originalTag ||
+      (objectKind !== "image" &&
+        objectKind !== "equation" &&
+        objectKind !== "embedded_object" &&
+        objectKind !== "drawing" &&
+        objectKind !== "chart" &&
+        objectKind !== "unknown") ||
+      (containerKind !== "paragraph" &&
+        containerKind !== "table_cell" &&
+        containerKind !== "header" &&
+        containerKind !== "footer") ||
+      (sourceZone !== "front_matter" &&
+        sourceZone !== "title_area" &&
+        sourceZone !== "abstract_neighborhood" &&
+        sourceZone !== "header" &&
+        sourceZone !== "footer" &&
+        sourceZone !== "document_tail" &&
+        sourceZone !== "suspicious_nearby_paragraph" &&
+        sourceZone !== "body")
+    ) {
+      return;
+    }
+
+    objects.push({
+      object_id: objectId,
+      object_kind: objectKind,
+      container_kind: containerKind,
+      source_zone: sourceZone,
+      source_locator: sourceLocator,
+      original_tag: originalTag,
+      ...(readOptionalString(record.relationship_id)
+        ? { relationship_id: readOptionalString(record.relationship_id) }
+        : {}),
+      ...(readOptionalString(record.evidence_text)
+        ? { evidence_text: readOptionalString(record.evidence_text) }
+        : {}),
+      ...(readOptionalString(record.surrounding_text)
+        ? { surrounding_text: readOptionalString(record.surrounding_text) }
+        : {}),
+      ...(readOptionalString(record.intended_target)
+        ? { intended_target: readOptionalString(record.intended_target) }
+        : {}),
+    });
+  });
+
+  return objects;
 }
 
 function normalizeProfile(value: unknown): DocumentStructureTableSnapshot["profile"] {
@@ -366,6 +457,10 @@ function normalizeCaptionFields(
   if (titleText !== undefined) {
     captionFields.title_text = titleText;
   }
+  const paragraphs = normalizeParagraphSnapshots(record.paragraphs);
+  if (paragraphs?.length) {
+    captionFields.paragraphs = paragraphs;
+  }
 
   return captionFields;
 }
@@ -379,11 +474,13 @@ function normalizeNoteZone(
   if (!text) {
     return undefined;
   }
+  const paragraphs = normalizeParagraphSnapshots(record.paragraphs);
 
   return {
     text,
     line_texts: normalizeStringArray(record.line_texts),
     footnote_ids: normalizeStringArray(record.footnote_ids),
+    ...(paragraphs?.length ? { paragraphs } : {}),
     coordinate: normalizeCoordinate(record.coordinate, {
       tableId,
       target: "note_zone",
@@ -453,6 +550,10 @@ function normalizeHeaderCells(value: unknown): DocumentStructureTableHeaderCell[
     if (columnSpan !== undefined) {
       headerCell.column_span = columnSpan;
     }
+    const sourceCellId = readOptionalString(record.source_cell_id);
+    if (sourceCellId !== undefined) {
+      headerCell.source_cell_id = sourceCellId;
+    }
 
     headerCells.push(headerCell);
   });
@@ -479,6 +580,9 @@ function normalizeStubColumns(value: unknown): DocumentStructureTableStubColumn[
       id,
       text: readOptionalString(record.text) ?? "",
       row_key: rowKey,
+      ...(readOptionalString(record.source_cell_id)
+        ? { source_cell_id: readOptionalString(record.source_cell_id) }
+        : {}),
       coordinate: normalizeCoordinate(record.coordinate, {
         tableId: readOptionalString(record.table_id),
         target: "stub_column",
@@ -526,6 +630,10 @@ function normalizeDataCells(value: unknown): DocumentStructureTableDataCell[] {
       unitContext === "footnote"
     ) {
       dataCell.unit_context = unitContext;
+    }
+    const sourceCellId = readOptionalString(record.source_cell_id);
+    if (sourceCellId !== undefined) {
+      dataCell.source_cell_id = sourceCellId;
     }
 
     dataCells.push(dataCell);
@@ -604,6 +712,10 @@ function normalizeFootnoteItems(value: unknown): DocumentStructureTableFootnoteI
     if (marker !== undefined) {
       footnoteItem.marker = marker;
     }
+    const paragraphs = normalizeParagraphSnapshots(record.paragraphs);
+    if (paragraphs?.length) {
+      footnoteItem.paragraphs = paragraphs;
+    }
 
     footnoteItems.push(footnoteItem);
   });
@@ -636,6 +748,232 @@ function normalizeMergedRelations(
   });
 
   return mergedRelations;
+}
+
+function normalizeGridCells(
+  value: unknown,
+): DocumentStructureTableGridCell[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const gridCells: DocumentStructureTableGridCell[] = [];
+
+  value.forEach((entry, index) => {
+    const record = isRecord(entry) ? entry : {};
+    const id = readOptionalString(record.id) ?? `grid-cell-${index + 1}`;
+    const inferredRole = readOptionalString(record.inferred_role);
+    const gridCell: DocumentStructureTableGridCell = {
+      id,
+      text: readOptionalString(record.text) ?? "",
+      row_index: readOptionalNumber(record.row_index) ?? 0,
+      column_index: readOptionalNumber(record.column_index) ?? 0,
+      row_span: readOptionalNumber(record.row_span) ?? 1,
+      column_span: readOptionalNumber(record.column_span) ?? 1,
+      inferred_role:
+        inferredRole === "header" ||
+        inferredRole === "stub" ||
+        inferredRole === "data" ||
+        inferredRole === "unknown"
+          ? inferredRole
+          : "unknown",
+      style_evidence: normalizeCellStyleEvidence(record.style_evidence),
+      paragraphs: normalizeParagraphSnapshots(record.paragraphs) ?? [],
+    };
+    const borderHints = normalizeBorderHints(record.border_hints);
+    if (borderHints) {
+      gridCell.border_hints = borderHints;
+    }
+    gridCells.push(gridCell);
+  });
+
+  return gridCells;
+}
+
+function normalizeBorderHints(
+  value: unknown,
+): DocumentStructureTableGridCell["border_hints"] | undefined {
+  const record = isRecord(value) ? value : {};
+  const hints: NonNullable<DocumentStructureTableGridCell["border_hints"]> = {};
+
+  (["top", "bottom", "left", "right"] as const).forEach((side) => {
+    if (typeof record[side] === "boolean") {
+      hints[side] = record[side];
+    }
+  });
+
+  return Object.keys(hints).length > 0 ? hints : undefined;
+}
+
+function normalizeParagraphSnapshots(
+  value: unknown,
+): DocumentStructureTableParagraphSnapshot[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const paragraphs: DocumentStructureTableParagraphSnapshot[] = [];
+
+  value.forEach((entry, index) => {
+    const record = isRecord(entry) ? entry : {};
+    const paragraphId = readOptionalString(record.id) ?? `paragraph-${index + 1}`;
+    paragraphs.push({
+      id: paragraphId,
+      text: readOptionalString(record.text) ?? "",
+      style: normalizeParagraphStyleEvidence(record.style),
+      fragments: normalizeInlineFragments(record.fragments, paragraphId) ?? [],
+    });
+  });
+
+  return paragraphs;
+}
+
+function normalizeInlineFragments(
+  value: unknown,
+  paragraphId: string,
+): DocumentStructureTableInlineFragment[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const fragments: DocumentStructureTableInlineFragment[] = [];
+
+  value.forEach((entry, index) => {
+    const record = isRecord(entry) ? entry : {};
+    const kind = readOptionalString(record.kind);
+    fragments.push({
+      id: readOptionalString(record.id) ?? `${paragraphId}-fragment-${index + 1}`,
+      kind:
+        kind === "text" ||
+        kind === "symbol" ||
+        kind === "tab" ||
+        kind === "line_break"
+          ? kind
+          : "text",
+      text: typeof record.text === "string" ? record.text : "",
+      style: normalizeInlineStyleEvidence(record.style),
+      ...(readOptionalString(record.symbol_font)
+        ? { symbol_font: readOptionalString(record.symbol_font) }
+        : {}),
+      ...(readOptionalString(record.symbol_char)
+        ? { symbol_char: readOptionalString(record.symbol_char) }
+        : {}),
+    });
+  });
+
+  return fragments;
+}
+
+function normalizeInlineStyleEvidence(
+  value: unknown,
+): DocumentStructureTableInlineStyleEvidence {
+  const record = isRecord(value) ? value : {};
+  return {
+    font_family: normalizeStyleFact(record.font_family, readOptionalString),
+    font_size_pt: normalizeStyleFact(record.font_size_pt, readOptionalNumber),
+    bold: normalizeStyleFact(record.bold, readOptionalBoolean),
+    italic: normalizeStyleFact(record.italic, readOptionalBoolean),
+    script_position: normalizeStyleFact(record.script_position, readOptionalString),
+  };
+}
+
+function normalizeParagraphStyleEvidence(
+  value: unknown,
+): DocumentStructureTableParagraphStyleEvidence {
+  const record = isRecord(value) ? value : {};
+  return {
+    alignment: normalizeStyleFact(record.alignment, readOptionalString),
+    spacing_before_pt: normalizeStyleFact(
+      record.spacing_before_pt,
+      readOptionalNumber,
+    ),
+    spacing_after_pt: normalizeStyleFact(
+      record.spacing_after_pt,
+      readOptionalNumber,
+    ),
+    line_spacing: normalizeStyleFact(record.line_spacing, readOptionalNumber),
+    line_spacing_mode: normalizeStyleFact(
+      record.line_spacing_mode,
+      readOptionalString,
+    ),
+    left_indent_pt: normalizeStyleFact(record.left_indent_pt, readOptionalNumber),
+    right_indent_pt: normalizeStyleFact(record.right_indent_pt, readOptionalNumber),
+    first_line_indent_pt: normalizeStyleFact(
+      record.first_line_indent_pt,
+      readOptionalNumber,
+    ),
+    hanging_indent_pt: normalizeStyleFact(
+      record.hanging_indent_pt,
+      readOptionalNumber,
+    ),
+  };
+}
+
+function normalizeCellStyleEvidence(
+  value: unknown,
+): DocumentStructureTableCellStyleEvidence {
+  const record = isRecord(value) ? value : {};
+  return {
+    font_family: normalizeStyleFact(record.font_family, readOptionalString),
+    font_size_pt: normalizeStyleFact(record.font_size_pt, readOptionalNumber),
+    bold: normalizeStyleFact(record.bold, readOptionalBoolean),
+    italic: normalizeStyleFact(record.italic, readOptionalBoolean),
+    script_position: normalizeStyleFact(record.script_position, readOptionalString),
+    alignment: normalizeStyleFact(record.alignment, readOptionalString),
+    spacing_before_pt: normalizeStyleFact(
+      record.spacing_before_pt,
+      readOptionalNumber,
+    ),
+    spacing_after_pt: normalizeStyleFact(
+      record.spacing_after_pt,
+      readOptionalNumber,
+    ),
+    line_spacing: normalizeStyleFact(record.line_spacing, readOptionalNumber),
+    line_spacing_mode: normalizeStyleFact(
+      record.line_spacing_mode,
+      readOptionalString,
+    ),
+    left_indent_pt: normalizeStyleFact(record.left_indent_pt, readOptionalNumber),
+    right_indent_pt: normalizeStyleFact(record.right_indent_pt, readOptionalNumber),
+    first_line_indent_pt: normalizeStyleFact(
+      record.first_line_indent_pt,
+      readOptionalNumber,
+    ),
+    hanging_indent_pt: normalizeStyleFact(
+      record.hanging_indent_pt,
+      readOptionalNumber,
+    ),
+    vertical_alignment: normalizeStyleFact(
+      record.vertical_alignment,
+      readOptionalString,
+    ),
+  };
+}
+
+function normalizeStyleFact<T>(
+  value: unknown,
+  parseValue: (value: unknown) => T | undefined,
+): DocumentStructureTableStyleFact<T> {
+  const record = isRecord(value) ? value : {};
+  const availability = readOptionalString(record.availability);
+  if (
+    availability !== "authoritative" &&
+    availability !== "mixed" &&
+    availability !== "unavailable"
+  ) {
+    return {
+      availability: "unavailable",
+    };
+  }
+
+  const normalized: DocumentStructureTableStyleFact<T> = {
+    availability,
+  };
+  const parsedValue = parseValue(record.value);
+  if (parsedValue !== undefined && availability !== "unavailable") {
+    normalized.value = parsedValue;
+  }
+  return normalized;
 }
 
 function normalizeCoordinate(
@@ -716,6 +1054,10 @@ function readOptionalString(value: unknown): string | undefined {
 
 function readOptionalNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function readOptionalBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

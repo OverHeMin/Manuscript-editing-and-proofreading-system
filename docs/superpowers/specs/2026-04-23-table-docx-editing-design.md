@@ -1,5 +1,17 @@
 # 2026-04-23 Table DOCX Editing Design
 
+**Superseded Scope Note**
+
+As of 2026-04-24 and 2026-04-25 approved follow-on designs, this document no longer defines the main table product direction.
+
+It is retained only for:
+
+- historical context
+- patch-path design background
+- local deterministic patch subpath reference
+
+It should not be used as authority for rejecting full-table reconstruction. The current mainline direction is defined by the 2026-04-24 editing and governance designs plus the 2026-04-25 table gap-closure design.
+
 **Date**
 
 2026-04-23

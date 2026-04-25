@@ -169,12 +169,19 @@ test("knowledge reviewer defaults to knowledge library", () => {
   assert.equal(session.defaultWorkbench, "knowledge-library");
 });
 
-test("knowledge reviewer gets rule center access instead of the legacy learning-review destination", () => {
+test("knowledge reviewer combines manuscript processing with knowledge and rule governance desks", () => {
   const session = buildSession("knowledge_reviewer");
 
   assert.deepEqual(
     session.availableWorkbenchEntries.map((entry) => entry.id),
-    ["knowledge-library", "knowledge-review", "template-governance"],
+    [
+      "screening",
+      "editing",
+      "proofreading",
+      "knowledge-library",
+      "knowledge-review",
+      "template-governance",
+    ],
   );
 });
 
@@ -374,7 +381,7 @@ test("general user navigation model hides management navigation", async () => {
   );
 });
 
-test("operator navigation keeps each public-beta desk on its own mainline surface", async () => {
+test("editor spans the manuscript mainline while legacy single-desk roles stay bounded", async () => {
   const navigationModule = await import("../src/app/workbench-navigation.ts").catch(
     () => null,
   );
@@ -405,7 +412,7 @@ test("operator navigation keeps each public-beta desk on its own mainline surfac
   );
   assert.deepEqual(
     editorGroups[0]?.items.map((item: { id: string }) => item.id),
-    ["editing"],
+    ["screening", "editing", "proofreading"],
   );
   assert.deepEqual(
     proofreaderGroups.map((group: { id: string }) => group.id),
@@ -417,7 +424,7 @@ test("operator navigation keeps each public-beta desk on its own mainline surfac
   );
 });
 
-test("knowledge reviewer navigation keeps the knowledge library and recovery desks without management-only entries", async () => {
+test("knowledge reviewer navigation adds manuscript mainline desks without exposing management-only entries", async () => {
   const navigationModule = await import("../src/app/workbench-navigation.ts").catch(
     () => null,
   );
@@ -434,7 +441,7 @@ test("knowledge reviewer navigation keeps the knowledge library and recovery des
   );
   assert.deepEqual(
     groups[0]?.items.map((item: { id: string }) => item.id),
-    ["knowledge-library"],
+    ["screening", "editing", "proofreading", "knowledge-library"],
   );
   assert.deepEqual(
     groups[1]?.items.map((item: { id: string }) => item.id),

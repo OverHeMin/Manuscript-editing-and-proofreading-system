@@ -1,4 +1,8 @@
-import type { ManuscriptTypeDetectionSummary } from "@medical/contracts";
+import type {
+  EditingCompletionGateSummary,
+  EditingSlotGovernanceSummary,
+  ManuscriptTypeDetectionSummary,
+} from "@medical/contracts";
 import type { ManuscriptRecord } from "./manuscript-record.ts";
 import type { ManuscriptRepository } from "./manuscript-repository.ts";
 
@@ -21,6 +25,8 @@ interface ManuscriptRow {
   current_proofreading_asset_id: string | null;
   current_template_family_id: string | null;
   current_journal_template_id: string | null;
+  editing_slot_governance_summary: EditingSlotGovernanceSummary | string | null;
+  editing_completion_gate_summary: EditingCompletionGateSummary | string | null;
   created_at: Date | string;
   updated_at: Date | string;
 }
@@ -43,10 +49,12 @@ export class PostgresManuscriptRepository implements ManuscriptRepository {
           current_proofreading_asset_id,
           current_template_family_id,
           current_journal_template_id,
+          editing_slot_governance_summary,
+          editing_completion_gate_summary,
           created_at,
           updated_at
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
         on conflict (id) do update
         set
           title = excluded.title,
@@ -59,6 +67,8 @@ export class PostgresManuscriptRepository implements ManuscriptRepository {
           current_proofreading_asset_id = excluded.current_proofreading_asset_id,
           current_template_family_id = excluded.current_template_family_id,
           current_journal_template_id = excluded.current_journal_template_id,
+          editing_slot_governance_summary = excluded.editing_slot_governance_summary,
+          editing_completion_gate_summary = excluded.editing_completion_gate_summary,
           created_at = excluded.created_at,
           updated_at = excluded.updated_at
       `,
@@ -74,6 +84,8 @@ export class PostgresManuscriptRepository implements ManuscriptRepository {
         record.current_proofreading_asset_id ?? null,
         record.current_template_family_id ?? null,
         record.current_journal_template_id ?? null,
+        record.editing_slot_governance_summary ?? null,
+        record.editing_completion_gate_summary ?? null,
         record.created_at,
         record.updated_at,
       ],
@@ -95,6 +107,8 @@ export class PostgresManuscriptRepository implements ManuscriptRepository {
           current_proofreading_asset_id,
           current_template_family_id,
           current_journal_template_id,
+          editing_slot_governance_summary,
+          editing_completion_gate_summary,
           created_at,
           updated_at
         from manuscripts
@@ -136,6 +150,20 @@ function mapManuscriptRow(row: ManuscriptRow): ManuscriptRecord {
     ...(row.current_journal_template_id
       ? { current_journal_template_id: row.current_journal_template_id }
       : {}),
+    ...(normalizeEditingSlotGovernanceSummary(row.editing_slot_governance_summary)
+      ? {
+          editing_slot_governance_summary: normalizeEditingSlotGovernanceSummary(
+            row.editing_slot_governance_summary,
+          )!,
+        }
+      : {}),
+    ...(normalizeEditingCompletionGateSummary(row.editing_completion_gate_summary)
+      ? {
+          editing_completion_gate_summary: normalizeEditingCompletionGateSummary(
+            row.editing_completion_gate_summary,
+          )!,
+        }
+      : {}),
     created_at: toIsoString(row.created_at),
     updated_at: toIsoString(row.updated_at),
   };
@@ -163,4 +191,32 @@ function normalizeDetectionSummary(
 
 function toIsoString(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+function normalizeEditingSlotGovernanceSummary(
+  value: ManuscriptRow["editing_slot_governance_summary"],
+): EditingSlotGovernanceSummary | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  return structuredClone(
+    typeof value === "string"
+      ? (JSON.parse(value) as EditingSlotGovernanceSummary)
+      : value,
+  );
+}
+
+function normalizeEditingCompletionGateSummary(
+  value: ManuscriptRow["editing_completion_gate_summary"],
+): EditingCompletionGateSummary | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  return structuredClone(
+    typeof value === "string"
+      ? (JSON.parse(value) as EditingCompletionGateSummary)
+      : value,
+  );
 }

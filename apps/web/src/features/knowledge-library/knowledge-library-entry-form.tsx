@@ -29,6 +29,7 @@ import type {
   KnowledgeUploadViewModel,
 } from "./types.ts";
 import type { KnowledgeLibraryLedgerComposer } from "./knowledge-library-ledger-composer.ts";
+import type { KnowledgeLibraryEvidenceGateSummary } from "./knowledge-library-evidence-gate.ts";
 import {
   KnowledgeLibraryAttachmentField,
   type KnowledgeLibraryLedgerAttachment,
@@ -47,6 +48,7 @@ export interface KnowledgeLibraryEntryFormProps {
   contentBlocks: readonly KnowledgeContentBlockViewModel[];
   aiIntakeSourceText: string;
   duplicateSummary: string | null;
+  evidenceGateSummary: KnowledgeLibraryEvidenceGateSummary;
   semanticStatusLabel: string;
   semanticNotes: readonly string[];
   isBusy: boolean;
@@ -103,6 +105,7 @@ export function KnowledgeLibraryEntryForm({
   contentBlocks,
   aiIntakeSourceText,
   duplicateSummary,
+  evidenceGateSummary,
   semanticStatusLabel,
   semanticNotes,
   isBusy,
@@ -511,6 +514,46 @@ export function KnowledgeLibraryEntryForm({
         {duplicateSummary ? (
           <p className="knowledge-library-entry-form__duplicate">{duplicateSummary}</p>
         ) : null}
+
+        <section
+          className="knowledge-library-entry-form__section knowledge-library-entry-form__evidence-gate"
+          data-entry-evidence-gate="knowledge"
+        >
+          <div className="knowledge-library-entry-form__section-header">
+            <h3>高精度证据预检</h3>
+            <p>保存草稿和确认录入不阻断；提交审核前，表格 exact-capture 和视觉符号快照必须补齐。</p>
+          </div>
+
+          {evidenceGateSummary.itemCount === 0 ? (
+            <p className="knowledge-library-entry-form__structured-empty">
+              当前材料里还没有会触发高精度门禁的表格或视觉符号证据。
+            </p>
+          ) : (
+            <div className="knowledge-library-entry-form__evidence-gate-body">
+              <p
+                className={`knowledge-library-entry-form__evidence-summary${evidenceGateSummary.hasBlockingIssues ? " is-blocking" : ""}`}
+              >
+                {evidenceGateSummary.hasBlockingIssues
+                  ? `当前有 ${evidenceGateSummary.blockingItemCount} 条高精度证据未满足提交审核条件。`
+                  : "当前高精度证据已满足提交审核条件。"}
+              </p>
+              <ul className="knowledge-library-entry-form__evidence-list">
+                {evidenceGateSummary.items.map((item) => (
+                  <li
+                    key={item.blockId}
+                    className="knowledge-library-entry-form__evidence-item"
+                  >
+                    <div className="knowledge-library-entry-form__evidence-item-header">
+                      <strong>{item.title}</strong>
+                      <span>{item.statusLabel}</span>
+                    </div>
+                    <p>{item.detail}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
       </div>
 
       <footer className="knowledge-library-entry-form__footer">

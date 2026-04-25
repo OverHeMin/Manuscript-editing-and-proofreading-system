@@ -1,5 +1,9 @@
 import type { ManuscriptModule, ManuscriptType } from "../manuscripts/types.ts";
 import type { KnowledgeKind, KnowledgeReviewQueueItemViewModel } from "../knowledge/index.ts";
+import {
+  buildKnowledgeBindingSummaries,
+  formatKnowledgeBindingSummary,
+} from "../knowledge/knowledge-binding-presenter.ts";
 import type { KnowledgeReviewFilterState } from "./workbench-state.ts";
 
 export interface KnowledgeReviewQueuePaneProps {
@@ -274,11 +278,29 @@ function formatManuscriptTypes(types: ManuscriptType[] | "any"): string {
 }
 
 function resolveHintText(item: KnowledgeReviewQueueItemViewModel): string {
-  const templateHint = compactHint("模板", item.template_bindings);
+  const bindingHint = compactBindingHint(item);
   const riskHint = compactHint("风险", item.routing.risk_tags);
-  const hints = [templateHint, riskHint].filter((value): value is string => Boolean(value));
+  const hints = [bindingHint, riskHint].filter((value): value is string => Boolean(value));
 
   return hints.join(" · ");
+}
+
+function compactBindingHint(item: KnowledgeReviewQueueItemViewModel): string | null {
+  const summaries = buildKnowledgeBindingSummaries(item);
+  if (summaries.length === 0) {
+    return null;
+  }
+
+  const rendered = summaries.slice(0, 2).map((summary) =>
+    formatKnowledgeBindingSummary({
+      ...summary,
+      values: summary.values.slice(0, 2),
+    }),
+  );
+  const overflow = summaries.length - rendered.length;
+  const suffix = overflow > 0 ? ` +${overflow}` : "";
+
+  return `${rendered.join(" · ")}${suffix}`;
 }
 
 function compactHint(label: string, values: readonly string[] | undefined): string | null {

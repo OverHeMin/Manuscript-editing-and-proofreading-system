@@ -491,8 +491,26 @@ test("ready front-matter packages compile into title and author-line seeds with 
     preview.packages[0]?.draft_rule_seeds.map((seed) => seed.rule_object),
     ["title", "author_line"],
   );
+  const titleSeed = preview.packages[0]?.draft_rule_seeds[0];
+  const authorLineSeed = preview.packages[0]?.draft_rule_seeds[1];
+  assert.equal(titleSeed?.authoring_payload.compatibility_bridge_kind, "legacy_front_matter");
+  assert.equal(titleSeed?.authoring_payload.target_block_key, "title");
+  assert.equal(authorLineSeed?.authoring_payload.compatibility_bridge_kind, "legacy_front_matter");
+  assert.equal(authorLineSeed?.authoring_payload.target_block_key, "author_line");
+  assert.equal(authorLineSeed?.authoring_payload.slot_key, "author_line");
+  assert.deepEqual(authorLineSeed?.authoring_payload.bridge_shadow_target_block_keys, [
+    "affiliation_line",
+    "corresponding_author_bio",
+  ]);
+  assert.deepEqual(authorLineSeed?.authoring_payload.legacy_only_semantic_roles, [
+    "author_bio",
+    "funding_statement",
+    "classification_line",
+    "front_matter",
+  ]);
   assert.equal(preview.packages[0]?.overrides_published_coverage_keys.length, 1);
   assert.match(preview.packages[0]?.warnings.join(" ") ?? "", /guarded|review/i);
+  assert.match(preview.packages[0]?.warnings.join(" ") ?? "", /legacy front-matter bridge/i);
 });
 
 test("table package compile preview keeps inspect-only auto-apply metadata by default", async () => {
@@ -519,6 +537,66 @@ test("table package compile preview keeps inspect-only auto-apply metadata by de
   assert.equal(seed.authoring_payload.patch_type, "inspect_only");
   assert.equal(seed.authoring_payload.apply_scope, "inspect_only");
   assert.deepEqual(seed.authoring_payload.required_snapshot_capabilities, []);
+});
+
+test("front-matter compile preview detects overlap through the target-block comparison key even when coverage keys differ", async () => {
+  const harness = createRulePackageCompileHarness();
+
+  await seedCompileContext(harness);
+
+  const journalRuleSet = await harness.editorialRuleService.createRuleSet("admin", {
+    templateFamilyId: "family-1",
+    journalTemplateId: "journal-alpha",
+    module: "editing",
+  });
+  await harness.editorialRuleService.createRule("admin", {
+    ruleSetId: journalRuleSet.id,
+    orderNo: 10,
+    ruleObject: "author_line",
+    ruleType: "format",
+    executionMode: "apply_and_inspect",
+    scope: {
+      sections: ["front_matter"],
+      block_kind: "author_line",
+    },
+    selector: {
+      target_block_key: "author_line",
+    },
+    trigger: {
+      kind: "slot_resolution",
+      slot_key: "author_line",
+    },
+    action: {
+      kind: "inspect_author_line",
+      affiliation_format: "superscript_marker",
+      corresponding_author_rule: "required",
+    },
+    authoringPayload: {
+      target_block_key: "author_line",
+      slot_key: "author_line",
+    },
+    confidencePolicy: "manual_only",
+    severity: "warning",
+    enabled: true,
+  });
+  await harness.editorialRuleService.publishRuleSet("admin", journalRuleSet.id);
+
+  const preview = await harness.service.previewCompile({
+    source: {
+      sourceKind: "uploaded_example_pair",
+      exampleSourceSessionId: "session-demo-structured-front-matter",
+    },
+    packageDrafts: [buildFrontMatterPackageDraft()],
+    templateFamilyId: "family-1",
+    journalTemplateId: "journal-alpha",
+    module: "editing",
+  });
+
+  assert.equal(preview.packages[0]?.overrides_published_coverage_keys.length, 1);
+  assert.equal(
+    preview.packages[0]?.overrides_published_coverage_keys[0],
+    'author_line::{"block_selector":"author_line","section_selector":"front_matter"}::{"kind":"author_line_pattern","separator":"、"}',
+  );
 });
 
 test("compile-to-draft writes compiled rules into a draft rule set without mutating published rule sets", async () => {

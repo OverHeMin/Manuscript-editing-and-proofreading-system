@@ -33,14 +33,15 @@ test("admin can inspect the delta-first evaluation operations surface with harne
   const prepared = await prepareSuiteWithFinalizedHistory(request, {
     label: `Phase 10C ${Date.now()}`,
   });
+  const localizedSuiteName = localizeHarnessSurfaceName(prepared.suiteName);
 
   await page.goto("/#evaluation-workbench", {
     waitUntil: "domcontentloaded",
   });
 
   await expect(page.getByRole("heading", { name: "Harness 控制概览" })).toBeVisible();
-  await expect(page.locator(".evaluation-workbench")).toContainText(prepared.suiteName);
-  await page.getByRole("button", { name: prepared.suiteName }).click();
+  await expect(page.locator(".evaluation-workbench")).toContainText(localizedSuiteName);
+  await page.getByRole("button", { name: localizedSuiteName }).click();
 
   const workbench = page.locator(".evaluation-workbench");
   const historyPanel = page
@@ -64,8 +65,8 @@ test("admin can inspect the delta-first evaluation operations surface with harne
 
   await expect(comparisonPanel).toContainText(`对照基线：${prepared.needsReviewRunId}`);
   await expect(comparisonPanel).toContainText("平均加权得分 97.0（共 1 条）");
-  await expect(comparisonPanel).toContainText("当前证据：Latest browser QA");
-  await expect(comparisonPanel).toContainText("基线证据：Needs review browser QA");
+  await expect(comparisonPanel).toContainText("当前证据：最新浏览器验收");
+  await expect(comparisonPanel).toContainText("基线证据：待复核浏览器验收");
 
   const historyWindow = page.getByLabel("时间窗口");
   await expect(historyWindow.locator("option")).toContainText([
@@ -145,14 +146,32 @@ test("admin can inspect the delta-first evaluation operations surface with harne
   await expect(signalPanel).toContainText("复发信号");
   await expect(signalPanel).toContainText("1 次回归提及 / 1 次失败提及 / 1 次运行被标记");
 
-  await expect(page.getByRole("heading", { name: "Environment Editor" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Quality Lab" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Activation Gate" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Launch Candidate Run" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Activate Candidate Environment" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "环境编辑" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "验证实验区" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "激活与回滚" })).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("Environment Editor");
+  await expect(page.locator("body")).not.toContainText("Quality Lab");
+  await expect(page.locator("body")).not.toContainText("Activation Gate");
+  const launchButton = page.getByRole("button", { name: "发起候选验证" });
+  await expect(launchButton).toBeVisible();
+  await expect(launchButton).toBeDisabled();
+  await expect(workbench).toContainText("请先预览候选环境。");
+  await page.getByRole("button", { name: "预览候选环境" }).click();
+  await expect(workbench).toContainText(
+    "当前候选环境与生效环境没有主差异，所选评测套件不能发起 A/B 验证。",
+  );
+  await expect(page.getByRole("button", { name: "激活候选环境" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Complete And Finalize Run" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Finalize Recommendation" })).toHaveCount(0);
 });
+
+function localizeHarnessSurfaceName(name: string) {
+  if (name.endsWith("Active Evaluation Suite")) {
+    return name.replace(/Active Evaluation Suite$/, "生效评测套件");
+  }
+
+  return name;
+}
 
 async function prepareSuiteWithFinalizedHistory(
   request: APIRequestContext,

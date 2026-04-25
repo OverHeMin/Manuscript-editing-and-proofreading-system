@@ -1,5 +1,4 @@
 import type { FormEvent } from "react";
-import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
 import { TemplateGovernanceLedgerSearchPage } from "./template-governance-ledger-search-page.tsx";
 import { TemplateGovernanceLedgerToolbar } from "./template-governance-ledger-toolbar.tsx";
 import type {
@@ -101,10 +100,6 @@ export function TemplateGovernanceRuleLedgerPage({
   const selectedPackageRules = isPackageRuleLedgerRow(viewModel.selectedRow)
     ? viewModel.selectedRow.related_rules ?? []
     : [];
-  const advancedEditorHref = formatWorkbenchHash("template-governance", {
-    templateGovernanceView: "classic",
-    ruleCenterMode: "authoring",
-  });
 
   return (
     <section className="template-governance-rule-ledger-page">
@@ -161,11 +156,6 @@ export function TemplateGovernanceRuleLedgerPage({
             <strong>管理规则</strong>
             <p>规则台账管理规则本体，规则包负责复用组合，模板族决定默认适用稿件范围，三者配合完成治理。</p>
           </article>
-        </div>
-        <div className="template-governance-actions">
-          <a className="template-governance-link-button" href={advancedEditorHref}>
-            打开旧版高级工作台
-          </a>
         </div>
       </article>
 

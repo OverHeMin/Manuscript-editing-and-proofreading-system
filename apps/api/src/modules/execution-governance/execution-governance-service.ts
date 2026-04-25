@@ -646,7 +646,56 @@ function createFallbackResolvedRule(
       execution_mode: rule.execution_mode,
       confidence_policy: rule.confidence_policy,
     }),
+    activation_source: {
+      kind: "template_family_rule_set",
+      id: rule.rule_set_id,
+    },
+    effective_scope: readFallbackResolvedRuleEffectiveScope(rule),
+    overridden_sources: [],
   };
+}
+
+function readFallbackResolvedRuleEffectiveScope(
+  rule: Pick<EditorialRuleRecord, "scope">,
+): ResolvedEditorialRule["effective_scope"] {
+  const manuscriptTypes = normalizeFallbackScopeList(rule.scope.manuscript_types);
+  const sections = normalizeFallbackScopeList(rule.scope.sections);
+  const objectGranularity = normalizeFallbackScopeList(
+    Array.isArray(rule.scope.object_granularity)
+      ? rule.scope.object_granularity
+      : typeof rule.scope.block_kind === "string"
+        ? [rule.scope.block_kind]
+        : undefined,
+  );
+
+  if (
+    manuscriptTypes.length === 0 &&
+    sections.length === 0 &&
+    objectGranularity.length === 0
+  ) {
+    return undefined;
+  }
+
+  return {
+    ...(manuscriptTypes.length > 0
+      ? { manuscript_types: manuscriptTypes as ManuscriptType[] }
+      : {}),
+    ...(sections.length > 0 ? { sections } : {}),
+    ...(objectGranularity.length > 0
+      ? { object_granularity: objectGranularity }
+      : {}),
+  };
+}
+
+function normalizeFallbackScopeList(values: unknown): string[] {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return values
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
 }
 
 function matchesManuscriptType(

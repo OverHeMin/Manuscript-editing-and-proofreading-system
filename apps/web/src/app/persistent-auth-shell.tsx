@@ -377,11 +377,11 @@ function AuthShellHero() {
         <AuthShellBrand
           eyebrow="专业稿件工作台"
           title="医学稿件处理系统"
-          subtitle="初筛、编辑、校对与知识入库的一体化工作台"
+          subtitle="覆盖稿件主链路与治理协作的一体化工作台"
           description="面向医学稿件处理场景打造的专业工作台，让高频流程更聚焦，协作与回收更顺畅。"
         />
         <p className="auth-shell-hero-summary">
-          登录后进入初筛、编辑、校对与知识库工作区。
+          登录后按角色进入对应工作区。
         </p>
         <div className="auth-shell-hero-metrics" aria-label="系统特点">
           <article className="auth-shell-metric">

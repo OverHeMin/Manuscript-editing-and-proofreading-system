@@ -423,6 +423,13 @@ async function enrichManuscriptView(
         settlement: deriveModuleMainlineSettlement({
           latestJob,
           latestSnapshot,
+          ...(module === "editing" &&
+          manuscript.editing_completion_gate_summary
+            ? {
+                editingCompletionGateSummary:
+                  manuscript.editing_completion_gate_summary,
+              }
+            : {}),
         }),
       };
     }
@@ -525,14 +532,14 @@ async function enrichJobView(
     return {
       ...job,
       ...(batchProgress ? { batch_progress: batchProgress } : {}),
-      execution_tracking: {
-        observation_status: "reported",
-        snapshot: snapshotView,
-        settlement: deriveModuleMainlineSettlement({
-          latestJob: job,
-          latestSnapshot: snapshotView,
-        }),
-      },
+        execution_tracking: {
+          observation_status: "reported",
+          snapshot: snapshotView,
+          settlement: deriveModuleMainlineSettlement({
+            latestJob: job,
+            latestSnapshot: snapshotView,
+          }),
+        },
     };
   } catch (error) {
     return {

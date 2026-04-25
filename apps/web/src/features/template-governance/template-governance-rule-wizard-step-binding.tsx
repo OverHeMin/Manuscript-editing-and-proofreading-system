@@ -14,6 +14,10 @@ import {
   formatTemplateGovernanceManuscriptTypeLabel,
   formatTemplateGovernanceModuleLabel,
 } from "./template-governance-display.ts";
+import {
+  formatQualityPackageBindingDisplayLabel,
+  isQualityPackageKindBindingId,
+} from "../manuscript-quality-packages/binding-kind-options.ts";
 
 export interface TemplateGovernanceRuleWizardStepBindingProps {
   value: RuleWizardBindingFormState;
@@ -40,6 +44,24 @@ export function TemplateGovernanceRuleWizardStepBinding({
     value.selectedPackageKind === "medical_package"
       ? options?.medicalPackages ?? []
       : options?.generalPackages ?? [];
+  const journalTemplateGroupCounts = buildJournalTemplateGroupCounts(
+    options?.journalTemplates ?? [],
+  );
+  const journalTemplateOptions: SearchableMultiSelectOption[] = (
+    options?.journalTemplates ?? []
+  ).map((item) => ({
+    value: item.id,
+    label: item.label,
+    keywords: [item.id, item.label, item.journalKey, item.familyName],
+    meta: `${item.familyName} / ${item.journalKey}`,
+    group: `${item.familyName}（${journalTemplateGroupCounts.get(item.familyName) ?? 0}）`,
+  }));
+  const selectedJournalTemplateIds = value.selectedJournalTemplates.map((item) => item.id);
+  const selectedJournalTemplateOptions: SearchableMultiSelectOption[] =
+    value.selectedJournalTemplates.map((item) => ({
+      value: item.id,
+      label: item.name,
+    }));
   const knowledgeGroupCounts = buildKnowledgeGroupCounts(options?.knowledgeItems ?? []);
   const knowledgeItemOptions: SearchableMultiSelectOption[] = (options?.knowledgeItems ?? []).map(
     (item) => {
@@ -86,7 +108,7 @@ export function TemplateGovernanceRuleWizardStepBinding({
       <div className="template-governance-rule-hint-list">
         <div className="template-governance-rule-hint-card">
           <strong>规则包决定这条规则先落到哪个复用容器</strong>
-          <p>先选通用包还是医学专用包，再决定挂到哪个已有包条目，后续模板复用都会沿着这个容器走。</p>
+          <p>先选通用包还是医学专用包，再决定挂到具体包版本，还是按包类型激活，后续模板复用都会沿着这个容器走。</p>
         </div>
         <div className="template-governance-rule-hint-card">
           <strong>模板族决定哪些稿件默认看见这条规则</strong>
@@ -110,7 +132,9 @@ export function TemplateGovernanceRuleWizardStepBinding({
                 nextPackageKind === "medical_package"
                   ? options?.medicalPackages ?? []
                   : options?.generalPackages ?? [];
-              const nextPackage = nextOptions[0];
+              const nextPackage =
+                nextOptions.find((option) => !isQualityPackageKindBindingId(option.id)) ??
+                nextOptions[0];
 
               onChange({
                 ...value,
@@ -193,6 +217,55 @@ export function TemplateGovernanceRuleWizardStepBinding({
                 </label>
               );
             })}
+          </div>
+        </div>
+      </div>
+
+      <div className="template-governance-detail-grid">
+        <div className="template-governance-field template-governance-field-full">
+          <div data-rule-wizard-journal-templates="list">
+            <SearchableMultiSelectField
+              label="直绑期刊模板"
+              helpText="这里展示已激活的真实期刊模板。选中后，规则会额外挂到具体期刊层，不再只停留在模板族基线。"
+              value={selectedJournalTemplateIds}
+              options={journalTemplateOptions}
+              dataKey="rule-wizard-journal-templates"
+              className="template-governance-linked-knowledge"
+              headerClassName="template-governance-linked-knowledge-header"
+              searchFieldClassName="knowledge-library-grid-search"
+              searchPlaceholder="搜索期刊模板"
+              optionsClassName="template-governance-linked-knowledge-list"
+              optionClassName="template-governance-linked-knowledge-option"
+              emptyClassName="template-governance-inline-empty"
+              showSelectedSummary
+              selectedOptions={selectedJournalTemplateOptions}
+              selectedListClassName="template-governance-chip-row"
+              selectedChipClassName="template-governance-chip"
+              selectedEmptyText="当前还没有直绑期刊模板。"
+              emptyOptionsText="当前没有可直绑的已激活期刊模板。"
+              noResultsText="未找到匹配的期刊模板。"
+              disabled={isBusy}
+              onToggleValue={(nextTemplateId) => {
+                const isActive = value.selectedJournalTemplates.some(
+                  (selected) => selected.id === nextTemplateId,
+                );
+                const matchedJournalTemplate =
+                  options?.journalTemplates?.find((item) => item.id === nextTemplateId) ?? null;
+                const nextJournalTemplates = isActive
+                  ? value.selectedJournalTemplates.filter(
+                      (selected) => selected.id !== nextTemplateId,
+                    )
+                  : value.selectedJournalTemplates.concat({
+                      id: nextTemplateId,
+                      name: matchedJournalTemplate?.label ?? nextTemplateId,
+                    });
+
+                onChange({
+                  ...value,
+                  selectedJournalTemplates: nextJournalTemplates,
+                });
+              }}
+            />
           </div>
         </div>
       </div>
@@ -305,7 +378,15 @@ export function TemplateGovernanceRuleWizardStepBinding({
           <div className="template-governance-rule-impact-list">
             <div>
               <span>规则包去向</span>
-              <strong>{value.selectedPackageLabel || "待选择规则包"}</strong>
+              <strong>
+                {value.selectedPackageId
+                  ? formatQualityPackageBindingDisplayLabel({
+                      bindingKind: value.selectedPackageKind,
+                      bindingTargetId: value.selectedPackageId,
+                      bindingTargetLabel: value.selectedPackageLabel,
+                    })
+                  : "待选择规则包"}
+              </strong>
             </div>
             <div>
               <span>模板族覆盖</span>
@@ -313,6 +394,14 @@ export function TemplateGovernanceRuleWizardStepBinding({
                 {value.selectedTemplateFamilies.length
                   ? value.selectedTemplateFamilies.map((family) => family.name).join("、")
                   : "待选择模板族"}
+              </strong>
+            </div>
+            <div>
+              <span>期刊模板覆盖</span>
+              <strong>
+                {value.selectedJournalTemplates.length
+                  ? value.selectedJournalTemplates.map((template) => template.name).join("、")
+                  : "未直绑期刊模板"}
               </strong>
             </div>
             <div>
@@ -348,6 +437,18 @@ function buildKnowledgeGroupCounts(
   for (const item of items) {
     const label = formatTemplateGovernanceKnowledgeKindLabel(item.knowledgeKind);
     counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+
+  return counts;
+}
+
+function buildJournalTemplateGroupCounts(
+  items: RuleWizardBindingOptions["journalTemplates"],
+): Map<string, number> {
+  const counts = new Map<string, number>();
+
+  for (const item of items) {
+    counts.set(item.familyName, (counts.get(item.familyName) ?? 0) + 1);
   }
 
   return counts;
