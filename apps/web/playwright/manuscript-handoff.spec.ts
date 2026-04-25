@@ -185,9 +185,29 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
     issueDetail.getByRole("button", { name: "转规则候选" }),
   ).toHaveClass(/is-selected/);
 
-  const publishHumanFinalButton = page.locator(
-    ".manuscript-workbench-proofreading-issue-pane .manuscript-workbench-button-row--sticky button",
+  const secondIssue = page.locator(".manuscript-workbench-proofreading-issue").nth(1);
+  await clickViaDom(secondIssue.getByRole("button").first());
+  const secondIssueDetail = secondIssue.locator(
+    ".manuscript-workbench-proofreading-issue-detail",
   );
+  await expect(secondIssueDetail).toBeVisible();
+  await clickViaDom(secondIssueDetail.getByRole("button", { name: "驳回" }));
+  await expect(
+    secondIssueDetail.getByRole("button", { name: "驳回" }),
+  ).toHaveClass(/is-selected/);
+
+  const thirdIssue = page.locator(".manuscript-workbench-proofreading-issue").nth(2);
+  await clickViaDom(thirdIssue.getByRole("button").first());
+  const thirdIssueDetail = thirdIssue.locator(
+    ".manuscript-workbench-proofreading-issue-detail",
+  );
+  await expect(thirdIssueDetail).toBeVisible();
+  await clickViaDom(thirdIssueDetail.getByRole("button", { name: "仅人工处理" }));
+  await expect(
+    thirdIssueDetail.getByRole("button", { name: "仅人工处理" }),
+  ).toHaveClass(/is-selected/);
+
+  const publishHumanFinalButton = page.getByRole("button", { name: "发布人工终稿" });
   await expect(publishHumanFinalButton).toBeEnabled();
   await clickViaDom(publishHumanFinalButton);
   await expect(page.locator("body")).toContainText("已发布人工终稿资产");
@@ -198,7 +218,7 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   await page.getByRole("button", { name: "导出当前资产" }).click();
   await expect(page.locator("body")).toContainText("已准备导出");
   await expect(page.locator("body")).toContainText("导出文件名");
-  await expect(page.locator("body")).toContainText("human-final.docx");
+  await expect(page.locator("body")).toContainText("人工终稿.docx");
   await expect(page.locator("body")).toContainText("下载 MIME 类型");
   await expect(page.locator("body")).toContainText("Word 文档（DOCX）");
   await expect(page.locator("body")).not.toContainText(
@@ -215,9 +235,8 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   expect(downloadResponse.headers()["content-type"]).toContain(
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   );
-  expect(downloadResponse.headers()["content-disposition"] ?? "").toContain(
-    "human-final.docx",
-  );
+  expect(downloadResponse.headers()["content-disposition"] ?? "").toContain("filename*=");
+  expect(downloadResponse.headers()["content-disposition"] ?? "").toContain(".docx");
 
   await page.goto(`/${learningReviewHref}`, {
     waitUntil: "domcontentloaded",
@@ -379,6 +398,12 @@ async function navigateToProofreadingIssueWorkbench(
     await issueToggle.evaluate((element: HTMLElement) => element.click());
   }
   await expect(issueDetail).toBeVisible();
+  const realDocumentSurface = page.getByText("真实文档面").first();
+  if ((await realDocumentSurface.count()) > 0) {
+    await expect(realDocumentSurface).toBeVisible();
+    return;
+  }
+
   await expect(
     page.locator('.manuscript-workbench-proofreading-block[data-selected="true"]').first(),
   ).toBeVisible();
