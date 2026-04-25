@@ -1346,8 +1346,8 @@ test("module services enforce workbench permissions per module", async () => {
       proofreadingApi.createDraft({
         manuscriptId: "manuscript-1",
         parentAssetId: originalAsset.id,
-        requestedBy: "editor-1",
-        actorRole: "editor",
+        requestedBy: "screener-1",
+        actorRole: "screener",
         storageKey: "runs/manuscript-1/proofreading/forbidden.md",
       }),
     AuthorizationError,

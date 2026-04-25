@@ -245,7 +245,7 @@ test("proofreading bare mode draft succeeds without a current template family wh
   );
   assert.equal(
     proofreadingPayload.proofreadingPlan?.summary,
-    "AI proofreading plan for bare mode.",
+    "AI proofreading plan for bare mode. Deep proofreading passes completed: 5/5.",
   );
   assert.deepEqual(proofreadingPayload.proofreadingPlan?.issues, [
     {

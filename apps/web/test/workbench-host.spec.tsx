@@ -180,6 +180,7 @@ test("knowledge reviewer combines manuscript processing with knowledge and rule 
       "proofreading",
       "knowledge-library",
       "knowledge-review",
+      "manuscript-harness",
       "template-governance",
     ],
   );

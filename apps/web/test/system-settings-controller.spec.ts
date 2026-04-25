@@ -193,6 +193,7 @@ test("system settings controller loads account overview from the user list endpo
       "GET /api/v1/system-settings/ai-providers",
       "GET /api/v1/system-settings/models",
       "GET /api/v1/system-settings/module-defaults",
+      "GET /api/v1/production-readiness/internal-test",
     ],
   );
 });
@@ -267,6 +268,7 @@ test("system settings controller creates a user and reloads around the new selec
       "GET /api/v1/system-settings/ai-providers",
       "GET /api/v1/system-settings/models",
       "GET /api/v1/system-settings/module-defaults",
+      "GET /api/v1/production-readiness/internal-test",
     ],
   );
   assert.deepEqual(requests[0]?.body, {
@@ -347,6 +349,7 @@ test("system settings controller updates the selected user profile and reloads w
       "GET /api/v1/system-settings/ai-providers",
       "GET /api/v1/system-settings/models",
       "GET /api/v1/system-settings/module-defaults",
+      "GET /api/v1/production-readiness/internal-test",
     ],
   );
   assert.deepEqual(requests[0]?.body, {
@@ -417,6 +420,7 @@ test("system settings controller resets a password and reloads the current selec
       "GET /api/v1/system-settings/ai-providers",
       "GET /api/v1/system-settings/models",
       "GET /api/v1/system-settings/module-defaults",
+      "GET /api/v1/production-readiness/internal-test",
     ],
   );
   assert.deepEqual(requests[0]?.body, {
@@ -512,11 +516,13 @@ test("system settings controller disables and re-enables a user while keeping th
       "GET /api/v1/system-settings/ai-providers",
       "GET /api/v1/system-settings/models",
       "GET /api/v1/system-settings/module-defaults",
+      "GET /api/v1/production-readiness/internal-test",
       "POST /api/v1/system-settings/users/editor-1/enable",
       "GET /api/v1/system-settings/users",
       "GET /api/v1/system-settings/ai-providers",
       "GET /api/v1/system-settings/models",
       "GET /api/v1/system-settings/module-defaults",
+      "GET /api/v1/production-readiness/internal-test",
     ],
   );
 });
@@ -620,6 +626,7 @@ test("system settings controller loads ai provider connections, registered model
       "GET /api/v1/system-settings/ai-providers",
       "GET /api/v1/system-settings/models",
       "GET /api/v1/system-settings/module-defaults",
+      "GET /api/v1/production-readiness/internal-test",
     ],
   );
 });
