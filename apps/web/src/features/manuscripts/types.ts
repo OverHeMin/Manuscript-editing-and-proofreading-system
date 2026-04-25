@@ -482,6 +482,84 @@ export interface JobViewModel {
   };
 }
 
+export type ManuscriptHarnessMatrixState =
+  | "hit"
+  | "missed"
+  | "skipped"
+  | "false_positive"
+  | "manual_added"
+  | "observed"
+  | "expected_not_run"
+  | "unavailable"
+  | "failed";
+
+export interface ManuscriptHarnessMatrixItemViewModel {
+  key: string;
+  label: string;
+  state: ManuscriptHarnessMatrixState;
+  source_kind:
+    | "module_execution"
+    | "runtime_binding"
+    | "model"
+    | "prompt_template"
+    | "skill_package"
+    | "quality_package"
+    | "knowledge_hit"
+    | "review_item"
+    | "governed_hit"
+    | "residual_issue"
+    | "learning_candidate"
+    | "proofreading_deep_pass"
+    | "editing_completion_gate"
+    | "observation";
+  source_id?: string;
+  title?: string;
+  summary?: string;
+  related_rule_ids?: string[];
+  related_knowledge_item_ids?: string[];
+  evidence?: Record<string, unknown>;
+}
+
+export interface ManuscriptHarnessMatrixModuleViewModel {
+  module: Extract<ManuscriptModule, "screening" | "editing" | "proofreading">;
+  status: "not_run" | "tracked" | "failed_open";
+  latest_snapshot?: {
+    id: string;
+    job_id: string;
+    execution_profile_id: string;
+    module_template_id: string;
+    module_template_version_no: number;
+    prompt_template_id: string;
+    prompt_template_version: string;
+    skill_package_ids: string[];
+    skill_package_versions: string[];
+    model_id: string;
+    model_version?: string;
+    quality_packages?: Array<{
+      package_id: string;
+      package_name: string;
+      package_kind: string;
+      target_scopes: string[];
+      version: string;
+    }>;
+    knowledge_item_ids: string[];
+    created_asset_ids: string[];
+    agent_execution_log_id?: string;
+    created_at: string;
+  };
+  knowledge_hit_logs: Array<Record<string, unknown>>;
+  review_items: Array<Record<string, unknown>>;
+  matrix_items: ManuscriptHarnessMatrixItemViewModel[];
+}
+
+export interface ManuscriptHarnessMatrixViewModel {
+  manuscript_id: string;
+  title: string;
+  manuscript_type: ManuscriptType;
+  generated_at: string;
+  modules: ManuscriptHarnessMatrixModuleViewModel[];
+}
+
 export interface UploadManuscriptInput {
   title: string;
   manuscriptType?: ManuscriptType;

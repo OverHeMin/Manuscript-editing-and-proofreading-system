@@ -4,6 +4,7 @@ import {
   createSystemSettingsUser,
   disableSystemSettingsUser,
   enableSystemSettingsUser,
+  getInternalTestProductionReadiness,
   listSystemSettingsAiProviders,
   listSystemSettingsModels,
   listSystemSettingsModuleDefaults,
@@ -271,12 +272,14 @@ async function loadSystemSettingsOverview(
       listSystemSettingsModels(client),
       listSystemSettingsModuleDefaults(client),
     ]);
+  const readinessResponse = await getInternalTestProductionReadiness(client);
 
   return buildOverview({
     users: userResponse.body,
     providerConnections: connectionResponse.body,
     registeredModels: modelResponse.body,
     moduleDefaults: moduleDefaultResponse.body,
+    internalTestProductionReadiness: readinessResponse.body,
     preferredSelectedUserId: input.selectedUserId,
     preferredSelectedConnectionId: input.selectedConnectionId,
   });
@@ -287,6 +290,7 @@ function buildOverview(input: {
   providerConnections: SystemSettingsAiProviderConnectionViewModel[];
   registeredModels: SystemSettingsRegisteredModelViewModel[];
   moduleDefaults: SystemSettingsModuleDefaultViewModel[];
+  internalTestProductionReadiness: SystemSettingsWorkbenchOverview["internalTestProductionReadiness"];
   preferredSelectedUserId?: string | null;
   preferredSelectedConnectionId?: string | null;
 }): SystemSettingsWorkbenchOverview {
@@ -317,6 +321,7 @@ function buildOverview(input: {
     selectedConnection,
     registeredModels: input.registeredModels,
     moduleDefaults: mergeModuleDefaults(input.moduleDefaults),
+    internalTestProductionReadiness: input.internalTestProductionReadiness,
   };
 }
 

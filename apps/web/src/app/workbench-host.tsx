@@ -16,6 +16,7 @@ import {
   ManuscriptWorkbenchPage,
   type ManuscriptWorkbenchMode,
 } from "../features/manuscript-workbench/index.ts";
+import { ManuscriptHarnessPage } from "../features/manuscript-harness/index.ts";
 import { SystemSettingsWorkbenchPage } from "../features/system-settings/index.ts";
 import { TemplateGovernanceWorkbenchPage } from "../features/template-governance/index.ts";
 import { resolveWorkbenchRuntimeMode } from "./persistent-session.ts";
@@ -309,6 +310,12 @@ export function WorkbenchHost({
           <EvaluationWorkbenchPage
             actorRole={session.role}
             section="datasets"
+            prefilledManuscriptId={routeState.manuscriptId}
+          />
+        );
+      case "manuscript-harness":
+        return (
+          <ManuscriptHarnessPage
             prefilledManuscriptId={routeState.manuscriptId}
           />
         );

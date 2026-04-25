@@ -2370,6 +2370,293 @@ test("workbench http bare screening run becomes current while keeping earlier go
   }
 });
 
+test("workbench http exposes manuscript harness matrix for module control visibility", async () => {
+  const { server, baseUrl, runtime } = await startWorkbenchServerWithRuntime();
+  const { seededIds } = runtime;
+
+  try {
+    const screenerCookie = await loginAsDemoUser(baseUrl, "dev.screener");
+    const adminCookie = await loginAsDemoUser(baseUrl, "dev.admin");
+
+    const initialResponse = await fetch(
+      `${baseUrl}/api/v1/manuscripts/${seededIds.manuscriptId}/harness-matrix`,
+      {
+        headers: {
+          Cookie: screenerCookie,
+        },
+      },
+    );
+    const initial = (await initialResponse.json()) as {
+      manuscript_id: string;
+      modules: Array<{
+        module: string;
+        status: string;
+        latest_snapshot?: { id: string };
+        matrix_items: Array<{ key: string; state: string }>;
+      }>;
+    };
+
+    assert.equal(initialResponse.status, 200);
+    assert.equal(initial.manuscript_id, seededIds.manuscriptId);
+    assert.deepEqual(
+      initial.modules.map((module) => [module.module, module.status]),
+      [
+        ["screening", "not_run"],
+        ["editing", "not_run"],
+        ["proofreading", "not_run"],
+      ],
+    );
+    assert.ok(
+      initial.modules.every((module) =>
+        module.matrix_items.some(
+          (item) => item.key === "module.execution" && item.state === "expected_not_run",
+        ),
+      ),
+    );
+
+    const runResponse = await fetch(`${baseUrl}/api/v1/modules/screening/run`, {
+      method: "POST",
+      headers: {
+        Cookie: screenerCookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptId: seededIds.manuscriptId,
+        parentAssetId: seededIds.originalAssetId,
+        requestedBy: "forged-requester",
+        actorRole: "admin",
+        storageKey: "runs/http/harness-matrix/screening-report.md",
+        fileName: "harness-matrix-screening-report.md",
+      }),
+    });
+    const run = (await runResponse.json()) as {
+      snapshot_id?: string;
+      asset: { id: string };
+    };
+
+    assert.equal(runResponse.status, 201);
+    assert.ok(run.snapshot_id);
+
+    const submitResponse = await fetch(`${baseUrl}/api/v1/review-items/governed-hits`, {
+      method: "POST",
+      headers: {
+        Cookie: adminCookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptId: seededIds.manuscriptId,
+        manuscriptType: "clinical_study",
+        module: "screening",
+        snapshotId: run.snapshot_id,
+        sourceAssetId: run.asset.id,
+        feedbackCategory: "missed_hit",
+        feedbackText: "Harness matrix should expose this manual missed item.",
+        candidatePosture: "inspect_only",
+        decisionSource: "manual_feedback",
+        relatedKnowledgeItemIds: [seededIds.screeningKnowledgeId],
+      }),
+    });
+
+    assert.equal(submitResponse.status, 201);
+    const submitted = (await submitResponse.json()) as {
+      item: {
+        id: string;
+      };
+    };
+    const routeSubmitResponse = await fetch(`${baseUrl}/api/v1/review-items/governed-hits`, {
+      method: "POST",
+      headers: {
+        Cookie: adminCookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptId: seededIds.manuscriptId,
+        manuscriptType: "clinical_study",
+        module: "screening",
+        snapshotId: run.snapshot_id,
+        sourceAssetId: run.asset.id,
+        feedbackCategory: "missing_knowledge",
+        feedbackText: "Harness matrix should route this finding into rule learning.",
+        candidatePosture: "inspect_only",
+        decisionSource: "manual_feedback",
+        relatedKnowledgeItemIds: [seededIds.screeningKnowledgeId],
+      }),
+    });
+    assert.equal(routeSubmitResponse.status, 201);
+    const routeSubmitted = (await routeSubmitResponse.json()) as {
+      item: {
+        id: string;
+      };
+    };
+
+    const matrixResponse = await fetch(
+      `${baseUrl}/api/v1/manuscripts/${seededIds.manuscriptId}/harness-matrix`,
+      {
+        headers: {
+          Cookie: screenerCookie,
+        },
+      },
+    );
+    const matrix = (await matrixResponse.json()) as {
+      modules: Array<{
+        module: string;
+        status: string;
+        latest_snapshot?: { id: string; model_id: string; knowledge_item_ids: string[] };
+        matrix_items: Array<{
+          key: string;
+          state: string;
+          source_kind?: string;
+          title?: string;
+          evidence?: {
+            source_status?: string;
+            review_status?: string;
+          };
+        }>;
+      }>;
+    };
+    const screening = matrix.modules.find((module) => module.module === "screening");
+
+    assert.equal(matrixResponse.status, 200);
+    assert.equal(screening?.status, "tracked");
+    assert.equal(screening?.latest_snapshot?.id, run.snapshot_id);
+    assert.equal(screening?.latest_snapshot?.model_id, seededIds.screeningModelId);
+    assert.deepEqual(screening?.latest_snapshot?.knowledge_item_ids, [
+      seededIds.screeningKnowledgeId,
+    ]);
+    assert.ok(
+      screening?.matrix_items.some(
+        (item) =>
+          item.key === `knowledge.${seededIds.screeningKnowledgeId}` &&
+          item.state === "hit",
+      ),
+    );
+    assert.ok(
+      screening?.matrix_items.some(
+        (item) =>
+          item.source_kind === "governed_hit" &&
+          item.state === "manual_added" &&
+          item.title?.length,
+      ),
+    );
+
+    const decideResponse = await fetch(
+      `${baseUrl}/api/v1/review-items/${submitted.item.id}/decide`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: adminCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sourceKind: "governed_hit",
+          action: "reject_as_false_positive",
+        }),
+      },
+    );
+    assert.equal(decideResponse.status, 200);
+    const routeResponse = await fetch(
+      `${baseUrl}/api/v1/review-items/${routeSubmitted.item.id}/decide`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: adminCookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sourceKind: "governed_hit",
+          action: "route_to_rule_candidate",
+          title: "Harness routed rule candidate",
+          proposalText: "Create a rule candidate from the Harness routed finding.",
+        }),
+      },
+    );
+    assert.equal(routeResponse.status, 200);
+
+    const decidedMatrixResponse = await fetch(
+      `${baseUrl}/api/v1/manuscripts/${seededIds.manuscriptId}/harness-matrix`,
+      {
+        headers: {
+          Cookie: screenerCookie,
+        },
+      },
+    );
+    const decidedMatrix = (await decidedMatrixResponse.json()) as typeof matrix;
+    const decidedScreening = decidedMatrix.modules.find(
+      (module) => module.module === "screening",
+    );
+
+    assert.equal(decidedMatrixResponse.status, 200);
+    assert.ok(
+      decidedScreening?.matrix_items.some(
+        (item) =>
+          item.source_kind === "governed_hit" &&
+          item.state === "false_positive" &&
+          item.title?.length,
+      ),
+    );
+    assert.ok(
+      decidedScreening?.matrix_items.some(
+        (item) =>
+          item.source_kind === "governed_hit" &&
+          item.evidence?.source_status === "routed_rule_candidate" &&
+          item.evidence?.review_status === "routed",
+      ),
+    );
+  } finally {
+    await stopServer(server);
+  }
+});
+
+test("workbench http exposes internal-test production readiness without pretending stable", async () => {
+  const { server, baseUrl } = await startWorkbenchServer();
+
+  try {
+    const adminCookie = await loginAsDemoUser(baseUrl, "dev.admin");
+    const response = await fetch(
+      `${baseUrl}/api/v1/production-readiness/internal-test`,
+      {
+        headers: {
+          Cookie: adminCookie,
+        },
+      },
+    );
+    const readiness = (await response.json()) as {
+      status: "ready" | "not_ready";
+      checks: Array<{
+        key: string;
+        status: "ok" | "warning" | "failed";
+        blocking: boolean;
+      }>;
+      summary: {
+        total: number;
+        failed: number;
+        warning: number;
+        blocking_failed: number;
+      };
+    };
+
+    assert.equal(response.status, 200);
+    assert.equal(readiness.status, "ready");
+    assert.ok(readiness.summary.total >= 5);
+    assert.equal(readiness.summary.blocking_failed, 0);
+    assert.ok(readiness.checks.some((check) => check.key === "api.healthz"));
+    assert.ok(readiness.checks.some((check) => check.key === "api.readyz"));
+    assert.ok(readiness.checks.some((check) => check.key === "storage.upload_root"));
+    assert.ok(
+      readiness.checks.some(
+        (check) => check.key === "module_execution.concurrency",
+      ),
+    );
+    assert.ok(
+      ["screening", "editing", "proofreading"].every((module) =>
+        readiness.checks.some((check) => check.key === `module.${module}.lane`),
+      ),
+    );
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("workbench http editing route runs with the authenticated editor context", async () => {
   const { server, baseUrl, seededIds } = await startWorkbenchServer();
 
@@ -2544,13 +2831,47 @@ test("workbench http editing route runs with the authenticated editor context", 
       typeof job.payload?.editingCompletionGateSummary?.passed,
       "boolean",
     );
+    const matrixResponse = await fetch(
+      `${baseUrl}/api/v1/manuscripts/${seededIds.manuscriptId}/harness-matrix`,
+      {
+        headers: { Cookie: cookie },
+      },
+    );
+    const matrix = (await matrixResponse.json()) as {
+      modules: Array<{
+        module: string;
+        matrix_items: Array<{
+          key: string;
+          source_kind: string;
+          state: string;
+          evidence?: {
+            observation_status?: string;
+            passed?: boolean;
+          };
+        }>;
+      }>;
+    };
+    const editingMatrix = matrix.modules.find(
+      (module) => module.module === "editing",
+    );
+    assert.equal(matrixResponse.status, 200);
+    assert.ok(
+      editingMatrix?.matrix_items.some(
+        (item) =>
+          item.key === "editing_completion_gate.summary" &&
+          item.source_kind === "editing_completion_gate" &&
+          item.state === "failed" &&
+          item.evidence?.observation_status === "failed_open" &&
+          typeof item.evidence?.passed === "boolean",
+      ),
+    );
   } finally {
     await stopServer(server);
   }
 });
 
 test("workbench http proofreading routes create a draft and then finalize against the pinned draft context", async () => {
-  const { server, baseUrl, seededIds } = await startWorkbenchServer();
+  const { server, baseUrl, seededIds, runtime } = await startWorkbenchServer();
 
   try {
     const cookie = await loginAsDemoUser(baseUrl, "dev.proofreader");
@@ -2582,6 +2903,7 @@ test("workbench http proofreading routes create a draft and then finalize agains
         payload?: {
           proofreadingPlan?: {
             issues?: Array<{
+              title?: string;
               anchor?: {
                 quote?: string;
               };
@@ -2589,6 +2911,18 @@ test("workbench http proofreading routes create a draft and then finalize agains
           };
           proofreadingSourceBlocks?: Array<{
             text?: string;
+          }>;
+          proofreadingDeepPassRuns?: Array<{
+            job_id: string;
+            pass_no: number;
+            pass_kind: string;
+            status: string;
+            model_id?: string;
+            output?: {
+              summary?: string;
+              issues?: unknown[];
+            };
+            error_message?: string;
           }>;
         };
       };
@@ -2612,6 +2946,42 @@ test("workbench http proofreading routes create a draft and then finalize agains
       draft.job.payload?.proofreadingPlan?.issues?.[0]?.anchor?.quote,
       "Proofreading target",
     );
+    assert.deepEqual(
+      draft.job.payload?.proofreadingDeepPassRuns?.map((pass) => [
+        pass.pass_no,
+        pass.pass_kind,
+        pass.status,
+      ]),
+      [
+        [1, "medical_facts_and_terminology", "completed"],
+        [2, "structure_logic_and_consistency", "completed"],
+        [3, "data_statistics_units_and_tables", "completed"],
+        [4, "language_style_punctuation_and_format", "completed"],
+        [5, "residual_synthesis", "completed"],
+      ],
+    );
+    assert.ok(
+      draft.job.payload?.proofreadingDeepPassRuns?.every(
+        (pass) => pass.output && Array.isArray(pass.output.issues),
+      ),
+    );
+    assert.deepEqual(
+      draft.job.payload?.proofreadingDeepPassRuns?.map(
+        (pass) => pass.output?.summary,
+      ),
+      [
+        "AI proofreading pass 1: medical_facts_and_terminology.",
+        "AI proofreading pass 2: structure_logic_and_consistency.",
+        "AI proofreading pass 3: data_statistics_units_and_tables.",
+        "AI proofreading pass 4: language_style_punctuation_and_format.",
+        "AI proofreading pass 5: residual_synthesis.",
+      ],
+    );
+    assert.ok(
+      draft.job.payload?.proofreadingPlan?.issues?.some(
+        (issue) => issue.title === "Pass 5 issue",
+      ),
+    );
 
     const draftRunsResponse = await fetch(
       `${baseUrl}/api/v1/verification-ops/evaluation-suites/${seededIds.proofreadingSuiteId}/runs`,
@@ -2621,6 +2991,99 @@ test("workbench http proofreading routes create a draft and then finalize agains
     );
     assert.equal(draftRunsResponse.status, 200);
     assert.deepEqual(await draftRunsResponse.json(), []);
+
+    const matrixResponse = await fetch(
+      `${baseUrl}/api/v1/manuscripts/${seededIds.manuscriptId}/harness-matrix`,
+      {
+        headers: { Cookie: cookie },
+      },
+    );
+    const matrix = (await matrixResponse.json()) as {
+      modules: Array<{
+        module: string;
+        matrix_items: Array<{
+          key: string;
+          source_kind: string;
+          source_id?: string;
+          state: string;
+          evidence?: {
+            pass_run_id?: string;
+            snapshot_id?: string;
+            knowledge_item_ids?: string[];
+            prompt_template_id?: string;
+          };
+        }>;
+      }>;
+    };
+    const proofreadingMatrix = matrix.modules.find(
+      (module) => module.module === "proofreading",
+    );
+    const passCoverageItems =
+      proofreadingMatrix?.matrix_items.filter(
+        (item) => item.source_kind === "proofreading_deep_pass",
+      ) ?? [];
+
+    assert.equal(matrixResponse.status, 200);
+    assert.equal(passCoverageItems.length, 5);
+    assert.ok(
+      passCoverageItems.every(
+        (item) =>
+          item.source_id &&
+          item.source_id !== `${draft.job.payload?.proofreadingDeepPassRuns?.[0]?.job_id}:1` &&
+          item.evidence?.pass_run_id === item.source_id &&
+          item.evidence?.snapshot_id === draft.snapshot_id &&
+          item.evidence?.prompt_template_id === "prompt-proofreading-1" &&
+          item.evidence?.knowledge_item_ids?.includes(seededIds.proofreadingKnowledgeId),
+      ),
+    );
+    assert.deepEqual(
+      passCoverageItems.map((item) => [item.key, item.state]),
+      [
+        ["proofreading_pass.1.medical_facts_and_terminology", "hit"],
+        ["proofreading_pass.2.structure_logic_and_consistency", "hit"],
+        ["proofreading_pass.3.data_statistics_units_and_tables", "hit"],
+        ["proofreading_pass.4.language_style_punctuation_and_format", "hit"],
+        ["proofreading_pass.5.residual_synthesis", "hit"],
+      ],
+    );
+    const retryTarget = passCoverageItems[0];
+    assert.ok(retryTarget?.source_id);
+    const storedPassRun =
+      await runtime.proofreadingPassRunRepository.findById(retryTarget.source_id);
+    assert.ok(storedPassRun);
+    await runtime.proofreadingPassRunRepository.save({
+      ...storedPassRun,
+      status: "failed",
+      error_message: "Injected failure for retry coverage.",
+      updated_at: new Date("2026-03-31T08:01:00.000Z").toISOString(),
+    });
+    const retryResponse = await fetch(
+      `${baseUrl}/api/v1/modules/proofreading/pass-runs/${retryTarget.source_id}/retry`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const retriedPassRun = (await retryResponse.json()) as {
+      id: string;
+      status: string;
+      retry_count: number;
+      output?: {
+        summary?: string;
+      };
+      error_message?: string;
+    };
+    assert.equal(retryResponse.status, 200);
+    assert.equal(retriedPassRun.id, retryTarget.source_id);
+    assert.equal(retriedPassRun.status, "completed");
+    assert.equal(retriedPassRun.retry_count, storedPassRun.retry_count + 1);
+    assert.equal(retriedPassRun.error_message, undefined);
+    assert.equal(
+      retriedPassRun.output?.summary,
+      "AI proofreading pass 1: medical_facts_and_terminology.",
+    );
 
     const finalizeResponse = await fetch(
       `${baseUrl}/api/v1/modules/proofreading/finalize`,

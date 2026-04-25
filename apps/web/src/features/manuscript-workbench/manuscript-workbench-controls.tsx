@@ -76,9 +76,11 @@ export interface ManuscriptWorkbenchUtilitiesPanelProps {
   canExport: boolean;
   canRefreshLatestJob: boolean;
   canPublishHumanFinal?: boolean;
+  canOpenHarnessMatrix?: boolean;
   onExport(): void;
   onRefreshLatestJob(): void;
   onPublishHumanFinal?(): void;
+  onOpenHarnessMatrix?(): void;
 }
 
 export interface ManuscriptWorkbenchExecutionContextPanelProps
@@ -246,6 +248,15 @@ export function ManuscriptWorkbenchControls({
                 >
                   刷新最新任务
                 </button>
+                {utilities.onOpenHarnessMatrix ? (
+                  <button
+                    type="button"
+                    disabled={busy || !utilities.canOpenHarnessMatrix}
+                    onClick={() => utilities.onOpenHarnessMatrix?.()}
+                  >
+                    Harness Matrix
+                  </button>
+                ) : null}
               </div>
             </div>
           </article>

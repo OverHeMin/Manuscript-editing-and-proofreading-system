@@ -2,6 +2,7 @@ import type {
   DocumentAssetExportViewModel,
   DocumentAssetViewModel,
   JobViewModel,
+  ManuscriptHarnessMatrixViewModel,
   ModuleExecutionConcurrencySnapshotViewModel,
   UploadManuscriptBatchInput,
   UploadManuscriptBatchResult,
@@ -47,6 +48,26 @@ export function getManuscript(client: ManuscriptHttpClient, manuscriptId: string
   return client.request<ManuscriptViewModel>({
     method: "GET",
     url: `/api/v1/manuscripts/${manuscriptId}`,
+  });
+}
+
+export function getManuscriptHarnessMatrix(
+  client: ManuscriptHttpClient,
+  manuscriptId: string,
+) {
+  return client.request<ManuscriptHarnessMatrixViewModel>({
+    method: "GET",
+    url: `/api/v1/manuscripts/${manuscriptId}/harness-matrix`,
+  });
+}
+
+export function retryProofreadingDeepPassRun(
+  client: ManuscriptHttpClient,
+  passRunId: string,
+) {
+  return client.request<unknown>({
+    method: "POST",
+    url: `/api/v1/modules/proofreading/pass-runs/${passRunId}/retry`,
   });
 }
 

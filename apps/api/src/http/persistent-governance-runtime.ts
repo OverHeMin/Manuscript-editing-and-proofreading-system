@@ -165,6 +165,7 @@ import {
 } from "../modules/prompt-skill-registry/index.ts";
 import {
   createProofreadingApi,
+  PostgresProofreadingPassRunRepository,
   ProofreadingService,
 } from "../modules/proofreading/index.ts";
 import {
@@ -276,6 +277,9 @@ export function createPersistentGovernanceRuntime(
     client: options.client,
   });
   const jobRepository = new PostgresJobRepository({
+    client: options.client,
+  });
+  const proofreadingPassRunRepository = new PostgresProofreadingPassRunRepository({
     client: options.client,
   });
   const reviewedCaseSnapshotRepository = new PostgresReviewedCaseSnapshotRepository({
@@ -895,6 +899,7 @@ export function createPersistentGovernanceRuntime(
     executionGovernanceService,
     executionTrackingService,
     jobRepository,
+    proofreadingPassRunRepository,
     documentAssetService,
     aiGatewayService,
     sandboxProfileService,
@@ -964,6 +969,7 @@ export function createPersistentGovernanceRuntime(
       executionResolutionService,
       runtimeBindingReadinessService,
       agentExecutionService,
+      proofreadingPassRunRepository,
     }),
     proofreadingApi: createProofreadingApi({
       proofreadingService,

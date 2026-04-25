@@ -90,6 +90,11 @@ import {
   type WriteTransactionManager,
 } from "../shared/write-transaction-manager.ts";
 import type {
+  ProofreadingDeepPassKind,
+  ProofreadingPassRunRecord,
+} from "./proofreading-pass-run-record.ts";
+import type { ProofreadingPassRunRepository } from "./proofreading-pass-run-repository.ts";
+import type {
   ProofreadingResidualHint,
   ObserveProofreadingResidualsInput,
   ProofreadingResidualSourceBlock,
@@ -104,6 +109,7 @@ import { materializeTextAsset } from "../shared/text-asset-materialization.ts";
 import {
   ProofreadingAiPlanService,
 } from "./proofreading-ai-plan-service.ts";
+import type { CreateProofreadingAiPlanInput } from "./proofreading-ai-plan-service.ts";
 import type {
   ProofreadingAiPlan,
   ProofreadingIssue,
@@ -191,6 +197,7 @@ export interface ProofreadingServiceOptions {
   executionGovernanceService: ExecutionGovernanceService;
   executionTrackingService: ExecutionTrackingService;
   jobRepository: JobRepository;
+  proofreadingPassRunRepository?: ProofreadingPassRunRepository;
   documentAssetService: DocumentAssetService;
   aiGatewayService: AiGatewayService;
   sandboxProfileService: SandboxProfileService;
@@ -296,6 +303,13 @@ export class ProofreadingServiceDependencyRequiredError extends Error {
   }
 }
 
+export class ProofreadingPassRunNotFoundError extends Error {
+  constructor(passRunId: string) {
+    super(`Proofreading pass run ${passRunId} was not found.`);
+    this.name = "ProofreadingPassRunNotFoundError";
+  }
+}
+
 export class ProofreadingService {
   private readonly manuscriptRepository: ManuscriptRepository;
   private readonly assetRepository: DocumentAssetRepository;
@@ -313,6 +327,7 @@ export class ProofreadingService {
   >;
   private readonly executionGovernanceService: ExecutionGovernanceService;
   private readonly executionTrackingService: ExecutionTrackingService;
+  private readonly proofreadingPassRunRepository?: ProofreadingPassRunRepository;
   private readonly documentAssetService: DocumentAssetService;
   private readonly aiGatewayService: AiGatewayService;
   private readonly sandboxProfileService: SandboxProfileService;
@@ -377,6 +392,7 @@ export class ProofreadingService {
     this.manualReviewPolicyService = options.manualReviewPolicyService;
     this.executionGovernanceService = options.executionGovernanceService;
     this.executionTrackingService = options.executionTrackingService;
+    this.proofreadingPassRunRepository = options.proofreadingPassRunRepository;
     this.documentAssetService = options.documentAssetService;
     this.aiGatewayService = options.aiGatewayService;
     this.sandboxProfileService = options.sandboxProfileService;
@@ -771,6 +787,7 @@ export class ProofreadingService {
       };
     });
 
+
     if (committed.residualObservationInput) {
       await this.residualLearningService!.observeProofreadingResiduals(
         committed.residualObservationInput,
@@ -981,6 +998,86 @@ export class ProofreadingService {
     };
   }
 
+  async retryDeepPassRun(input: {
+    passRunId: string;
+    requestedBy: string;
+    actorRole: RoleKey;
+  }): Promise<ProofreadingPassRunRecord> {
+    this.permissionGuard.assert(input.actorRole, "workbench.proofreading");
+    if (!this.proofreadingPassRunRepository) {
+      throw new ProofreadingServiceDependencyRequiredError(
+        "proofreadingPassRunRepository",
+      );
+    }
+
+    const existing = await this.proofreadingPassRunRepository.findById(
+      input.passRunId,
+    );
+    if (!existing) {
+      throw new ProofreadingPassRunNotFoundError(input.passRunId);
+    }
+
+    const startedAt = new Date().toISOString();
+    const running: ProofreadingPassRunRecord = {
+      ...existing,
+      status: "running",
+      retry_count: existing.retry_count + 1,
+      started_at: startedAt,
+      updated_at: startedAt,
+    };
+    delete running.error_message;
+    delete running.finished_at;
+    await this.proofreadingPassRunRepository.save(running);
+
+    try {
+      const replayInput =
+        parseProofreadingPassRunReplayInput(existing.input_context_digest) ?? {
+          manuscriptId: existing.manuscript_id,
+          passFocus: {
+            passNo: existing.pass_no,
+            passKind: existing.pass_kind,
+            instruction: formatProofreadingDeepPassInstruction(existing.pass_kind),
+          },
+        };
+      const passPlan = await this.proofreadingAiPlanService.createPlan(replayInput);
+      const finishedAt = new Date().toISOString();
+      const completed: ProofreadingPassRunRecord = {
+        ...running,
+        status: "completed",
+        output: {
+          summary:
+            passPlan.summary ||
+            `Pass ${existing.pass_no} checked ${passPlan.issues.length} issue(s).`,
+          issues: passPlan.issues.map((issue) => structuredClone(issue)),
+          governedEvidenceCounts:
+            existing.output?.governedEvidenceCounts ?? {
+              failedChecks: 0,
+              manualReviewItems: 0,
+              qualityFindings: 0,
+            },
+        },
+        finished_at: finishedAt,
+        updated_at: finishedAt,
+      };
+      await this.proofreadingPassRunRepository.save(completed);
+      return completed;
+    } catch (error) {
+      const finishedAt = new Date().toISOString();
+      const failed: ProofreadingPassRunRecord = {
+        ...running,
+        status: "failed",
+        error_message:
+          error instanceof Error
+            ? error.message
+            : "Proofreading pass retry failed.",
+        finished_at: finishedAt,
+        updated_at: finishedAt,
+      };
+      await this.proofreadingPassRunRepository.save(failed);
+      return failed;
+    }
+  }
+
   private async runProofreadingJob(input: {
     manuscriptId: string;
     requestedBy: string;
@@ -1149,9 +1246,36 @@ export class ProofreadingService {
       const storedProofreadingPlan = proofreadingPlan
         ? buildStoredProofreadingPlan(proofreadingPlan)
         : undefined;
+      const proofreadingDeepPassRuns =
+        input.jobType === "proofreading_draft_run" && proofreadingPlan
+          ? await this.runProofreadingDeepPasses({
+              manuscriptId: input.manuscriptId,
+              jobId,
+              modelId: resolvedContext.modelId,
+              modelVersion: resolvedContext.modelVersion,
+              proofreadingPlan,
+              proofreadingFindings,
+              sourceFileName:
+                sourceAsset?.file_name ?? input.fileName ?? input.parentAssetId,
+              sourceBlocks: proofreadingArtifacts?.sourceBlocks,
+              proofreadingKnowledgeHits,
+              proofreadingPromptTemplate,
+              resolvedContext,
+            })
+          : undefined;
+      const finalProofreadingPlan =
+        proofreadingPlan && proofreadingDeepPassRuns
+          ? mergeProofreadingPlanWithDeepPassRuns(
+              proofreadingPlan,
+              proofreadingDeepPassRuns,
+            )
+          : proofreadingPlan;
+      const storedFinalProofreadingPlan = finalProofreadingPlan
+        ? buildStoredProofreadingPlan(finalProofreadingPlan)
+        : storedProofreadingPlan;
       const reportMarkdown =
         input.jobType === "proofreading_draft_run" && proofreadingFindings
-          ? renderProofreadingReport(proofreadingFindings, storedProofreadingPlan)
+          ? renderProofreadingReport(proofreadingFindings, storedFinalProofreadingPlan)
           : undefined;
 
       if (
@@ -1380,12 +1504,24 @@ export class ProofreadingService {
           snapshotId: snapshot.id,
           outputAssetId: asset.id,
           outputAssetType: input.assetType,
-          ...(storedProofreadingPlan
+          ...(storedFinalProofreadingPlan
             ? {
-                proofreadingPlan: storedProofreadingPlan,
+                proofreadingPlan: storedFinalProofreadingPlan,
                 proofreadingSourceBlocks: proofreadingArtifacts?.sourceBlocks.map(
                   (block) => structuredClone(block),
                 ),
+              }
+            : {}),
+          ...(proofreadingDeepPassRuns
+            ? {
+                proofreadingDeepPassRuns: proofreadingDeepPassRuns.map((pass) => ({
+                  ...pass,
+                  ...(pass.output
+                    ? {
+                        output: structuredClone(pass.output),
+                      }
+                    : {}),
+                })),
               }
             : {}),
           sourceManuscriptAssetId:
@@ -1397,6 +1533,18 @@ export class ProofreadingService {
         updated_at: finishedTimestamp,
       };
       await jobRepository.save(completedJob);
+      const proofreadingPassRunPersistenceRecords =
+        proofreadingDeepPassRuns && this.proofreadingPassRunRepository
+          ? buildProofreadingPassRunPersistenceRecords({
+              payloadRuns: proofreadingDeepPassRuns,
+              manuscriptId: input.manuscriptId,
+              jobId,
+              snapshotId: snapshot.id,
+              resolvedContext,
+              createdAt: finishedTimestamp,
+              createId: this.createId,
+            })
+          : undefined;
 
       return {
         shouldDispatchOrchestration:
@@ -1433,10 +1581,11 @@ export class ProofreadingService {
                 qualityIssues: completedProofreadingFindings?.qualityFindings,
                 sourceBlocks: buildResidualObservationSourceBlocks({
                   sourceBlocks: proofreadingArtifacts!.sourceBlocks,
-                  proofreadingPlan,
+                  proofreadingPlan: finalProofreadingPlan,
                 }),
               }
             : undefined,
+        proofreadingPassRunPersistenceRecords,
         response: {
           job: completedJob,
           asset,
@@ -1469,6 +1618,12 @@ export class ProofreadingService {
         }),
     });
 
+    if (committed.proofreadingPassRunPersistenceRecords) {
+      await this.proofreadingPassRunRepository!.saveMany(
+        committed.proofreadingPassRunPersistenceRecords,
+      );
+    }
+
     if (committed.residualObservationInput) {
       await this.residualLearningService!.observeProofreadingResiduals(
         committed.residualObservationInput,
@@ -1483,6 +1638,144 @@ export class ProofreadingService {
     }
 
     return committed.response;
+  }
+
+  private async runProofreadingDeepPasses(input: {
+    manuscriptId: string;
+    jobId: string;
+    modelId: string;
+    modelVersion?: string;
+    proofreadingPlan: ProofreadingAiPlan;
+    proofreadingFindings?: ProofreadingInspectionResult;
+    sourceFileName?: string;
+    sourceBlocks?: EditorialTextBlock[];
+    proofreadingKnowledgeHits: Array<{
+      knowledgeItemId: string;
+      title?: string;
+      summary?: string;
+      canonicalText?: string;
+      matchReasons?: string[];
+    }>;
+    proofreadingPromptTemplate?: {
+      system_instructions?: string;
+      task_frame?: string;
+      manual_review_policy?: string;
+      forbidden_operations?: string[];
+      output_contract?: string;
+    };
+    resolvedContext: ResolvedProofreadingExecutionContext;
+  }): Promise<ProofreadingDeepPassRunPayloadRecord[]> {
+    const governedEvidenceCounts = {
+      failedChecks: input.proofreadingFindings?.failedChecks.length ?? 0,
+      manualReviewItems:
+        input.proofreadingFindings?.manualReviewItems.length ?? 0,
+      qualityFindings: input.proofreadingFindings?.qualityFindings?.length ?? 0,
+    };
+    const fallbackRuns = buildProofreadingDeepPassRuns({
+      jobId: input.jobId,
+      modelId: input.modelId,
+      modelVersion: input.modelVersion,
+      proofreadingPlan: input.proofreadingPlan,
+      proofreadingFindings: input.proofreadingFindings,
+    });
+
+    const runs: ProofreadingDeepPassRunPayloadRecord[] = [];
+    for (const [index, passKind] of PROOFREADING_DEEP_PASS_KINDS.entries()) {
+      const fallbackRun = fallbackRuns[index]!;
+      const startedAt = new Date().toISOString();
+      const replayContext = buildProofreadingPassRunReplayContext({
+        manuscriptId: input.manuscriptId,
+        sourceFileName: input.sourceFileName,
+        sourceBlocks: input.sourceBlocks,
+        proofreadingFindings: input.proofreadingFindings,
+        proofreadingKnowledgeHits: input.proofreadingKnowledgeHits,
+        proofreadingPromptTemplate: input.proofreadingPromptTemplate,
+        resolvedContext: input.resolvedContext,
+        passNo: index + 1,
+        passKind,
+      });
+      try {
+        const passPlan = await this.proofreadingAiPlanService.createPlan({
+          manuscriptId: input.manuscriptId,
+          sourceFileName: input.sourceFileName,
+          sourceBlocks: input.sourceBlocks,
+          governedFailedChecks: input.proofreadingFindings?.failedChecks,
+          governedManualReviewItems:
+            input.proofreadingFindings?.manualReviewItems,
+          qualityIssues: input.proofreadingFindings?.qualityFindings,
+          knowledgeHits: input.proofreadingKnowledgeHits,
+          promptGuardrails: {
+            roleLabel: "医学稿件终校审校员",
+            systemInstructions:
+              input.proofreadingPromptTemplate?.system_instructions,
+            taskFrame: input.proofreadingPromptTemplate?.task_frame,
+            manualReviewPolicy:
+              input.proofreadingPromptTemplate?.manual_review_policy,
+            forbiddenOperations:
+              input.proofreadingPromptTemplate?.forbidden_operations,
+            outputContract: input.proofreadingPromptTemplate?.output_contract,
+          },
+          governanceContext: buildAiGovernanceContext({
+            hardRuleSummary:
+              input.resolvedContext.instructionPayload?.hardRuleSummary,
+            allowedContentOperations:
+              input.resolvedContext.instructionPayload?.allowedContentOperations,
+            forbiddenOperations:
+              input.resolvedContext.instructionPayload?.forbiddenOperations,
+            manualReviewPolicy:
+              input.resolvedContext.instructionPayload?.manualReviewPolicy,
+            promptSnippets:
+              input.resolvedContext.instructionPayload?.promptSnippets,
+            manualReviewItems:
+              input.resolvedContext.instructionPayload?.manualReviewItems.map(
+                (item) => `${item.ruleId}: ${item.reason}`,
+              ),
+            contentRuleCandidates:
+              input.resolvedContext.instructionPayload?.contentRuleCandidates.map(
+                (item) => `${item.ruleId}: ${item.actionKind}`,
+              ),
+            resolvedRules: input.resolvedContext.resolvedRules,
+            knowledgeHits: input.resolvedContext.knowledgeHits,
+          }),
+          passFocus: {
+            passNo: index + 1,
+            passKind,
+            instruction: formatProofreadingDeepPassInstruction(passKind),
+          },
+        });
+        const finishedAt = new Date().toISOString();
+        runs.push({
+          pass_no: index + 1,
+          pass_kind: passKind,
+          status: "completed",
+          job_id: input.jobId,
+          model_id: input.modelId,
+          ...(input.modelVersion ? { model_version: input.modelVersion } : {}),
+          input_context_digest: replayContext,
+          started_at: startedAt,
+          finished_at: finishedAt,
+          output: {
+            summary:
+              passPlan.summary ||
+              `Pass ${index + 1} checked ${passPlan.issues.length} issue(s).`,
+            issues: passPlan.issues.map((issue) => structuredClone(issue)),
+            governedEvidenceCounts,
+          },
+        });
+      } catch (error) {
+        runs.push({
+          ...fallbackRun,
+          status: "failed",
+          input_context_digest: replayContext,
+          started_at: startedAt,
+          finished_at: new Date().toISOString(),
+          error_message:
+            error instanceof Error ? error.message : "Proofreading pass failed.",
+        });
+      }
+    }
+
+    return runs;
   }
 
   private async createProofreadingManuscriptAsset(input: {
@@ -3417,6 +3710,340 @@ function collectKnownRuleIds(
     ...(resolvedContext.rules ?? []).map((rule) => rule.id),
     ...(resolvedContext.resolvedRules ?? []).map((entry) => entry.rule.id),
   ])];
+}
+
+interface ProofreadingDeepPassRunPayloadRecord {
+  pass_no: number;
+  pass_kind: ProofreadingDeepPassKind;
+  status: "completed" | "failed";
+  job_id: string;
+  snapshot_id?: string;
+  model_id: string;
+  model_version?: string;
+  input_context_digest?: string;
+  started_at: string;
+  finished_at: string;
+  output?: {
+    summary: string;
+    issues: ProofreadingIssue[];
+    governedEvidenceCounts: {
+      failedChecks: number;
+      manualReviewItems: number;
+      qualityFindings: number;
+    };
+  };
+  error_message?: string;
+}
+
+const PROOFREADING_DEEP_PASS_KINDS: readonly ProofreadingDeepPassKind[] = [
+  "medical_facts_and_terminology",
+  "structure_logic_and_consistency",
+  "data_statistics_units_and_tables",
+  "language_style_punctuation_and_format",
+  "residual_synthesis",
+] as const;
+
+function buildProofreadingPassRunReplayContext(input: {
+  manuscriptId: string;
+  sourceFileName?: string;
+  sourceBlocks?: EditorialTextBlock[];
+  proofreadingFindings?: ProofreadingInspectionResult;
+  proofreadingKnowledgeHits: CreateProofreadingAiPlanInput["knowledgeHits"];
+  proofreadingPromptTemplate?: {
+    system_instructions?: string;
+    task_frame?: string;
+    manual_review_policy?: string;
+    forbidden_operations?: string[];
+    output_contract?: string;
+  };
+  resolvedContext: ResolvedProofreadingExecutionContext;
+  passNo: number;
+  passKind: ProofreadingDeepPassKind;
+}): string {
+  const replayInput: CreateProofreadingAiPlanInput = {
+    manuscriptId: input.manuscriptId,
+    sourceFileName: input.sourceFileName,
+    sourceBlocks: input.sourceBlocks,
+    governedFailedChecks: input.proofreadingFindings?.failedChecks,
+    governedManualReviewItems: input.proofreadingFindings?.manualReviewItems,
+    qualityIssues: input.proofreadingFindings?.qualityFindings,
+    knowledgeHits: input.proofreadingKnowledgeHits,
+    promptGuardrails: {
+      roleLabel: "医学稿件终校审校员",
+      systemInstructions: input.proofreadingPromptTemplate?.system_instructions,
+      taskFrame: input.proofreadingPromptTemplate?.task_frame,
+      manualReviewPolicy:
+        input.proofreadingPromptTemplate?.manual_review_policy,
+      forbiddenOperations:
+        input.proofreadingPromptTemplate?.forbidden_operations,
+      outputContract: input.proofreadingPromptTemplate?.output_contract,
+    },
+    governanceContext: buildAiGovernanceContext({
+      hardRuleSummary: input.resolvedContext.instructionPayload?.hardRuleSummary,
+      allowedContentOperations:
+        input.resolvedContext.instructionPayload?.allowedContentOperations,
+      forbiddenOperations:
+        input.resolvedContext.instructionPayload?.forbiddenOperations,
+      manualReviewPolicy:
+        input.resolvedContext.instructionPayload?.manualReviewPolicy,
+      promptSnippets: input.resolvedContext.instructionPayload?.promptSnippets,
+      manualReviewItems:
+        input.resolvedContext.instructionPayload?.manualReviewItems.map(
+          (item) => `${item.ruleId}: ${item.reason}`,
+        ),
+      contentRuleCandidates:
+        input.resolvedContext.instructionPayload?.contentRuleCandidates.map(
+          (item) => `${item.ruleId}: ${item.actionKind}`,
+        ),
+      resolvedRules: input.resolvedContext.resolvedRules,
+      knowledgeHits: input.resolvedContext.knowledgeHits,
+    }),
+    passFocus: {
+      passNo: input.passNo,
+      passKind: input.passKind,
+      instruction: formatProofreadingDeepPassInstruction(input.passKind),
+    },
+  };
+
+  return serializeProofreadingPassRunReplayInput(replayInput);
+}
+
+function serializeProofreadingPassRunReplayInput(
+  input: CreateProofreadingAiPlanInput,
+): string {
+  return JSON.stringify({
+    schema: "proofreading_pass_run_replay.v1",
+    input,
+  });
+}
+
+function parseProofreadingPassRunReplayInput(
+  value: string | undefined,
+): CreateProofreadingAiPlanInput | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object") {
+      return undefined;
+    }
+    const record = parsed as Record<string, unknown>;
+    if (record.schema !== "proofreading_pass_run_replay.v1") {
+      return undefined;
+    }
+    const input = record.input;
+    if (!input || typeof input !== "object") {
+      return undefined;
+    }
+    const replayInput = input as CreateProofreadingAiPlanInput;
+    return typeof replayInput.manuscriptId === "string"
+      ? replayInput
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function formatProofreadingDeepPassInstruction(
+  passKind: ProofreadingDeepPassKind,
+): string {
+  switch (passKind) {
+    case "medical_facts_and_terminology":
+      return "Focus only on medical facts, clinical terminology, diagnosis/treatment wording, contraindications, and unsafe medical claims.";
+    case "structure_logic_and_consistency":
+      return "Focus only on whole-document structure, cross-section logic, objective-method-result-conclusion consistency, and repeated or contradictory statements.";
+    case "data_statistics_units_and_tables":
+      return "Focus only on numbers, statistics, units, percentages, tables, table-text consistency, and impossible or mismatched values.";
+    case "language_style_punctuation_and_format":
+      return "Focus only on language, grammar, punctuation, references to figures/tables, formatting, and journal-style proofreading problems.";
+    case "residual_synthesis":
+      return "After governed checks and the four focused passes, synthesize remaining high-confidence residual issues without duplicating prior findings.";
+  }
+}
+
+function mergeProofreadingPlanWithDeepPassRuns(
+  basePlan: ProofreadingAiPlan,
+  runs: readonly ProofreadingDeepPassRunPayloadRecord[],
+): ProofreadingAiPlan {
+  const issueMap = new Map<string, ProofreadingIssue>();
+  for (const issue of basePlan.issues) {
+    issueMap.set(buildProofreadingIssueDedupeKey(issue), structuredClone(issue));
+  }
+  for (const run of runs) {
+    if (run.status !== "completed") {
+      continue;
+    }
+    for (const issue of run.output?.issues ?? []) {
+      const key = buildProofreadingIssueDedupeKey(issue);
+      if (!issueMap.has(key)) {
+        issueMap.set(key, structuredClone(issue));
+      }
+    }
+  }
+
+  const issues = [...issueMap.values()];
+  return {
+    role: basePlan.role,
+    summary: [
+      basePlan.summary,
+      `Deep proofreading passes completed: ${
+        runs.filter((run) => run.status === "completed").length
+      }/${runs.length}.`,
+    ].join(" "),
+    issues,
+    manualReviewItems: [...basePlan.manualReviewItems],
+    corrections: issuesToCorrectionSeeds(issues).map((correction) => ({
+      targetText: correction.targetText,
+      replacementText: correction.replacementText,
+      ...(correction.category ? { category: correction.category } : {}),
+    })),
+  };
+}
+
+function buildProofreadingIssueDedupeKey(issue: ProofreadingIssue): string {
+  return [
+    issue.issueType,
+    issue.anchor.blockIndex,
+    normalizeProofreadingDedupeText(issue.anchor.quote),
+    normalizeProofreadingDedupeText(issue.title),
+  ].join(":");
+}
+
+function normalizeProofreadingDedupeText(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/gu, " ").slice(0, 160);
+}
+
+function buildProofreadingDeepPassRuns(input: {
+  jobId: string;
+  snapshotId?: string;
+  modelId: string;
+  modelVersion?: string;
+  proofreadingPlan: ProofreadingAiPlan;
+  proofreadingFindings?: ProofreadingInspectionResult;
+}): ProofreadingDeepPassRunPayloadRecord[] {
+  const observedAt = new Date().toISOString();
+  const issuesByPass = splitProofreadingIssuesByPass(input.proofreadingPlan.issues);
+  const governedEvidenceCounts = {
+    failedChecks: input.proofreadingFindings?.failedChecks.length ?? 0,
+    manualReviewItems: input.proofreadingFindings?.manualReviewItems.length ?? 0,
+    qualityFindings: input.proofreadingFindings?.qualityFindings?.length ?? 0,
+  };
+
+  return PROOFREADING_DEEP_PASS_KINDS.map((passKind, index) => {
+    const issues =
+      passKind === "residual_synthesis"
+        ? input.proofreadingPlan.issues
+        : issuesByPass[passKind];
+
+    return {
+      pass_no: index + 1,
+      pass_kind: passKind,
+      status: "completed",
+      job_id: input.jobId,
+      snapshot_id: input.snapshotId,
+      model_id: input.modelId,
+      model_version: input.modelVersion,
+      started_at: observedAt,
+      finished_at: observedAt,
+      output: {
+        summary: `Pass ${index + 1} checked ${issues.length} issue(s).`,
+        issues: issues.map((issue) => structuredClone(issue)),
+        governedEvidenceCounts,
+      },
+    };
+  });
+}
+
+function buildProofreadingPassRunPersistenceRecords(input: {
+  payloadRuns: ProofreadingDeepPassRunPayloadRecord[];
+  manuscriptId: string;
+  jobId: string;
+  snapshotId: string;
+  resolvedContext: ResolvedProofreadingExecutionContext;
+  createdAt: string;
+  createId: () => string;
+}): ProofreadingPassRunRecord[] {
+  const ruleIds = collectKnownRuleIds(input.resolvedContext);
+  const knowledgeItemIds = input.resolvedContext.knowledgeHits.map(
+    (hit) => hit.knowledgeItemId,
+  );
+
+  return input.payloadRuns.map((pass) => ({
+    id: input.createId(),
+    manuscript_id: input.manuscriptId,
+    job_id: input.jobId,
+    snapshot_id: input.snapshotId,
+    pass_no: pass.pass_no,
+    pass_kind: pass.pass_kind,
+    status: pass.status,
+    model_id: pass.model_id,
+    ...(pass.model_version ? { model_version: pass.model_version } : {}),
+    input_context_digest:
+      pass.input_context_digest ??
+      JSON.stringify({
+        pass_kind: pass.pass_kind,
+        rule_ids: [...ruleIds].sort(),
+        knowledge_item_ids: [...knowledgeItemIds].sort(),
+        quality_package_ids: [
+          ...input.resolvedContext.qualityPackageVersionIds,
+        ].sort(),
+        prompt_template_id: input.resolvedContext.promptTemplateId,
+        skill_package_ids: [...input.resolvedContext.skillPackageIds].sort(),
+      }),
+    rule_ids: ruleIds,
+    knowledge_item_ids: knowledgeItemIds,
+    quality_package_ids: input.resolvedContext.qualityPackageVersionIds,
+    prompt_template_id: input.resolvedContext.promptTemplateId,
+    skill_package_ids: input.resolvedContext.skillPackageIds,
+    ...(pass.output ? { output: structuredClone(pass.output) } : {}),
+    ...(pass.error_message ? { error_message: pass.error_message } : {}),
+    retry_count: 0,
+    started_at: pass.started_at,
+    ...(pass.finished_at ? { finished_at: pass.finished_at } : {}),
+    created_at: input.createdAt,
+    updated_at: input.createdAt,
+  }));
+}
+
+function splitProofreadingIssuesByPass(
+  issues: readonly ProofreadingIssue[],
+): Record<ProofreadingDeepPassKind, ProofreadingIssue[]> {
+  return {
+    medical_facts_and_terminology: issues.filter((issue) =>
+      issueMatchesAnyToken(issue, ["medical", "terminology", "fact", "diagnosis", "treatment", "医学", "术语"]),
+    ),
+    structure_logic_and_consistency: issues.filter((issue) =>
+      issueMatchesAnyToken(issue, ["structure", "logic", "consistency", "section", "结构", "逻辑"]),
+    ),
+    data_statistics_units_and_tables: issues.filter((issue) =>
+      issueMatchesAnyToken(issue, ["data", "stat", "unit", "table", "number", "统计", "数据", "单位", "表"]),
+    ),
+    language_style_punctuation_and_format: issues.filter((issue) =>
+      issueMatchesAnyToken(issue, ["grammar", "style", "punctuation", "format", "language", "typo", "语法", "标点", "格式"]),
+    ),
+    residual_synthesis: issues.map((issue) => structuredClone(issue)),
+  };
+}
+
+function issueMatchesAnyToken(
+  issue: ProofreadingIssue,
+  tokens: readonly string[],
+): boolean {
+  const haystack = [
+    issue.title,
+    issue.description,
+    issue.issueType,
+    issue.source,
+    issue.suggestion?.action,
+    issue.suggestion?.note,
+  ]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ")
+    .toLowerCase();
+
+  return tokens.some((token) => haystack.includes(token.toLowerCase()));
 }
 
 function normalizeProofreadingSourceBlocks(

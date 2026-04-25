@@ -68,8 +68,19 @@ import { InMemoryManualReviewPolicyRepository } from "../../../src/modules/manua
 import { createManualReviewPolicyApi } from "../../../src/modules/manual-review-policies/manual-review-policy-api.ts";
 import { ManualReviewPolicyService } from "../../../src/modules/manual-review-policies/manual-review-policy-service.ts";
 import { InMemoryPromptSkillRegistryRepository } from "../../../src/modules/prompt-skill-registry/in-memory-prompt-skill-repository.ts";
+import { InMemoryProofreadingPassRunRepository } from "../../../src/modules/proofreading/in-memory-proofreading-pass-run-repository.ts";
 import { createProofreadingApi } from "../../../src/modules/proofreading/proofreading-api.ts";
 import { ProofreadingService } from "../../../src/modules/proofreading/proofreading-service.ts";
+import { FeedbackGovernanceService } from "../../../src/modules/feedback-governance/index.ts";
+import { InMemoryFeedbackGovernanceRepository } from "../../../src/modules/feedback-governance/index.ts";
+import { LearningService } from "../../../src/modules/learning/index.ts";
+import { InMemoryLearningCandidateRepository } from "../../../src/modules/learning/index.ts";
+import { InMemoryReviewedCaseSnapshotRepository } from "../../../src/modules/learning/index.ts";
+import { ResidualLearningService } from "../../../src/modules/residual-learning/index.ts";
+import { InMemoryResidualIssueRepository } from "../../../src/modules/residual-learning/index.ts";
+import { createReviewItemsApi } from "../../../src/modules/review-items/index.ts";
+import { ReviewItemsService } from "../../../src/modules/review-items/index.ts";
+import { InMemoryReviewItemsRepository } from "../../../src/modules/review-items/index.ts";
 import { InMemoryRetrievalPresetRepository } from "../../../src/modules/retrieval-presets/in-memory-retrieval-preset-repository.ts";
 import { createRetrievalPresetApi } from "../../../src/modules/retrieval-presets/retrieval-preset-api.ts";
 import { RetrievalPresetService } from "../../../src/modules/retrieval-presets/retrieval-preset-service.ts";
@@ -170,11 +181,13 @@ export interface WorkbenchRuntimeBundle {
   screeningApi: ReturnType<typeof createScreeningApi>;
   editingApi: ReturnType<typeof createEditingApi>;
   proofreadingApi: ReturnType<typeof createProofreadingApi>;
+  proofreadingPassRunRepository: InMemoryProofreadingPassRunRepository;
   knowledgeApi: ReturnType<typeof createKnowledgeApi>;
   harnessControlPlaneApi: ReturnType<typeof createHarnessControlPlaneApi>;
   retrievalPresetApi: ReturnType<typeof createRetrievalPresetApi>;
   manualReviewPolicyApi: ReturnType<typeof createManualReviewPolicyApi>;
   verificationOpsApi: ReturnType<typeof createVerificationOpsApi>;
+  reviewItemsApi: ReturnType<typeof createReviewItemsApi>;
   seededIds: WorkbenchSeededIds;
 }
 
@@ -184,6 +197,7 @@ export async function startWorkbenchServer(input: {
   server: ApiHttpServer;
   baseUrl: string;
   seededIds: WorkbenchSeededIds;
+  runtime: WorkbenchRuntimeBundle;
 }> {
   const runtime = createWorkbenchRuntime({
     uploadRootDir: input.uploadRootDir,
@@ -205,6 +219,7 @@ export async function startWorkbenchServer(input: {
     server,
     baseUrl: `http://127.0.0.1:${(address as AddressInfo).port}`,
     seededIds: runtime.seededIds,
+    runtime,
   };
 }
 
@@ -246,6 +261,7 @@ export function createWorkbenchRuntime(input: {
   const manuscriptRepository = new InMemoryManuscriptRepository();
   const assetRepository = new InMemoryDocumentAssetRepository();
   const jobRepository = new InMemoryJobRepository();
+  const proofreadingPassRunRepository = new InMemoryProofreadingPassRunRepository();
   const knowledgeRepository = new InMemoryKnowledgeRepository();
   const knowledgeReviewActionRepository =
     new InMemoryKnowledgeReviewActionRepository();
@@ -261,6 +277,11 @@ export function createWorkbenchRuntime(input: {
   const toolPermissionPolicyRepository =
     new InMemoryToolPermissionPolicyRepository();
   const verificationOpsRepository = new InMemoryVerificationOpsRepository();
+  const feedbackGovernanceRepository = new InMemoryFeedbackGovernanceRepository();
+  const learningCandidateRepository = new InMemoryLearningCandidateRepository();
+  const reviewedCaseSnapshotRepository = new InMemoryReviewedCaseSnapshotRepository();
+  const residualIssueRepository = new InMemoryResidualIssueRepository();
+  const reviewItemsRepository = new InMemoryReviewItemsRepository();
   const agentExecutionRepository = new InMemoryAgentExecutionRepository();
   const modelRepository = new InMemoryModelRegistryRepository();
   const routingPolicyRepository = new InMemoryModelRoutingPolicyRepository();
@@ -326,15 +347,40 @@ export function createWorkbenchRuntime(input: {
       input.uploadRootDir ??
       path.resolve(process.cwd(), ".local-data", "uploads", "test"),
   });
+  const manuscriptService = new ManuscriptLifecycleService({
+    manuscriptRepository,
+    assetRepository,
+    jobRepository,
+    createId: () => nextId("upload"),
+    now: () => new Date("2026-03-31T08:00:00.000Z"),
+  });
   const manuscriptApi = createManuscriptApi({
-    manuscriptService: new ManuscriptLifecycleService({
-      manuscriptRepository,
-      assetRepository,
-      jobRepository,
-      createId: () => nextId("upload"),
-      now: () => new Date("2026-03-31T08:00:00.000Z"),
-    }),
+    manuscriptService,
     assetService: documentAssetService,
+  });
+  const feedbackGovernanceService = new FeedbackGovernanceService({
+    repository: feedbackGovernanceRepository,
+    executionTrackingRepository,
+    assetRepository,
+    reviewedCaseSnapshotRepository,
+  });
+  const learningService = new LearningService({
+    manuscriptRepository,
+    assetRepository,
+    snapshotRepository: reviewedCaseSnapshotRepository,
+    candidateRepository: learningCandidateRepository,
+    documentAssetService,
+    feedbackGovernanceService,
+  });
+  const residualLearningService = new ResidualLearningService({
+    residualIssueRepository,
+    learningService,
+  });
+  const reviewItemsService = new ReviewItemsService({
+    reviewItemsRepository,
+    residualLearningService,
+    learningService,
+    feedbackGovernanceService,
   });
   const exportService = new DocumentExportService({
     assetRepository,
@@ -361,6 +407,13 @@ export function createWorkbenchRuntime(input: {
     repository: executionTrackingRepository,
     createId: () => nextId("snapshot"),
     now: () => new Date("2026-03-31T08:00:00.000Z"),
+  });
+  const manuscriptHarnessApi = createManuscriptApi({
+    manuscriptService,
+    assetService: documentAssetService,
+    executionTrackingService,
+    reviewItemsService,
+    proofreadingPassRunRepository,
   });
   const agentExecutionService = new AgentExecutionService({
     repository: agentExecutionRepository,
@@ -525,6 +578,45 @@ export function createWorkbenchRuntime(input: {
           (entry as { text: string }).text.trim().length > 0,
       );
       const targetText = firstBlock?.text?.trim() ?? "Proofreading target";
+      const passFocus =
+        typeof input.userPayload.passFocus === "object" &&
+        input.userPayload.passFocus !== null
+          ? (input.userPayload.passFocus as {
+              passNo?: unknown;
+              passKind?: unknown;
+            })
+          : undefined;
+      const passNo =
+        typeof passFocus?.passNo === "number" ? passFocus.passNo : undefined;
+      const passKind =
+        typeof passFocus?.passKind === "string"
+          ? passFocus.passKind
+          : undefined;
+      if (passNo && passKind) {
+        return {
+          summary: `AI proofreading pass ${passNo}: ${passKind}.`,
+          issues: [
+            {
+              itemId: `pass-${passNo}-issue`,
+              title: `Pass ${passNo} issue`,
+              description: `Independent deep proofreading pass ${passNo} found a ${passKind} issue.`,
+              severity: "medium",
+              source: "residual_ai",
+              issueType: passKind,
+              blocksFinal: false,
+              anchor: {
+                blockIndex: firstBlock ? 0 : 0,
+                quote: targetText,
+              },
+              suggestion: {
+                action: "explain_only",
+                note: `Review ${passKind}.`,
+              },
+            },
+          ],
+          manualReviewItems: [],
+        } as T;
+      }
       return {
         summary: "AI proofreading plan for HTTP closure.",
         corrections: [
@@ -610,7 +702,7 @@ export function createWorkbenchRuntime(input: {
     authRuntime,
     permissionGuard,
     manuscriptRepository,
-    manuscriptApi,
+    manuscriptApi: manuscriptHarnessApi,
     documentPipelineApi: {
       async createPreviewSession(input) {
         return {
@@ -726,6 +818,7 @@ export function createWorkbenchRuntime(input: {
         executionGovernanceService,
         executionTrackingService,
         jobRepository,
+        proofreadingPassRunRepository,
         documentAssetService,
         aiGatewayService,
         sandboxProfileService,
@@ -740,11 +833,25 @@ export function createWorkbenchRuntime(input: {
           input.uploadRootDir ??
           path.resolve(process.cwd(), ".local-data", "uploads", "local"),
         editorialDocxTransformService: proofreadingTransformService,
-        proofreadingSourceBlockResolver: docxSourceBlockResolver,
+        proofreadingSourceBlockResolver: {
+          async resolveBlocks(input) {
+            const blocks = await docxSourceBlockResolver.resolveBlocks(input);
+            return blocks.length > 0
+              ? blocks
+              : [
+                  {
+                    text: "Fallback source paragraph for deep proofreading",
+                    section: "body",
+                    block_kind: "paragraph",
+                  },
+                ];
+          },
+        },
         createId: () => nextId("job-proofreading"),
         now: () => new Date("2026-03-31T08:00:00.000Z"),
       }),
     }),
+    proofreadingPassRunRepository,
     knowledgeApi: createKnowledgeApi({
       knowledgeService,
       aiAssistService: knowledgeAiAssistService,
@@ -762,6 +869,9 @@ export function createWorkbenchRuntime(input: {
     }),
     verificationOpsApi: createVerificationOpsApi({
       verificationOpsService,
+    }),
+    reviewItemsApi: createReviewItemsApi({
+      reviewItemsService,
     }),
     seededIds: {
       manuscriptId: "manuscript-seeded-1",

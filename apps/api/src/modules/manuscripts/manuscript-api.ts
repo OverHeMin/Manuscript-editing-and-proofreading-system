@@ -1,4 +1,8 @@
-import type { GovernedExecutionContextSummary } from "@medical/contracts";
+import type {
+  EditingCompletionGatePendingItem,
+  EditingCompletionGateSummary,
+  GovernedExecutionContextSummary,
+} from "@medical/contracts";
 import {
   DocumentAssetService,
   ManuscriptNotFoundError,
@@ -31,7 +35,10 @@ import type { AgentExecutionService } from "../agent-execution/agent-execution-s
 import type {
   ModuleExecutionSnapshotRecord,
   ModuleExecutionSnapshotViewRecord,
+  KnowledgeHitLogRecord,
 } from "../execution-tracking/execution-tracking-record.ts";
+import type { ReviewItemsService } from "../review-items/review-items-service.ts";
+import type { ReviewItemRecord } from "../review-items/review-item-record.ts";
 import {
   buildEmptyManuscriptModuleExecutionOverview,
   createNotStartedModuleOverview,
@@ -54,6 +61,8 @@ import type {
   ModuleExecutionConcurrencyController,
   ModuleExecutionConcurrencySnapshot,
 } from "../shared/module-execution-concurrency-controller.ts";
+import type { ProofreadingPassRunRecord } from "../proofreading/proofreading-pass-run-record.ts";
+import type { ProofreadingPassRunRepository } from "../proofreading/proofreading-pass-run-repository.ts";
 
 const MAINLINE_ATTEMPT_LEDGER_VISIBLE_LIMIT = 9;
 
@@ -74,7 +83,14 @@ export interface CreateManuscriptApiOptions {
   assetService: DocumentAssetService;
   executionTrackingService?: Pick<
     ExecutionTrackingService,
-    "getSnapshot" | "listSnapshotsByManuscriptId"
+    | "getSnapshot"
+    | "listSnapshotsByManuscriptId"
+    | "listKnowledgeHitLogsBySnapshotId"
+  >;
+  reviewItemsService?: Pick<ReviewItemsService, "listReviewItems">;
+  proofreadingPassRunRepository?: Pick<
+    ProofreadingPassRunRepository,
+    "listByManuscriptId"
   >;
   executionGovernanceRepository?: Pick<
     ExecutionGovernanceRepository,
@@ -172,6 +188,29 @@ export function createManuscriptApi(options: CreateManuscriptApiOptions) {
             observationTime: observeNow(),
             runningAttemptStaleAfterMs,
           },
+        }),
+      };
+    },
+
+    async getHarnessMatrix({
+      manuscriptId,
+    }: {
+      manuscriptId: string;
+    }): Promise<RouteResponse<ManuscriptHarnessMatrixRecord>> {
+      const manuscript = await manuscriptService.getManuscript(manuscriptId);
+
+      if (!manuscript) {
+        throw new ManuscriptNotFoundError(manuscriptId);
+      }
+
+      return {
+        status: 200,
+        body: await buildManuscriptHarnessMatrix({
+          manuscript,
+          manuscriptService,
+          executionTrackingService: options.executionTrackingService,
+          reviewItemsService: options.reviewItemsService,
+          proofreadingPassRunRepository: options.proofreadingPassRunRepository,
         }),
       };
     },
@@ -284,6 +323,567 @@ export function createManuscriptApi(options: CreateManuscriptApiOptions) {
 }
 
 export { ManuscriptNotFoundError };
+
+export type ManuscriptHarnessMatrixState =
+  | "hit"
+  | "missed"
+  | "skipped"
+  | "false_positive"
+  | "manual_added"
+  | "observed"
+  | "expected_not_run"
+  | "unavailable"
+  | "failed";
+
+export interface ManuscriptHarnessMatrixItemRecord {
+  key: string;
+  label: string;
+  state: ManuscriptHarnessMatrixState;
+  source_kind:
+    | "module_execution"
+    | "runtime_binding"
+    | "model"
+    | "prompt_template"
+    | "skill_package"
+    | "quality_package"
+    | "knowledge_hit"
+    | "review_item"
+    | "governed_hit"
+    | "residual_issue"
+    | "learning_candidate"
+    | "proofreading_deep_pass"
+    | "editing_completion_gate"
+    | "observation";
+  source_id?: string;
+  title?: string;
+  summary?: string;
+  related_rule_ids?: string[];
+  related_knowledge_item_ids?: string[];
+  evidence?: Record<string, unknown>;
+}
+
+export interface ManuscriptHarnessMatrixModuleRecord {
+  module: MainlineSettlementModule;
+  status: "not_run" | "tracked" | "failed_open";
+  latest_snapshot?: Pick<
+    ModuleExecutionSnapshotRecord,
+    | "id"
+    | "job_id"
+    | "execution_profile_id"
+    | "module_template_id"
+    | "module_template_version_no"
+    | "prompt_template_id"
+    | "prompt_template_version"
+    | "skill_package_ids"
+    | "skill_package_versions"
+    | "model_id"
+    | "model_version"
+    | "quality_packages"
+    | "knowledge_item_ids"
+    | "created_asset_ids"
+    | "agent_execution_log_id"
+    | "created_at"
+  >;
+  knowledge_hit_logs: KnowledgeHitLogRecord[];
+  review_items: ReviewItemRecord[];
+  matrix_items: ManuscriptHarnessMatrixItemRecord[];
+}
+
+export interface ManuscriptHarnessMatrixRecord {
+  manuscript_id: string;
+  title: string;
+  manuscript_type: ManuscriptRecord["manuscript_type"];
+  generated_at: string;
+  modules: ManuscriptHarnessMatrixModuleRecord[];
+}
+
+async function buildManuscriptHarnessMatrix(input: {
+  manuscript: ManuscriptRecord;
+  manuscriptService: Pick<ManuscriptLifecycleService, "listJobsByManuscriptId">;
+  executionTrackingService?: Pick<
+    ExecutionTrackingService,
+    "listSnapshotsByManuscriptId" | "listKnowledgeHitLogsBySnapshotId"
+  >;
+  reviewItemsService?: Pick<ReviewItemsService, "listReviewItems">;
+  proofreadingPassRunRepository?: Pick<
+    ProofreadingPassRunRepository,
+    "listByManuscriptId"
+  >;
+}): Promise<ManuscriptHarnessMatrixRecord> {
+  const snapshots = input.executionTrackingService
+    ? await input.executionTrackingService.listSnapshotsByManuscriptId(
+        input.manuscript.id,
+      )
+    : [];
+  const jobs = await input.manuscriptService.listJobsByManuscriptId(
+    input.manuscript.id,
+  );
+  const reviewItems = input.reviewItemsService
+    ? await input.reviewItemsService.listReviewItems({
+        manuscriptId: input.manuscript.id,
+        includeDecided: true,
+      })
+    : [];
+  const proofreadingPassRuns = input.proofreadingPassRunRepository
+    ? await input.proofreadingPassRunRepository.listByManuscriptId(
+        input.manuscript.id,
+      )
+    : [];
+  const modules = await Promise.all(
+    MAINLINE_SETTLEMENT_MODULES.map(async (module) =>
+      buildManuscriptHarnessMatrixModule({
+        module,
+        manuscript: input.manuscript,
+        snapshots,
+        jobs,
+        reviewItems: reviewItems.filter((item) => item.module === module),
+        proofreadingPassRuns,
+        executionTrackingService: input.executionTrackingService,
+      }),
+    ),
+  );
+
+  return {
+    manuscript_id: input.manuscript.id,
+    title: input.manuscript.title,
+    manuscript_type: input.manuscript.manuscript_type,
+    generated_at: new Date().toISOString(),
+    modules,
+  };
+}
+
+async function buildManuscriptHarnessMatrixModule(input: {
+  module: MainlineSettlementModule;
+  manuscript: ManuscriptRecord;
+  snapshots: ModuleExecutionSnapshotRecord[];
+  jobs: JobRecord[];
+  reviewItems: ReviewItemRecord[];
+  proofreadingPassRuns: ProofreadingPassRunRecord[];
+  executionTrackingService?: Pick<
+    ExecutionTrackingService,
+    "listKnowledgeHitLogsBySnapshotId"
+  >;
+}): Promise<ManuscriptHarnessMatrixModuleRecord> {
+  const latestSnapshot = selectLatestSnapshotForModule(
+    input.snapshots,
+    input.module,
+  );
+  if (!latestSnapshot) {
+    return {
+      module: input.module,
+      status: "not_run",
+      knowledge_hit_logs: [],
+      review_items: input.reviewItems,
+      matrix_items: [
+        {
+          key: "module.execution",
+          label: "Module execution",
+          state: "expected_not_run",
+          source_kind: "module_execution",
+          summary: "This manuscript has not run this module yet.",
+        },
+        ...input.reviewItems.map(mapReviewItemToHarnessMatrixItem),
+      ],
+    };
+  }
+
+  const knowledgeHitLogs = input.executionTrackingService
+    ? await input.executionTrackingService.listKnowledgeHitLogsBySnapshotId(
+        latestSnapshot.id,
+      )
+    : [];
+  const latestJob = input.jobs.find((job) => job.id === latestSnapshot.job_id);
+  const proofreadingPassItems =
+    input.module === "proofreading"
+      ? extractProofreadingDeepPassMatrixItems(
+          latestJob,
+          input.proofreadingPassRuns.filter(
+            (passRun) => passRun.job_id === latestJob?.id,
+          ),
+        )
+      : [];
+  const editingCompletionGateItems =
+    input.module === "editing"
+      ? extractEditingCompletionGateMatrixItems(
+          input.manuscript.editing_completion_gate_summary,
+        )
+      : [];
+
+  return {
+    module: input.module,
+    status: "tracked",
+    latest_snapshot: summarizeHarnessSnapshot(latestSnapshot),
+    knowledge_hit_logs: knowledgeHitLogs,
+    review_items: input.reviewItems,
+    matrix_items: [
+      {
+        key: "module.execution",
+        label: "Module execution",
+        state: "observed",
+        source_kind: "module_execution",
+        source_id: latestSnapshot.id,
+        summary: `Latest ${input.module} snapshot is tracked.`,
+      },
+      {
+        key: `model.${latestSnapshot.model_id}`,
+        label: "Model route",
+        state: "observed",
+        source_kind: "model",
+        source_id: latestSnapshot.model_id,
+        summary: latestSnapshot.model_version,
+      },
+      {
+        key: `prompt.${latestSnapshot.prompt_template_id}`,
+        label: "Prompt template",
+        state: "observed",
+        source_kind: "prompt_template",
+        source_id: latestSnapshot.prompt_template_id,
+        summary: latestSnapshot.prompt_template_version,
+      },
+      ...latestSnapshot.skill_package_ids.map((skillPackageId, index) => ({
+        key: `skill.${skillPackageId}`,
+        label: "Skill package",
+        state: "observed" as const,
+        source_kind: "skill_package" as const,
+        source_id: skillPackageId,
+        summary: latestSnapshot.skill_package_versions[index],
+      })),
+      ...(latestSnapshot.quality_packages ?? []).map((qualityPackage) => ({
+        key: `quality_package.${qualityPackage.package_id}`,
+        label: qualityPackage.package_name,
+        state: "observed" as const,
+        source_kind: "quality_package" as const,
+        source_id: qualityPackage.package_id,
+        summary: `${qualityPackage.package_kind} ${qualityPackage.version}`,
+      })),
+      ...knowledgeHitLogs.map(mapKnowledgeHitLogToHarnessMatrixItem),
+      ...editingCompletionGateItems,
+      ...proofreadingPassItems,
+      ...input.reviewItems.map(mapReviewItemToHarnessMatrixItem),
+    ],
+  };
+}
+
+function summarizeHarnessSnapshot(
+  snapshot: ModuleExecutionSnapshotRecord,
+): ManuscriptHarnessMatrixModuleRecord["latest_snapshot"] {
+  return {
+    id: snapshot.id,
+    job_id: snapshot.job_id,
+    execution_profile_id: snapshot.execution_profile_id,
+    module_template_id: snapshot.module_template_id,
+    module_template_version_no: snapshot.module_template_version_no,
+    prompt_template_id: snapshot.prompt_template_id,
+    prompt_template_version: snapshot.prompt_template_version,
+    skill_package_ids: [...snapshot.skill_package_ids],
+    skill_package_versions: [...snapshot.skill_package_versions],
+    model_id: snapshot.model_id,
+    model_version: snapshot.model_version,
+    ...(snapshot.quality_packages
+      ? {
+          quality_packages: snapshot.quality_packages.map((entry) => ({
+            package_id: entry.package_id,
+            package_name: entry.package_name,
+            package_kind: entry.package_kind,
+            target_scopes: [...entry.target_scopes],
+            version: entry.version,
+          })),
+        }
+      : {}),
+    knowledge_item_ids: [...snapshot.knowledge_item_ids],
+    created_asset_ids: [...snapshot.created_asset_ids],
+    agent_execution_log_id: snapshot.agent_execution_log_id,
+    created_at: snapshot.created_at,
+  };
+}
+
+function mapKnowledgeHitLogToHarnessMatrixItem(
+  record: KnowledgeHitLogRecord,
+): ManuscriptHarnessMatrixItemRecord {
+  return {
+    key: `knowledge.${record.knowledge_item_id}`,
+    label: "Knowledge hit",
+    state: "hit",
+    source_kind: "knowledge_hit",
+    source_id: record.knowledge_item_id,
+    summary: record.match_reasons.join("; "),
+    evidence: {
+      hit_log_id: record.id,
+      match_source: record.match_source,
+      match_source_id: record.match_source_id,
+      binding_rule_id: record.binding_rule_id,
+      score: record.score,
+      section: record.section,
+    },
+  };
+}
+
+function mapReviewItemToHarnessMatrixItem(
+  item: ReviewItemRecord,
+): ManuscriptHarnessMatrixItemRecord {
+  return {
+    key: `review_item.${item.id}`,
+    label: "Manual review item",
+    state: deriveReviewItemMatrixState(item),
+    source_kind: item.source_kind,
+    source_id: item.id,
+    title: item.title,
+    summary: item.summary,
+    related_rule_ids: item.related_rule_ids ? [...item.related_rule_ids] : undefined,
+    related_knowledge_item_ids: item.related_knowledge_item_ids
+      ? [...item.related_knowledge_item_ids]
+      : undefined,
+    evidence: {
+      source_kind: item.source_kind,
+      source_status: item.source_status,
+      review_status: item.review_status,
+      snapshot_id: item.snapshot_id,
+    },
+  };
+}
+
+function extractEditingCompletionGateMatrixItems(
+  summary: EditingCompletionGateSummary | undefined,
+): ManuscriptHarnessMatrixItemRecord[] {
+  if (!summary) {
+    return [
+      {
+        key: "editing_completion_gate.unavailable",
+        label: "Editing completion gate",
+        state: "unavailable",
+        source_kind: "editing_completion_gate",
+        summary: "Editing completion gate has not been recorded.",
+      },
+    ];
+  }
+
+  const items: ManuscriptHarnessMatrixItemRecord[] = [
+    {
+      key: "editing_completion_gate.summary",
+      label: "Editing completion gate",
+      state:
+        summary.observation_status === "failed_open"
+          ? "failed"
+          : summary.passed
+            ? "hit"
+            : "missed",
+      source_kind: "editing_completion_gate",
+      source_id: summary.source_job_id,
+      title: summary.passed ? "Editing gate passed" : "Editing gate needs review",
+      summary: summary.error ?? `${summary.blocker_count} blocker(s) remain.`,
+      evidence: {
+        observation_status: summary.observation_status,
+        verdict: summary.verdict,
+        passed: summary.passed,
+        blocker_count: summary.blocker_count,
+        generated_at: summary.generated_at,
+        current_asset_id: summary.current_asset_id,
+      },
+    },
+  ];
+
+  const pendingGroups: Array<[
+    string,
+    string,
+    EditingCompletionGatePendingItem[],
+  ]> = [
+    ["unresolved_required_slots", "Unresolved required slot", summary.unresolved_required_slots],
+    [
+      "pending_manual_resolution_items",
+      "Pending manual resolution",
+      summary.pending_manual_resolution_items,
+    ],
+    ["high_risk_object_items", "High-risk object", summary.high_risk_object_items],
+    ["table_high_risk_items", "Table high-risk item", summary.table_high_risk_items],
+    [
+      "blocking_format_failures",
+      "Blocking format failure",
+      summary.blocking_format_failures,
+    ],
+  ];
+
+  for (const [groupKey, label, groupItems] of pendingGroups) {
+    for (const item of groupItems) {
+      items.push(mapEditingCompletionGatePendingItem(groupKey, label, item));
+    }
+  }
+
+  return items;
+}
+
+function mapEditingCompletionGatePendingItem(
+  groupKey: string,
+  label: string,
+  item: EditingCompletionGatePendingItem,
+): ManuscriptHarnessMatrixItemRecord {
+  return {
+    key: `editing_completion_gate.${groupKey}.${item.item_key}`,
+    label,
+    state: item.status === "resolved" ? "hit" : "missed",
+    source_kind: "editing_completion_gate",
+    source_id: item.item_key,
+    title: item.summary,
+    summary: item.detail ?? item.location_text,
+    related_rule_ids: item.related_rule_id ? [item.related_rule_id] : undefined,
+    evidence: {
+      category: item.category,
+      source: item.source,
+      status: item.status,
+      location_text: item.location_text,
+      related_slot_key: item.related_slot_key,
+      related_rule_id: item.related_rule_id,
+      review_item_id: item.review_item_id,
+      gate_group: groupKey,
+    },
+  };
+}
+
+function extractProofreadingDeepPassMatrixItems(
+  job: JobRecord | undefined,
+  persistedPassRuns: ProofreadingPassRunRecord[] = [],
+): ManuscriptHarnessMatrixItemRecord[] {
+  if (persistedPassRuns.length > 0) {
+    return persistedPassRuns.map(mapProofreadingPassRunToMatrixItem);
+  }
+
+  const payload = asRecord(job?.payload);
+  const passRuns = Array.isArray(payload?.proofreadingDeepPassRuns)
+    ? payload.proofreadingDeepPassRuns
+    : [];
+
+  return passRuns.flatMap((passRun): ManuscriptHarnessMatrixItemRecord[] => {
+    const pass = asRecord(passRun);
+    if (!pass) {
+      return [];
+    }
+    const passNo = typeof pass?.pass_no === "number" ? pass.pass_no : undefined;
+    const passKind =
+      typeof pass?.pass_kind === "string" ? pass.pass_kind : undefined;
+    const status = typeof pass?.status === "string" ? pass.status : undefined;
+    if (passNo == null || !passKind) {
+      return [];
+    }
+
+    return [
+      {
+        key: `proofreading_pass.${passNo}.${passKind}`,
+        label: `Proofreading pass ${passNo}`,
+        state: status === "completed" ? "hit" : status === "failed" ? "failed" : "observed",
+        source_kind: "proofreading_deep_pass",
+        source_id: `${job?.id ?? "unknown"}:${passNo}`,
+        title: passKind,
+        summary: readString(asRecord(pass.output)?.summary),
+        evidence: {
+          job_id: job?.id,
+          pass_no: passNo,
+          pass_kind: passKind,
+          status,
+          model_id: typeof pass.model_id === "string" ? pass.model_id : undefined,
+          started_at:
+            typeof pass.started_at === "string" ? pass.started_at : undefined,
+          finished_at:
+            typeof pass.finished_at === "string" ? pass.finished_at : undefined,
+          error_message:
+            typeof pass.error_message === "string"
+              ? pass.error_message
+              : undefined,
+        },
+      },
+    ];
+  });
+}
+
+function mapProofreadingPassRunToMatrixItem(
+  passRun: ProofreadingPassRunRecord,
+): ManuscriptHarnessMatrixItemRecord {
+  return {
+    key: `proofreading_pass.${passRun.pass_no}.${passRun.pass_kind}`,
+    label: `Proofreading pass ${passRun.pass_no}`,
+    state:
+      passRun.status === "completed"
+        ? "hit"
+        : passRun.status === "failed"
+          ? "failed"
+          : "observed",
+    source_kind: "proofreading_deep_pass",
+    source_id: passRun.id,
+    title: passRun.pass_kind,
+    summary: passRun.output?.summary,
+    evidence: {
+      pass_run_id: passRun.id,
+      job_id: passRun.job_id,
+      snapshot_id: passRun.snapshot_id,
+      pass_no: passRun.pass_no,
+      pass_kind: passRun.pass_kind,
+      status: passRun.status,
+      model_id: passRun.model_id,
+      model_version: passRun.model_version,
+      rule_ids: passRun.rule_ids,
+      knowledge_item_ids: passRun.knowledge_item_ids,
+      quality_package_ids: passRun.quality_package_ids,
+      prompt_template_id: passRun.prompt_template_id,
+      skill_package_ids: passRun.skill_package_ids,
+      retry_count: passRun.retry_count,
+      started_at: passRun.started_at,
+      finished_at: passRun.finished_at,
+      error_message: passRun.error_message,
+    },
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function deriveReviewItemMatrixState(
+  item: ReviewItemRecord,
+): ManuscriptHarnessMatrixState {
+  if (
+    item.source_kind === "governed_hit" &&
+    item.source_status === "rejected_as_false_positive"
+  ) {
+    return "false_positive";
+  }
+
+  if (item.source_kind === "governed_hit") {
+    if (item.feedback_category === "missed_hit") {
+      return "manual_added";
+    }
+
+    if (item.feedback_category === "incorrect_hit") {
+      return "missed";
+    }
+
+    return "skipped";
+  }
+
+  if (item.source_kind === "residual_issue") {
+    return "missed";
+  }
+
+  return "observed";
+}
+
+function selectLatestSnapshotForModule(
+  snapshots: ModuleExecutionSnapshotRecord[],
+  module: MainlineSettlementModule,
+): ModuleExecutionSnapshotRecord | undefined {
+  return snapshots
+    .filter((snapshot) => snapshot.module === module)
+    .sort((left, right) => {
+      if (left.created_at !== right.created_at) {
+        return right.created_at.localeCompare(left.created_at);
+      }
+
+      return right.id.localeCompare(left.id);
+    })[0];
+}
 
 async function enrichManuscriptView(
   manuscript: ManuscriptRecord,

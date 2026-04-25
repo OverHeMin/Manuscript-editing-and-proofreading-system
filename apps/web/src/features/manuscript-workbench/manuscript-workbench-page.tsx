@@ -2762,6 +2762,14 @@ function buildTemplateContextActionResult(
     ? {
         canExport: true,
         canRefreshLatestJob: Boolean(latestJob?.id),
+        canOpenHarnessMatrix: true,
+        onOpenHarnessMatrix: () => {
+          if (typeof window !== "undefined") {
+            window.location.hash = `#manuscript-harness?manuscriptId=${encodeURIComponent(
+              workspace.manuscript.id,
+            )}`;
+          }
+        },
         onExport: () =>
           void run("Export Current Asset", async () => {
             const exported = await controller.exportCurrentAsset({

@@ -15,6 +15,7 @@ import {
 } from "./system-settings-controller.ts";
 import type {
   AiProviderKind,
+  InternalTestProductionReadinessViewModel,
   SaveSystemSettingsModuleDefaultInput,
   SystemSettingsAiProviderConnectionViewModel,
   SystemSettingsModuleDefaultViewModel,
@@ -611,6 +612,11 @@ export function SystemSettingsWorkbenchPage({
               <article className="system-settings-card"><span>已通过测试</span><strong>{overview.providerConnections.filter((connection) => connection.last_test_status === "passed").length}</strong></article>
               <article className="system-settings-card"><span>模块默认值</span><strong>{overview.moduleDefaults.filter((record) => record.primaryModelName).length}/{overview.moduleDefaults.length}</strong></article>
             </section>
+            <InternalTestReadinessPanel
+              readiness={overview.internalTestProductionReadiness}
+              onRefresh={() => void loadOverview()}
+              isBusy={isBusy || loadStatus === "loading"}
+            />
             <section className="system-settings-provider-shell">
               <div className="system-settings-section-header"><div><h3>AI 提供方</h3><p>统一维护国内外模型连接、密钥轮换与连通性测试结果。</p></div><div className="system-settings-provider-summary"><span>连接数 {overview.providerConnections.length}</span><span>已启用 {overview.providerConnections.filter((connection) => connection.enabled).length}</span></div></div>
               <div className="system-settings-provider-layout">
@@ -709,6 +715,57 @@ export function SystemSettingsWorkbenchPage({
         <article className="system-settings-panel" role="status"><p>{resolveSystemSettingsLoadingMessage(section)}</p></article>
       ) : null}
     </section>
+  );
+}
+
+function InternalTestReadinessPanel({
+  readiness,
+  onRefresh,
+  isBusy,
+}: {
+  readiness: InternalTestProductionReadinessViewModel | null;
+  onRefresh: () => void;
+  isBusy: boolean;
+}) {
+  if (!readiness) {
+    return (
+      <article className="system-settings-panel system-settings-readiness-panel" role="status">
+        <div className="system-settings-panel-header">
+          <div>
+            <h3>内测生产就绪</h3>
+            <p>尚未取得后端稳定性检查结果。</p>
+          </div>
+          <button type="button" onClick={onRefresh} disabled={isBusy}>刷新检查</button>
+        </div>
+      </article>
+    );
+  }
+
+  return (
+    <article className="system-settings-panel system-settings-readiness-panel">
+      <div className="system-settings-panel-header">
+        <div>
+          <h3>内测生产就绪</h3>
+          <p>{readiness.status === "ready" ? "当前关键链路未发现阻塞项。" : "当前存在阻塞项，不会伪装成稳定状态。"}</p>
+        </div>
+        <button type="button" onClick={onRefresh} disabled={isBusy}>刷新检查</button>
+      </div>
+      <section className="system-settings-readiness-summary" aria-label="内测生产就绪摘要">
+        <span>总检查 {readiness.summary.total}</span>
+        <span>警告 {readiness.summary.warning}</span>
+        <span>失败 {readiness.summary.failed}</span>
+        <span>阻塞失败 {readiness.summary.blocking_failed}</span>
+      </section>
+      <ul className="system-settings-readiness-list">
+        {readiness.checks.map((check) => (
+          <li key={check.key} className={`system-settings-readiness-row is-${check.status}`}>
+            <strong>{check.label ?? check.key}</strong>
+            <span>{formatReadinessCheckStatus(check.status)}{check.blocking ? " · 阻塞" : " · 非阻塞"}</span>
+            <p>{check.message ?? "无额外说明"}</p>
+          </li>
+        ))}
+      </ul>
+    </article>
   );
 }
 
@@ -823,6 +880,21 @@ function formatConnectionTestStatusLabel(status: SystemSettingsAiProviderConnect
       return "失败";
     default:
       return "未测试";
+  }
+}
+
+function formatReadinessCheckStatus(
+  status: InternalTestProductionReadinessViewModel["checks"][number]["status"],
+): string {
+  switch (status) {
+    case "ok":
+      return "通过";
+    case "warning":
+      return "警告";
+    case "failed":
+      return "失败";
+    default:
+      return status;
   }
 }
 

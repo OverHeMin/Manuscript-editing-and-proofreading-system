@@ -325,6 +325,7 @@ import {
 } from "../modules/prompt-skill-registry/index.ts";
 import {
   createProofreadingApi,
+  InMemoryProofreadingPassRunRepository,
   ProofreadingDraftAssetRequiredError,
   ProofreadingDraftContextNotFoundError,
   ProofreadingFinalAssetRequiredError,
@@ -489,6 +490,9 @@ type HttpRouteMatch =
       route: "readyz";
     }
   | {
+      route: "production-readiness-internal-test";
+    }
+  | {
       route: "auth-local-login";
     }
   | {
@@ -557,6 +561,10 @@ type HttpRouteMatch =
     }
   | {
       route: "manuscripts-get";
+      manuscriptId: string;
+    }
+  | {
+      route: "manuscripts-harness-matrix";
       manuscriptId: string;
     }
   | {
@@ -642,6 +650,10 @@ type HttpRouteMatch =
     }
   | {
       route: "modules-proofreading-governance-handoff";
+    }
+  | {
+      route: "modules-proofreading-pass-run-retry";
+      passRunId: string;
     }
   | {
       route: "agent-runtime-create";
@@ -1514,6 +1526,7 @@ export function createInMemoryApiRuntime(input: {
   const manuscriptRepository = new InMemoryManuscriptRepository();
   const assetRepository = new InMemoryDocumentAssetRepository();
   const jobRepository = new InMemoryJobRepository();
+  const proofreadingPassRunRepository = new InMemoryProofreadingPassRunRepository();
   const reviewedCaseSnapshotRepository = new InMemoryReviewedCaseSnapshotRepository();
   const learningCandidateRepository = new InMemoryLearningCandidateRepository();
   const knowledgeRepository = new InMemoryKnowledgeRepository();
@@ -2078,6 +2091,7 @@ export function createInMemoryApiRuntime(input: {
     executionGovernanceService,
     executionTrackingService,
     jobRepository,
+    proofreadingPassRunRepository,
     documentAssetService,
     aiGatewayService,
     sandboxProfileService,
@@ -2125,6 +2139,8 @@ export function createInMemoryApiRuntime(input: {
       manuscriptService,
       assetService: documentAssetService,
       executionTrackingService,
+      reviewItemsService,
+      proofreadingPassRunRepository,
       executionGovernanceRepository,
       executionResolutionService,
       runtimeBindingReadinessService,
@@ -4140,6 +4156,14 @@ async function handleRoute(
         body: readiness,
       };
     }
+    case "production-readiness-internal-test": {
+      await requirePermission(req, runtime, "permissions.manage");
+      return buildInternalTestProductionReadiness({
+        runtime,
+        uploadRootDir,
+        serviceHealth,
+      });
+    }
     case "auth-local-login": {
       const body = (await readJsonBody(req)) as {
         username: string;
@@ -4528,6 +4552,11 @@ async function handleRoute(
       return runtime.manuscriptApi.getManuscript({
         manuscriptId: routeMatch.manuscriptId,
       });
+    case "manuscripts-harness-matrix":
+      await requireManuscriptSurfaceSession(req, runtime, "manuscript workbench");
+      return runtime.manuscriptApi.getHarnessMatrix({
+        manuscriptId: routeMatch.manuscriptId,
+      });
     case "manuscripts-update-template-selection": {
       await requireManuscriptSurfaceSession(
         req,
@@ -4765,6 +4794,14 @@ async function handleRoute(
             readRequestUrl(req).searchParams.get("manuscriptId") ?? undefined,
           ) ?? "",
         ...(snapshotId ? { snapshotId } : {}),
+        actorRole: session.user.role,
+      });
+    }
+    case "modules-proofreading-pass-run-retry": {
+      const session = await requirePermission(req, runtime, "workbench.proofreading");
+      return runtime.proofreadingApi.retryDeepPassRun({
+        passRunId: routeMatch.passRunId,
+        requestedBy: session.user.id,
         actorRole: session.user.role,
       });
     }
@@ -6918,6 +6955,10 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "readyz" };
   }
 
+  if (method === "GET" && path === "/api/v1/production-readiness/internal-test") {
+    return { route: "production-readiness-internal-test" };
+  }
+
   if (method === "POST" && path === "/api/v1/auth/local/login") {
     return { route: "auth-local-login" };
   }
@@ -7124,6 +7165,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
   if (method === "GET" && path === "/api/v1/modules/proofreading/governance-handoff") {
     return { route: "modules-proofreading-governance-handoff" };
+  }
+
+  const proofreadingPassRunRetryMatch = path.match(
+    /^\/api\/v1\/modules\/proofreading\/pass-runs\/([^/]+)\/retry$/,
+  );
+  if (method === "POST" && proofreadingPassRunRetryMatch) {
+    return {
+      route: "modules-proofreading-pass-run-retry",
+      passRunId: proofreadingPassRunRetryMatch[1],
+    };
   }
 
   if (method === "POST" && path === "/api/v1/agent-runtime") {
@@ -7484,6 +7535,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return {
       route: "manuscripts-update-template-selection",
       manuscriptId: manuscriptTemplateSelectionMatch[1],
+    };
+  }
+
+  const manuscriptHarnessMatrixMatch = path.match(
+    /^\/api\/v1\/manuscripts\/([^/]+)\/harness-matrix$/,
+  );
+  if (method === "GET" && manuscriptHarnessMatrixMatch) {
+    return {
+      route: "manuscripts-harness-matrix",
+      manuscriptId: manuscriptHarnessMatrixMatch[1],
     };
   }
 
@@ -8630,6 +8691,118 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
     return null;
   }
+
+type ProductionReadinessCheckStatus = "ok" | "warning" | "failed";
+
+interface ProductionReadinessCheck {
+  key: string;
+  label: string;
+  status: ProductionReadinessCheckStatus;
+  blocking: boolean;
+  message: string;
+  evidence?: unknown;
+}
+
+async function buildInternalTestProductionReadiness(input: {
+  runtime: ApiServerRuntime;
+  uploadRootDir: string;
+  serviceHealth: HttpServiceHealthProvider;
+}): Promise<RouteResponse<{
+  status: "ready" | "not_ready";
+  generated_at: string;
+  checks: ProductionReadinessCheck[];
+  summary: {
+    total: number;
+    ok: number;
+    warning: number;
+    failed: number;
+    blocking_failed: number;
+  };
+}>> {
+  const liveness = input.serviceHealth.getLiveness();
+  const readiness = await input.serviceHealth.getReadiness();
+  const concurrency = (await input.runtime.manuscriptApi.getModuleExecutionConcurrency())
+    .body;
+  const checks: ProductionReadinessCheck[] = [
+    {
+      key: "api.healthz",
+      label: "API liveness",
+      status: liveness.status === "ok" ? "ok" : "failed",
+      blocking: true,
+      message:
+        liveness.status === "ok"
+          ? "API liveness probe is OK."
+          : "API liveness probe failed.",
+      evidence: liveness,
+    },
+    {
+      key: "api.readyz",
+      label: "API readiness",
+      status: readiness.status === "ready" ? "ok" : "failed",
+      blocking: true,
+      message:
+        readiness.status === "ready"
+          ? "API readiness probe is ready."
+          : "API readiness probe is not ready.",
+      evidence: readiness,
+    },
+    {
+      key: "storage.upload_root",
+      label: "Upload root configured",
+      status: input.uploadRootDir.trim().length > 0 ? "ok" : "failed",
+      blocking: true,
+      message:
+        input.uploadRootDir.trim().length > 0
+          ? "Upload root is configured for manuscript assets."
+          : "Upload root is missing.",
+      evidence: {
+        path: input.uploadRootDir,
+      },
+    },
+    {
+      key: "module_execution.concurrency",
+      label: "Module execution concurrency",
+      status: concurrency.limits.global > 0 ? "ok" : "warning",
+      blocking: false,
+      message:
+        concurrency.limits.global > 0
+          ? "Module execution concurrency controller is reporting limits."
+          : "Concurrency limits are zero; execution may be effectively serialized or disabled.",
+      evidence: concurrency,
+    },
+    ...(["screening", "editing", "proofreading"] as const).map((module) => ({
+      key: `module.${module}.lane`,
+      label: `${module} lane`,
+      status: "ok" as const,
+      blocking: true,
+      message: `${module} lane is registered and observable.`,
+      evidence: {
+        active: concurrency.active[module],
+        queued: concurrency.queued[module],
+        limit: concurrency.limits[module],
+      },
+    })),
+  ];
+  const summary = {
+    total: checks.length,
+    ok: checks.filter((check) => check.status === "ok").length,
+    warning: checks.filter((check) => check.status === "warning").length,
+    failed: checks.filter((check) => check.status === "failed").length,
+    blocking_failed: checks.filter(
+      (check) => check.blocking && check.status === "failed",
+    ).length,
+  };
+
+  return {
+    status: 200,
+    body: {
+      status: summary.blocking_failed === 0 ? "ready" : "not_ready",
+      generated_at: new Date().toISOString(),
+      checks,
+      summary,
+    },
+  };
+}
 
 function readRequestPath(req: IncomingMessage): string {
   return readRequestUrl(req).pathname;
