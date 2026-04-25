@@ -9,6 +9,7 @@ import {
   type KnowledgeAssetDetailRecord,
   KnowledgeRevisionReviewGateError,
 } from "../../src/modules/knowledge/knowledge-service.ts";
+import type { DocumentStructureTableSnapshot } from "../../src/modules/document-pipeline/document-structure-service.ts";
 
 function createKnowledgeLibraryHarness() {
   const repository = new InMemoryKnowledgeRepository();
@@ -72,6 +73,115 @@ function buildNonAuthoritativeTableBlock() {
       row_count: 2,
       column_count: 2,
     },
+  };
+}
+
+function buildAuthoritativeFullFidelitySnapshot() {
+  return {
+    mandatory_fact_authority: {
+      identity: "authoritative" as const,
+      structure: "authoritative" as const,
+      border_system: "authoritative" as const,
+      layout: "authoritative" as const,
+      paragraph_style: "authoritative" as const,
+      typography: "authoritative" as const,
+      rich_content: "authoritative" as const,
+      object_content: "authoritative" as const,
+      authority_markers: "authoritative" as const,
+    },
+    facts: {
+      caption: { text: "表 1 基线特征", position: "above" },
+      note: { text: "注：年龄单位为岁。", position: "below" },
+      merged_cell_topology: [],
+      local_rich_text_fragments: [{ cell: "r1c2", italic: true }],
+    },
+  };
+}
+
+function buildDocumentTableSnapshot(): DocumentStructureTableSnapshot {
+  const styleFact = { availability: "authoritative" as const, value: "宋体" };
+  const numericFact = { availability: "authoritative" as const, value: 0 };
+  return {
+    table_id: "table-1",
+    row_count: 1,
+    column_count: 1,
+    profile: {
+      is_three_line_table: true,
+      header_depth: 1,
+      has_stub_column: false,
+      has_statistical_footnotes: false,
+      has_unit_markers: false,
+    },
+    caption_fields: { text: "表 1 基线特征" },
+    style_profile: {
+      has_top_rule: true,
+      has_header_rule: true,
+      has_bottom_rule: true,
+      has_vertical_rules: false,
+      coordinate: { table_id: "table-1", target: "style_profile" },
+    },
+    header_cells: [],
+    data_cells: [],
+    footnote_items: [],
+    grid_cells: [
+      {
+        id: "cell-1",
+        text: "年龄",
+        row_index: 0,
+        column_index: 0,
+        row_span: 1,
+        column_span: 1,
+        inferred_role: "data",
+        style_evidence: {
+          font_family: styleFact,
+          font_size_pt: { availability: "authoritative", value: 10.5 },
+          bold: { availability: "authoritative", value: false },
+          italic: { availability: "authoritative", value: false },
+          script_position: { availability: "authoritative", value: "baseline" },
+          alignment: { availability: "authoritative", value: "left" },
+          spacing_before_pt: numericFact,
+          spacing_after_pt: numericFact,
+          line_spacing: { availability: "authoritative", value: 1 },
+          line_spacing_mode: { availability: "authoritative", value: "single" },
+          left_indent_pt: numericFact,
+          right_indent_pt: numericFact,
+          first_line_indent_pt: numericFact,
+          hanging_indent_pt: numericFact,
+          vertical_alignment: { availability: "authoritative", value: "center" },
+        },
+        paragraphs: [
+          {
+            id: "p-1",
+            text: "年龄",
+            style: {
+              alignment: { availability: "authoritative", value: "left" },
+              spacing_before_pt: numericFact,
+              spacing_after_pt: numericFact,
+              line_spacing: { availability: "authoritative", value: 1 },
+              line_spacing_mode: { availability: "authoritative", value: "single" },
+              left_indent_pt: numericFact,
+              right_indent_pt: numericFact,
+              first_line_indent_pt: numericFact,
+              hanging_indent_pt: numericFact,
+            },
+            fragments: [
+              {
+                id: "frag-1",
+                kind: "text",
+                text: "年龄",
+                style: {
+                  font_family: styleFact,
+                  font_size_pt: { availability: "authoritative", value: 10.5 },
+                  bold: { availability: "authoritative", value: false },
+                  italic: { availability: "authoritative", value: false },
+                  script_position: { availability: "authoritative", value: "baseline" },
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ],
   };
 }
 
@@ -416,6 +526,246 @@ test("approving a future-effective revision keeps the prior runtime projection a
   assert.equal(detail.asset.current_approved_revision_id, "asset-1-revision-2");
   assert.equal(detail.selected_revision.status, "approved");
   assert.equal(runtimeProjection?.title, "Current runtime checklist");
+});
+
+test("knowledge evidence packages persist authority, bindings, and linked target blocks", async () => {
+  const repository = new InMemoryKnowledgeRepository();
+  const reviewActionRepository = new InMemoryKnowledgeReviewActionRepository();
+  const issuedIds = ["asset-1", "evidence-package-1"];
+  const service = new KnowledgeService({
+    repository,
+    reviewActionRepository,
+    createId: () => {
+      const value = issuedIds.shift();
+      assert.ok(value, "Expected a knowledge-library test id to be available.");
+      return value;
+    },
+    now: () => new Date("2026-04-25T10:00:00.000Z"),
+  });
+
+  const created = await service.createLibraryDraft({
+    title: "Official table style sample",
+    canonicalText: "Official sample table for journal table reconstruction.",
+    knowledgeKind: "reference",
+    moduleScope: "editing",
+    manuscriptTypes: ["review"],
+    bindings: [
+      {
+        bindingKind: "target_model_block",
+        bindingTargetId: "table.caption",
+        bindingTargetLabel: "表题",
+      },
+    ],
+  });
+
+  const evidencePackage = await service.createEvidencePackage({
+    knowledgeItemId: created.asset.id,
+    revisionId: created.selected_revision.id,
+    status: "authoritative",
+    evidenceKind: "word_sample_table",
+    authorityLevel: "official_journal_sample",
+    sourceLabel: "Journal official Word sample",
+    sourcePayload: {
+      table_full_fidelity_snapshot_id: "snapshot-1",
+      mandatory_fact_groups: ["identity", "structure", "typography"],
+    },
+    bindingTargets: {
+      journal_template_ids: ["journal-template-1"],
+      target_model_block_ids: ["table.caption", "table.body"],
+    },
+    linkedRuleIds: ["rule-1"],
+    linkedTargetModelBlockIds: ["table.caption", "table.body"],
+  });
+
+  assert.equal(evidencePackage.status, "authoritative");
+  assert.equal(evidencePackage.evidence_kind, "word_sample_table");
+  assert.deepEqual(evidencePackage.binding_targets?.target_model_block_ids, [
+    "table.caption",
+    "table.body",
+  ]);
+
+  const stored = await repository.findEvidencePackageById?.("evidence-package-1");
+  assert.equal(stored?.authority_level, "official_journal_sample");
+  assert.deepEqual(stored?.linked_rule_ids, ["rule-1"]);
+  assert.deepEqual(
+    (await repository.listEvidencePackagesByKnowledgeItemId?.("asset-1"))?.map(
+      (record) => record.id,
+    ),
+    ["evidence-package-1"],
+  );
+});
+
+test("authoring table evidence packages block authoritative status when mandatory rich facts are missing", async () => {
+  const repository = new InMemoryKnowledgeRepository();
+  const reviewActionRepository = new InMemoryKnowledgeReviewActionRepository();
+  const issuedIds = ["asset-1", "evidence-package-1"];
+  const service = new KnowledgeService({
+    repository,
+    reviewActionRepository,
+    createId: () => {
+      const value = issuedIds.shift();
+      assert.ok(value, "Expected a knowledge-library test id to be available.");
+      return value;
+    },
+    now: () => new Date("2026-04-25T10:00:00.000Z"),
+  });
+  const created = await service.createLibraryDraft({
+    title: "Incomplete WPS table sample",
+    canonicalText: "Incomplete WPS sample table.",
+    knowledgeKind: "reference",
+    moduleScope: "editing",
+    manuscriptTypes: ["review"],
+  });
+
+  await assert.rejects(
+    () =>
+      service.createTableEvidencePackage({
+        knowledgeItemId: created.asset.id,
+        revisionId: created.selected_revision.id,
+        sourceKind: "wps_clipboard",
+        sourceEnvironment: {
+          source_application: "wps",
+          browser: "chromium",
+          os: "windows",
+          clipboard_mime_types: ["text/plain"],
+          clipboard_html_available: false,
+          ooxml_fragment_available: false,
+          fallback_posture: "non_authoritative",
+        },
+        requestedAuthoritativeStatus: "authoritative",
+        tableFullFidelitySnapshot: {
+          mandatory_fact_authority: {
+            ...buildAuthoritativeFullFidelitySnapshot().mandatory_fact_authority,
+            border_system: "unavailable",
+          },
+          facts: {},
+        },
+      }),
+    (error: unknown) => {
+      assert.equal(
+        (error as Error).name,
+        "KnowledgeTableEvidenceCaptureGateError",
+      );
+      assert.deepEqual(
+        (error as { failureCodes?: readonly string[] }).failureCodes,
+        ["border_system_unavailable"],
+      );
+      return true;
+    },
+  );
+
+  assert.equal(await repository.findEvidencePackageById?.("evidence-package-1"), undefined);
+});
+
+test("authoring table evidence packages persist supported environment and full-fidelity snapshot", async () => {
+  const repository = new InMemoryKnowledgeRepository();
+  const reviewActionRepository = new InMemoryKnowledgeReviewActionRepository();
+  const issuedIds = ["asset-1", "evidence-package-1"];
+  const service = new KnowledgeService({
+    repository,
+    reviewActionRepository,
+    createId: () => {
+      const value = issuedIds.shift();
+      assert.ok(value, "Expected a knowledge-library test id to be available.");
+      return value;
+    },
+    now: () => new Date("2026-04-25T10:00:00.000Z"),
+  });
+  const created = await service.createLibraryDraft({
+    title: "Authoritative Word table sample",
+    canonicalText: "Authoritative Word sample table.",
+    knowledgeKind: "reference",
+    moduleScope: "editing",
+    manuscriptTypes: ["review"],
+  });
+
+  const evidencePackage = await service.createTableEvidencePackage({
+    knowledgeItemId: created.asset.id,
+    revisionId: created.selected_revision.id,
+    sourceKind: "word_clipboard",
+    sourceEnvironment: {
+      source_application: "word",
+      application_version: "Microsoft Word 2021",
+      browser: "chromium",
+      os: "windows",
+      clipboard_mime_types: ["text/html", "text/plain"],
+      clipboard_html_available: true,
+      ooxml_fragment_available: true,
+      fallback_posture: "none",
+    },
+    requestedAuthoritativeStatus: "authoritative",
+    rawPayloadRefs: ["payload-html-1", "payload-ooxml-1"],
+    normalizedTableObjectId: "normalized-table-1",
+    tableFullFidelitySnapshotId: "snapshot-1",
+    tableFullFidelitySnapshot: buildAuthoritativeFullFidelitySnapshot(),
+    bindingTargets: {
+      journal_template_ids: ["journal-template-1"],
+      target_model_block_ids: ["table.caption"],
+    },
+  });
+
+  assert.equal(evidencePackage.authoritative_status, "authoritative");
+  assert.equal(evidencePackage.status, "authoritative");
+  assert.equal(evidencePackage.source_environment.ooxml_fragment_available, true);
+  assert.deepEqual(evidencePackage.capture_failure_codes, []);
+
+  const stored = await repository.findEvidencePackageById?.("evidence-package-1");
+  assert.equal(stored?.evidence_kind, "word_sample_table");
+  assert.deepEqual(
+    (stored?.source_payload.table_evidence_package as { raw_payload_refs?: string[] })
+      .raw_payload_refs,
+    ["payload-html-1", "payload-ooxml-1"],
+  );
+});
+
+test("authoring table evidence packages can normalize document table snapshots", async () => {
+  const repository = new InMemoryKnowledgeRepository();
+  const reviewActionRepository = new InMemoryKnowledgeReviewActionRepository();
+  const issuedIds = ["asset-1", "evidence-package-1"];
+  const service = new KnowledgeService({
+    repository,
+    reviewActionRepository,
+    createId: () => {
+      const value = issuedIds.shift();
+      assert.ok(value, "Expected a knowledge-library test id to be available.");
+      return value;
+    },
+    now: () => new Date("2026-04-25T10:00:00.000Z"),
+  });
+  const created = await service.createLibraryDraft({
+    title: "Uploaded DOCX table sample",
+    canonicalText: "Authoritative DOCX sample table.",
+    knowledgeKind: "reference",
+    moduleScope: "editing",
+    manuscriptTypes: ["review"],
+  });
+
+  const evidencePackage = await service.createTableEvidencePackage({
+    knowledgeItemId: created.asset.id,
+    revisionId: created.selected_revision.id,
+    sourceKind: "docx_upload",
+    sourceEnvironment: {
+      source_application: "docx_upload",
+      fallback_posture: "none",
+    },
+    requestedAuthoritativeStatus: "authoritative",
+    documentTableSnapshot: buildDocumentTableSnapshot(),
+  });
+
+  assert.equal(evidencePackage.authoritative_status, "authoritative");
+  assert.equal(
+    evidencePackage.table_full_fidelity_snapshot?.mandatory_fact_authority
+      .border_system,
+    "authoritative",
+  );
+  assert.equal(
+    (
+      evidencePackage.table_full_fidelity_snapshot?.facts.identity as {
+        caption_text?: string;
+      }
+    ).caption_text,
+    "表 1 基线特征",
+  );
 });
 
 test("reject returns a pending revision to draft without erasing review history", async () => {

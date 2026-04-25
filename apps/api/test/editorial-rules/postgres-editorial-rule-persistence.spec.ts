@@ -65,7 +65,15 @@ test("postgres editorial rule repository persists journal templates, scoped rule
       priority: 180,
       rule_object: "abstract",
       rule_type: "format",
+      rule_domain: "abstract_keywords",
       execution_mode: "apply_and_inspect",
+      structured_action: {
+        kind: "auto_apply",
+        target: "abstract.heading",
+        requires_validation: true,
+      },
+      automation_grade: "B",
+      scope_layer: "journal",
       scope: {
         manuscript_types: ["clinical_study"],
         sections: ["abstract"],
@@ -97,6 +105,8 @@ test("postgres editorial rule repository persists journal templates, scoped rule
       linkage_payload: {
         source_learning_candidate_id: "candidate-abstract-1",
         source_snapshot_asset_id: "snapshot-abstract-1",
+        evidence_package_ids: ["evidence-package-abstract-1"],
+        target_model_block_ids: ["abstract.heading"],
         overrides_rule_ids: ["legacy-abstract-rule-1"],
       },
       projection_payload: {
@@ -106,6 +116,11 @@ test("postgres editorial rule repository persists journal templates, scoped rule
         incorrect_example: "摘要 目的",
       },
       evidence_level: "high",
+      gold_sample_gate: {
+        status: "passed",
+        specimen_ids: ["gold-abstract-specimen-1"],
+        validation_snapshot_ids: ["validation-abstract-snapshot-1"],
+      },
       confidence_policy: "always_auto",
       severity: "error",
       enabled: true,
@@ -192,6 +207,14 @@ test("postgres editorial rule repository persists journal templates, scoped rule
     assert.equal(loadedRule?.action.kind, "replace_heading");
     assert.equal(loadedRule?.action.to, "(Abstract Purpose)");
     assert.equal((loadedRule as { priority?: number } | undefined)?.priority, 180);
+    assert.equal(loadedRule?.rule_domain, "abstract_keywords");
+    assert.deepEqual(loadedRule?.structured_action, {
+      kind: "auto_apply",
+      target: "abstract.heading",
+      requires_validation: true,
+    });
+    assert.equal(loadedRule?.automation_grade, "B");
+    assert.equal(loadedRule?.scope_layer, "journal");
     assert.deepEqual(loadedRule?.scope, {
       manuscript_types: ["clinical_study"],
       sections: ["abstract"],
@@ -215,6 +238,8 @@ test("postgres editorial rule repository persists journal templates, scoped rule
     assert.deepEqual(loadedRule?.linkage_payload, {
       source_learning_candidate_id: "candidate-abstract-1",
       source_snapshot_asset_id: "snapshot-abstract-1",
+      evidence_package_ids: ["evidence-package-abstract-1"],
+      target_model_block_ids: ["abstract.heading"],
       overrides_rule_ids: ["legacy-abstract-rule-1"],
     });
     assert.deepEqual(loadedRule?.projection_payload, {
@@ -222,6 +247,11 @@ test("postgres editorial rule repository persists journal templates, scoped rule
       summary: "Normalize the abstract objective label for this journal profile.",
       standard_example: "（摘要　目的）",
       incorrect_example: "摘要 目的",
+    });
+    assert.deepEqual(loadedRule?.gold_sample_gate, {
+      status: "passed",
+      specimen_ids: ["gold-abstract-specimen-1"],
+      validation_snapshot_ids: ["validation-abstract-snapshot-1"],
     });
     assert.equal(loadedRule?.example_before, "Abstract Purpose");
     assert.equal(loadedRule?.example_after, "(Abstract Purpose)");

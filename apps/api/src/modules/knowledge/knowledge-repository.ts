@@ -3,6 +3,7 @@ import type {
   KnowledgeContentBlockRecord,
   KnowledgeDuplicateSeverity,
   KnowledgeDuplicateAcknowledgementRecord,
+  KnowledgeEvidencePackageRecord,
   KnowledgeRecord,
   KnowledgeRevisionBindingRecord,
   KnowledgeRevisionRecord,
@@ -55,6 +56,13 @@ export interface KnowledgeRepository {
   listContentBlocksByRevisionId?(
     revisionId: string,
   ): Promise<KnowledgeContentBlockRecord[]>;
+  saveEvidencePackage?(record: KnowledgeEvidencePackageRecord): Promise<void>;
+  findEvidencePackageById?(
+    id: string,
+  ): Promise<KnowledgeEvidencePackageRecord | undefined>;
+  listEvidencePackagesByKnowledgeItemId?(
+    knowledgeItemId: string,
+  ): Promise<KnowledgeEvidencePackageRecord[]>;
   saveSemanticLayer?(record: KnowledgeSemanticLayerRecord): Promise<void>;
   findSemanticLayerByRevisionId?(
     revisionId: string,

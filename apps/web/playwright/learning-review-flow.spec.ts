@@ -97,6 +97,11 @@ test("admin can complete the governed learning review flow from manuscript hando
   expect(
     editingJob.payload?.tableInspectionFindings?.[0]?.semantic_hit?.column_key,
   ).toBe(semanticTableColumnKey);
+  assertV1FullFidelityEditingClosure(editingJob);
+  const editingDetailsBody = await expandResultDetails(page);
+  await expect(editingDetailsBody).toContainText(semanticTableColumnKey);
+  await expect(editingDetailsBody).toContainText("表格高风险项");
+  await expect(editingDetailsBody).toContainText("编辑完成门禁");
   const saveAuthorSlotResponse = await request.post(
     `${apiBaseUrl}/api/v1/modules/editing/slot-resolutions`,
     {
@@ -161,6 +166,9 @@ test("admin can complete the governed learning review flow from manuscript hando
   expect(String(proofreadingJob.payload?.reportMarkdown)).toContain(
     semanticTableReportTarget,
   );
+  expect(
+    proofreadingJob.payload?.proofreadingFindings?.failedChecks?.[0]?.semantic_hit,
+  ).toBeTruthy();
 
   await navigateToProofreadingIssueWorkbench(page, manuscriptId, proofreadingDraftAsset.id);
   const selectedIssue = page.locator(
@@ -262,6 +270,7 @@ test("admin can complete the governed learning review flow from manuscript hando
   await expect(page.locator("body")).toContainText(abstractObjectiveSource);
   await expect(page.locator("body")).toContainText(abstractObjectiveNormalized);
   await expect(page.locator("body")).toContainText("family-seeded-1");
+  await expect(page.locator("body")).toContainText("回流来源稿件");
 
   await expect(page.getByRole("button", { name: "审核通过" })).toBeEnabled();
   await page.getByRole("button", { name: "审核通过" }).click();
@@ -513,6 +522,24 @@ async function clickViaDom(locator: Locator) {
   await locator.evaluate((element: HTMLElement) => element.click());
 }
 
+function assertV1FullFidelityEditingClosure(job: BrowserFlowJob) {
+  const payload = job.payload ?? {};
+  expect(payload.runtimeBindingExplanation?.tableCount).toBeGreaterThan(0);
+  expect(payload.runtimeBindingExplanation?.decisionClasses ?? []).toContain(
+    "auto_apply",
+  );
+  expect(payload.runtimeBindingExplanation?.unsupportedTableFactGroups ?? []).toEqual(
+    [],
+  );
+  expect(payload.tableInspectionFindings?.[0]?.semantic_hit?.column_key).toBe(
+    semanticTableColumnKey,
+  );
+  if ((payload.tablePatchPlans?.length ?? 0) > 0) {
+    expect((payload.tablePatchResults?.length ?? 0) > 0).toBeTruthy();
+    expect((payload.automaticActionLedger?.length ?? 0) > 0).toBeTruthy();
+  }
+}
+
 async function waitForCurrentAsset(
   request: APIRequestContext,
   manuscriptId: string,
@@ -554,27 +581,50 @@ async function waitForCurrentAsset(
   return asset!;
 }
 
-async function waitForJob(
-  request: APIRequestContext,
-  jobId: string,
-  predicate: (job: {
-    status?: string;
-    payload?: {
-      tableInspectionFindings?: Array<{
+type BrowserFlowJob = {
+  status?: string;
+  payload?: {
+    tableInspectionFindings?: Array<{
+      semantic_hit?: {
+        column_key?: string;
+      };
+    }>;
+    proofreadingFindings?: {
+      failedChecks?: Array<{
         semantic_hit?: {
           column_key?: string;
         };
       }>;
-      proofreadingFindings?: {
-        failedChecks?: Array<{
-          semantic_hit?: {
-            column_key?: string;
-          };
-        }>;
-      };
-      reportMarkdown?: string;
     };
-  }) => boolean,
+    reportMarkdown?: string;
+    runtimeBindingExplanation?: {
+      tableCount?: number;
+      decisionClasses?: string[];
+      unsupportedTableFactGroups?: string[];
+    };
+    tablePatchPlans?: Array<{
+      table_reconstruction_plan?: {
+        content_preservation_map?: unknown[];
+      };
+    }>;
+    tablePatchResults?: Array<{
+      validation_snapshot?: {
+        status?: string;
+      };
+    }>;
+    automaticActionLedger?: Array<{
+      validation_snapshot?: {
+        status?: string;
+      };
+      rollback_point?: unknown;
+    }>;
+  };
+};
+
+async function waitForJob(
+  request: APIRequestContext,
+  jobId: string,
+  predicate: (job: BrowserFlowJob) => boolean,
 ) {
   await expect
     .poll(async () => {
@@ -583,24 +633,7 @@ async function waitForJob(
         return false;
       }
 
-      const job = (await jobResponse.json()) as {
-        status?: string;
-        payload?: {
-          tableInspectionFindings?: Array<{
-            semantic_hit?: {
-              column_key?: string;
-            };
-          }>;
-          proofreadingFindings?: {
-            failedChecks?: Array<{
-              semantic_hit?: {
-                column_key?: string;
-              };
-            }>;
-          };
-          reportMarkdown?: string;
-        };
-      };
+      const job = (await jobResponse.json()) as BrowserFlowJob;
 
       return job.status === "completed" && predicate(job);
     })
@@ -608,22 +641,5 @@ async function waitForJob(
 
   const jobResponse = await request.get(`${apiBaseUrl}/api/v1/jobs/${jobId}`);
   expect(jobResponse.ok()).toBeTruthy();
-  return (await jobResponse.json()) as {
-    status?: string;
-    payload?: {
-      tableInspectionFindings?: Array<{
-        semantic_hit?: {
-          column_key?: string;
-        };
-      }>;
-      proofreadingFindings?: {
-        failedChecks?: Array<{
-          semantic_hit?: {
-            column_key?: string;
-          };
-        }>;
-      };
-      reportMarkdown?: string;
-    };
-  };
+  return (await jobResponse.json()) as BrowserFlowJob;
 }

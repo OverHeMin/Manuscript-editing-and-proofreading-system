@@ -52,6 +52,9 @@ function cloneJournalFormatTargetModel(
 ): JournalFormatTargetModel {
   return {
     skeleton: [...model.skeleton],
+    ...(model.journal_target_table_model
+      ? { journal_target_table_model: { ...model.journal_target_table_model } }
+      : {}),
     target_blocks: model.target_blocks.map((block) => ({
       ...block,
       format_policy: {

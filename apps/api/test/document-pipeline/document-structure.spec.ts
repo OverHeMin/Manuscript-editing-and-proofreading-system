@@ -319,7 +319,29 @@ test("docx structure extraction returns ordered headings and section spans", asy
                         text: "=0.05",
                         style: inlineStyle({ italic: fact(true) }),
                       },
+                      {
+                        id: "table-1-cell-1-1-paragraph-0-fragment-2",
+                        kind: "object",
+                        text: "",
+                        style: inlineStyle(),
+                        object_id: "object-table-equation-1",
+                        object_kind: "equation",
+                        original_tag: "oMath",
+                        evidence_text: "inline table equation object",
+                      },
                     ],
+                  },
+                ],
+                object_evidence: [
+                  {
+                    object_id: "object-table-equation-1",
+                    object_kind: "equation",
+                    container_kind: "table_cell",
+                    source_zone: "body",
+                    source_locator: "table-1:r1:c1:p0",
+                    original_tag: "oMath",
+                    evidence_text: "inline table equation object",
+                    intended_target: "preserve_as_object",
                   },
                 ],
               },
@@ -382,6 +404,14 @@ test("docx structure extraction returns ordered headings and section spans", asy
   );
   assert.equal(structure.tables?.[0]?.grid_cells?.[1]?.style_evidence.italic.value, true);
   assert.equal(
+    structure.tables?.[0]?.grid_cells?.[1]?.paragraphs[0]?.fragments[2]?.kind,
+    "object",
+  );
+  assert.equal(
+    structure.tables?.[0]?.grid_cells?.[1]?.object_evidence?.[0]?.object_kind,
+    "equation",
+  );
+  assert.equal(
     structure.tables?.[0]?.grid_cells?.[1]?.paragraphs[0]?.fragments[0]?.kind,
     "symbol",
   );
@@ -389,6 +419,41 @@ test("docx structure extraction returns ordered headings and section spans", asy
     structure.tables?.[0]?.grid_cells?.[1]?.paragraphs[0]?.fragments[0]?.text,
     "α",
   );
+  assert.equal(
+    structure.tables?.[0]?.table_full_fidelity_snapshot?.mandatory_fact_authority
+      .structure,
+    "authoritative",
+  );
+  assert.equal(
+    structure.tables?.[0]?.table_full_fidelity_snapshot?.mandatory_fact_authority
+      .rich_content,
+    "authoritative",
+  );
+  assert.equal(
+    typeof structure.tables?.[0]?.table_full_fidelity_snapshot?.facts.object_content,
+    "object",
+  );
+  assert.deepEqual(
+    (
+      structure.tables?.[0]?.table_full_fidelity_snapshot?.facts.object_content as {
+        table_internal_objects?: Array<{ object_id: string; cell_id: string }>;
+      }
+    ).table_internal_objects,
+    [
+      {
+        object_id: "object-table-equation-1",
+        object_kind: "equation",
+        container_kind: "table_cell",
+        source_zone: "body",
+        source_locator: "table-1:r1:c1:p0",
+        original_tag: "oMath",
+        evidence_text: "inline table equation object",
+        intended_target: "preserve_as_object",
+        cell_id: "table-1-cell-1-1",
+      },
+    ],
+  );
+  assert.deepEqual(structure.tables?.[0]?.unsupported_fact_groups, []);
   assert.deepEqual(structure.objects, [
     {
       object_id: "object-1",
@@ -432,6 +497,62 @@ test("docx structure extraction marks malformed files for manual review", async 
   assert.deepEqual(structure.tables, []);
   assert.deepEqual(structure.warnings, [
     "No title or heading styles were detected in the document.",
+  ]);
+});
+
+test("docx structure extraction marks incomplete runtime table facts instead of guessing", async () => {
+  const structureService = createStructureService({
+    async extract() {
+      return {
+        status: "ready",
+        parser: "python_docx",
+        sections: [],
+        metadata_candidates: [],
+        tables: [
+          {
+            table_id: "table-incomplete",
+            profile: {
+              is_three_line_table: false,
+              header_depth: 0,
+              has_stub_column: false,
+              has_statistical_footnotes: false,
+              has_unit_markers: false,
+            },
+            header_cells: [],
+            data_cells: [],
+            footnote_items: [],
+          },
+        ],
+        warnings: [],
+      };
+    },
+  });
+
+  const structure = await structureService.extract({
+    manuscriptId: "manuscript-incomplete",
+    assetId: "asset-incomplete",
+    fileName: "incomplete.docx",
+  });
+
+  assert.equal(
+    structure.tables[0]?.table_full_fidelity_snapshot?.mandatory_fact_authority
+      .structure,
+    "unavailable",
+  );
+  assert.equal(
+    structure.tables[0]?.table_full_fidelity_snapshot?.mandatory_fact_authority
+      .border_system,
+    "unavailable",
+  );
+  assert.deepEqual(structure.tables[0]?.unsupported_fact_groups, [
+    "identity",
+    "structure",
+    "border_system",
+    "layout",
+    "paragraph_style",
+    "typography",
+    "rich_content",
+    "object_content",
   ]);
 });
 

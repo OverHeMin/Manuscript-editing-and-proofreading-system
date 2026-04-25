@@ -355,6 +355,9 @@ function normalizeObjects(value: unknown): DocumentStructureObjectEvidence[] {
       !originalTag ||
       (objectKind !== "image" &&
         objectKind !== "equation" &&
+        objectKind !== "nested_table" &&
+        objectKind !== "text_box_table" &&
+        objectKind !== "ocr_image_table" &&
         objectKind !== "embedded_object" &&
         objectKind !== "drawing" &&
         objectKind !== "chart" &&
@@ -784,6 +787,10 @@ function normalizeGridCells(
     if (borderHints) {
       gridCell.border_hints = borderHints;
     }
+    const objectEvidence = normalizeObjects(record.object_evidence);
+    if (objectEvidence.length > 0) {
+      gridCell.object_evidence = objectEvidence;
+    }
     gridCells.push(gridCell);
   });
 
@@ -847,7 +854,8 @@ function normalizeInlineFragments(
         kind === "text" ||
         kind === "symbol" ||
         kind === "tab" ||
-        kind === "line_break"
+        kind === "line_break" ||
+        kind === "object"
           ? kind
           : "text",
       text: typeof record.text === "string" ? record.text : "",
@@ -857,6 +865,25 @@ function normalizeInlineFragments(
         : {}),
       ...(readOptionalString(record.symbol_char)
         ? { symbol_char: readOptionalString(record.symbol_char) }
+        : {}),
+      ...(readOptionalString(record.object_id)
+        ? { object_id: readOptionalString(record.object_id) }
+        : {}),
+      ...(readOptionalString(record.object_kind)
+        ? {
+            object_kind: readOptionalString(
+              record.object_kind,
+            ) as DocumentStructureTableInlineFragment["object_kind"],
+          }
+        : {}),
+      ...(readOptionalString(record.original_tag)
+        ? { original_tag: readOptionalString(record.original_tag) }
+        : {}),
+      ...(readOptionalString(record.relationship_id)
+        ? { relationship_id: readOptionalString(record.relationship_id) }
+        : {}),
+      ...(readOptionalString(record.evidence_text)
+        ? { evidence_text: readOptionalString(record.evidence_text) }
         : {}),
     });
   });
@@ -947,6 +974,7 @@ function normalizeCellStyleEvidence(
       record.vertical_alignment,
       readOptionalString,
     ),
+    text_direction: normalizeStyleFact(record.text_direction, readOptionalString),
   };
 }
 

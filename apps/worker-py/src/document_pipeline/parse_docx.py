@@ -25,7 +25,16 @@ INSTITUTION_RE = re.compile(
     r"(医院|大学|学院|研究所|中心|实验室|department|hospital|university|college|institute)",
     re.IGNORECASE,
 )
-OBJECT_EVIDENCE_TAGS = {"drawing", "pict", "object", "oleobject", "omath", "omathpara"}
+OBJECT_EVIDENCE_TAGS = {
+    "drawing",
+    "pict",
+    "object",
+    "oleobject",
+    "omath",
+    "omathpara",
+    "tbl",
+    "txbxcontent",
+}
 OBJECT_TARGET_HINTS = (
     (re.compile(r"chi[- ]?square|卡方", re.IGNORECASE), "χ²"),
     (re.compile(r"\balpha\b|阿尔法", re.IGNORECASE), "α"),
@@ -356,6 +365,10 @@ def extract_paragraph_object_evidence(
 
 def classify_object_kind(node: ET.Element) -> str:
     tag = local_name(node.tag)
+    if tag == "txbxcontent" and node.findall(".//w:tbl", NS):
+        return "text_box_table"
+    if tag == "tbl":
+        return "nested_table"
     if tag in {"omath", "omathpara"}:
         return "equation"
     if tag in {"object", "oleobject"}:
@@ -363,8 +376,12 @@ def classify_object_kind(node: ET.Element) -> str:
     if any(local_name(child.tag) == "chart" for child in node.iter()):
         return "chart"
     if tag == "drawing":
+        if looks_like_ocr_image_table(extract_object_evidence_text(node)):
+            return "ocr_image_table"
         return "image" if extract_object_relationship_id(node) else "drawing"
     if tag == "pict":
+        if looks_like_ocr_image_table(extract_object_evidence_text(node)):
+            return "ocr_image_table"
         return "image"
     return "unknown"
 
@@ -376,7 +393,15 @@ def extract_object_evidence_text(node: ET.Element) -> str | None:
             value = read_attribute_by_local_name(child, attribute)
             if value and value not in parts:
                 parts.append(value)
-    return "；".join(parts) if parts else None
+    if local_name(node.tag) == "tbl":
+        rows = node.findall(".//w:tr", NS)
+        cells = node.findall(".//w:tc", NS)
+        parts.append(f"nested_table rows={len(rows)} cells={len(cells)}")
+    if local_name(node.tag) == "txbxcontent" and node.findall(".//w:tbl", NS):
+        rows = node.findall(".//w:tbl//w:tr", NS)
+        cells = node.findall(".//w:tbl//w:tc", NS)
+        parts.append(f"text_box_table rows={len(rows)} cells={len(cells)}")
+    return "?".join(parts) if parts else None
 
 
 def extract_object_relationship_id(node: ET.Element) -> str | None:
@@ -405,10 +430,21 @@ def infer_object_intended_target(*values: str | None) -> str | None:
     if not combined:
         return None
 
+    if looks_like_ocr_image_table(combined):
+        return "manual_ocr_table_review"
+
     for pattern, target in OBJECT_TARGET_HINTS:
         if pattern.search(combined):
             return target
     return None
+
+
+def looks_like_ocr_image_table(value: str | None) -> bool:
+    if not value:
+        return False
+
+    normalized = value.lower()
+    return ("ocr" in normalized and "table" in normalized) or "scanned table" in normalized
 
 
 def extract_node_text(node: ET.Element) -> str:
@@ -495,6 +531,25 @@ def extract_run_fragments(run: ET.Element) -> list[dict]:
                     ),
                 }
             )
+            continue
+        if local_name(child.tag) in OBJECT_EVIDENCE_TAGS:
+            kind = classify_object_kind(child)
+            evidence_text = extract_object_evidence_text(child)
+            fragments.append(
+                {
+                    "kind": "object",
+                    "text": "",
+                    "object_kind": kind,
+                    "original_tag": local_name(child.tag),
+                    **(
+                        {"relationship_id": relationship_id}
+                        if (relationship_id := extract_object_relationship_id(child))
+                        else {}
+                    ),
+                    **({"evidence_text": evidence_text} if evidence_text else {}),
+                    "style": style,
+                }
+            )
 
     return fragments
 
@@ -567,14 +622,15 @@ def extract_table_dimensions(
         raw_row: list[dict] = []
         for cell_index, cell in enumerate(cells):
             paragraphs = extract_table_cell_paragraphs(cell)
+            cell_objects = extract_table_cell_object_evidence(
+                cell,
+                table_index=table_index,
+                row_index=row_index,
+                cell_index=cell_index,
+                source_zone=source_zone,
+            )
             objects.extend(
-                extract_table_cell_object_evidence(
-                    cell,
-                    table_index=table_index,
-                    row_index=row_index,
-                    cell_index=cell_index,
-                    source_zone=source_zone,
-                )
+                cell_objects
             )
             text = "\n".join(
                 paragraph.get("text", "")
@@ -589,7 +645,9 @@ def extract_table_dimensions(
                     "row_span": extract_row_span(cell),
                     "borders": extract_cell_border_hints(cell),
                     "vertical_alignment": extract_cell_vertical_alignment(cell),
+                    "text_direction": extract_cell_text_direction(cell),
                     "paragraphs": paragraphs,
+                    "object_evidence": cell_objects,
                 }
             )
         cell_rows.append(text_row)
@@ -619,6 +677,49 @@ def extract_table_cell_object_evidence(
     source_zone: str,
 ) -> list[dict]:
     objects: list[dict] = []
+    direct_text = " ".join(
+        extract_node_text(paragraph).strip()
+        for paragraph in node.findall("./w:p", NS)
+        if extract_node_text(paragraph).strip()
+    ).strip()
+    for nested_index, nested_table in enumerate(node.findall("./w:tbl", NS)):
+        source_locator = (
+            f"body:table:{table_index - 1}:cell:{row_index}:{cell_index}:nested_table:{nested_index}"
+        )
+        evidence_text = extract_object_evidence_text(nested_table)
+        objects.append(
+            {
+                "object_id": f"{source_locator}:object:0",
+                "object_kind": "nested_table",
+                "container_kind": "table_cell",
+                "source_zone": source_zone,
+                "source_locator": source_locator,
+                "original_tag": "tbl",
+                **({"evidence_text": evidence_text} if evidence_text else {}),
+                **({"surrounding_text": direct_text} if direct_text else {}),
+                "intended_target": "preserve_as_nested_table",
+            }
+        )
+    for text_box_index, text_box in enumerate(node.findall(".//w:txbxContent", NS)):
+        if not text_box.findall(".//w:tbl", NS):
+            continue
+        source_locator = (
+            f"body:table:{table_index - 1}:cell:{row_index}:{cell_index}:text_box_table:{text_box_index}"
+        )
+        evidence_text = extract_object_evidence_text(text_box)
+        objects.append(
+            {
+                "object_id": f"{source_locator}:object:0",
+                "object_kind": "text_box_table",
+                "container_kind": "table_cell",
+                "source_zone": source_zone,
+                "source_locator": source_locator,
+                "original_tag": "txbxcontent",
+                **({"evidence_text": evidence_text} if evidence_text else {}),
+                **({"surrounding_text": direct_text} if direct_text else {}),
+                "intended_target": "preserve_as_text_box_table",
+            }
+        )
     for paragraph_index, paragraph in enumerate(node.findall("./w:p", NS)):
         text = extract_node_text(paragraph).strip()
         source_locator = (
@@ -660,6 +761,15 @@ def extract_cell_vertical_alignment(node: ET.Element) -> str | None:
         return None
 
     value = (vertical_align.attrib.get(qualify("val")) or "").strip().lower()
+    return value or None
+
+
+def extract_cell_text_direction(node: ET.Element) -> str | None:
+    text_direction = node.find("./w:tcPr/w:textDirection", NS)
+    if text_direction is None:
+        return None
+
+    value = (text_direction.attrib.get(qualify("val")) or "").strip()
     return value or None
 
 

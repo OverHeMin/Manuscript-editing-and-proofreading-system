@@ -109,6 +109,98 @@ test("resolution reports override metadata, coverage keys, and execution posture
   assert.equal(tableRule?.execution_posture, "inspect_only");
 });
 
+test("resolution exposes rule-center automation governance metadata for table rebuild rules", async () => {
+  const repository = new InMemoryEditorialRuleRepository();
+  const service = new EditorialRuleResolutionService({
+    repository,
+  });
+
+  await seedPublishedRuleScopes(repository);
+
+  const resolved = await service.resolve({
+    templateFamilyId: "family-1",
+    module: "editing",
+    journalTemplateId: "journal-template-1",
+  });
+  const tableRule = resolved.resolved_rules.find(
+    (entry) => entry.rule.id === "journal-rule-table",
+  );
+
+  assert.equal(tableRule?.rule.rule_domain, "table");
+  assert.deepEqual(tableRule?.rule.structured_action, {
+    kind: "full_table_rebuild",
+    target: "journal_target_table_model",
+    requires_validation: true,
+  });
+  assert.equal(tableRule?.rule.automation_grade, "A");
+  assert.equal(tableRule?.rule.scope_layer, "journal");
+  assert.deepEqual(tableRule?.rule.linkage_payload, {
+    evidence_package_ids: ["evidence-package-table-1"],
+    target_model_block_ids: ["journal_target_table_model"],
+  });
+  assert.deepEqual(tableRule?.rule.gold_sample_gate, {
+    status: "passed",
+    specimen_ids: ["gold-table-specimen-1"],
+    validation_snapshot_ids: ["validation-table-snapshot-1"],
+  });
+  assert.equal(
+    tableRule?.governance_explanation,
+    "Rule domain table, scope layer journal, automation grade A, action full_table_rebuild, gold sample gate passed.",
+  );
+});
+
+test("resolution defaults legacy rules to guarded inspect-only governance explanation", async () => {
+  const repository = new InMemoryEditorialRuleRepository();
+  const service = new EditorialRuleResolutionService({
+    repository,
+  });
+
+  await seedPublishedRuleScopes(repository);
+
+  const resolved = await service.resolve({
+    templateFamilyId: "family-1",
+    module: "editing",
+  });
+  const discussionRule = resolved.resolved_rules.find(
+    (entry) => entry.rule.id === "base-rule-discussion",
+  );
+
+  assert.equal(
+    discussionRule?.governance_explanation,
+    "Rule domain front_matter, scope layer general, automation grade C, action inspect_only, gold sample gate not_required.",
+  );
+});
+
+test("repository cloning preserves structured governance payloads without sharing references", async () => {
+  const repository = new InMemoryEditorialRuleRepository();
+
+  await seedPublishedRuleScopes(repository);
+  const loaded = await repository.findRuleById("journal-rule-table");
+  assert.ok(loaded);
+
+  loaded.structured_action = {
+    kind: "inspect_only",
+    requires_validation: false,
+  };
+  loaded.gold_sample_gate = {
+    status: "failed",
+    failure_reasons: ["mutated local copy"],
+  };
+
+  const loadedAgain = await repository.findRuleById("journal-rule-table");
+
+  assert.deepEqual(loadedAgain?.structured_action, {
+    kind: "full_table_rebuild",
+    target: "journal_target_table_model",
+    requires_validation: true,
+  });
+  assert.deepEqual(loadedAgain?.gold_sample_gate, {
+    status: "passed",
+    specimen_ids: ["gold-table-specimen-1"],
+    validation_snapshot_ids: ["validation-table-snapshot-1"],
+  });
+});
+
 test("resolution keeps the earliest same-layer rule when duplicate coverage keys appear in one published scope", async () => {
   const repository = new InMemoryEditorialRuleRepository();
   const service = new EditorialRuleResolutionService({
@@ -796,7 +888,15 @@ async function seedPublishedRuleScopes(
     order_no: 30,
     rule_object: "table",
     rule_type: "format",
+    rule_domain: "table",
     execution_mode: "inspect",
+    structured_action: {
+      kind: "full_table_rebuild",
+      target: "journal_target_table_model",
+      requires_validation: true,
+    },
+    automation_grade: "A",
+    scope_layer: "journal",
     scope: {
       sections: ["results"],
     },
@@ -812,6 +912,15 @@ async function seedPublishedRuleScopes(
       message: "Use the journal three-line table layout.",
     },
     authoring_payload: {},
+    linkage_payload: {
+      evidence_package_ids: ["evidence-package-table-1"],
+      target_model_block_ids: ["journal_target_table_model"],
+    },
+    gold_sample_gate: {
+      status: "passed",
+      specimen_ids: ["gold-table-specimen-1"],
+      validation_snapshot_ids: ["validation-table-snapshot-1"],
+    },
     confidence_policy: "manual_only",
     severity: "warning",
     enabled: true,

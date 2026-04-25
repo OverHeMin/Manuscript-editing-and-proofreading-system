@@ -17,6 +17,7 @@ import { KnowledgeAssetNotFoundError, KnowledgeService } from "./knowledge-servi
 import type {
   ConfirmKnowledgeSemanticLayerInput,
   CreateKnowledgeLibraryDraftInput,
+  CreateTableEvidencePackageInput,
   GovernedRetrievalContextRecord,
   KnowledgeContentBlockInput,
   SubmitKnowledgeForReviewInput,
@@ -106,12 +107,21 @@ export function createKnowledgeApi(options: CreateKnowledgeApiOptions) {
       };
     },
 
-    async createLibraryDraft(
+  async createLibraryDraft(
       input: CreateKnowledgeLibraryDraftInput,
     ): Promise<RouteResponse<KnowledgeAssetDetailRecord>> {
       return {
         status: 201,
         body: await knowledgeService.createLibraryDraft(input),
+      };
+    },
+
+    async createTableEvidencePackage(
+      input: CreateTableEvidencePackageInput,
+    ): Promise<RouteResponse<Awaited<ReturnType<KnowledgeService["createTableEvidencePackage"]>>>> {
+      return {
+        status: 201,
+        body: await knowledgeService.createTableEvidencePackage(input),
       };
     },
 

@@ -1,5 +1,11 @@
 import type { EditingMetadataCandidate, EditingMetadataSourceZone } from "@medical/contracts";
 
+import { buildTableFullFidelitySnapshotFromDocumentTable } from "../knowledge/table-full-fidelity-snapshot.ts";
+import type {
+  TableEvidenceMandatoryFactGroup,
+  TableFullFidelitySnapshotRecord,
+} from "../knowledge/knowledge-record.ts";
+
 export interface DocumentStructureSection {
   order: number;
   heading: string;
@@ -130,11 +136,16 @@ export interface DocumentStructureTableParagraphStyleEvidence {
 
 export interface DocumentStructureTableInlineFragment {
   id: string;
-  kind: "text" | "symbol" | "tab" | "line_break";
+  kind: "text" | "symbol" | "tab" | "line_break" | "object";
   text: string;
   style: DocumentStructureTableInlineStyleEvidence;
   symbol_font?: string;
   symbol_char?: string;
+  object_id?: string;
+  object_kind?: DocumentStructureObjectKind;
+  original_tag?: string;
+  relationship_id?: string;
+  evidence_text?: string;
 }
 
 export interface DocumentStructureTableParagraphSnapshot {
@@ -160,6 +171,7 @@ export interface DocumentStructureTableCellStyleEvidence {
   first_line_indent_pt: DocumentStructureTableStyleFact<number>;
   hanging_indent_pt: DocumentStructureTableStyleFact<number>;
   vertical_alignment: DocumentStructureTableStyleFact<string>;
+  text_direction?: DocumentStructureTableStyleFact<string>;
 }
 
 export interface DocumentStructureTableBorderHints {
@@ -180,6 +192,7 @@ export interface DocumentStructureTableGridCell {
   style_evidence: DocumentStructureTableCellStyleEvidence;
   paragraphs: DocumentStructureTableParagraphSnapshot[];
   border_hints?: DocumentStructureTableBorderHints;
+  object_evidence?: DocumentStructureObjectEvidence[];
 }
 
 export interface DocumentStructureTableCaptionFields {
@@ -222,11 +235,16 @@ export interface DocumentStructureTableSnapshot {
   unit_markers?: DocumentStructureTableUnitMarker[];
   merged_relations?: DocumentStructureTableMergedRelation[];
   grid_cells?: DocumentStructureTableGridCell[];
+  table_full_fidelity_snapshot?: TableFullFidelitySnapshotRecord;
+  unsupported_fact_groups?: TableEvidenceMandatoryFactGroup[];
 }
 
 export type DocumentStructureObjectKind =
   | "image"
   | "equation"
+  | "nested_table"
+  | "text_box_table"
+  | "ocr_image_table"
   | "embedded_object"
   | "drawing"
   | "chart"
@@ -314,7 +332,9 @@ export class DocumentStructureService {
       metadata_candidates: (result.metadata_candidates ?? []).map((candidate) =>
         structuredClone(candidate),
       ),
-      tables: (result.tables ?? []).map(cloneTableSnapshot),
+      tables: (result.tables ?? []).map((table) =>
+        attachRuntimeFullFidelitySnapshot(cloneTableSnapshot(table)),
+      ),
       objects: (result.objects ?? []).map((entry) => structuredClone(entry)),
       warnings: [...result.warnings],
     };
@@ -392,6 +412,35 @@ function cloneTableSnapshot(
       target_ids: [...relation.target_ids],
     })),
     grid_cells: table.grid_cells?.map((cell) => structuredClone(cell)),
+    ...(table.table_full_fidelity_snapshot
+      ? {
+          table_full_fidelity_snapshot: structuredClone(
+            table.table_full_fidelity_snapshot,
+          ),
+        }
+      : {}),
+    ...(table.unsupported_fact_groups
+      ? { unsupported_fact_groups: [...table.unsupported_fact_groups] }
+      : {}),
+  };
+}
+
+function attachRuntimeFullFidelitySnapshot(
+  table: DocumentStructureTableSnapshot,
+): DocumentStructureTableSnapshot {
+  const tableFullFidelitySnapshot =
+    table.table_full_fidelity_snapshot ??
+    buildTableFullFidelitySnapshotFromDocumentTable(table);
+  const unsupportedFactGroups = Object.entries(
+    tableFullFidelitySnapshot.mandatory_fact_authority,
+  )
+    .filter(([, authority]) => authority === "unavailable" || authority === "unsupported")
+    .map(([group]) => group as TableEvidenceMandatoryFactGroup);
+
+  return {
+    ...table,
+    table_full_fidelity_snapshot: tableFullFidelitySnapshot,
+    unsupported_fact_groups: unsupportedFactGroups,
   };
 }
 

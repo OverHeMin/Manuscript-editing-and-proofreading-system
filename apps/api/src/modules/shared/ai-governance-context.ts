@@ -1,12 +1,19 @@
 export interface AiGovernanceRuleContext {
   ruleId: string;
   actionKind: string;
+  ruleDomain?: string;
+  structuredActionKind?: string;
+  automationGrade?: string;
+  scopeLayer?: string;
+  governanceExplanation?: string;
   ruleType?: string;
   severity?: string;
   confidencePolicy?: string;
   executionMode?: string;
   sections?: string[];
   sourceLayer?: string;
+  evidencePackageIds?: string[];
+  targetModelBlockIds?: string[];
 }
 
 export interface AiGovernanceKnowledgeHitContext {
@@ -18,6 +25,14 @@ export interface AiGovernanceKnowledgeHitContext {
 }
 
 export interface AiGovernanceContext {
+  runtimeBindingExplanation?: {
+    journalTemplateId?: string;
+    targetModelVersionId?: string;
+    targetModelVersionNo?: number;
+    tableCount?: number;
+    unsupportedTableFactGroups?: string[];
+    decisionClasses?: string[];
+  };
   hardRuleSummary?: string;
   allowedContentOperations?: string[];
   forbiddenOperations?: string[];
@@ -38,6 +53,7 @@ export function isAiGovernanceContextEmpty(
   }
 
   return !value.hardRuleSummary &&
+    !value.runtimeBindingExplanation &&
     (!value.allowedContentOperations || value.allowedContentOperations.length === 0) &&
     (!value.forbiddenOperations || value.forbiddenOperations.length === 0) &&
     !value.manualReviewPolicy &&

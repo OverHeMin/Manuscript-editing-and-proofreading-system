@@ -526,6 +526,36 @@ test("table patch planner enables caption and note families and routes style reb
       "enforce_three_line_table_borders",
     ],
   );
+  assert.equal(stylePlan?.table_reconstruction_plan?.outcome, "full_rebuild");
+  assert.deepEqual(
+    stylePlan?.table_reconstruction_plan?.operations.map((operation) => operation.kind),
+    [
+      "preserve_content_mapping",
+      "place_caption",
+      "place_note_zone",
+      "normalize_border_system",
+      "normalize_layout",
+      "normalize_paragraph_style",
+      "normalize_typography",
+      "preserve_rich_fragments",
+      "handle_object_content",
+    ],
+  );
+  assert.deepEqual(stylePlan?.table_reconstruction_plan?.downgrade_reasons, []);
+  assert.equal(
+    stylePlan?.table_reconstruction_plan?.content_preservation_map.every(
+      (entry) => entry.preserved && entry.source_text === entry.target_text,
+    ),
+    true,
+  );
+  assert.equal(
+    (
+      stylePlan?.rebuild_payload as
+        | { normalized_table_object?: { cells?: unknown[] } }
+        | undefined
+    )?.normalized_table_object?.cells?.length,
+    4,
+  );
 
   const downgradedResult = planner.plan({
     tableAutoApplyMode: "editing_safe_apply",
@@ -548,4 +578,36 @@ test("table patch planner enables caption and note families and routes style reb
   const styleResult = downgradedResult.results.find((entry) => entry.rule_id === "rule-style-downgrade");
   assert.equal(styleResult?.status, "skipped_unsafe");
   assert.equal(styleResult?.execution_path, "manual_downgrade");
+});
+
+test("table patch planner blocks full rebuild when V1 mandatory evidence has runtime gaps", () => {
+  const planner = new TableDocxPatchPlanner({
+    tableHitService: new EditorialRuleTableHitService(),
+  });
+  const tableSnapshot: DocumentStructureTableSnapshot = {
+    ...buildAdvancedTableSnapshot(),
+    unsupported_fact_groups: ["rich_content"],
+  };
+
+  const result = planner.plan({
+    tableAutoApplyMode: "editing_safe_apply",
+    resolvedRules: [
+      buildResolvedRule({
+        id: "rule-style-evidence-gap",
+        orderNo: 10,
+        semanticTarget: "style_profile",
+        patchType: "apply_three_line_table_style",
+        grade: "A",
+        applyScope: "editing_only",
+        requiredSnapshotCapabilities: ["style_profile", "grid_cells"],
+        exampleAfter: "three_line_table",
+      }),
+    ],
+    tableSnapshots: [tableSnapshot],
+  });
+
+  assert.deepEqual(result.plans, []);
+  assert.equal(result.results[0]?.status, "skipped_unsafe");
+  assert.equal(result.results[0]?.execution_path, "manual_downgrade");
+  assert.match(result.results[0]?.reason ?? "", /requires authoritative grid cell evidence/i);
 });

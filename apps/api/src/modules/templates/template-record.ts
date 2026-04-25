@@ -30,6 +30,7 @@ export type JournalFormatTargetZone =
   | "keywords"
   | "body"
   | "figures_tables"
+  | "declarations"
   | "references";
 export type JournalFormatTargetAnchor =
   | "before_title"
@@ -76,9 +77,28 @@ export interface JournalFormatTargetBlock {
   completion_gate: JournalFormatTargetCompletionGate;
 }
 
+export interface JournalTargetTableModel {
+  caption_position: "above" | "below";
+  note_position: "below" | "above" | "inline";
+  border_policy: string;
+  three_line_table_required: boolean;
+  vertical_border_policy: "forbid" | "allow" | "require";
+  header_depth_policy: string;
+  stub_column_policy: string;
+  merged_cell_policy: "preserve" | "normalize" | "manual_review";
+  font_policy: string;
+  rich_text_policy: "preserve" | "normalize_supported" | "manual_review";
+  unit_marker_policy: string;
+  special_symbol_policy: string;
+  width_policy: string;
+  auto_rebuild_eligibility_policy: string;
+  manual_review_downgrade_policy: string;
+}
+
 export interface JournalFormatTargetModel {
   skeleton: JournalFormatTargetZone[];
   target_blocks: JournalFormatTargetBlock[];
+  journal_target_table_model?: JournalTargetTableModel;
 }
 
 export interface JournalFormatTargetModelVersionRecord {

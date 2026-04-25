@@ -6,7 +6,10 @@ import path from "node:path";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { InMemoryDocumentAssetRepository } from "../../src/modules/assets/in-memory-document-asset-repository.ts";
 import { EditorialDocxTransformService } from "../../src/modules/document-pipeline/editorial-docx-transform-service.ts";
-import type { TableDocxPatchPlan } from "../../src/modules/document-pipeline/table-docx-patch-plan.ts";
+import type {
+  TableDocxPatchPlan,
+  TableReconstructionOperation,
+} from "../../src/modules/document-pipeline/table-docx-patch-plan.ts";
 
 const BEFORE_HEADING = "摘要 目的";
 const AFTER_HEADING = "摘要：目的";
@@ -643,6 +646,37 @@ test("editorial docx transform service applies controlled table rebuild patches 
     assert.equal(result.tablePatchPlans[0]?.execution_path, "controlled_rebuild");
     assert.equal(result.tablePatchResults[0]?.execution_path, "controlled_rebuild");
     assert.equal(result.tablePatchResults[0]?.status, "applied");
+    assert.equal(
+      result.tablePatchResults[0]?.validation_snapshot?.status,
+      "passed",
+    );
+    assert.equal(
+      result.tablePatchResults[0]?.validation_snapshot?.checks.every(
+        (check) => check.passed,
+      ),
+      true,
+    );
+    const validationReasons =
+      result.tablePatchResults[0]?.validation_snapshot?.checks.map(
+        (check) => check.reason,
+      ) ?? [];
+    assert.equal(
+      validationReasons.some((reason) => /Re-parsed DOCX table/u.test(reason)),
+      true,
+    );
+    assert.equal(
+      validationReasons.some((reason) => /after DOCX re-parse/u.test(reason)),
+      true,
+    );
+    assert.equal(
+      result.tablePatchResults[0]?.validation_snapshot?.rollback_point
+        .source_table_id,
+      "table-1",
+    );
+    assert.match(
+      result.tablePatchResults[0]?.validation_snapshot?.idempotence_key ?? "",
+      /patch-style-rebuild/u,
+    );
 
     const outputXml = await readDocumentXml(
       path.join(rootDir, "outputs", "manuscript-5", "edited.docx"),
@@ -655,6 +689,139 @@ test("editorial docx transform service applies controlled table rebuild patches 
     assert.match(outputXml, /54\.2/u);
     assert.match(outputXml, /insideV/u);
     assert.match(outputXml, /03C7/u);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("editorial docx transform service blocks controlled rebuilds without validation-ready reconstruction plans", async () => {
+  const rootDir = await mkdtemp(
+    path.join(os.tmpdir(), "editorial-docx-transform-service-"),
+  );
+
+  try {
+    const assetRepository = new InMemoryDocumentAssetRepository();
+    await assetRepository.save({
+      id: "asset-original-6",
+      manuscript_id: "manuscript-6",
+      asset_type: "original",
+      status: "active",
+      storage_key: "uploads/manuscript-6/original.docx",
+      mime_type:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      source_module: "upload",
+      created_by: "user-1",
+      version_no: 1,
+      is_current: true,
+      file_name: "original.docx",
+      created_at: "2026-04-24T10:30:00.000Z",
+      updated_at: "2026-04-24T10:30:00.000Z",
+    });
+
+    const sourcePath = path.join(rootDir, "uploads", "manuscript-6", "original.docx");
+    await mkdir(path.dirname(sourcePath), { recursive: true });
+    writeAdvancedTableDocxFixture(sourcePath);
+
+    const unsafePlan = buildControlledRebuildPlan();
+    delete unsafePlan.table_reconstruction_plan;
+    const service = new EditorialDocxTransformService({
+      assetRepository,
+      rootDir,
+      tablePatchPlanner: {
+        plan() {
+          return {
+            plans: [unsafePlan],
+            results: [],
+          };
+        },
+      },
+    });
+
+    const result = await service.applyDeterministicRules({
+      manuscriptId: "manuscript-6",
+      sourceAssetId: "asset-original-6",
+      outputStorageKey: "outputs/manuscript-6/edited.docx",
+      tableAutoApplyMode: "editing_safe_apply",
+      rules: [],
+    });
+
+    assert.equal(result.tablePatchResults[0]?.status, "validation_failed");
+    assert.match(
+      result.tablePatchResults[0]?.reason ?? "",
+      /did not include a table reconstruction plan/i,
+    );
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("editorial docx transform service fails controlled rebuilds when DOCX re-parse loses preserved text", async () => {
+  const rootDir = await mkdtemp(
+    path.join(os.tmpdir(), "editorial-docx-transform-service-"),
+  );
+
+  try {
+    const assetRepository = new InMemoryDocumentAssetRepository();
+    await assetRepository.save({
+      id: "asset-original-7",
+      manuscript_id: "manuscript-7",
+      asset_type: "original",
+      status: "active",
+      storage_key: "uploads/manuscript-7/original.docx",
+      mime_type:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      source_module: "upload",
+      created_by: "user-1",
+      version_no: 1,
+      is_current: true,
+      file_name: "original.docx",
+      created_at: "2026-04-24T10:30:00.000Z",
+      updated_at: "2026-04-24T10:30:00.000Z",
+    });
+
+    const sourcePath = path.join(rootDir, "uploads", "manuscript-7", "original.docx");
+    await mkdir(path.dirname(sourcePath), { recursive: true });
+    writeAdvancedTableDocxFixture(sourcePath);
+
+    const driftedPlan = buildControlledRebuildPlan();
+    const firstPreservedCell =
+      driftedPlan.table_reconstruction_plan?.content_preservation_map[0];
+    if (firstPreservedCell) {
+      firstPreservedCell.source_text = "Missing after writeback";
+      firstPreservedCell.target_text = "Missing after writeback";
+    }
+
+    const service = new EditorialDocxTransformService({
+      assetRepository,
+      rootDir,
+      tablePatchPlanner: {
+        plan() {
+          return {
+            plans: [driftedPlan],
+            results: [],
+          };
+        },
+      },
+    });
+
+    const result = await service.applyDeterministicRules({
+      manuscriptId: "manuscript-7",
+      sourceAssetId: "asset-original-7",
+      outputStorageKey: "outputs/manuscript-7/edited.docx",
+      tableAutoApplyMode: "editing_safe_apply",
+      rules: [],
+    });
+
+    assert.equal(result.tablePatchResults[0]?.status, "validation_failed");
+    assert.equal(
+      result.tablePatchResults[0]?.validation_snapshot?.checks.some(
+        (check) =>
+          check.check_kind === "content_preservation" &&
+          !check.passed &&
+          /missing preserved cell text/i.test(check.reason),
+      ),
+      true,
+    );
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
@@ -676,6 +843,63 @@ async function readDocumentXml(docxPath: string): Promise<string> {
 }
 
 function buildControlledRebuildPlan(): TableDocxPatchPlan {
+  const tableReconstructionPlan = {
+    plan_kind: "table_reconstruction_plan" as const,
+    outcome: "full_rebuild" as const,
+    normalized_table_object: {
+      table_id: "table-1",
+      row_count: 2,
+      column_count: 2,
+      caption_text: "Table 1 Demographic characteristics",
+      note_text: "Note: 蠂2 compared with control",
+      cells: ["Item", "Value", "Age", "54.2"].map((text, index) => ({
+        source_cell_id: `grid-cell-${index + 1}`,
+        target_cell_id: `target-grid-cell-${index + 1}`,
+        row_index: index < 2 ? 0 : 1,
+        column_index: index % 2,
+        row_span: 1,
+        column_span: 1,
+        inferred_role: index < 2 ? "header" : "data",
+        text,
+        paragraphs: [],
+        style_evidence: {},
+      })),
+    },
+    operations: [
+      "preserve_content_mapping",
+      "place_caption",
+      "place_note_zone",
+      "normalize_border_system",
+      "normalize_layout",
+      "normalize_paragraph_style",
+      "normalize_typography",
+      "preserve_rich_fragments",
+      "handle_object_content",
+    ].map((kind) => ({
+      kind: kind as TableReconstructionOperation["kind"],
+      status: "planned" as const,
+      source_ids: ["table-1"],
+      target_ids: ["target-table-1"],
+      reason: "test reconstruction operation",
+    })),
+    downgrade_reasons: [],
+    content_preservation_map: ["Item", "Value", "Age", "54.2"].map((text, index) => ({
+      source_cell_id: `grid-cell-${index + 1}`,
+      target_cell_id: `target-grid-cell-${index + 1}`,
+      source_text: text,
+      target_text: text,
+      preserved: true,
+    })),
+    required_validation: [
+      "content_preservation",
+      "topology_preservation",
+      "target_border_system",
+      "caption_note_placement",
+      "rich_fragment_preservation",
+      "object_policy",
+    ],
+  };
+
   return {
     patch_id: "patch-style-rebuild",
     rule_id: "rule-style-rebuild",
@@ -696,6 +920,7 @@ function buildControlledRebuildPlan(): TableDocxPatchPlan {
       match_reason: "style profile matched controlled rebuild path",
     },
     execution_path: "controlled_rebuild",
+    table_reconstruction_plan: tableReconstructionPlan,
     rebuild_payload: {
       strategy: "three_line_table_normalization",
       objectives: [
@@ -706,6 +931,7 @@ function buildControlledRebuildPlan(): TableDocxPatchPlan {
         "enforce_three_line_table_borders",
       ],
       table_snapshot: buildControlledRebuildSnapshot(),
+      table_reconstruction_plan: tableReconstructionPlan,
     },
   };
 }

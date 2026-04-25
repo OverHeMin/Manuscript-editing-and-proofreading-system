@@ -131,6 +131,8 @@ export interface ManuscriptWorkbenchAssetDetailPageProps {
   editingGuardrails?: readonly EditingGuardrailEntry[];
   editingSlotSummary?: EditingSlotGovernanceSummary | null;
   editingCompletionGateSummary?: EditingCompletionGateSummary | null;
+  editingRuntimeBindingExplanation?: Record<string, unknown> | null;
+  editingAutomaticActionLedger?: readonly Record<string, unknown>[];
   executionSnapshot?: ExecutionTrackingSnapshotViewModel | null;
   knowledgeHitLogs?: readonly KnowledgeHitLogViewModel[];
   knowledgeReferences?: Readonly<
@@ -343,6 +345,28 @@ export function buildEditingCompletionGateSummary(
   }
 
   return structuredClone(summary as unknown as EditingCompletionGateSummary);
+}
+
+export function buildEditingRuntimeBindingExplanation(
+  job: Pick<JobViewModel, "payload"> | null | undefined,
+): Record<string, unknown> | undefined {
+  const payload = asRecord(job?.payload);
+  const explanation = asRecord(payload?.runtimeBindingExplanation);
+  return explanation ? structuredClone(explanation) : undefined;
+}
+
+export function buildEditingAutomaticActionLedger(
+  job: Pick<JobViewModel, "payload"> | null | undefined,
+): Record<string, unknown>[] {
+  const payload = asRecord(job?.payload);
+  if (!Array.isArray(payload?.automaticActionLedger)) {
+    return [];
+  }
+
+  return payload.automaticActionLedger.flatMap((entry) => {
+    const record = asRecord(entry);
+    return record ? [structuredClone(record)] : [];
+  });
 }
 
 export function buildProofreadingConfirmationItems(
@@ -882,6 +906,8 @@ export function ManuscriptWorkbenchAssetDetailPage({
   editingGuardrails = [],
   editingSlotSummary = null,
   editingCompletionGateSummary = null,
+  editingRuntimeBindingExplanation = null,
+  editingAutomaticActionLedger = [],
   executionSnapshot = null,
   knowledgeHitLogs = [],
   knowledgeReferences,
@@ -921,6 +947,14 @@ export function ManuscriptWorkbenchAssetDetailPage({
       : null;
   const editingCompletionGateCard = editingCompletionGateSummary
     ? <EditingCompletionGateCard summary={editingCompletionGateSummary} />
+    : null;
+  const editingRuntimeBindingCard = editingRuntimeBindingExplanation
+    ? (
+        <EditingRuntimeBindingCard
+          explanation={editingRuntimeBindingExplanation}
+          automaticActionLedger={editingAutomaticActionLedger}
+        />
+      )
     : null;
   const changeLedgerCard =
     changeLedger.length > 0
@@ -1610,6 +1644,7 @@ export function ManuscriptWorkbenchAssetDetailPage({
 
         <div className="manuscript-workbench-detail-layout manuscript-workbench-detail-layout--supporting">
           {editingSlotGovernanceCard}
+          {editingRuntimeBindingCard}
           {editingCompletionGateCard}
           {changeLedgerCard}
           {editingGuardrailCard}
@@ -1723,6 +1758,8 @@ export function ManuscriptWorkbenchAssetDetailPage({
         {editingCompletionGateCard}
 
         {editingSlotGovernanceCard}
+
+        {editingRuntimeBindingCard}
 
         {editingGuardrailCard}
 
@@ -2190,6 +2227,9 @@ function EditingCompletionGateCard(input: {
                 >
                   <strong>{item.summary}</strong>
                   {renderEditingCompletionGateItemDetail(item)}
+                  {section.key === "table-high-risk" ? (
+                    <TableHighRiskReviewActionGuide item={item} />
+                  ) : null}
                   <small>{formatEditingCompletionGatePendingItemMeta(item)}</small>
                 </li>
               ))}
@@ -2232,6 +2272,116 @@ function EditingCompletionGateCard(input: {
           </ul>
         </div>
       ) : null}
+    </article>
+  );
+}
+
+function TableHighRiskReviewActionGuide(input: {
+  item: EditingCompletionGateSummary["unresolved_required_slots"][number];
+}) {
+  const reviewItemId = input.item.review_item_id;
+  const hasReviewRoute = Boolean(reviewItemId);
+
+  return (
+    <div className="manuscript-workbench-detail-comment-copy">
+      <p>
+        表格专属核对动作：接受改动仅在已确认表格内容、结构和样式均保真时使用；拒绝改动会保留人工复核阻断；覆盖放行必须填写覆盖理由；延后处理保持当前门禁阻断。
+      </p>
+      <p>
+        {hasReviewRoute
+          ? `已绑定真实复核项 ${reviewItemId}，可在工作台摘要的高风险复核区提交复核或记录仅人工处理。`
+          : "尚未生成真实复核项，当前只允许保留阻断，不显示可点击假按钮。"}
+      </p>
+    </div>
+  );
+}
+
+function EditingRuntimeBindingCard(input: {
+  explanation: Record<string, unknown>;
+  automaticActionLedger: readonly Record<string, unknown>[];
+}) {
+  const decisionClasses = readStringArray(input.explanation.decisionClasses);
+  const unsupportedGroups = readStringArray(
+    input.explanation.unsupportedTableFactGroups,
+  );
+  const tableCount =
+    typeof input.explanation.tableCount === "number"
+      ? input.explanation.tableCount
+      : 0;
+
+  return (
+    <article className="manuscript-workbench-detail-ledger-card manuscript-workbench-detail-governance-card">
+      <div className="manuscript-workbench-detail-card-header">
+        <div>
+          <h4>运行时绑定与自动动作账本</h4>
+          <p>展示本次编辑实际绑定的期刊目标模型、表格证据、规则决策和写回验证状态。</p>
+        </div>
+      </div>
+
+      <dl className="manuscript-workbench-detail-metadata">
+        <div>
+          <dt>表格证据数</dt>
+          <dd>{String(tableCount)}</dd>
+        </div>
+        <div>
+          <dt>目标模型版本</dt>
+          <dd>
+            {typeof input.explanation.targetModelVersionNo === "number"
+              ? `v${input.explanation.targetModelVersionNo}`
+              : "未绑定"}
+          </dd>
+        </div>
+        <div>
+          <dt>决策类别</dt>
+          <dd>{decisionClasses.length > 0 ? decisionClasses.join(" / ") : "未记录"}</dd>
+        </div>
+        <div>
+          <dt>证据缺口</dt>
+          <dd>{unsupportedGroups.length > 0 ? unsupportedGroups.join(" / ") : "无"}</dd>
+        </div>
+      </dl>
+
+      {input.automaticActionLedger.length > 0 ? (
+        <ul className="manuscript-workbench-detail-comment-list">
+          {input.automaticActionLedger.map((entry, index) => (
+            <li
+              key={`${readOptionalString(entry.action_id) ?? "action"}-${index}`}
+              className="manuscript-workbench-detail-comment-item"
+            >
+              <strong>
+                {readOptionalString(entry.action_class) ?? "automatic_action"} ·{" "}
+                {readOptionalString(entry.patch_type) ?? "unknown_patch"}
+              </strong>
+              <p>
+                {`规则 ${readOptionalString(entry.rule_id) ?? "未记录"}，表格 ${
+                  readOptionalString(entry.table_id) ?? "未记录"
+                }，写回 ${readOptionalString(entry.writeback_status) ?? "未尝试"}`}
+              </p>
+              {asRecord(entry.validation_snapshot) ? (
+                <small>
+                  {`验证 ${
+                    readOptionalString(asRecord(entry.validation_snapshot)?.status) ??
+                    "未记录"
+                  } · 回滚点 ${
+                    readOptionalString(asRecord(entry.rollback_point)?.source_patch_id) ??
+                    "未记录"
+                  }`}
+                </small>
+              ) : null}
+              {readStringArray(entry.downgrade_reasons).length > 0 ? (
+                <p>
+                  {`降级原因：${readStringArray(entry.downgrade_reasons).join("；")}`}
+                </p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="manuscript-workbench-detail-empty">
+          <strong>暂无自动动作账本</strong>
+          <p>本次运行没有产生表格写回或重建动作，或旧任务尚未记录该账本。</p>
+        </div>
+      )}
     </article>
   );
 }

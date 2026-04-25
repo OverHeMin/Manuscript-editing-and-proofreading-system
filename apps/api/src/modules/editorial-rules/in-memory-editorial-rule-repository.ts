@@ -21,6 +21,9 @@ function cloneRule(record: EditorialRuleRecord): EditorialRuleRecord {
   return {
     ...record,
     scope: cloneJsonObject(record.scope),
+    ...(record.structured_action
+      ? { structured_action: cloneJsonObject(record.structured_action) }
+      : {}),
     selector: cloneJsonObject(record.selector),
     trigger: cloneJsonObject(record.trigger),
     action: cloneJsonObject(record.action),
@@ -33,6 +36,9 @@ function cloneRule(record: EditorialRuleRecord): EditorialRuleRecord {
       : {}),
     ...(record.projection_payload
       ? { projection_payload: cloneJsonObject(record.projection_payload) }
+      : {}),
+    ...(record.gold_sample_gate
+      ? { gold_sample_gate: cloneJsonObject(record.gold_sample_gate) }
       : {}),
   };
 }
