@@ -1,6 +1,14 @@
 import React from "react";
 import { formatWorkbenchHash } from "../../app/workbench-routing.ts";
-import type { DocumentPreviewSessionViewModel } from "../document-preview/index.ts";
+import {
+  buildProofreadingLocateTarget,
+  OnlyOfficePreviewSurface,
+  type DocumentPreviewLocateTargetViewModel,
+  type DocumentPreviewSessionViewModel,
+  type OnlyOfficeProofreadingIssueMarkViewModel,
+  type ProofreadingDocumentLocatorViewModel,
+  supportsOnlyOfficePreviewSurface,
+} from "../document-preview/index.ts";
 import type {
   DocumentAssetViewModel,
   JobViewModel,
@@ -31,6 +39,8 @@ export interface ProofreadingIssueAnchorViewModel {
   blockIndex: number;
   quote: string;
   sectionLabel?: string;
+  blockKind?: string;
+  documentLocator?: ProofreadingDocumentLocatorViewModel;
 }
 
 export interface ProofreadingDocumentBlockViewModel {
@@ -62,6 +72,38 @@ export interface ProofreadingConfirmationDraftState {
   note?: string;
 }
 
+export interface ProofreadingIssueSummaryViewModel {
+  totalCount: number;
+  highCount: number;
+  mediumCount: number;
+  lowCount: number;
+  filteredCount: number;
+  processedCount: number;
+  pendingCount: number;
+}
+
+export interface ProofreadingIssueMarkerViewModel {
+  itemId: string;
+  title: string;
+  blockIndex: number;
+  sectionLabel?: string;
+  severity?: string;
+  processed: boolean;
+  selected: boolean;
+  positionPercent: number;
+  stackIndex: number;
+  stackCount: number;
+}
+
+export type ProofreadingSeverityFilter =
+  | "all"
+  | "critical"
+  | "high"
+  | "medium"
+  | "low";
+
+export type ProofreadingStatusFilter = "all" | "pending" | "processed" | "blocking";
+
 export interface ManuscriptWorkbenchAssetDetailPageProps {
   mode: ManuscriptWorkbenchMode;
   manuscriptTitle: string;
@@ -69,6 +111,8 @@ export interface ManuscriptWorkbenchAssetDetailPageProps {
   detailKind: ManuscriptAssetDetailKind;
   backHref: string;
   downloadHref: string;
+  previewAsset?: DocumentAssetViewModel | null;
+  previewDownloadHref?: string | null;
   previewSession?: DocumentPreviewSessionViewModel | null;
   reportBody?: string | null;
   changeLedger?: readonly EditingChangeLedgerEntry[];
@@ -76,6 +120,7 @@ export interface ManuscriptWorkbenchAssetDetailPageProps {
   confirmationState?: Readonly<Record<string, ProofreadingConfirmationDraftState>>;
   proofreadingDocumentBlocks?: readonly ProofreadingDocumentBlockViewModel[];
   activeProofreadingIssueId?: string;
+  activeProofreadingLocateTarget?: DocumentPreviewLocateTargetViewModel | null;
   isFinalizeEnabled?: boolean;
   isFinalizing?: boolean;
   onProofreadingIssueSelect?(itemId: string): void;
@@ -85,6 +130,9 @@ export interface ManuscriptWorkbenchAssetDetailPageProps {
   ): void;
   onConfirmationEditedReplacementTextChange?(itemId: string, value: string): void;
   onConfirmationNoteChange?(itemId: string, value: string): void;
+  onSaveDraft?(): void;
+  draftSaveLabel?: string;
+  isDraftSaving?: boolean;
   onFinalize?(): void;
 }
 
@@ -185,68 +233,77 @@ export function buildProofreadingConfirmationItems(
 ): ProofreadingConfirmationItemViewModel[] {
   const payload = asRecord(job?.payload);
   const plan = asRecord(payload?.proofreadingPlan);
+  const proofreadingFindings = asRecord(payload?.proofreadingFindings);
+  const planIssueItems = Array.isArray(plan?.issues)
+    ? plan.issues.flatMap((entry, index) => {
+        const issue = asRecord(entry);
+        const anchor = asRecord(issue?.anchor);
+        const suggestion = asRecord(issue?.suggestion);
+        const targetText =
+          readOptionalString(anchor?.quote) ??
+          readOptionalString(issue?.targetText);
+        const replacementText =
+          readOptionalString(suggestion?.replacementText) ??
+          readOptionalString(issue?.replacementText) ??
+          "";
+        if (!targetText) {
+          return [];
+        }
 
-  if (Array.isArray(plan?.issues)) {
-    return plan.issues.flatMap((entry, index) => {
-      const issue = asRecord(entry);
-      const anchor = asRecord(issue?.anchor);
-      const suggestion = asRecord(issue?.suggestion);
-      const targetText =
-        readOptionalString(anchor?.quote) ??
-        readOptionalString(issue?.targetText);
-      const replacementText =
-        readOptionalString(suggestion?.replacementText) ??
-        readOptionalString(issue?.replacementText) ??
-        "";
-      if (!targetText) {
-        return [];
-      }
+        return [
+          {
+            itemId: readOptionalString(issue?.itemId) ?? `issue-${index + 1}`,
+            title: readOptionalString(issue?.title),
+            description: readOptionalString(issue?.description),
+            severity: readOptionalString(issue?.severity),
+            source: readOptionalString(issue?.source),
+            issueType: readOptionalString(issue?.issueType),
+            blocksFinal: Boolean(issue?.blocksFinal),
+            targetText,
+            replacementText,
+            anchor: normalizeProofreadingAnchor(anchor, index, targetText),
+            suggestionAction: readOptionalString(suggestion?.action),
+          },
+        ];
+      })
+    : [];
+  const correctionItems =
+    planIssueItems.length === 0 && Array.isArray(plan?.corrections)
+      ? plan.corrections.flatMap((entry, index) => {
+          const correction = asRecord(entry);
+          const targetText = readOptionalString(correction?.targetText);
+          const replacementText = readOptionalString(correction?.replacementText);
+          if (!targetText || !replacementText) {
+            return [];
+          }
 
-      return [
-        {
-          itemId: readOptionalString(issue?.itemId) ?? `issue-${index + 1}`,
-          title: readOptionalString(issue?.title),
-          description: readOptionalString(issue?.description),
-          severity: readOptionalString(issue?.severity),
-          source: readOptionalString(issue?.source),
-          issueType: readOptionalString(issue?.issueType),
-          blocksFinal: Boolean(issue?.blocksFinal),
-          targetText,
-          replacementText,
-          anchor: normalizeProofreadingAnchor(anchor, index, targetText),
-          suggestionAction: readOptionalString(suggestion?.action),
-        },
-      ];
-    });
-  }
+          return [
+            {
+              itemId: `correction-${index + 1}`,
+              issueType: readOptionalString(correction?.category),
+              category: readOptionalString(correction?.category),
+              targetText,
+              replacementText,
+              anchor: {
+                blockIndex: index,
+                quote: targetText,
+              },
+              suggestionAction: "replace_text",
+            },
+          ];
+        })
+      : [];
+  const qualityFindingItems =
+    buildProofreadingQualityFindingConfirmationItems(proofreadingFindings);
+  const failedCheckItems =
+    buildProofreadingFailedCheckConfirmationItems(proofreadingFindings);
+  const baseItems = planIssueItems.length > 0 ? planIssueItems : correctionItems;
 
-  if (!Array.isArray(plan?.corrections)) {
-    return [];
-  }
-
-  return plan.corrections.flatMap((entry, index) => {
-    const correction = asRecord(entry);
-    const targetText = readOptionalString(correction?.targetText);
-    const replacementText = readOptionalString(correction?.replacementText);
-    if (!targetText || !replacementText) {
-      return [];
-    }
-
-    return [
-      {
-        itemId: `correction-${index + 1}`,
-        issueType: readOptionalString(correction?.category),
-        category: readOptionalString(correction?.category),
-        targetText,
-        replacementText,
-        anchor: {
-          blockIndex: index,
-          quote: targetText,
-        },
-        suggestionAction: "replace_text",
-      },
-    ];
-  });
+  return dedupeProofreadingConfirmationItems([
+    ...baseItems,
+    ...qualityFindingItems,
+    ...failedCheckItems,
+  ]);
 }
 
 export function buildProofreadingDocumentBlocks(
@@ -337,6 +394,191 @@ export function buildAssetPreviewComments(input: {
   return [];
 }
 
+export function buildProofreadingConfirmationDraftState(
+  job: Pick<JobViewModel, "payload"> | null | undefined,
+): Record<string, ProofreadingConfirmationDraftState> {
+  const payload = asRecord(job?.payload);
+  const confirmationDraft = asRecord(payload?.confirmationDraft);
+  const serializedDecisions = Array.isArray(confirmationDraft?.confirmationDecisions)
+    ? confirmationDraft.confirmationDecisions
+    : Array.isArray(payload?.confirmationDecisions)
+      ? payload.confirmationDecisions
+      : [];
+
+  return serializedDecisions.reduce<Record<string, ProofreadingConfirmationDraftState>>(
+    (result, entry) => {
+      const decision = asRecord(entry);
+      const itemId = readOptionalString(decision?.itemId);
+      const action = readOptionalString(decision?.action) as
+        | ProofreadingConfirmationDecisionAction
+        | undefined;
+
+      if (!itemId || !action) {
+        return result;
+      }
+
+      result[itemId] = {
+        action,
+        ...(readOptionalString(decision?.finalReplacementText) ??
+        readOptionalString(decision?.editedReplacementText)
+          ? {
+              editedReplacementText:
+                readOptionalString(decision?.finalReplacementText) ??
+                readOptionalString(decision?.editedReplacementText),
+            }
+          : {}),
+        ...(readOptionalString(decision?.note)
+          ? {
+              note: readOptionalString(decision?.note),
+            }
+          : {}),
+      };
+
+      return result;
+    },
+    {},
+  );
+}
+
+export function buildProofreadingIssueSummary(
+  items: readonly ProofreadingConfirmationItemViewModel[],
+  confirmationState: Readonly<Record<string, ProofreadingConfirmationDraftState>>,
+  filteredCount = items.length,
+): ProofreadingIssueSummaryViewModel {
+  const highCount = items.filter((item) =>
+    item.severity === "high" || item.severity === "critical"
+  ).length;
+  const mediumCount = items.filter((item) => item.severity === "medium").length;
+  const lowCount = items.filter((item) => {
+    const severity = item.severity ?? "low";
+    return severity !== "high" && severity !== "critical" && severity !== "medium";
+  }).length;
+  const processedCount = items.filter((item) => confirmationState[item.itemId]?.action).length;
+
+  return {
+    totalCount: items.length,
+    highCount,
+    mediumCount,
+    lowCount,
+    filteredCount,
+    processedCount,
+    pendingCount: Math.max(items.length - processedCount, 0),
+  };
+}
+
+export function filterProofreadingConfirmationItems(input: {
+  items: readonly ProofreadingConfirmationItemViewModel[];
+  confirmationState: Readonly<Record<string, ProofreadingConfirmationDraftState>>;
+  severityFilter: ProofreadingSeverityFilter;
+  statusFilter: ProofreadingStatusFilter;
+}): ProofreadingConfirmationItemViewModel[] {
+  return input.items.filter((item) => {
+    if (
+      input.severityFilter !== "all" &&
+      (item.severity ?? "low") !== input.severityFilter
+    ) {
+      return false;
+    }
+
+    const draft = input.confirmationState[item.itemId];
+    const isProcessed = Boolean(draft?.action);
+    const isBlocking =
+      item.blocksFinal || item.severity === "high" || item.severity === "critical";
+
+    switch (input.statusFilter) {
+      case "pending":
+        return !isProcessed;
+      case "processed":
+        return isProcessed;
+      case "blocking":
+        return isBlocking;
+      default:
+        return true;
+    }
+  });
+}
+
+export function buildProofreadingIssueMarkers(input: {
+  items: readonly ProofreadingConfirmationItemViewModel[];
+  confirmationState: Readonly<Record<string, ProofreadingConfirmationDraftState>>;
+  proofreadingDocumentBlocks: readonly ProofreadingDocumentBlockViewModel[];
+  activeIssueId?: string;
+}): ProofreadingIssueMarkerViewModel[] {
+  const anchoredItems = input.items
+    .filter(
+      (item): item is ProofreadingConfirmationItemViewModel & {
+        anchor: NonNullable<ProofreadingConfirmationItemViewModel["anchor"]>;
+      } => Boolean(item.anchor),
+    )
+    .sort((left, right) => {
+      const blockDelta = left.anchor.blockIndex - right.anchor.blockIndex;
+      if (blockDelta !== 0) {
+        return blockDelta;
+      }
+
+      return left.itemId.localeCompare(right.itemId);
+    });
+
+  if (anchoredItems.length === 0) {
+    return [];
+  }
+
+  const maxDocumentBlockIndex = Math.max(
+    ...input.proofreadingDocumentBlocks.map((block) => block.blockIndex),
+    ...anchoredItems.map((item) => item.anchor.blockIndex),
+    0,
+  );
+  const markersPerBlock = anchoredItems.reduce<Map<number, number>>((result, item) => {
+    result.set(item.anchor.blockIndex, (result.get(item.anchor.blockIndex) ?? 0) + 1);
+    return result;
+  }, new Map<number, number>());
+  const runningStackByBlock = new Map<number, number>();
+
+  return anchoredItems.map((item) => {
+    const blockIndex = item.anchor.blockIndex;
+    const stackIndex = runningStackByBlock.get(blockIndex) ?? 0;
+    runningStackByBlock.set(blockIndex, stackIndex + 1);
+
+    return {
+      itemId: item.itemId,
+      title: item.title ?? item.issueType ?? item.itemId,
+      blockIndex,
+      sectionLabel: item.anchor.sectionLabel,
+      severity: item.severity,
+      processed: Boolean(input.confirmationState[item.itemId]?.action),
+      selected: item.itemId === input.activeIssueId,
+      positionPercent:
+        maxDocumentBlockIndex <= 0 ? 0 : (blockIndex / maxDocumentBlockIndex) * 100,
+      stackIndex,
+      stackCount: markersPerBlock.get(blockIndex) ?? 1,
+    };
+  });
+}
+
+export function resolveProofreadingFallbackFocusTarget(input: {
+  proofreadingDocumentBlocks: readonly ProofreadingDocumentBlockViewModel[];
+  activeBlockIndex?: number | null;
+}): {
+  blockId: string;
+  blockIndex: number;
+} | null {
+  if (typeof input.activeBlockIndex !== "number" || !Number.isInteger(input.activeBlockIndex)) {
+    return null;
+  }
+
+  const matchingBlock = input.proofreadingDocumentBlocks.find(
+    (block) => block.blockIndex === input.activeBlockIndex,
+  );
+  if (!matchingBlock) {
+    return null;
+  }
+
+  return {
+    blockId: matchingBlock.blockId,
+    blockIndex: matchingBlock.blockIndex,
+  };
+}
+
 export function buildAssetReportPreviewBody(
   job: Pick<JobViewModel, "payload"> | null | undefined,
 ): string | null {
@@ -400,6 +642,8 @@ export function ManuscriptWorkbenchAssetDetailPage({
   detailKind,
   backHref,
   downloadHref,
+  previewAsset = null,
+  previewDownloadHref = null,
   previewSession = null,
   reportBody = null,
   changeLedger = [],
@@ -407,12 +651,16 @@ export function ManuscriptWorkbenchAssetDetailPage({
   confirmationState = {},
   proofreadingDocumentBlocks = [],
   activeProofreadingIssueId,
+  activeProofreadingLocateTarget = null,
   isFinalizeEnabled = false,
   isFinalizing = false,
   onProofreadingIssueSelect,
   onConfirmationActionChange,
   onConfirmationEditedReplacementTextChange,
   onConfirmationNoteChange,
+  onSaveDraft,
+  draftSaveLabel,
+  isDraftSaving = false,
   onFinalize,
 }: ManuscriptWorkbenchAssetDetailPageProps) {
   const assetRoleLabel = formatWorkbenchAssetTypeLabel(asset.asset_type);
@@ -421,18 +669,111 @@ export function ManuscriptWorkbenchAssetDetailPage({
     asset,
     previewSession,
   });
+  const [severityFilter, setSeverityFilter] = React.useState<ProofreadingSeverityFilter>("all");
+  const [statusFilter, setStatusFilter] = React.useState<ProofreadingStatusFilter>("all");
 
   if (
     detailKind === "proofreading_workspace" ||
     detailKind === "proofreading_confirmation"
   ) {
+    const filteredConfirmationItems = filterProofreadingConfirmationItems({
+      items: confirmationItems,
+      confirmationState,
+      severityFilter,
+      statusFilter,
+    });
+    const issueSummary = buildProofreadingIssueSummary(
+      confirmationItems,
+      confirmationState,
+      filteredConfirmationItems.length,
+    );
     const activeIssue =
-      confirmationItems.find((item) => item.itemId === activeProofreadingIssueId) ??
-      confirmationItems[0] ??
+      filteredConfirmationItems.find((item) => item.itemId === activeProofreadingIssueId) ??
+      filteredConfirmationItems[0] ??
       null;
     const activeIssueDraft =
       (activeIssue && confirmationState[activeIssue.itemId]) ?? {};
-    const activeBlockIndex = activeIssue?.anchor?.blockIndex;
+    const issueMarkers = buildProofreadingIssueMarkers({
+      items: filteredConfirmationItems,
+      confirmationState,
+      proofreadingDocumentBlocks,
+      activeIssueId: activeIssue?.itemId ?? activeProofreadingIssueId,
+    });
+    const selectedIssueId = activeIssue?.itemId ?? activeProofreadingIssueId;
+    const onlyOfficeIssueMarks = React.useMemo<OnlyOfficeProofreadingIssueMarkViewModel[]>(
+      () =>
+        filteredConfirmationItems.flatMap((item) => {
+          if (!item.anchor) {
+            return [];
+          }
+
+          const locateTarget = buildProofreadingLocateTarget(item.anchor);
+          return [
+            {
+              itemId: item.itemId,
+              title: item.title ?? item.issueType ?? item.itemId,
+              ...(item.severity
+                ? {
+                    severity: item.severity,
+                  }
+                : {}),
+              processed: Boolean(confirmationState[item.itemId]?.action),
+              selected: item.itemId === selectedIssueId,
+              blockIndex: locateTarget.blockIndex,
+              quote: locateTarget.quote,
+              ...(locateTarget.sectionLabel
+                ? {
+                    sectionLabel: locateTarget.sectionLabel,
+                  }
+                : {}),
+              anchorKey: locateTarget.anchorKey,
+              anchorKind: locateTarget.anchorKind,
+              confidence: locateTarget.confidence,
+            },
+          ];
+        }),
+      [
+        confirmationState,
+        filteredConfirmationItems,
+        selectedIssueId,
+      ],
+    );
+    const activeLocateTarget =
+      activeIssue?.itemId === activeProofreadingIssueId && activeProofreadingLocateTarget
+        ? activeProofreadingLocateTarget
+        : activeIssue?.anchor
+          ? buildProofreadingLocateTarget(activeIssue.anchor)
+          : null;
+    const activeBlockIndex = activeLocateTarget?.blockIndex ?? activeIssue?.anchor?.blockIndex;
+    const showsOnlyOfficeSurface = Boolean(
+      previewSession && supportsOnlyOfficePreviewSurface(previewSession),
+    );
+    const fallbackFocusTarget = resolveProofreadingFallbackFocusTarget({
+      proofreadingDocumentBlocks,
+      activeBlockIndex,
+    });
+    const manuscriptPreviewAsset = previewAsset ?? asset;
+    const manuscriptPreviewLabel = buildWorkbenchAssetDisplayName(
+      manuscriptTitle,
+      manuscriptPreviewAsset,
+    );
+    const manuscriptPreviewRoleLabel = formatWorkbenchAssetTypeLabel(
+      manuscriptPreviewAsset.asset_type,
+    );
+    const manuscriptPreviewHref = previewDownloadHref ?? downloadHref;
+
+    React.useEffect(() => {
+      if (showsOnlyOfficeSurface || !fallbackFocusTarget || typeof document === "undefined") {
+        return;
+      }
+
+      document
+        .getElementById(fallbackFocusTarget.blockId)
+        ?.scrollIntoView({
+          block: "center",
+          behavior: "smooth",
+        });
+    }, [fallbackFocusTarget, showsOnlyOfficeSurface]);
 
     return (
       <section
@@ -460,11 +801,11 @@ export function ManuscriptWorkbenchAssetDetailPage({
             </a>
             <a
               className="manuscript-workbench-shortcut"
-              href={downloadHref}
+              href={manuscriptPreviewHref}
               target="_blank"
               rel="noreferrer"
             >
-              打开当前文件
+              打开稿件原文
             </a>
             <a className="manuscript-workbench-shortcut" href={downloadHref} download>
               {resolveDetailDownloadLabel(asset)}
@@ -473,41 +814,107 @@ export function ManuscriptWorkbenchAssetDetailPage({
         </header>
 
         <div className="manuscript-workbench-proofreading-layout-grid">
-          <article className="manuscript-workbench-proofreading-manuscript-pane">
+          <article
+            className="manuscript-workbench-proofreading-manuscript-pane"
+            data-preview-session-ready={previewOperationalState ? "true" : "false"}
+            data-active-locate-anchor-key={activeLocateTarget?.anchorKey ?? ""}
+            data-active-locate-anchor-kind={activeLocateTarget?.anchorKind ?? ""}
+          >
             <div className="manuscript-workbench-detail-card-header">
               <div>
                 <h4>稿件原文</h4>
-                <p>{assetDisplayName}</p>
-                <small>{assetRoleLabel}</small>
+                <p>{manuscriptPreviewLabel}</p>
+                <small>{manuscriptPreviewRoleLabel}</small>
               </div>
             </div>
-            {proofreadingDocumentBlocks.length > 0 ? (
-              <div className="manuscript-workbench-proofreading-block-list">
-                {proofreadingDocumentBlocks.map((block) => (
-                  <article
-                    key={block.blockId}
-                    id={block.blockId}
-                    className={`manuscript-workbench-proofreading-block${
-                      activeBlockIndex === block.blockIndex ? " is-selected" : ""
-                    }`}
-                    data-selected={
-                      activeBlockIndex === block.blockIndex ? "true" : "false"
-                    }
-                  >
-                    <header>
-                      <strong>{block.sectionLabel ?? `段落 ${block.blockIndex + 1}`}</strong>
-                      <span>{block.blockKind ?? "paragraph"}</span>
-                    </header>
-                    <p>{block.text}</p>
-                  </article>
-                ))}
+            <div
+              className="manuscript-workbench-proofreading-manuscript-workarea"
+              data-proofreading-marker-count={issueMarkers.length}
+            >
+              {issueMarkers.length > 0 ? (
+                <aside
+                  className="manuscript-workbench-proofreading-marker-rail"
+                  aria-label="稿件问题标记"
+                >
+                  <div className="manuscript-workbench-proofreading-marker-rail-header">
+                    <span>问题标记</span>
+                    <strong>{`共 ${issueMarkers.length} 处`}</strong>
+                  </div>
+                  <div className="manuscript-workbench-proofreading-marker-track">
+                    {issueMarkers.map((marker, index) => {
+                      const markerStyle = {
+                        top: `${marker.positionPercent}%`,
+                        "--proofreading-marker-stack-offset": `${(
+                          marker.stackIndex -
+                          (marker.stackCount - 1) / 2
+                        ) * 12}px`,
+                      } as React.CSSProperties;
+
+                      return (
+                        <button
+                          key={marker.itemId}
+                          type="button"
+                          className={`manuscript-workbench-proofreading-marker severity-${marker.severity ?? "medium"}${
+                            marker.selected ? " is-selected" : ""
+                          }${marker.processed ? " is-processed" : ""}`}
+                          style={markerStyle}
+                          title={`${index + 1}. ${marker.title}`}
+                          aria-label={`${index + 1}. ${marker.title}，${
+                            marker.sectionLabel ?? `段落 ${marker.blockIndex + 1}`
+                          }`}
+                          data-proofreading-marker-item-id={marker.itemId}
+                          data-proofreading-marker-selected={marker.selected ? "true" : "false"}
+                          data-proofreading-marker-processed={marker.processed ? "true" : "false"}
+                          data-proofreading-marker-block-index={marker.blockIndex}
+                          onClick={() => onProofreadingIssueSelect?.(marker.itemId)}
+                        >
+                          <span>{index + 1}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="manuscript-workbench-proofreading-marker-rail-footnote">
+                    点标记可跳到对应问题
+                  </p>
+                </aside>
+              ) : null}
+
+              <div className="manuscript-workbench-proofreading-manuscript-content">
+                {showsOnlyOfficeSurface ? (
+                  <>
+                    <OnlyOfficePreviewSurface
+                      previewSession={previewSession!}
+                      activeLocateTarget={activeLocateTarget}
+                      issueMarks={onlyOfficeIssueMarks}
+                      onIssueSelection={onProofreadingIssueSelect}
+                    />
+                    {proofreadingDocumentBlocks.length > 0 ? (
+                      <details className="manuscript-workbench-proofreading-fallback">
+                        <summary>结构化定位备用视图</summary>
+                        {renderProofreadingDocumentBlocks({
+                          proofreadingDocumentBlocks,
+                          confirmationItems,
+                          confirmationState,
+                          activeBlockIndex,
+                        })}
+                      </details>
+                    ) : null}
+                  </>
+                ) : proofreadingDocumentBlocks.length > 0 ? (
+                  renderProofreadingDocumentBlocks({
+                    proofreadingDocumentBlocks,
+                    confirmationItems,
+                    confirmationState,
+                    activeBlockIndex,
+                  })
+                ) : (
+                  <div className="manuscript-workbench-detail-empty">
+                    <strong>暂无稿件正文块</strong>
+                    <p>当前校对任务没有保存可定位的全文块，无法进入问题工作台定位模式。</p>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="manuscript-workbench-detail-empty">
-                <strong>暂无稿件正文块</strong>
-                <p>当前校对任务没有保存可定位的全文块，无法进入问题工作台定位模式。</p>
-              </div>
-            )}
+            </div>
           </article>
 
           <article className="manuscript-workbench-proofreading-issue-pane">
@@ -516,10 +923,62 @@ export function ManuscriptWorkbenchAssetDetailPage({
                 <h4>问题队列</h4>
                 <p>点击问题可定位到对应稿件位置，并在右侧展开人工确认。</p>
               </div>
+              <div className="manuscript-workbench-proofreading-issue-summary">
+                <strong>{`共发现 ${issueSummary.totalCount} 项问题`}</strong>
+                <span>{`高 ${issueSummary.highCount} · 中 ${issueSummary.mediumCount} · 低 ${issueSummary.lowCount}`}</span>
+                <small>{`当前显示 ${issueSummary.filteredCount} / 共 ${issueSummary.totalCount}`}</small>
+              </div>
+              {previewOperationalState || activeLocateTarget ? (
+                <dl className="manuscript-workbench-detail-metadata">
+                  {previewOperationalState ? (
+                    <div>
+                      <dt>预览</dt>
+                      <dd>{formatPreviewStatusLabel(previewOperationalState.status)}</dd>
+                    </div>
+                  ) : null}
+                  {activeLocateTarget ? (
+                    <div>
+                      <dt>定位锚点</dt>
+                      <dd>{activeLocateTarget.anchorKey}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+              ) : null}
             </div>
             {confirmationItems.length > 0 ? (
               <div className="manuscript-workbench-proofreading-issue-list">
-                {confirmationItems.map((item) => {
+                <div className="manuscript-workbench-proofreading-issue-filters">
+                  <label className="manuscript-workbench-field">
+                    <span>严重度</span>
+                    <select
+                      value={severityFilter}
+                      onChange={(event) =>
+                        setSeverityFilter(event.target.value as ProofreadingSeverityFilter)
+                      }
+                    >
+                      <option value="all">全部</option>
+                      <option value="critical">严重</option>
+                      <option value="high">高</option>
+                      <option value="medium">中</option>
+                      <option value="low">低</option>
+                    </select>
+                  </label>
+                  <label className="manuscript-workbench-field">
+                    <span>状态</span>
+                    <select
+                      value={statusFilter}
+                      onChange={(event) =>
+                        setStatusFilter(event.target.value as ProofreadingStatusFilter)
+                      }
+                    >
+                      <option value="all">全部</option>
+                      <option value="pending">未处理</option>
+                      <option value="processed">已处理</option>
+                      <option value="blocking">阻断项</option>
+                    </select>
+                  </label>
+                </div>
+                {filteredConfirmationItems.map((item, index) => {
                   const draft = confirmationState[item.itemId] ?? {};
                   const isSelected = activeIssue?.itemId === item.itemId;
                   return (
@@ -535,12 +994,20 @@ export function ManuscriptWorkbenchAssetDetailPage({
                         onClick={() => onProofreadingIssueSelect?.(item.itemId)}
                       >
                         <div>
+                          <small>{`问题 ${index + 1}`}</small>
                           <strong>{item.title ?? item.itemId}</strong>
                           <p>{item.anchor?.sectionLabel ?? "未标注章节"}</p>
                         </div>
-                        <span className={resolveSeverityClassName(item.severity)}>
-                          {formatSeverityLabel(item.severity)}
-                        </span>
+                        <div className="manuscript-workbench-proofreading-issue-toggle-meta">
+                          <span className={resolveSeverityClassName(item.severity)}>
+                            {formatSeverityLabel(item.severity)}
+                          </span>
+                          {draft.action ? (
+                            <small>{resolveProofreadingDecisionLabel(draft.action)}</small>
+                          ) : (
+                            <small>待处理</small>
+                          )}
+                        </div>
                       </button>
 
                       {isSelected ? (
@@ -630,6 +1097,16 @@ export function ManuscriptWorkbenchAssetDetailPage({
             )}
 
             <div className="manuscript-workbench-button-row manuscript-workbench-button-row--sticky">
+              {onSaveDraft ? (
+                <button
+                  type="button"
+                  className="manuscript-workbench-button-secondary"
+                  disabled={isDraftSaving}
+                  onClick={() => onSaveDraft?.()}
+                >
+                  {isDraftSaving ? "保存中..." : "保存进度"}
+                </button>
+              ) : null}
               <button
                 type="button"
                 disabled={!isFinalizeEnabled || isFinalizing}
@@ -638,6 +1115,11 @@ export function ManuscriptWorkbenchAssetDetailPage({
                 {isFinalizing ? "发布中..." : "发布人工终稿"}
               </button>
             </div>
+            {draftSaveLabel ? (
+              <p className="manuscript-workbench-proofreading-draft-status">
+                {draftSaveLabel}
+              </p>
+            ) : null}
           </article>
         </div>
       </section>
@@ -778,6 +1260,57 @@ export function ManuscriptWorkbenchAssetDetailPage({
   );
 }
 
+function renderProofreadingDocumentBlocks(input: {
+  proofreadingDocumentBlocks: readonly ProofreadingDocumentBlockViewModel[];
+  confirmationItems: readonly ProofreadingConfirmationItemViewModel[];
+  confirmationState: Readonly<Record<string, ProofreadingConfirmationDraftState>>;
+  activeBlockIndex?: number;
+}) {
+  return (
+    <div className="manuscript-workbench-proofreading-block-list">
+      {input.proofreadingDocumentBlocks.map((block) => {
+        const matchingItems = input.confirmationItems.filter(
+          (item) => item.anchor?.blockIndex === block.blockIndex,
+        );
+        const processedCount = matchingItems.filter(
+          (item) => input.confirmationState[item.itemId]?.action,
+        ).length;
+        const isSelectedBlock = input.activeBlockIndex === block.blockIndex;
+        const isFullyProcessed =
+          processedCount > 0 && processedCount === matchingItems.length;
+
+        return (
+          <article
+            key={block.blockId}
+            id={block.blockId}
+            className={`manuscript-workbench-proofreading-block${
+              isSelectedBlock ? " is-selected" : ""
+            }${
+              matchingItems.length > 0 ? " has-issue" : ""
+            }${
+              isFullyProcessed ? " is-processed" : ""
+            }`}
+            data-selected={isSelectedBlock ? "true" : "false"}
+          >
+            <header>
+              <strong>{block.sectionLabel ?? `段落 ${block.blockIndex + 1}`}</strong>
+              <span>{block.blockKind ?? "paragraph"}</span>
+              {matchingItems.length > 0 ? (
+                <small>
+                  {isFullyProcessed
+                    ? `已处理 ${processedCount} 项`
+                    : `问题 ${matchingItems.length} 项`}
+                </small>
+              ) : null}
+            </header>
+            <p>{block.text}</p>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
 const CONFIRMATION_ACTIONS: ReadonlyArray<{
   value: ProofreadingConfirmationDecisionAction;
   label: string;
@@ -891,6 +1424,13 @@ function formatPreviewCommentSourceLabel(
   return "系统批注";
 }
 
+function resolveProofreadingDecisionLabel(
+  action: ProofreadingConfirmationDecisionAction,
+): string {
+  const matchingAction = CONFIRMATION_ACTIONS.find((entry) => entry.value === action);
+  return matchingAction?.label ?? "已处理";
+}
+
 function isLegacyDocAsset(asset: DocumentAssetViewModel): boolean {
   const normalizedFileName = asset.file_name?.trim().toLowerCase();
   if (normalizedFileName?.endsWith(".docx")) {
@@ -989,7 +1529,386 @@ function normalizeProofreadingAnchor(
   return {
     blockIndex,
     quote,
-    sectionLabel: readOptionalString(value.sectionLabel),
+    ...(readOptionalString(value.sectionLabel)
+      ? {
+          sectionLabel: readOptionalString(value.sectionLabel),
+        }
+      : {}),
+    ...(readOptionalString(value.blockKind)
+      ? {
+          blockKind: readOptionalString(value.blockKind),
+        }
+      : {}),
+    ...(normalizeProofreadingDocumentLocator(asRecord(value.documentLocator))
+      ? {
+          documentLocator: normalizeProofreadingDocumentLocator(
+            asRecord(value.documentLocator),
+          ),
+        }
+      : {}),
+  };
+}
+
+function buildProofreadingQualityFindingConfirmationItems(
+  proofreadingFindings: Record<string, unknown> | undefined,
+): ProofreadingConfirmationItemViewModel[] {
+  const qualityFindings = Array.isArray(proofreadingFindings?.qualityFindings)
+    ? proofreadingFindings.qualityFindings
+    : [];
+
+  return qualityFindings.flatMap((entry, index) => {
+    const finding = asRecord(entry);
+    if (!finding) {
+      return [];
+    }
+
+    const evidencePack = asRecord(finding.evidence_pack);
+    const targetText =
+      readOptionalString(finding.excerpt) ??
+      readOptionalString(evidencePack?.excerpt);
+    if (!targetText) {
+      return [];
+    }
+
+    const replacementText =
+      readOptionalString(finding.suggestion) ??
+      readOptionalString(evidencePack?.suggestion) ??
+      "";
+    const severity = normalizeProofreadingSeverity(finding.severity);
+    const location = asRecord(finding.location) ?? asRecord(evidencePack?.location);
+    const anchor = buildProofreadingQualityFindingAnchor(location, index, targetText);
+    const blocksFinal =
+      Boolean(finding.blocksFinal) || severity === "high" || severity === "critical";
+
+    return [
+      {
+        itemId: readOptionalString(finding.id) ?? `quality-${index + 1}`,
+        title: readOptionalString(finding.title),
+        description:
+          readOptionalString(finding.summary) ??
+          readOptionalString(finding.rationale) ??
+          readOptionalString(evidencePack?.rationale),
+        ...(severity
+          ? {
+              severity,
+            }
+          : {}),
+        source: "quality_check",
+        issueType:
+          readOptionalString(finding.issueType) ??
+          readOptionalString(finding.issue_type) ??
+          "quality",
+        blocksFinal,
+        targetText,
+        replacementText,
+        ...(anchor
+          ? {
+              anchor,
+            }
+          : {}),
+        ...(replacementText
+          ? {
+              suggestionAction: "replace_text",
+            }
+          : {}),
+      },
+    ];
+  });
+}
+
+function buildProofreadingFailedCheckConfirmationItems(
+  proofreadingFindings: Record<string, unknown> | undefined,
+): ProofreadingConfirmationItemViewModel[] {
+  const failedChecks = Array.isArray(proofreadingFindings?.failedChecks)
+    ? proofreadingFindings.failedChecks
+    : [];
+
+  return failedChecks.flatMap((entry, index) => {
+    const failedCheck = asRecord(entry);
+    if (!failedCheck) {
+      return [];
+    }
+
+    const targetText =
+      readOptionalString(failedCheck.actual) ??
+      readOptionalString(failedCheck.excerpt);
+    if (!targetText) {
+      return [];
+    }
+
+    const replacementText =
+      readOptionalString(failedCheck.expected) ??
+      readOptionalString(failedCheck.suggestion) ??
+      "";
+    const ruleId = readOptionalString(failedCheck.ruleId);
+    const severity = normalizeProofreadingSeverity(failedCheck.severity);
+    const description =
+      readOptionalString(failedCheck.explanation) ??
+      readOptionalString(failedCheck.reason);
+    const location =
+      asRecord(failedCheck.location) ?? asRecord(failedCheck.semantic_hit);
+    const anchor = buildProofreadingQualityFindingAnchor(location, index, targetText);
+    const blocksFinal =
+      Boolean(failedCheck.blocksFinal) || severity === "high" || severity === "critical";
+
+    return [
+      {
+        itemId: ruleId ?? `failed-check-${index + 1}`,
+        title: ruleId
+          ? `规则 ${ruleId} 需要人工确认`
+          : "高风险规则命中需要人工确认",
+        ...(description
+          ? {
+              description,
+            }
+          : {}),
+        ...(severity
+          ? {
+              severity,
+            }
+          : {}),
+        source: "quality_check",
+        issueType: "failed_check",
+        blocksFinal,
+        targetText,
+        replacementText,
+        ...(anchor
+          ? {
+              anchor,
+            }
+          : {}),
+        ...(replacementText
+          ? {
+              suggestionAction: "replace_text",
+            }
+          : {}),
+      },
+    ];
+  });
+}
+
+function buildProofreadingQualityFindingAnchor(
+  location: Record<string, unknown> | undefined,
+  index: number,
+  targetText: string,
+): ProofreadingIssueAnchorViewModel | undefined {
+  if (!location) {
+    return normalizeProofreadingAnchor(undefined, index, targetText);
+  }
+
+  const blockIndex =
+    typeof location.blockIndex === "number" && Number.isInteger(location.blockIndex)
+      ? location.blockIndex
+      : typeof location.paragraph_index === "number" &&
+          Number.isInteger(location.paragraph_index)
+        ? location.paragraph_index
+        : index;
+  const quote = resolveProofreadingLocationSearchQuote(location, targetText);
+
+  return normalizeProofreadingAnchor(
+    {
+      blockIndex,
+      quote,
+      ...(readOptionalString(location.sectionLabel)
+        ? {
+            sectionLabel: readOptionalString(location.sectionLabel),
+          }
+        : {}),
+      ...(readOptionalString(location.blockKind)
+        ? {
+            blockKind: readOptionalString(location.blockKind),
+          }
+        : {}),
+    },
+    blockIndex,
+    targetText,
+  );
+}
+
+function resolveProofreadingLocationSearchQuote(
+  location: Record<string, unknown>,
+  fallbackQuote: string,
+): string {
+  const semanticTarget =
+    readOptionalString(location.semantic_target) ??
+    readOptionalString(location.semanticTarget);
+  const headerPath = readStringArray(location.header_path ?? location.headerPath);
+  const rowKey = readOptionalString(location.row_key) ?? readOptionalString(location.rowKey);
+  const columnKey =
+    readOptionalString(location.column_key) ?? readOptionalString(location.columnKey);
+  const footnoteAnchor =
+    readOptionalString(location.footnote_anchor) ??
+    readOptionalString(location.footnoteAnchor);
+  const candidates: string[] = [];
+
+  if (semanticTarget === "header_cell") {
+    const leafHeaderText =
+      headerPath.length > 0 ? headerPath[headerPath.length - 1] : undefined;
+    if (leafHeaderText) {
+      candidates.push(leafHeaderText);
+    }
+  }
+
+  if (semanticTarget === "data_cell" && rowKey) {
+    candidates.push(rowKey);
+  }
+
+  if (semanticTarget === "footnote_item" && footnoteAnchor) {
+    candidates.push(footnoteAnchor);
+  }
+
+  const trailingColumnSegment = extractTrailingSemanticPathSegment(columnKey);
+  if (trailingColumnSegment) {
+    candidates.push(trailingColumnSegment);
+  }
+
+  const fallbackPathSegment = extractTrailingSemanticPathSegment(fallbackQuote);
+  if (fallbackPathSegment) {
+    candidates.push(fallbackPathSegment);
+  }
+
+  const firstUsableCandidate = dedupeSemanticSearchCandidates(candidates).find(
+    (candidate) => candidate.length > 0,
+  );
+
+  return firstUsableCandidate ?? fallbackQuote;
+}
+
+function extractTrailingSemanticPathSegment(value: string | undefined): string | undefined {
+  const normalized = readOptionalString(value);
+  if (!normalized || !normalized.includes(">")) {
+    return normalized;
+  }
+
+  const segments = normalized
+    .split(">")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .filter((entry) => !/^table-\d+$/iu.test(entry));
+  if (segments.length === 0) {
+    return normalized;
+  }
+
+  return segments[segments.length - 1];
+}
+
+function dedupeSemanticSearchCandidates(values: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+
+  for (const value of values) {
+    const normalized = readOptionalString(value);
+    if (!normalized) {
+      continue;
+    }
+
+    if (seen.has(normalized)) {
+      continue;
+    }
+
+    seen.add(normalized);
+    deduped.push(normalized);
+  }
+
+  return deduped;
+}
+
+function normalizeProofreadingSeverity(value: unknown): string | undefined {
+  const severity = readOptionalString(value);
+  switch (severity) {
+    case "critical":
+    case "high":
+    case "medium":
+    case "low":
+      return severity;
+    case "error":
+      return "high";
+    case "warning":
+      return "medium";
+    case "info":
+      return "low";
+    default:
+      return severity;
+  }
+}
+
+function dedupeProofreadingConfirmationItems(
+  items: readonly ProofreadingConfirmationItemViewModel[],
+): ProofreadingConfirmationItemViewModel[] {
+  const deduped = new Map<string, ProofreadingConfirmationItemViewModel>();
+
+  for (const item of items) {
+    if (!deduped.has(item.itemId)) {
+      deduped.set(item.itemId, item);
+    }
+  }
+
+  return [...deduped.values()];
+}
+
+function normalizeProofreadingDocumentLocator(
+  value: Record<string, unknown> | undefined,
+): ProofreadingDocumentLocatorViewModel | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const anchorKind = readOptionalString(value.anchorKind);
+  const anchorKey = readOptionalString(value.anchorKey);
+  if (!anchorKind || !anchorKey) {
+    return undefined;
+  }
+
+  return {
+    anchorKind: anchorKind as ProofreadingDocumentLocatorViewModel["anchorKind"],
+    anchorKey,
+    ...(readOptionalString(value.confidence)
+      ? {
+          confidence:
+            readOptionalString(value.confidence) as ProofreadingDocumentLocatorViewModel["confidence"],
+        }
+      : {}),
+    ...(typeof value.blockIndex === "number" && Number.isInteger(value.blockIndex)
+      ? {
+          blockIndex: value.blockIndex,
+        }
+      : {}),
+    ...(readOptionalString(value.sectionLabel)
+      ? {
+          sectionLabel: readOptionalString(value.sectionLabel),
+        }
+      : {}),
+    ...(typeof value.ordinalWithinSection === "number" &&
+    Number.isInteger(value.ordinalWithinSection)
+      ? {
+          ordinalWithinSection: value.ordinalWithinSection,
+        }
+      : {}),
+    ...(readOptionalString(value.tableId)
+      ? {
+          tableId: readOptionalString(value.tableId),
+        }
+      : {}),
+    ...(readOptionalString(value.tableTarget)
+      ? {
+          tableTarget: readOptionalString(value.tableTarget),
+        }
+      : {}),
+    ...(readOptionalString(value.rowKey)
+      ? {
+          rowKey: readOptionalString(value.rowKey),
+        }
+      : {}),
+    ...(readOptionalString(value.columnKey)
+      ? {
+          columnKey: readOptionalString(value.columnKey),
+        }
+      : {}),
+    ...(readOptionalString(value.footnoteAnchor)
+      ? {
+          footnoteAnchor: readOptionalString(value.footnoteAnchor),
+        }
+      : {}),
   };
 }
 

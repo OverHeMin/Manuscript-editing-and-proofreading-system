@@ -8,6 +8,8 @@ export interface ResidualRoutingInput {
   riskLevel: ResidualIssueRiskLevel;
 }
 
+export type ResidualCandidateRoute = Exclude<ResidualIssueRoute, "manual_only">;
+
 const MANUAL_ONLY_PROOFREADING_CONTRADICTION_ISSUE_TYPES = new Set([
   "study_design_consistency",
   "population_definition_consistency",
@@ -31,19 +33,39 @@ export function routeResidualIssue(
     return "manual_only";
   }
 
-  switch (input.issueType) {
+  return deriveResidualCandidateRoute(input.issueType);
+}
+
+export function deriveResidualCandidateRoute(
+  issueType: string,
+): ResidualCandidateRoute {
+  const normalizedIssueType = issueType.trim().toLowerCase();
+
+  switch (normalizedIssueType) {
     case "unit_expression_gap":
     case "table_annotation_gap":
     case "style_consistency_gap":
+    case "unit_style_consistency":
       return "rule_candidate";
     case "terminology_gap":
     case "terminology_consistency":
+    case "terminology_definition_missing":
+    case "first_use_expansion":
+    case "abbreviation_casing":
       return "knowledge_candidate";
     case "uncovered_local_language_issue":
       return "prompt_template_candidate";
     case "ambiguous_reviewer_escalation":
       return "evidence_only";
     default:
+      if (
+        normalizedIssueType.includes("terminology") ||
+        normalizedIssueType.includes("abbreviation") ||
+        normalizedIssueType.includes("definition_missing")
+      ) {
+        return "knowledge_candidate";
+      }
+
       return "evidence_only";
   }
 }

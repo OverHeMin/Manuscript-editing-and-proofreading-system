@@ -46,6 +46,97 @@ export type DocumentPreviewSessionStatus =
 export type DocumentPreviewMode = "view" | "comment" | "comment_review";
 export type DocumentPreviewViewer = "onlyoffice" | "pdf" | "html";
 export type DocumentCommentSource = "onlyoffice" | "system";
+export type DocumentPreviewSurfaceMode = "read_only_review";
+export type DocumentPreviewSessionAuthorizationKind = "surface_session";
+export type DocumentPreviewSessionTokenScheme = "none" | "surface_session_jwt";
+export type DocumentPreviewEventBridgeTransport = "window_post_message";
+export type DocumentPreviewAnchorKind =
+  | "block"
+  | "paragraph"
+  | "heading"
+  | "table"
+  | "table_cell"
+  | "image"
+  | "caption"
+  | "reference_entry";
+
+export interface DocumentPreviewEmbeddedDocumentPermissions {
+  edit: false;
+  comment: false;
+  review: false;
+  download: true;
+  print: true;
+}
+
+export interface DocumentPreviewEmbeddedDocument {
+  document_key: string;
+  file_name: string;
+  file_extension: string;
+  mime_type: string;
+  download_path: string;
+  permissions: DocumentPreviewEmbeddedDocumentPermissions;
+}
+
+export interface DocumentPreviewSessionAuthorization {
+  kind: DocumentPreviewSessionAuthorizationKind;
+  requires_surface_session: true;
+  token_scheme: DocumentPreviewSessionTokenScheme;
+  access_token?: string;
+}
+
+export interface DocumentPreviewEventBridgeCapabilities {
+  ready_event: true;
+  locate_to_anchor: true;
+  selection_from_document: true;
+  visible_issue_marks: boolean;
+  bi_directional_sync: true;
+}
+
+export interface DocumentPreviewEventBridge {
+  provider: "onlyoffice";
+  transport: DocumentPreviewEventBridgeTransport;
+  capabilities: DocumentPreviewEventBridgeCapabilities;
+}
+
+export interface DocumentPreviewEmbedEditorConfigCustomization {
+  autosave: false;
+  chat: false;
+  comments: false;
+  compactHeader: true;
+  compactToolbar: true;
+  feedback: false;
+  forcesave: false;
+  help: false;
+  submitForm: false;
+}
+
+export interface DocumentPreviewEmbedEditorConfig {
+  mode: "view";
+  lang: "zh-CN";
+  customization: DocumentPreviewEmbedEditorConfigCustomization;
+}
+
+export interface DocumentPreviewEmbed {
+  provider: "onlyoffice";
+  provider_origin: string;
+  api_js_url: string;
+  document_type: "word";
+  ui_type: "desktop";
+  editor_config: DocumentPreviewEmbedEditorConfig;
+}
+
+export interface DocumentPreviewLocateTarget {
+  anchor_key: string;
+  anchor_kind: DocumentPreviewAnchorKind;
+  block_index?: number;
+  quote?: string;
+  section_label?: string;
+  table_id?: string;
+  table_target?: string;
+  row_key?: string;
+  column_key?: string;
+  footnote_anchor?: string;
+}
 
 export interface DocumentCommentView {
   id: string;
@@ -66,11 +157,18 @@ export interface DocumentPreviewSession {
   id?: string;
   manuscript_id: ManuscriptId;
   asset_id?: DocumentAssetId;
+  session_id: string;
+  correlation_id: string;
   viewer: DocumentPreviewViewer;
   mode: DocumentPreviewMode;
+  surface_mode: DocumentPreviewSurfaceMode;
   status: DocumentPreviewSessionStatus;
   comment_source: DocumentCommentSource;
   source_asset_type?: Extract<DocumentAssetType, "original" | "normalized_docx">;
+  document: DocumentPreviewEmbeddedDocument;
+  authorization: DocumentPreviewSessionAuthorization;
+  event_bridge: DocumentPreviewEventBridge;
+  embed: DocumentPreviewEmbed;
   created_at?: string;
   updated_at?: string;
   comment_view?: DocumentCommentView[];

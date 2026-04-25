@@ -1071,6 +1071,21 @@ test("summary surfaces proofreading residual progression without duplicating the
             updated_at: "2026-04-21T09:07:00.000Z",
           },
         ],
+        knowledgeCandidates: [
+          {
+            id: "candidate-proofreading-knowledge-1",
+            type: "knowledge_candidate",
+            status: "pending_review",
+            manuscript_id: "manuscript-proof-1",
+            module: "proofreading",
+            manuscript_type: "clinical_study",
+            governed_provenance_kind: "human_feedback",
+            title: "Knowledge candidate from proofreading human confirmation",
+            created_by: "reviewer-1",
+            created_at: "2026-04-21T09:08:00.000Z",
+            updated_at: "2026-04-21T09:08:00.000Z",
+          },
+        ],
       }}
     />,
   );
@@ -1082,7 +1097,7 @@ test("summary surfaces proofreading residual progression without duplicating the
   assert.match(markup, /\u5df2\u751f\u6210\u5019\u9009/u);
   assert.match(
     markup,
-    /<span>\u5df2\u751f\u6210\u5019\u9009<\/span>\s*<strong>2<\/strong>/u,
+    /<span>\u5df2\u751f\u6210\u5019\u9009<\/span>\s*<strong>3<\/strong>/u,
   );
   assert.match(markup, /\u53ea\u663e\u793a\u6821\u5bf9\u4e3b\u7ebf\u9700\u8981\u5173\u6ce8\u7684\u5173\u952e\u8fdb\u5ea6/u);
   assert.match(markup, /\u8be6\u7ec6\u590d\u9a8c\u548c\u5019\u9009\u5904\u7406\u8bf7\u5230\u540e\u7eed\u5ba1\u6838\u7ee7\u7eed\u5b8c\u6210/u);
@@ -1143,6 +1158,63 @@ test("summary still surfaces proofreading follow-up when only manual review resi
     markup,
     /href="#template-governance\?[^"]*reviewItemId=residual-manual-review-1/u,
   );
+});
+
+test("summary exposes direct knowledge-candidate routing for actionable proofreading terminology residuals", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchSummary
+      mode="proofreading"
+      workspace={createProofreadingWorkspace()}
+      latestJob={null}
+      latestExport={null}
+      latestActionResult={null}
+      canOpenLearningReview
+      proofreadingGovernanceActions={{
+        isSubmitting: false,
+        onRouteToKnowledgeCandidate: () => undefined,
+      }}
+      proofreadingGovernanceHandoff={{
+        residualReviewItems: [
+          {
+            id: "residual-knowledge-route-1",
+            source_kind: "residual_issue",
+            source_status: "manual_review_pending",
+            review_status: "pending",
+            module: "proofreading",
+            manuscript_id: "manuscript-proof-1",
+            manuscript_type: "clinical_study",
+            snapshot_id: "snapshot-proofreading-knowledge-1",
+            title: "Residual terminology definition needs governed knowledge follow-up",
+            created_at: "2026-04-21T09:08:00.000Z",
+            updated_at: "2026-04-21T09:09:00.000Z",
+            available_actions: [
+              "accept_change_only",
+              "reject_as_false_positive",
+              "route_to_knowledge_candidate",
+            ],
+            issue_type: "terminology_definition_missing",
+            execution_snapshot_id: "snapshot-proofreading-knowledge-1",
+            recommended_route: "knowledge_candidate",
+            harness_validation_status: "not_required",
+          } as never,
+        ],
+        ruleCandidates: [],
+        knowledgeCandidates: [],
+      }}
+    />,
+  );
+
+  assert.match(markup, /\u6821\u5bf9\u56de\u6d41\u8fdb\u5ea6/u);
+  assert.match(
+    markup,
+    /\u53ef\u76f4\u63a5\u5904\u7406\u7684\u672f\u8bed\u7c7b\u6b8b\u5dee\u4f1a\u5148\u8f6c\u5165\u77e5\u8bc6\u5019\u9009/u,
+  );
+  assert.match(
+    markup,
+    /Residual terminology definition needs governed knowledge follow-up/u,
+  );
+  assert.match(markup, /\u5f53\u524d\u72b6\u6001\uff1a\u5f85\u4eba\u5de5\u590d\u6838/u);
+  assert.match(markup, /\u8f6c\u4e3a\u77e5\u8bc6\u5019\u9009/u);
 });
 
 test("job review evidence details include editing table inspection hits and nested proofreading quality reasons", () => {

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Proofreading Locate Bridge</title>
+    <script>
+      (function bootstrapOnlyOfficePluginRuntime() {
+        var fallbackOrigin = "http://127.0.0.1:58080";
+        var providerOrigin = fallbackOrigin;
+        try {
+          if (document.referrer) {
+            providerOrigin = new URL(document.referrer).origin;
+          }
+        } catch (_error) {
+          providerOrigin = fallbackOrigin;
+        }
+
+        window.__medsysOnlyOfficePluginBootstrap = {
+          providerOrigin: providerOrigin
+        };
+        window.Asc = window.Asc || {};
+        window.Asc.plugin = window.Asc.plugin || {};
+      })();
+    </script>
+    <script>
+      (function loadOnlyOfficePluginAssets() {
+        var providerOrigin =
+          (window.__medsysOnlyOfficePluginBootstrap || {}).providerOrigin ||
+          "http://127.0.0.1:58080";
+        function appendScript(source, marker) {
+          var script = document.createElement("script");
+          script.async = false;
+          script.src = source;
+          if (marker) {
+            script.dataset.medsysPluginScript = marker;
+          }
+          document.head.appendChild(script);
+        }
+
+        appendScript(providerOrigin + "/sdkjs-plugins/v1/plugins.js", "onlyoffice-runtime");
+      })();
+    </script>
+    <script src="./plugin.js?bridgeVersion=20260425-stage2b-document-selection-sync"></script>
+  </head>
+  <body></body>
+</html>

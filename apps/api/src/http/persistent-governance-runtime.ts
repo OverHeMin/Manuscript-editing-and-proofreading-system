@@ -6,6 +6,7 @@ import { PostgresLoginAttemptStore } from "../auth/postgres-login-attempt-store.
 import { PostgresAuditService } from "../audit/index.ts";
 import type { HttpAuthRuntime } from "./demo-auth-runtime.ts";
 import type { ApiServerRuntime } from "./api-http-server.ts";
+import { buildDownloadContentDispositionHeader } from "./download-content-disposition.ts";
 import { LocalAssetMaterializationService } from "./local-asset-materialization.ts";
 import {
   AgentProfileService,
@@ -996,7 +997,9 @@ export function createPersistentGovernanceRuntime(
           headers: {
             "Content-Type": download.mimeType,
             "Content-Length": String(download.bytes.byteLength),
-            "Content-Disposition": `attachment; filename="${download.fileName.replace(/["\\\\]/g, "-")}"`,
+            "Content-Disposition": buildDownloadContentDispositionHeader(
+              download.fileName,
+            ),
             "Cache-Control": "no-store",
           },
         };

@@ -44,6 +44,9 @@ import {
   confirmProofreadingFinal,
   createProofreadingDraft,
   publishProofreadingHumanFinal,
+  saveProofreadingConfirmationDraft,
+  type ProofreadingConfirmationDecisionInput,
+  type ProofreadingConfirmationDraftSaveResultViewModel,
   type ProofreadingHumanFinalPublishResultViewModel,
   type ProofreadingRunResultViewModel,
   type PublishProofreadingHumanFinalInput,
@@ -215,6 +218,13 @@ export interface PublishHumanFinalAndLoadResult {
   workspace: ManuscriptWorkbenchWorkspace;
 }
 
+export interface SaveProofreadingConfirmationDraftInput {
+  manuscriptId: string;
+  confirmationAssetId: string;
+  actorRole: AuthRole;
+  confirmationDecisions: ProofreadingConfirmationDecisionInput[];
+}
+
 export interface ManuscriptWorkbenchProofreadingGovernanceHandoffOptions {
   snapshotId?: string;
 }
@@ -254,6 +264,9 @@ export interface ManuscriptWorkbenchController {
   publishHumanFinalAndLoad(
     input: PublishHumanFinalAndLoadInput,
   ): Promise<PublishHumanFinalAndLoadResult>;
+  saveProofreadingConfirmationDraft(
+    input: SaveProofreadingConfirmationDraftInput,
+  ): Promise<ProofreadingConfirmationDraftSaveResultViewModel>;
   submitManualFeedbackForReview(
     input: SubmitManualFeedbackForReviewInput,
   ): Promise<SubmitManualFeedbackForReviewResult>;
@@ -424,6 +437,17 @@ export function createManuscriptWorkbenchController(
         workspace,
       };
     },
+    async saveProofreadingConfirmationDraft(input) {
+      const response = await saveProofreadingConfirmationDraft(client, {
+        manuscriptId: input.manuscriptId,
+        confirmationAssetId: input.confirmationAssetId,
+        requestedBy: "web-workbench",
+        actorRole: input.actorRole,
+        confirmationDecisions: input.confirmationDecisions,
+      });
+
+      return response.body;
+    },
     async submitManualFeedbackForReview(input) {
       const response = await submitGovernedHit(client, input);
       return response.body;
@@ -471,11 +495,8 @@ async function loadWorkspace(
     ? await loadKnowledgeReferences(client, manuscriptResponse.body, knowledgeReferenceCache)
     : {};
   const [availableTemplateFamilies, templateFamily, journalTemplateProfiles] =
-    shouldLoadTemplateContext(options) &&
-    (manuscriptResponse.body.current_template_family_id ??
-      manuscriptResponse.body.governed_execution_context_summary
-        ?.base_template_family_id) != null
-      ? await loadTemplateContext(
+    shouldLoadTemplateContext(options)
+      ? await loadTemplateContextBestEffort(
           client,
           manuscriptResponse.body.current_template_family_id ??
             manuscriptResponse.body.governed_execution_context_summary
@@ -529,6 +550,23 @@ async function loadTemplateContext(
   return [templateFamilies, templateFamily, journalTemplateProfiles];
 }
 
+async function loadTemplateContextBestEffort(
+  client: ManuscriptWorkbenchHttpClient,
+  templateFamilyId: string,
+): Promise<
+  [
+    TemplateFamilyViewModel[],
+    TemplateFamilyViewModel | null,
+    JournalTemplateProfileViewModel[],
+  ]
+> {
+  try {
+    return await loadTemplateContext(client, templateFamilyId);
+  } catch {
+    return [[], null, []];
+  }
+}
+
 async function loadProofreadingGovernanceHandoff(
   client: ManuscriptWorkbenchHttpClient,
   manuscriptId: string,
@@ -540,11 +578,11 @@ async function loadProofreadingGovernanceHandoff(
     return {
       residualReviewItems: [],
       ruleCandidates: [],
+      knowledgeCandidates: [],
     };
   }
 
-  return (
-    await client.request<ManuscriptWorkbenchProofreadingGovernanceHandoffViewModel>({
+  const response = await client.request<Partial<ManuscriptWorkbenchProofreadingGovernanceHandoffViewModel>>({
       method: "GET",
       url:
         "/api/v1/modules/proofreading/governance-handoff" +
@@ -552,8 +590,13 @@ async function loadProofreadingGovernanceHandoff(
         (normalizedSnapshotId
           ? `&snapshotId=${encodeURIComponent(normalizedSnapshotId)}`
           : ""),
-    })
-  ).body;
+    });
+
+  return {
+    residualReviewItems: response.body.residualReviewItems ?? [],
+    ruleCandidates: response.body.ruleCandidates ?? [],
+    knowledgeCandidates: response.body.knowledgeCandidates ?? [],
+  };
 }
 
 async function loadKnowledgeReferences(

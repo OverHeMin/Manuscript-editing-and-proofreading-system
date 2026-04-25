@@ -499,6 +499,10 @@ function TemplateSelectionPanel({
               value={templateSelection.selectedTemplateFamilyId}
               onChange={(event) => templateSelection.onTemplateFamilySelect(event.target.value)}
             >
+              {templateSelection.selectedTemplateFamilyId.trim().length === 0 &&
+              templateSelection.templateFamilyOptions.length > 0 ? (
+                <option value="">请选择基础模板家族</option>
+              ) : null}
               {templateSelection.templateFamilyOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}

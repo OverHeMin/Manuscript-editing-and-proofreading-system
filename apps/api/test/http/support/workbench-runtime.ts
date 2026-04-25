@@ -12,6 +12,7 @@ import {
   type DemoHttpAuthRuntime,
 } from "../../../src/http/demo-auth-runtime.ts";
 import { LocalAssetMaterializationService } from "../../../src/http/local-asset-materialization.ts";
+import { buildDownloadContentDispositionHeader } from "../../../src/http/download-content-disposition.ts";
 import { InMemoryAuditService } from "../../../src/audit/audit-service.ts";
 import { PermissionGuard } from "../../../src/auth/permission-guard.ts";
 import { DocumentAssetService } from "../../../src/modules/assets/document-asset-service.ts";
@@ -513,9 +514,7 @@ export function createWorkbenchRuntime(input: {
   };
   const proofreadingExecutor: MainlineAiRuntimeExecutor = {
     async executeJson<T>(input: ExecuteMainlineAiInput): Promise<T> {
-      const sourceBlocks = Array.isArray(input.userPayload.sourceBlocks)
-        ? input.userPayload.sourceBlocks
-        : [];
+      const sourceBlocks = readSeededSourceBlocks(input.userPayload);
       const firstBlock = sourceBlocks.find(
         (entry): entry is { text: string } =>
           typeof entry === "object" &&
@@ -647,7 +646,9 @@ export function createWorkbenchRuntime(input: {
           headers: {
             "Content-Type": download.mimeType,
             "Content-Length": String(download.bytes.byteLength),
-            "Content-Disposition": `attachment; filename="${download.fileName.replace(/["\\\\]/g, "-")}"`,
+            "Content-Disposition": buildDownloadContentDispositionHeader(
+              download.fileName,
+            ),
             "Cache-Control": "no-store",
           },
         };
@@ -774,6 +775,18 @@ export function createWorkbenchRuntime(input: {
       proofreadingModelId: "model-proofreading-1",
     },
   };
+}
+
+function readSeededSourceBlocks(userPayload: Record<string, unknown>): unknown[] {
+  if (Array.isArray(userPayload.fullDocumentBlocks)) {
+    return userPayload.fullDocumentBlocks;
+  }
+
+  if (Array.isArray(userPayload.sourceBlocks)) {
+    return userPayload.sourceBlocks;
+  }
+
+  return [];
 }
 
 function seedGovernedKnowledgeAsset(input: {

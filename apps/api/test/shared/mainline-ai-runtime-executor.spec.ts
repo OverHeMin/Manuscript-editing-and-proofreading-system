@@ -48,6 +48,21 @@ function createRuntimeSelection() {
   };
 }
 
+function createFallbackRuntimeSelection() {
+  const runtime = createRuntimeSelection();
+  return {
+    ...runtime,
+    fallback_chain: [
+      {
+        ...runtime.primary,
+        model_id: "model-mainline-fallback-1",
+        model_name: "gpt-5.4-fallback",
+        request_url: "https://ai-fallback.example.test/v1/chat/completions",
+      },
+    ],
+  };
+}
+
 test("mainline executor resolves runtime, sends OpenAI-compatible messages, and parses JSON responses", async () => {
   const selectionInputs: Array<Record<string, unknown>> = [];
   const runtimeInputs: unknown[] = [];
@@ -242,6 +257,63 @@ test("mainline executor surfaces invalid JSON with module-specific messaging", a
   );
 });
 
+test("mainline executor retries once when a JSON response is malformed before succeeding", async () => {
+  let fetchCount = 0;
+  const executor = new OpenAiMainlineAiRuntimeExecutor({
+    aiGatewayService: {
+      async resolveModelSelection() {
+        return createSelection();
+      },
+    },
+    aiProviderRuntimeService: {
+      async resolveSelectionRuntime() {
+        return createRuntimeSelection();
+      },
+    },
+    fetch: async () => {
+      fetchCount += 1;
+
+      const content =
+        fetchCount === 1
+          ? '{"summary":"malformed-first-response"'
+          : JSON.stringify({
+              summary: "Recovered structured payload",
+            });
+
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content,
+              },
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      );
+    },
+  });
+
+  const result = await executor.executeJson<{ summary: string }>({
+    module: "proofreading",
+    systemPrompt: "Return JSON only.",
+    userPayload: {
+      task: "proofreading_plan",
+    },
+  });
+
+  assert.deepEqual(result, {
+    summary: "Recovered structured payload",
+  });
+  assert.equal(fetchCount, 2);
+});
+
 test("mainline executor surfaces upstream status failures with module-specific error text", async () => {
   const executor = new OpenAiMainlineAiRuntimeExecutor({
     aiGatewayService: {
@@ -276,4 +348,85 @@ test("mainline executor surfaces upstream status failures with module-specific e
       error instanceof MainlineAiRuntimeExecutorError &&
       error.message === "Screening AI request failed with status 503.",
   );
+});
+
+test("mainline executor retries the first fallback target when the primary request times out", async () => {
+  const fetchCalls: string[] = [];
+  const executor = new OpenAiMainlineAiRuntimeExecutor({
+    aiGatewayService: {
+      async resolveModelSelection() {
+        return {
+          ...createSelection(),
+          fallback_chain: [
+            {
+              ...createSelection().model,
+              id: "model-mainline-fallback-1",
+              model_name: "gpt-5.4-fallback",
+              connection_id: "connection-mainline-fallback-1",
+            },
+          ],
+        };
+      },
+    },
+    aiProviderRuntimeService: {
+      async resolveSelectionRuntime() {
+        return createFallbackRuntimeSelection();
+      },
+    },
+    requestTimeoutMs: 5,
+    fetch: async (url, init) => {
+      fetchCalls.push(String(url));
+
+      if (String(url).includes("ai-fallback.example.test")) {
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    summary: "Recovered through fallback",
+                  }),
+                },
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+            },
+          },
+        );
+      }
+
+      const signal = init?.signal;
+      assert.ok(signal instanceof AbortSignal);
+
+      return await new Promise<Response>((_, reject) => {
+        signal.addEventListener(
+          "abort",
+          () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          },
+          { once: true },
+        );
+      });
+    },
+  });
+
+  const result = await executor.executeJson<{ summary: string }>({
+    module: "proofreading",
+    systemPrompt: "Return JSON only.",
+    userPayload: {
+      task: "proofreading_plan",
+    },
+  });
+
+  assert.deepEqual(result, {
+    summary: "Recovered through fallback",
+  });
+  assert.deepEqual(fetchCalls, [
+    "https://ai.example.test/v1/chat/completions",
+    "https://ai-fallback.example.test/v1/chat/completions",
+  ]);
 });

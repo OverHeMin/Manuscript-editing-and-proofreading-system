@@ -2,8 +2,11 @@
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { ManuscriptWorkbenchControls } from "../src/features/manuscript-workbench/manuscript-workbench-controls.tsx";
 import {
   buildPublishedHumanFinalActionResult,
+  buildProofreadingResidualKnowledgeRouteActionResult,
+  buildDetailPreviewSessionInput,
   buildHighRiskReviewItemsFromJob,
   buildModuleRunSuccessMessage,
   buildManualFeedbackActionResult,
@@ -13,10 +16,15 @@ import {
   buildWorkbenchAssetDisplayName,
   buildWorkbenchModuleRunInput,
   deriveUploadTitleFromFileName,
+  formatAssetOptionLabel,
   resolveProofreadingDraftSelection,
   resolveGovernedExecutionBlockMessage,
   resolveDetailJobSourceAsset,
+  resolveMaterializedModuleResultAsset,
   resolveResultMaterializationFailureMessage,
+  resolveWorkbenchHumanFinalFileName,
+  resolveWorkbenchProofreadingAnnotatedFileName,
+  resolveTemplateSelectionApplyBlockMessage,
   resolveTemplateFamilyIdForManuscriptType,
   resolveManualFeedbackContext,
   pruneConfirmationState,
@@ -26,6 +34,9 @@ import {
   loadPrefilledWorkbenchPageData,
   ManuscriptWorkbenchFocusCanvas,
   ManuscriptWorkbenchPage,
+  canSaveProofreadingConfirmationDraft,
+  shouldAutoSaveProofreadingConfirmationDraft,
+  resolveProofreadingIssueSelection,
   resolveWorkbenchGeneratedAssetFileName,
   resolveWorkbenchNotice,
 } from "../src/features/manuscript-workbench/manuscript-workbench-page.tsx";
@@ -80,6 +91,80 @@ test("submission workbench keeps the upload intake as the default rendering path
   assert.match(markup, /type="file"/);
   assert.match(markup, /multiple/);
   assert.match(markup, /上传稿件/u);
+});
+
+test("proofreading confirmation auto-save only arms when a savable draft has diverged from the persisted signature", () => {
+  assert.equal(
+    shouldAutoSaveProofreadingConfirmationDraft({
+      canSaveConfirmationDraft: true,
+      isConfirmationDraftSaving: false,
+      isHumanFinalPublishing: false,
+      isDetailLoading: false,
+      confirmationDraftSignature: "issue-1:accepted",
+      savedConfirmationDraftSignature: "issue-1:rejected",
+    }),
+    true,
+  );
+  assert.equal(
+    shouldAutoSaveProofreadingConfirmationDraft({
+      canSaveConfirmationDraft: true,
+      isConfirmationDraftSaving: false,
+      isHumanFinalPublishing: false,
+      isDetailLoading: false,
+      confirmationDraftSignature: "",
+      savedConfirmationDraftSignature: "",
+    }),
+    false,
+  );
+});
+
+test("proofreading confirmation auto-save stays idle while the detail view is loading or another save is already in flight", () => {
+  assert.equal(
+    shouldAutoSaveProofreadingConfirmationDraft({
+      canSaveConfirmationDraft: true,
+      isConfirmationDraftSaving: true,
+      isHumanFinalPublishing: false,
+      isDetailLoading: false,
+      confirmationDraftSignature: "issue-1:accepted",
+      savedConfirmationDraftSignature: "issue-1:rejected",
+    }),
+    false,
+  );
+  assert.equal(
+    shouldAutoSaveProofreadingConfirmationDraft({
+      canSaveConfirmationDraft: true,
+      isConfirmationDraftSaving: false,
+      isHumanFinalPublishing: false,
+      isDetailLoading: true,
+      confirmationDraftSignature: "issue-1:accepted",
+      savedConfirmationDraftSignature: "issue-1:rejected",
+    }),
+    false,
+  );
+});
+
+test("proofreading draft saves are enabled on the actual workspace result page and stay enabled on the annotated confirmation page", () => {
+  assert.equal(
+    canSaveProofreadingConfirmationDraft({
+      detailKind: "proofreading_workspace",
+      assetType: "proofreading_draft_report",
+    }),
+    true,
+  );
+  assert.equal(
+    canSaveProofreadingConfirmationDraft({
+      detailKind: "proofreading_confirmation",
+      assetType: "final_proof_annotated_docx",
+    }),
+    true,
+  );
+  assert.equal(
+    canSaveProofreadingConfirmationDraft({
+      detailKind: "proofreading_workspace",
+      assetType: "final_proof_annotated_docx",
+    }),
+    false,
+  );
 });
 
 test("prefilled proofreading page data includes governance handoff for the current proofreading snapshot", async () => {
@@ -189,6 +274,21 @@ test("prefilled proofreading page data includes governance handoff for the curre
             },
           ],
           ruleCandidates: [],
+          knowledgeCandidates: [
+            {
+              id: "candidate-proof-knowledge-1",
+              type: "knowledge_candidate",
+              status: "pending_review",
+              manuscript_id: "manuscript-proof-1",
+              module: "proofreading",
+              manuscript_type: "clinical_study",
+              governed_provenance_kind: "human_feedback",
+              title: "Knowledge candidate from proofreading confirmation",
+              created_by: "proofreader-1",
+              created_at: "2026-04-21T09:26:00.000Z",
+              updated_at: "2026-04-21T09:26:00.000Z",
+            },
+          ],
         };
       },
     },
@@ -203,6 +303,11 @@ test("prefilled proofreading page data includes governance handoff for the curre
   assert.equal(
     result.proofreadingGovernanceHandoff?.residualReviewItems[0]?.source_status,
     "validation_pending",
+  );
+  assert.equal(result.proofreadingGovernanceHandoff?.knowledgeCandidates.length, 1);
+  assert.equal(
+    result.proofreadingGovernanceHandoff?.knowledgeCandidates[0]?.type,
+    "knowledge_candidate",
   );
   assert.deepEqual(calls, [
     "loadWorkspace",
@@ -250,6 +355,7 @@ test("prefilled proofreading page data requests a proofreader-safe workspace loa
       loadProofreadingGovernanceHandoff: async () => ({
         residualReviewItems: [],
         ruleCandidates: [],
+        knowledgeCandidates: [],
       }),
     },
     {
@@ -519,6 +625,50 @@ test("template selection helpers only expose active operator options with locali
   ]);
 });
 
+test("template selection shows an explicit placeholder when no base template family is actually selected", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchControls
+      mode="proofreading"
+      busy={false}
+      showLookupPanel={false}
+      lookup={{
+        manuscriptId: "manuscript-1",
+        onChange: () => {},
+        onLoad: () => {},
+      }}
+      templateSelection={{
+        title: "Journal Template",
+        resolvedManuscriptTypeLabel: "综述（低置信度，待人工确认）",
+        confidenceLabel: "低置信度，需人工确认",
+        confidenceLevel: "low",
+        requiresOperatorReview: true,
+        showManualManuscriptTypeSelect: true,
+        manualManuscriptTypeValue: "review",
+        manualManuscriptTypeOptions: [
+          { value: "clinical_study", label: "临床研究" },
+          { value: "review", label: "综述" },
+        ],
+        baseTemplateLabel: "未绑定",
+        selectedTemplateFamilyId: "",
+        templateFamilyOptions: [
+          { value: "family-clinical-1", label: "Seeded Clinical Study Family" },
+        ],
+        selectedJournalTemplateId: "",
+        currentAppliedLabel: "仅基础模板",
+        hasPendingChange: false,
+        options: [],
+        onManualManuscriptTypeSelect: () => {},
+        onTemplateFamilySelect: () => {},
+        onSelect: () => {},
+        onApply: () => {},
+      }}
+    />,
+  );
+
+  assert.match(markup, /<option value="" selected="">请选择基础模板家族<\/option>/u);
+  assert.match(markup, /Seeded Clinical Study Family/u);
+});
+
 test("manual manuscript type helpers expose distinct operator options and resolve the matching base family", () => {
   const workspace = {
     manuscript: {
@@ -576,6 +726,25 @@ test("manual manuscript type helpers expose distinct operator options and resolv
   );
 });
 
+test("template selection apply guard requires an explicit base family when the manuscript is still unbound", () => {
+  assert.equal(
+    resolveTemplateSelectionApplyBlockMessage({
+      currentTemplateFamilyId: null,
+      selectedTemplateFamilyId: "",
+      availableTemplateFamilyCount: 1,
+    }),
+    "请先选择基础模板家族，再保存模板上下文。",
+  );
+  assert.equal(
+    resolveTemplateSelectionApplyBlockMessage({
+      currentTemplateFamilyId: "family-review-1",
+      selectedTemplateFamilyId: "",
+      availableTemplateFamilyCount: 1,
+    }),
+    null,
+  );
+});
+
 test("workbench run helpers use stage-specific generated file names with correct extensions", () => {
   assert.equal(
     resolveWorkbenchGeneratedAssetFileName("screening"),
@@ -588,6 +757,44 @@ test("workbench run helpers use stage-specific generated file names with correct
   assert.equal(
     resolveWorkbenchGeneratedAssetFileName("proofreading"),
     "proofreading-draft-report.md",
+  );
+  assert.equal(
+    resolveWorkbenchGeneratedAssetFileName("proofreading", "心血管综述"),
+    "心血管综述-校对草稿报告.md",
+  );
+  assert.equal(
+    resolveWorkbenchProofreadingAnnotatedFileName("心血管综述"),
+    "心血管综述-校对批注稿.docx",
+  );
+  assert.equal(
+    resolveWorkbenchHumanFinalFileName("心血管综述"),
+    "心血管综述-人工终稿.docx",
+  );
+});
+
+test("asset option labels distinguish historical asset versions without changing the current label", () => {
+  assert.equal(
+    formatAssetOptionLabel("心血管综述", {
+      id: "asset-human-final-current",
+      asset_type: "human_final_docx",
+      status: "active",
+      version_no: 2,
+      is_current: true,
+      file_name: "心血管综述-人工终稿.docx",
+    }),
+    "心血管综述 - 人工终稿",
+  );
+
+  assert.equal(
+    formatAssetOptionLabel("心血管综述", {
+      id: "asset-human-final-history",
+      asset_type: "human_final_docx",
+      status: "superseded",
+      version_no: 1,
+      is_current: false,
+      file_name: "human-final.docx",
+    }),
+    "心血管综述 - 人工终稿（历史 v1）",
   );
 });
 
@@ -625,6 +832,24 @@ test("AI recognition uses governed module input by default and only sends bare w
       storageKey: "runs/manuscript-1/editing/output",
       fileName: "editing-manuscript.docx",
       executionMode: "bare",
+    },
+  );
+
+  assert.deepEqual(
+    buildWorkbenchModuleRunInput({
+      mode: "proofreading",
+      manuscriptId: "manuscript-1",
+      parentAssetId: "asset-edited-1",
+      actorRole: "admin",
+      outputBaseName: "心血管综述",
+    }),
+    {
+      mode: "proofreading",
+      manuscriptId: "manuscript-1",
+      parentAssetId: "asset-edited-1",
+      actorRole: "admin",
+      storageKey: "runs/manuscript-1/proofreading/output",
+      fileName: "心血管综述-校对草稿报告.md",
     },
   );
 });
@@ -1225,6 +1450,168 @@ test("proofreading confirmation detail follows the parent draft asset so the hum
   );
 });
 
+test("proofreading workspace preview session input targets the manuscript asset while keeping proofreading comments", () => {
+  const editedAsset = {
+    id: "asset-edited-1",
+    manuscript_id: "manuscript-1",
+    asset_type: "edited_docx",
+    status: "active",
+    storage_key: "runs/editing/edited.docx",
+    mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    source_module: "editing",
+    created_by: "editor-1",
+    version_no: 2,
+    is_current: true,
+    file_name: "edited.docx",
+    created_at: "2026-04-24T09:00:00.000Z",
+    updated_at: "2026-04-24T09:00:00.000Z",
+  } as never;
+  const draftAsset = {
+    id: "asset-proof-draft-1",
+    manuscript_id: "manuscript-1",
+    asset_type: "proofreading_draft_report",
+    status: "active",
+    storage_key: "runs/proofreading/draft.md",
+    mime_type: "text/markdown",
+    parent_asset_id: "asset-edited-1",
+    source_module: "proofreading",
+    created_by: "proofreader-1",
+    version_no: 3,
+    is_current: false,
+    file_name: "proofreading-draft.md",
+    created_at: "2026-04-24T09:05:00.000Z",
+    updated_at: "2026-04-24T09:05:00.000Z",
+  } as never;
+
+  const previewRequest = buildDetailPreviewSessionInput({
+    workspace: {
+      manuscript: {
+        id: "manuscript-1",
+        title: "Proofreading manuscript",
+      },
+      assets: [draftAsset, editedAsset],
+      currentManuscriptAsset: editedAsset,
+    } as never,
+    selectedAsset: draftAsset,
+    detailJob: {
+      payload: {
+        proofreadingPlan: {
+          issues: [
+            {
+              itemId: "issue-1",
+              targetText: "5 mg per dL",
+              replacementText: "5 mg/dL",
+              anchor: {
+                blockIndex: 0,
+                quote: "5 mg per dL",
+                sectionLabel: "Results",
+              },
+            },
+          ],
+        },
+      },
+    } as never,
+    mode: "proofreading",
+    actorRole: "proofreader",
+  });
+
+  assert.equal(previewRequest?.manuscriptId, "manuscript-1");
+  assert.equal(previewRequest?.assetId, "asset-edited-1");
+  assert.equal(previewRequest?.actorRole, "proofreader");
+  assert.equal(previewRequest?.comments[0]?.id, "issue-1");
+  assert.equal(previewRequest?.comments[0]?.anchor_text, "5 mg per dL");
+  assert.match(previewRequest?.comments[0]?.body ?? "", /5 mg\/dL/);
+});
+
+test("proofreading current result selection prefers the annotated proof asset over the draft report when both exist", () => {
+  const draftAsset = {
+    id: "asset-proof-draft-2",
+    manuscript_id: "manuscript-1",
+    asset_type: "proofreading_draft_report",
+    status: "active",
+    storage_key: "runs/proofreading/draft.md",
+    mime_type: "text/markdown",
+    source_module: "proofreading",
+    created_by: "proofreader-1",
+    version_no: 2,
+    is_current: true,
+    file_name: "semantic-table-upload-校对草稿报告.md",
+    created_at: "2026-04-24T09:05:00.000Z",
+    updated_at: "2026-04-24T09:05:00.000Z",
+  } as never;
+  const finalProofAsset = {
+    id: "asset-proof-final-1",
+    manuscript_id: "manuscript-1",
+    asset_type: "final_proof_annotated_docx",
+    status: "active",
+    storage_key: "runs/proofreading/final.docx",
+    mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    parent_asset_id: "asset-proof-draft-2",
+    source_module: "proofreading",
+    created_by: "proofreader-1",
+    version_no: 1,
+    is_current: true,
+    file_name: "semantic-table-upload-校对批注稿.docx",
+    created_at: "2026-04-24T09:06:00.000Z",
+    updated_at: "2026-04-24T09:06:00.000Z",
+  } as never;
+
+  assert.equal(
+    resolveMaterializedModuleResultAsset("proofreading", {
+      manuscript: {
+        id: "manuscript-1",
+      },
+      currentAsset: null,
+      currentManuscriptAsset: null,
+      assets: [draftAsset, finalProofAsset],
+    } as never)?.id,
+    "asset-proof-final-1",
+  );
+});
+
+test("proofreading issue selection resolves a locate target from the active document locator", () => {
+  const selection = resolveProofreadingIssueSelection({
+    items: [
+      {
+        itemId: "issue-1",
+        targetText: "ALT",
+        replacementText: "Alanine aminotransferase",
+        anchor: {
+          blockIndex: 7,
+          quote: "ALT",
+          sectionLabel: "Results",
+          documentLocator: {
+            anchorKind: "table_cell",
+            anchorKey: "table:results-1:alanine_aminotransferase:value",
+            confidence: "provided",
+            tableId: "results-1",
+            tableTarget: "data_cell",
+            rowKey: "alanine_aminotransferase",
+            columnKey: "value",
+          },
+        },
+      },
+    ],
+    requestedItemId: "issue-1",
+  });
+
+  assert.deepEqual(selection, {
+    issueId: "issue-1",
+    locateTarget: {
+      blockIndex: 7,
+      quote: "ALT",
+      sectionLabel: "Results",
+      anchorKey: "table:results-1:alanine_aminotransferase:value",
+      anchorKind: "table_cell",
+      confidence: "provided",
+      tableId: "results-1",
+      tableTarget: "data_cell",
+      rowKey: "alanine_aminotransferase",
+      columnKey: "value",
+    },
+  });
+});
+
 test("proofreading detail hydration prefers the full job payload so issue queue and manuscript blocks stay available", async () => {
   const latestJobSummary = {
     id: "job-proof-draft-1",
@@ -1428,6 +1815,34 @@ test("publish human final action results use the server confirmation summary as 
   );
 });
 
+test("proofreading residual knowledge routing action results stay operator-facing and surface the governed candidate id", () => {
+  const result = buildProofreadingResidualKnowledgeRouteActionResult({
+    reviewItemId: "residual-proof-knowledge-1",
+    learningCandidateId: "knowledge-candidate-1",
+  });
+
+  assert.deepEqual(result, {
+    tone: "success",
+    actionLabel: "Route Residual To Knowledge Candidate",
+    message:
+      "Routed residual issue residual-proof-knowledge-1 to knowledge candidate",
+    details: [
+      {
+        label: "Review Item",
+        value: "residual-proof-knowledge-1",
+      },
+      {
+        label: "Recommended Route",
+        value: "knowledge_candidate",
+      },
+      {
+        label: "Learning Candidate",
+        value: "knowledge-candidate-1",
+      },
+    ],
+  });
+});
+
 test("manual feedback helpers derive the governed snapshot context and build rule-center-aware action results", () => {
   const context = resolveManualFeedbackContext(
     "editing",
@@ -1626,7 +2041,7 @@ test.skip("editing table inspection findings become high-risk review cards with 
   ]);
 });
 
-test.skip("proofreading nested quality findings become high-risk review cards", () => {
+test("proofreading nested quality findings become high-risk review cards", () => {
   const items = buildHighRiskReviewItemsFromJob({
     id: "job-proofreading-quality-1",
     manuscript_id: "manuscript-1",
@@ -1691,12 +2106,13 @@ test.skip("proofreading nested quality findings become high-risk review cards", 
           rationale: "统计表达存在高风险误解空间",
         },
         relatedRuleIds: ["rule-statistics-1"],
-        relatedKnowledgeItemIds: undefined,
+        relatedKnowledgeItemIds: [],
+        recommendedRoute: "rule_candidate",
         originPayload: {
           source: "generic_high_risk_item",
-        itemId: "quality-1",
+          itemId: "quality-1",
+        },
       },
-    },
   ]);
 });
 
