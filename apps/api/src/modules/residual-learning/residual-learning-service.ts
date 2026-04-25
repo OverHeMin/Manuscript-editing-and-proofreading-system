@@ -9,7 +9,10 @@ import {
 } from "./proofreading-residual-adapter.ts";
 import type { ResidualIssueRecord } from "./residual-learning-record.ts";
 import type { ResidualIssueRepository } from "./residual-learning-repository.ts";
-import { routeResidualIssue } from "./residual-routing.ts";
+import {
+  deriveResidualCandidateRoute,
+  routeResidualIssue,
+} from "./residual-routing.ts";
 import type { ManuscriptType } from "../manuscripts/manuscript-record.ts";
 import type { ManuscriptQualityIssue } from "@medical/contracts";
 import type {
@@ -260,11 +263,25 @@ export class ResidualLearningService {
     }
 
     const issue = await this.requireIssue(input.issueId);
+    const manualReviewCandidateRoute = resolveManualReviewCandidateRoute(issue);
+    const candidateRoute =
+      input.route ?? manualReviewCandidateRoute ?? issue.recommended_route;
+
     if (
-      issue.harness_validation_status !== "passed" ||
-      issue.status !== "candidate_ready"
+      !manualReviewCandidateRoute &&
+      (issue.harness_validation_status !== "passed" ||
+        issue.status !== "candidate_ready")
     ) {
       throw new ResidualIssueNotReadyForCandidateCreationError(input.issueId);
+    }
+    if (
+      manualReviewCandidateRoute &&
+      candidateRoute !== manualReviewCandidateRoute
+    ) {
+      throw new ResidualIssueCandidateRouteNotSupportedError(
+        input.issueId,
+        candidateRoute,
+      );
     }
     if (!issue.output_asset_id) {
       throw new ResidualIssueSourceAssetRequiredError(input.issueId);
@@ -274,7 +291,7 @@ export class ResidualLearningService {
       await this.learningService.createResidualGovernedLearningCandidate({
         ...buildResidualCandidateInput({
           issue,
-          route: input.route,
+          route: candidateRoute,
           title: input.title,
           proposalText: input.proposalText,
         }),
@@ -290,7 +307,7 @@ export class ResidualLearningService {
 
     const updatedIssue: ResidualIssueRecord = {
       ...issue,
-      recommended_route: input.route ?? issue.recommended_route,
+      recommended_route: candidateRoute,
       learning_candidate_id: candidate.id,
       status: "candidate_created",
       updated_at: this.now().toISOString(),
@@ -417,4 +434,19 @@ function defaultResidualCandidateProposalText(issue: ResidualIssueRecord): strin
     issue.excerpt?.trim() ||
     issue.issue_type
   );
+}
+
+function resolveManualReviewCandidateRoute(
+  issue: ResidualIssueRecord,
+): Extract<ResidualIssueRecord["recommended_route"], "knowledge_candidate"> | undefined {
+  if (
+    issue.harness_validation_status !== "not_required" ||
+    (issue.status !== "manual_review_pending" && issue.status !== "manual_only")
+  ) {
+    return undefined;
+  }
+
+  return deriveResidualCandidateRoute(issue.issue_type) === "knowledge_candidate"
+    ? "knowledge_candidate"
+    : undefined;
 }

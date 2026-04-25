@@ -219,6 +219,7 @@ test("manuscript workbench controller uploads a manuscript and hydrates workspac
       "GET /api/v1/jobs/job-upload-1",
       "GET /api/v1/manuscripts/manuscript-1",
       "GET /api/v1/manuscripts/manuscript-1/assets",
+      "GET /api/v1/templates/families",
     ],
   );
   assert.deepEqual(requests[0]?.body, {
@@ -229,6 +230,100 @@ test("manuscript workbench controller uploads a manuscript and hydrates workspac
     mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     storageKey: "uploads/review/review.docx",
   });
+});
+
+test("manuscript workbench controller still loads template family choices when the manuscript has not applied one yet", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.method === "GET" && input.url === "/api/v1/manuscripts/manuscript-1") {
+        return {
+          status: 200,
+          body: {
+            id: "manuscript-1",
+            title: "Unbound review manuscript",
+            manuscript_type: "review",
+            status: "uploaded",
+            created_by: "user-1",
+            created_at: "2026-03-31T09:00:00.000Z",
+            updated_at: "2026-03-31T09:00:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/manuscripts/manuscript-1/assets"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "asset-original-1",
+              manuscript_id: "manuscript-1",
+              asset_type: "original",
+              status: "active",
+              storage_key: "uploads/review/review.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              source_module: "upload",
+              created_by: "user-1",
+              version_no: 1,
+              is_current: true,
+              file_name: "review.docx",
+              created_at: "2026-03-31T09:00:00.000Z",
+              updated_at: "2026-03-31T09:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/templates/families") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "family-review-1",
+              manuscript_type: "review",
+              name: "Review Base Family",
+              status: "active",
+            },
+            {
+              id: "family-clinical-1",
+              manuscript_type: "clinical_study",
+              name: "Clinical Study Family",
+              status: "active",
+            },
+          ] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const workspace = await controller.loadWorkspace("manuscript-1");
+
+  assert.equal(workspace.manuscript.current_template_family_id, undefined);
+  assert.deepEqual(
+    workspace.availableTemplateFamilies?.map((family) => family.id),
+    ["family-review-1", "family-clinical-1"],
+  );
+  assert.equal(workspace.templateFamily, null);
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "GET /api/v1/manuscripts/manuscript-1",
+      "GET /api/v1/manuscripts/manuscript-1/assets",
+      "GET /api/v1/templates/families",
+    ],
+  );
 });
 
 test("manuscript workbench controller keeps the manuscript document separate from report-style current assets", async () => {
@@ -314,6 +409,7 @@ test("manuscript workbench controller keeps the manuscript document separate fro
     [
       "GET /api/v1/manuscripts/manuscript-screen-1",
       "GET /api/v1/manuscripts/manuscript-screen-1/assets",
+      "GET /api/v1/templates/families",
     ],
   );
 });
@@ -678,6 +774,7 @@ test("manuscript workbench controller uploads a manuscript batch and hydrates th
       "GET /api/v1/jobs/job-batch-1",
       "GET /api/v1/manuscripts/manuscript-batch-1",
       "GET /api/v1/manuscripts/manuscript-batch-1/assets",
+      "GET /api/v1/templates/families",
     ],
   );
 });
@@ -1469,6 +1566,96 @@ test("manuscript workbench controller publishes a proofreading human-final asset
       },
     ],
   });
+});
+
+test("manuscript workbench controller saves a proofreading confirmation draft without triggering workspace reload", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/modules/proofreading/confirmation-draft"
+      ) {
+        return {
+          status: 200,
+          body: {
+            job: {
+              id: "job-proof-confirm-1",
+              manuscript_id: "manuscript-1",
+              module: "proofreading",
+              job_type: "proofreading_confirm",
+              status: "completed",
+              requested_by: "proofreader-1",
+              attempt_count: 1,
+              payload: {
+                confirmationDraft: {
+                  assetId: "asset-proof-final-1",
+                  totalItems: 2,
+                  savedDecisionCount: 1,
+                  updatedAt: "2026-04-24T15:00:00.000Z",
+                  confirmationDecisions: [
+                    {
+                      itemId: "issue-1",
+                      action: "accepted",
+                      targetText: "5 mg per dL",
+                      replacementText: "5 mg/dL",
+                      finalReplacementText: "5 mg/dL",
+                    },
+                  ],
+                },
+              },
+              created_at: "2026-04-24T14:00:00.000Z",
+              updated_at: "2026-04-24T15:00:00.000Z",
+            },
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const result = await controller.saveProofreadingConfirmationDraft({
+    manuscriptId: "manuscript-1",
+    confirmationAssetId: "asset-proof-final-1",
+    actorRole: "proofreader",
+    confirmationDecisions: [
+      {
+        itemId: "issue-1",
+        targetText: "5 mg per dL",
+        replacementText: "5 mg/dL",
+        action: "accepted",
+      },
+    ],
+  });
+
+  assert.equal(result.job.id, "job-proof-confirm-1");
+  assert.deepEqual(requests, [
+    {
+      method: "POST",
+      url: "/api/v1/modules/proofreading/confirmation-draft",
+      body: {
+        manuscriptId: "manuscript-1",
+        confirmationAssetId: "asset-proof-final-1",
+        requestedBy: "web-workbench",
+        actorRole: "proofreader",
+        confirmationDecisions: [
+          {
+            itemId: "issue-1",
+            targetText: "5 mg per dL",
+            replacementText: "5 mg/dL",
+            action: "accepted",
+          },
+        ],
+      },
+    },
+  ]);
 });
 
 test("manuscript workbench controller fails open when action-time job hydration cannot be loaded", async () => {
@@ -2562,6 +2749,7 @@ test("manuscript workbench controller hydrates referenced knowledge titles for m
       "GET /api/v1/manuscripts/manuscript-knowledge-1/assets",
       "GET /api/v1/knowledge/assets/knowledge-1",
       "GET /api/v1/knowledge/assets/knowledge-2",
+      "GET /api/v1/templates/families",
     ],
   );
 });
@@ -3105,6 +3293,21 @@ test("manuscript workbench controller loads proofreading governance handoff with
                 updated_at: "2026-04-21T09:21:00.000Z",
               },
             ],
+            knowledgeCandidates: [
+              {
+                id: "candidate-proof-knowledge-1",
+                type: "knowledge_candidate",
+                status: "pending_review",
+                manuscript_id: "manuscript-proof-1",
+                module: "proofreading",
+                manuscript_type: "clinical_study",
+                governed_provenance_kind: "human_feedback",
+                title: "Proofreading human confirmation knowledge candidate",
+                created_by: "proofreader-1",
+                created_at: "2026-04-21T09:22:00.000Z",
+                updated_at: "2026-04-21T09:22:00.000Z",
+              },
+            ],
           } as TResponse,
         };
       }
@@ -3166,6 +3369,21 @@ test("manuscript workbench controller loads proofreading governance handoff with
         created_by: "proofreader-1",
         created_at: "2026-04-21T09:21:00.000Z",
         updated_at: "2026-04-21T09:21:00.000Z",
+      },
+    ],
+    knowledgeCandidates: [
+      {
+        id: "candidate-proof-knowledge-1",
+        type: "knowledge_candidate",
+        status: "pending_review",
+        manuscript_id: "manuscript-proof-1",
+        module: "proofreading",
+        manuscript_type: "clinical_study",
+        governed_provenance_kind: "human_feedback",
+        title: "Proofreading human confirmation knowledge candidate",
+        created_by: "proofreader-1",
+        created_at: "2026-04-21T09:22:00.000Z",
+        updated_at: "2026-04-21T09:22:00.000Z",
       },
     ],
   });
@@ -3483,7 +3701,6 @@ test("manuscript workbench controller saves editing slot resolutions and reloads
           ] as TResponse,
         };
       }
-
       throw new Error(`Unexpected request: ${input.method} ${input.url}`);
     },
   });
@@ -3525,3 +3742,73 @@ test("manuscript workbench controller saves editing slot resolutions and reloads
   });
 });
 
+test("manuscript workbench controller can route proofreading residual issues to governed knowledge candidates", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/review-items/residual-proof-knowledge-1/decide"
+      ) {
+        return {
+          status: 200,
+          body: {
+            action: "route_to_knowledge_candidate",
+            item: {
+              id: "residual-proof-knowledge-1",
+              source_kind: "residual_issue",
+              source_status: "candidate_created",
+              review_status: "routed",
+              module: "proofreading",
+              manuscript_id: "manuscript-proof-1",
+              manuscript_type: "clinical_study",
+              title: "Terminology definition missing",
+              issue_type: "terminology_definition_missing",
+              execution_snapshot_id: "snapshot-proof-1",
+              recommended_route: "knowledge_candidate",
+              harness_validation_status: "not_required",
+              learning_candidate_id: "knowledge-candidate-1",
+              available_actions: [],
+              created_at: "2026-04-24T09:00:00.000Z",
+              updated_at: "2026-04-24T09:01:00.000Z",
+            },
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const result = await controller.decideReviewItem({
+    sourceKind: "residual_issue",
+    id: "residual-proof-knowledge-1",
+    action: "route_to_knowledge_candidate",
+  });
+
+  assert.equal(result.action, "route_to_knowledge_candidate");
+  assert.equal(result.item?.source_kind, "residual_issue");
+  assert.equal(result.item?.source_status, "candidate_created");
+  assert.equal(
+    result.item && "learning_candidate_id" in result.item
+      ? result.item.learning_candidate_id
+      : undefined,
+    "knowledge-candidate-1",
+  );
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    ["POST /api/v1/review-items/residual-proof-knowledge-1/decide"],
+  );
+  assert.deepEqual(requests[0]?.body, {
+    sourceKind: "residual_issue",
+    action: "route_to_knowledge_candidate",
+    title: undefined,
+    proposalText: undefined,
+  });
+});

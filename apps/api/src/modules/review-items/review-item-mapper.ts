@@ -1,5 +1,6 @@
 import type { LearningCandidateRecord } from "../learning/learning-record.ts";
 import type { ResidualIssueRecord } from "../residual-learning/residual-learning-record.ts";
+import { deriveResidualCandidateRoute } from "../residual-learning/residual-routing.ts";
 import type {
   GovernedHitReviewItemRecord,
   LearningCandidateReviewItemRecord,
@@ -190,7 +191,10 @@ function deriveResidualIssueActions(
   }
 
   if (issue.status === "manual_review_pending") {
-    return resolutionActions;
+    const promotedAction = deriveManualReviewLearningAction(issue);
+    return promotedAction
+      ? [...resolutionActions, promotedAction]
+      : resolutionActions;
   }
 
   return ["validate", ...resolutionActions];
@@ -252,4 +256,20 @@ function normalizeSummary(...values: Array<string | undefined>): string | undefi
   }
 
   return undefined;
+}
+
+function deriveManualReviewLearningAction(
+  issue: ResidualIssueRecord,
+): ReviewItemAction | undefined {
+  if (
+    issue.status !== "manual_review_pending" ||
+    issue.harness_validation_status !== "not_required" ||
+    issue.learning_candidate_id
+  ) {
+    return undefined;
+  }
+
+  return deriveResidualCandidateRoute(issue.issue_type) === "knowledge_candidate"
+    ? "route_to_knowledge_candidate"
+    : undefined;
 }

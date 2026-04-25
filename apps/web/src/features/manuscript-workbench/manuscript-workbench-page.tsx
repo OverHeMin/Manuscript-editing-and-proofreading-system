@@ -8,7 +8,11 @@ import {
   createBrowserHttpClient,
   resolveBrowserApiUrl,
 } from "../../lib/browser-http-client.ts";
-import type { DocumentPreviewSessionViewModel } from "../document-preview/index.ts";
+import {
+  buildProofreadingLocateTarget,
+  type DocumentPreviewLocateTargetViewModel,
+  type DocumentPreviewSessionViewModel,
+} from "../document-preview/index.ts";
 import type {
   KnowledgeHitLogViewModel,
   ModuleExecutionSnapshotViewModel as ExecutionTrackingSnapshotViewModel,
@@ -55,6 +59,7 @@ import {
   formatWorkbenchActionResultMessage,
   ManuscriptWorkbenchSummary,
   type ManuscriptWorkbenchManualFeedbackViewModel,
+  type ManuscriptWorkbenchProofreadingGovernanceActionsViewModel,
   type WorkbenchActionResultViewModel,
   type WorkbenchActionResultDetail,
 } from "./manuscript-workbench-summary.tsx";
@@ -67,6 +72,7 @@ import {
   buildAssetPreviewComments,
   buildAssetReportPreviewBody,
   buildEditingChangeLedgerEntries,
+  buildProofreadingConfirmationDraftState,
   buildEditingCompletionGateSummary,
   buildEditingDocumentBlocks,
   buildEditingGuardrailEntries,
@@ -80,6 +86,7 @@ import {
   ManuscriptWorkbenchAssetDetailPage,
   type EditingSlotManualSaveInput,
   resolveManuscriptAssetDetailKind,
+  type ManuscriptAssetDetailKind,
   type ProofreadingConfirmationDraftState,
   type ProofreadingConfirmationItemViewModel,
 } from "./manuscript-workbench-detail.tsx";
@@ -850,6 +857,83 @@ export function buildProofreadingConfirmationDecisions(
   });
 }
 
+export function buildProofreadingConfirmationDecisionSignature(
+  decisions: readonly ProofreadingConfirmationDecisionInput[],
+): string {
+  return JSON.stringify(
+    decisions.map((decision) => ({
+      itemId: decision.itemId,
+      action: decision.action,
+      targetText: decision.targetText,
+      replacementText: decision.replacementText,
+      editedReplacementText:
+        normalizeOptionalText(decision.editedReplacementText ?? "") ?? "",
+      note: normalizeOptionalText(decision.note ?? "") ?? "",
+    })),
+  );
+}
+
+export function shouldAutoSaveProofreadingConfirmationDraft(input: {
+  canSaveConfirmationDraft: boolean;
+  isConfirmationDraftSaving: boolean;
+  isHumanFinalPublishing: boolean;
+  isDetailLoading: boolean;
+  confirmationDraftSignature: string;
+  savedConfirmationDraftSignature: string;
+}): boolean {
+  if (
+    !input.canSaveConfirmationDraft ||
+    input.isConfirmationDraftSaving ||
+    input.isHumanFinalPublishing ||
+    input.isDetailLoading
+  ) {
+    return false;
+  }
+
+  if (
+    input.confirmationDraftSignature.length === 0 &&
+    input.savedConfirmationDraftSignature.length === 0
+  ) {
+    return false;
+  }
+
+  return input.confirmationDraftSignature !== input.savedConfirmationDraftSignature;
+}
+
+export function canSaveProofreadingConfirmationDraft(input: {
+  detailKind: ManuscriptAssetDetailKind | null;
+  assetType?: DocumentAssetViewModel["asset_type"] | null;
+}): boolean {
+  return (
+    (input.detailKind === "proofreading_workspace" &&
+      input.assetType === "proofreading_draft_report") ||
+    (input.detailKind === "proofreading_confirmation" &&
+      input.assetType === "final_proof_annotated_docx")
+  );
+}
+
+function resolveSavedConfirmationDraftLabel(
+  job: Pick<AnyWorkbenchJob, "payload"> | null | undefined,
+): string {
+  const payload =
+    job?.payload && typeof job.payload === "object" && !Array.isArray(job.payload)
+      ? (job.payload as Record<string, unknown>)
+      : undefined;
+  const confirmationDraft =
+    payload?.confirmationDraft &&
+    typeof payload.confirmationDraft === "object" &&
+    !Array.isArray(payload.confirmationDraft)
+      ? (payload.confirmationDraft as Record<string, unknown>)
+      : undefined;
+  const savedDecisionCount =
+    typeof confirmationDraft?.savedDecisionCount === "number" &&
+    Number.isFinite(confirmationDraft.savedDecisionCount)
+      ? confirmationDraft.savedDecisionCount
+      : 0;
+
+  return savedDecisionCount > 0 ? `已保存 ${savedDecisionCount} 项` : "";
+}
+
 export function resolveProofreadingDraftSelection(input: {
   assets: readonly Pick<DocumentAssetViewModel, "id">[];
   currentDraftAssetId: string;
@@ -901,6 +985,139 @@ export function resolveDetailJobSourceAsset(input: {
   return parentAsset;
 }
 
+function resolveDetailPreviewSourceAsset(input: {
+  selectedAsset: DocumentAssetViewModel;
+  assets: readonly DocumentAssetViewModel[];
+  currentManuscriptAsset?: DocumentAssetViewModel | null;
+  mode: ManuscriptWorkbenchMode;
+}): DocumentAssetViewModel | null {
+  const detailKind = resolveManuscriptAssetDetailKind({
+    mode: input.mode,
+    assetType: input.selectedAsset.asset_type,
+  });
+
+  if (detailKind === "report_preview") {
+    return null;
+  }
+
+  if (detailKind !== "proofreading_workspace") {
+    return input.selectedAsset;
+  }
+
+  const parentAssetId = input.selectedAsset.parent_asset_id?.trim();
+  if (parentAssetId) {
+    const parentAsset = input.assets.find((asset) => asset.id === parentAssetId);
+    if (parentAsset) {
+      return parentAsset;
+    }
+  }
+
+  return input.currentManuscriptAsset ?? null;
+}
+
+export function buildDetailPreviewSessionInput(input: {
+  workspace: Pick<
+    ManuscriptWorkbenchWorkspace,
+    "manuscript" | "assets" | "currentManuscriptAsset"
+  >;
+  selectedAsset: DocumentAssetViewModel;
+  detailJob: Pick<JobViewModel, "payload"> | null;
+  mode: ManuscriptWorkbenchMode;
+  actorRole: AuthRole;
+}): 
+  | {
+      manuscriptId: string;
+      assetId: string;
+      actorRole: AuthRole;
+      comments: Array<{
+        id: string;
+        author?: string;
+        body: string;
+        anchor_text?: string;
+      }>;
+    }
+  | null {
+  const previewAsset = resolveDetailPreviewSourceAsset({
+    selectedAsset: input.selectedAsset,
+    assets: input.workspace.assets,
+    currentManuscriptAsset: input.workspace.currentManuscriptAsset,
+    mode: input.mode,
+  });
+
+  if (!previewAsset) {
+    return null;
+  }
+
+  return {
+    manuscriptId: input.workspace.manuscript.id,
+    assetId: previewAsset.id,
+    actorRole: input.actorRole,
+    comments: buildAssetPreviewComments({
+      asset: input.selectedAsset,
+      job: input.detailJob,
+    }),
+  };
+}
+
+export function buildProofreadingResidualKnowledgeRouteActionResult(input: {
+  reviewItemId: string;
+  learningCandidateId?: string;
+}): WorkbenchActionResultViewModel {
+  return {
+    tone: "success",
+    actionLabel: "Route Residual To Knowledge Candidate",
+    message: `Routed residual issue ${input.reviewItemId} to knowledge candidate`,
+    details: [
+      {
+        label: "Review Item",
+        value: input.reviewItemId,
+      },
+      {
+        label: "Recommended Route",
+        value: "knowledge_candidate",
+      },
+      ...(input.learningCandidateId
+        ? [
+            {
+              label: "Learning Candidate",
+              value: input.learningCandidateId,
+            },
+          ]
+        : []),
+    ],
+  };
+}
+
+export function resolveProofreadingIssueSelection(input: {
+  items: readonly ProofreadingConfirmationItemViewModel[];
+  requestedItemId?: string | null;
+}): {
+  issueId: string;
+  locateTarget: DocumentPreviewLocateTargetViewModel | null;
+} {
+  const requestedItemId = input.requestedItemId?.trim() ?? "";
+  const selectedItem =
+    (requestedItemId.length > 0
+      ? input.items.find((item) => item.itemId === requestedItemId)
+      : null) ??
+    input.items[0] ??
+    null;
+
+  if (!selectedItem) {
+    return {
+      issueId: "",
+      locateTarget: null,
+    };
+  }
+
+  return {
+    issueId: selectedItem.itemId,
+    locateTarget: selectedItem.anchor
+      ? buildProofreadingLocateTarget(selectedItem.anchor)
+      : null,
+  };
+}
+
 export function ManuscriptWorkbenchPage({
   mode,
   actorRole = "user",
@@ -949,6 +1166,8 @@ export function ManuscriptWorkbenchPage({
   const [draftAssetId, setDraftAssetId] = useState("");
   const [selectedAssetId, setSelectedAssetId] = useState(normalizedPrefilledAssetId);
   const [detailJob, setDetailJob] = useState<AnyWorkbenchJob | null>(null);
+  const [detailConfirmationJob, setDetailConfirmationJob] =
+    useState<AnyWorkbenchJob | null>(null);
   const [detailExecutionTracking, setDetailExecutionTracking] =
     useState<WorkbenchDetailExecutionTrackingViewModel>(
       createEmptyWorkbenchDetailExecutionTracking,
@@ -960,7 +1179,12 @@ export function ManuscriptWorkbenchPage({
   const [confirmationState, setConfirmationState] = useState<
     Record<string, ProofreadingConfirmationDraftState>
   >({});
+  const [savedConfirmationDraftSignature, setSavedConfirmationDraftSignature] =
+    useState("");
+  const [savedConfirmationDraftLabel, setSavedConfirmationDraftLabel] =
+    useState("");
   const [activeProofreadingIssueId, setActiveProofreadingIssueId] = useState("");
+  const [isConfirmationDraftSaving, setIsConfirmationDraftSaving] = useState(false);
   const [savingEditingSlotKey, setSavingEditingSlotKey] = useState<string | null>(
     null,
   );
@@ -975,6 +1199,10 @@ export function ManuscriptWorkbenchPage({
     reviewItemId: string;
     recommendedRoute?: "rule_candidate" | "knowledge_candidate" | "prompt_template_candidate";
   } | null>(null);
+  const [isProofreadingGovernanceSubmitting, setIsProofreadingGovernanceSubmitting] =
+    useState(false);
+  const [activeProofreadingGovernanceItemId, setActiveProofreadingGovernanceItemId] =
+    useState("");
   const [proofreadingGovernanceHandoff, setProofreadingGovernanceHandoff] =
     useState<ManuscriptWorkbenchProofreadingGovernanceHandoffViewModel | null>(
       null,
@@ -1064,16 +1292,22 @@ export function ManuscriptWorkbenchPage({
     setManualFeedbackNote("");
     setIsManualFeedbackSubmitting(false);
     setLastSubmittedManualFeedback(null);
+    setIsProofreadingGovernanceSubmitting(false);
+    setActiveProofreadingGovernanceItemId("");
     setSelectedTemplateFamilyId("");
     setSelectedJournalTemplateId("");
     setSelectedTemplateContext(null);
     setSelectedAssetId(normalizedPrefilledAssetId);
     setDetailJob(null);
+    setDetailConfirmationJob(null);
     setDetailExecutionTracking(createEmptyWorkbenchDetailExecutionTracking());
     setDetailPreviewSession(null);
     setDetailError("");
     setIsDetailLoading(false);
     setConfirmationState({});
+    setSavedConfirmationDraftSignature("");
+    setSavedConfirmationDraftLabel("");
+    setIsConfirmationDraftSaving(false);
     setSavingEditingSlotKey(null);
     setIsHumanFinalPublishing(false);
     setProofreadingGovernanceHandoff(null);
@@ -1082,11 +1316,18 @@ export function ManuscriptWorkbenchPage({
   useEffect(() => {
     setSelectedAssetId(normalizedPrefilledAssetId);
     setDetailJob(null);
+    setDetailConfirmationJob(null);
     setDetailExecutionTracking(createEmptyWorkbenchDetailExecutionTracking());
     setDetailPreviewSession(null);
     setDetailError("");
     setConfirmationState({});
     setSavingEditingSlotKey(null);
+    setDetailPreviewSession(null);
+    setDetailError("");
+    setConfirmationState({});
+    setSavedConfirmationDraftSignature("");
+    setSavedConfirmationDraftLabel("");
+    setIsConfirmationDraftSaving(false);
   }, [normalizedPrefilledAssetId]);
 
   useEffect(() => {
@@ -1094,27 +1335,37 @@ export function ManuscriptWorkbenchPage({
     setManualFeedbackNote("");
     setIsManualFeedbackSubmitting(false);
     setLastSubmittedManualFeedback(null);
+    setIsProofreadingGovernanceSubmitting(false);
+    setActiveProofreadingGovernanceItemId("");
   }, [workspace?.manuscript.id]);
 
   useEffect(() => {
     if (!workspace || selectedAssetId.trim().length === 0) {
       setDetailJob(null);
+      setDetailConfirmationJob(null);
       setDetailExecutionTracking(createEmptyWorkbenchDetailExecutionTracking());
       setDetailPreviewSession(null);
       setDetailError("");
       setIsDetailLoading(false);
       setConfirmationState({});
+      setSavedConfirmationDraftSignature("");
+      setSavedConfirmationDraftLabel("");
+      setIsConfirmationDraftSaving(false);
       return;
     }
 
     const selectedAsset = workspace.assets.find((asset) => asset.id === selectedAssetId);
     if (!selectedAsset) {
       setDetailJob(null);
+      setDetailConfirmationJob(null);
       setDetailExecutionTracking(createEmptyWorkbenchDetailExecutionTracking());
       setDetailPreviewSession(null);
       setDetailError(`Asset ${selectedAssetId} is no longer available in this workspace.`);
       setIsDetailLoading(false);
       setConfirmationState({});
+      setSavedConfirmationDraftSignature("");
+      setSavedConfirmationDraftLabel("");
+      setIsConfirmationDraftSaving(false);
       setActiveProofreadingIssueId("");
       return;
     }
@@ -1134,16 +1385,25 @@ export function ManuscriptWorkbenchPage({
         assets: workspace.assets,
         mode,
       });
-      const sourceJob = await hydrateWorkbenchDetailJob(controller, {
-        sourceJobId: detailJobAsset.source_job_id,
-        latestJob,
-      });
+      const [sourceJob, confirmationJob] = await Promise.all([
+        hydrateWorkbenchDetailJob(controller, {
+          sourceJobId: detailJobAsset.source_job_id,
+          latestJob,
+        }),
+        detailKind === "proofreading_confirmation"
+          ? hydrateWorkbenchDetailJob(controller, {
+              sourceJobId: selectedAsset.source_job_id,
+              latestJob,
+            })
+          : Promise.resolve(null),
+      ]);
 
       if (cancelled) {
         return;
       }
 
       setDetailJob(sourceJob);
+      setDetailConfirmationJob(confirmationJob);
       const nextDetailExecutionTracking =
         await hydrateWorkbenchDetailExecutionTracking(controller, sourceJob);
       if (cancelled) {
@@ -1154,20 +1414,40 @@ export function ManuscriptWorkbenchPage({
         return;
       }
       const nextConfirmationItems = buildProofreadingConfirmationItems(sourceJob);
-      setConfirmationState((current) =>
-        pruneConfirmationState(current, nextConfirmationItems)
+      const persistedDraftState = pruneConfirmationState(
+        buildProofreadingConfirmationDraftState(confirmationJob ?? sourceJob),
+        nextConfirmationItems,
+      );
+      setConfirmationState(persistedDraftState);
+      const persistedDraftDecisions = buildProofreadingConfirmationDecisions(
+        nextConfirmationItems,
+        persistedDraftState,
+      );
+      setSavedConfirmationDraftSignature(
+        buildProofreadingConfirmationDecisionSignature(persistedDraftDecisions),
+      );
+      setSavedConfirmationDraftLabel(
+        resolveSavedConfirmationDraftLabel(confirmationJob ?? sourceJob),
       );
       setActiveProofreadingIssueId((current) =>
-        nextConfirmationItems.some((item) => item.itemId === current)
-          ? current
-          : (nextConfirmationItems[0]?.itemId ?? "")
+        resolveProofreadingIssueSelection({
+          items: nextConfirmationItems,
+          requestedItemId: current,
+        }).issueId,
       );
+
+      const previewRequest = buildDetailPreviewSessionInput({
+        workspace,
+        selectedAsset,
+        detailJob: sourceJob,
+        mode,
+        actorRole,
+      });
 
       if (
         detailKind === "report_preview" ||
         detailKind === "screening_workspace" ||
-        detailKind === "proofreading_workspace" ||
-        detailKind === "proofreading_confirmation"
+        !previewRequest
       ) {
         setDetailPreviewSession(null);
         setIsDetailLoading(false);
@@ -1175,15 +1455,7 @@ export function ManuscriptWorkbenchPage({
       }
 
       try {
-        const previewSession = await controller.createPreviewSession({
-          manuscriptId: workspace.manuscript.id,
-          assetId: selectedAsset.id,
-          actorRole,
-          comments: buildAssetPreviewComments({
-            asset: selectedAsset,
-            job: sourceJob,
-          }),
-        });
+        const previewSession = await controller.createPreviewSession(previewRequest);
 
         if (cancelled) {
           return;
@@ -1403,7 +1675,9 @@ export function ManuscriptWorkbenchPage({
         finalAssetId: input.asset.id,
         actorRole,
         storageKey: `runs/${input.workspace.manuscript.id}/proofreading/human-final`,
-        fileName: "human-final.docx",
+        fileName: resolveWorkbenchHumanFinalFileName(
+          input.workspace.manuscript.title,
+        ),
         confirmationDecisions: input.decisions,
       });
       const nextWorkspace = await syncWorkspaceConcurrencySnapshot(result.workspace);
@@ -1411,6 +1685,9 @@ export function ManuscriptWorkbenchPage({
       setLatestJob(result.runResult.job);
       setLatestExport(null);
       setConfirmationState({});
+      setDetailConfirmationJob(null);
+      setSavedConfirmationDraftSignature("");
+      setSavedConfirmationDraftLabel("");
       await syncProofreadingGovernanceHandoff(nextWorkspace);
 
       const publishedAsset =
@@ -1456,6 +1733,66 @@ export function ManuscriptWorkbenchPage({
       });
     } finally {
       setIsHumanFinalPublishing(false);
+    }
+  }
+
+  async function saveProofreadingConfirmationDraft(input: {
+    workspace: ManuscriptWorkbenchWorkspace;
+    asset: NonNullable<ManuscriptWorkbenchWorkspace["currentAsset"]>;
+    items: readonly ProofreadingConfirmationItemViewModel[];
+  }) {
+    const decisions = buildProofreadingConfirmationDecisions(
+      input.items,
+      confirmationState,
+    );
+
+    setIsConfirmationDraftSaving(true);
+    setError("");
+
+    try {
+      const result = await controller.saveProofreadingConfirmationDraft({
+        manuscriptId: input.workspace.manuscript.id,
+        confirmationAssetId: input.asset.id,
+        actorRole,
+        confirmationDecisions: decisions,
+      });
+
+      setDetailConfirmationJob(result.job);
+      setLatestActionResult({
+        tone: "success",
+        actionLabel: "Save Confirmation Draft",
+        message: `Saved proofreading confirmation draft ${result.job.id}`,
+        details: [
+          {
+            label: "Job",
+            value: result.job.id,
+          },
+          {
+            label: "Saved Items",
+            value: String(decisions.length),
+          },
+        ],
+      });
+      setStatus(`Saved proofreading confirmation draft ${result.job.id}`);
+      setSavedConfirmationDraftSignature(
+        buildProofreadingConfirmationDecisionSignature(decisions),
+      );
+      setSavedConfirmationDraftLabel(
+        resolveSavedConfirmationDraftLabel(result.job) ||
+          (decisions.length > 0 ? `已保存 ${decisions.length} 项` : ""),
+      );
+    } catch (nextError) {
+      const message = formatError(nextError);
+      setStatus("");
+      setError(message);
+      setLatestActionResult({
+        tone: "error",
+        actionLabel: "Save Confirmation Draft",
+        message,
+        details: [],
+      });
+    } finally {
+      setIsConfirmationDraftSaving(false);
     }
   }
 
@@ -1726,6 +2063,51 @@ export function ManuscriptWorkbenchPage({
       });
     } finally {
       setIsManualFeedbackSubmitting(false);
+    }
+  }
+
+  async function routeProofreadingResidualToKnowledgeCandidate(
+    currentWorkspace: ManuscriptWorkbenchWorkspace,
+    reviewItemId: string,
+  ) {
+    if (mode !== "proofreading") {
+      return;
+    }
+
+    setIsProofreadingGovernanceSubmitting(true);
+    setActiveProofreadingGovernanceItemId(reviewItemId);
+    setError("");
+
+    try {
+      const result = await controller.decideReviewItem({
+        sourceKind: "residual_issue",
+        id: reviewItemId,
+        action: "route_to_knowledge_candidate",
+      });
+      await syncProofreadingGovernanceHandoff(currentWorkspace);
+
+      const actionResult = buildProofreadingResidualKnowledgeRouteActionResult({
+        reviewItemId,
+        learningCandidateId:
+          result.item?.source_kind === "residual_issue"
+            ? result.item.learning_candidate_id
+            : undefined,
+      });
+      setStatus(actionResult.message);
+      setLatestActionResult(actionResult);
+    } catch (nextError) {
+      const message = formatError(nextError);
+      setStatus("");
+      setError(message);
+      setLatestActionResult({
+        tone: "error",
+        actionLabel: "Route Residual To Knowledge Candidate",
+        message,
+        details: [],
+      });
+    } finally {
+      setIsProofreadingGovernanceSubmitting(false);
+      setActiveProofreadingGovernanceItemId("");
     }
   }
 
@@ -2026,6 +2408,9 @@ function buildTemplateContextActionResult(
         (workspace.manuscript.current_journal_template_id ?? "") !==
           selectedJournalTemplateId
       : false;
+  const templateFamilyOptions = templateSelectionWorkspace
+    ? buildTemplateFamilyOptions(templateSelectionWorkspace)
+    : [];
   const templateSelectionPanel =
     templateSelectionWorkspace &&
     (templateSelectionWorkspace.templateFamily ||
@@ -2059,9 +2444,7 @@ function buildTemplateContextActionResult(
             templateSelectionWorkspace,
           ),
           selectedTemplateFamilyId,
-          templateFamilyOptions: buildTemplateFamilyOptions(
-            templateSelectionWorkspace,
-          ),
+          templateFamilyOptions,
           selectedJournalTemplateId,
           currentAppliedLabel: resolveJournalTemplateSelectionLabel(
             templateSelectionWorkspace,
@@ -2094,6 +2477,17 @@ function buildTemplateContextActionResult(
             }), async () => {
               if (!workspace) {
                 throw new Error("模板上下文尚未加载，暂时无法保存。");
+              }
+
+              const templateSelectionBlockMessage =
+                resolveTemplateSelectionApplyBlockMessage({
+                  currentTemplateFamilyId:
+                    workspace.manuscript.current_template_family_id ?? null,
+                  selectedTemplateFamilyId,
+                  availableTemplateFamilyCount: templateFamilyOptions.length,
+                });
+              if (templateSelectionBlockMessage) {
+                throw new Error(templateSelectionBlockMessage);
               }
 
               const actionLabel = resolveTemplateSelectionActionLabel({
@@ -2155,6 +2549,7 @@ function buildTemplateContextActionResult(
                   manuscriptId: synchronizedWorkspace.manuscript.id,
                   parentAssetId,
                   actorRole,
+                  outputBaseName: synchronizedWorkspace.manuscript.title,
                 }),
               );
               const nextWorkspace = await syncWorkspaceConcurrencySnapshot(
@@ -2220,6 +2615,7 @@ function buildTemplateContextActionResult(
                   manuscriptId: synchronizedWorkspace.manuscript.id,
                   parentAssetId,
                   actorRole,
+                  outputBaseName: synchronizedWorkspace.manuscript.title,
                 }),
               );
               const nextWorkspace = await syncWorkspaceConcurrencySnapshot(
@@ -2293,7 +2689,9 @@ function buildTemplateContextActionResult(
                 draftAssetId,
                 actorRole,
                 storageKey: `runs/${workspace.manuscript.id}/proofreading/final`,
-                fileName: "proofreading-final.docx",
+                fileName: resolveWorkbenchProofreadingAnnotatedFileName(
+                  workspace.manuscript.title,
+                ),
               });
               const nextWorkspace = await syncWorkspaceConcurrencySnapshot(
                 result.workspace,
@@ -2349,6 +2747,9 @@ function buildTemplateContextActionResult(
         assetType: selectedAsset.asset_type,
       })
     : null;
+  const isDedicatedProofreadingDetail =
+    detailKind === "proofreading_workspace" ||
+    detailKind === "proofreading_confirmation";
   const currentProofreadingAsset =
     mode === "proofreading" &&
     isProofreadingWorkbenchAssetType(workspace?.currentAsset?.asset_type)
@@ -2454,7 +2855,8 @@ function buildTemplateContextActionResult(
       }
     : undefined;
 
-  const shouldUseMainlineLayout = mode !== "submission";
+  const shouldUseMainlineLayout =
+    mode !== "submission" && !isDedicatedProofreadingDetail;
   const shouldShowDeskBar = mode === "submission";
   const detectedManuscriptTypeLabel = workspace
     ? formatDetectedManuscriptType(workspace.manuscript)
@@ -2486,6 +2888,21 @@ function buildTemplateContextActionResult(
           },
         }
       : undefined;
+  const proofreadingGovernanceActions:
+    | ManuscriptWorkbenchProofreadingGovernanceActionsViewModel
+    | undefined =
+    workspace && mode === "proofreading"
+      ? {
+          isSubmitting: isProofreadingGovernanceSubmitting,
+          activeItemId:
+            activeProofreadingGovernanceItemId.trim().length > 0
+              ? activeProofreadingGovernanceItemId
+              : undefined,
+          onRouteToKnowledgeCandidate: (itemId) => {
+            void routeProofreadingResidualToKnowledgeCandidate(workspace, itemId);
+          },
+        }
+      : undefined;
   const summaryElement = workspace ? (
     <ManuscriptWorkbenchSummary
       mode={mode}
@@ -2495,6 +2912,7 @@ function buildTemplateContextActionResult(
       executionContext={executionContext}
       manualFeedback={manualFeedback}
       proofreadingGovernanceHandoff={proofreadingGovernanceHandoff ?? undefined}
+      proofreadingGovernanceActions={proofreadingGovernanceActions}
       prefilledManuscriptId={normalizedPrefilledManuscriptId}
       prefilledReviewedCaseSnapshotId={normalizedPrefilledReviewedCaseSnapshotId}
       prefilledSampleSetItemId={normalizedPrefilledSampleSetItemId}
@@ -2512,6 +2930,17 @@ function buildTemplateContextActionResult(
   });
   const editingDocumentBlocks = buildEditingDocumentBlocks(detailJob);
   const proofreadingDocumentBlocks = buildProofreadingDocumentBlocks(detailJob);
+  const activeProofreadingIssueSelection = resolveProofreadingIssueSelection({
+    items: confirmationItems,
+    requestedItemId: activeProofreadingIssueId,
+  });
+  const confirmationDecisions = buildProofreadingConfirmationDecisions(
+    confirmationItems,
+    confirmationState,
+  );
+  const confirmationDraftSignature = buildProofreadingConfirmationDecisionSignature(
+    confirmationDecisions,
+  );
   const confirmationReady =
     confirmationItems.length > 0 &&
     confirmationItems.every((item) => {
@@ -2555,6 +2984,63 @@ function buildTemplateContextActionResult(
             : undefined,
       })
     : formatWorkbenchHash(mode);
+  const resultPanelMode: Exclude<ManuscriptWorkbenchMode, "submission"> =
+    mode === "submission" ? "editing" : mode;
+  const canSaveConfirmationDraft = canSaveProofreadingConfirmationDraft({
+    detailKind,
+    assetType: selectedAsset?.asset_type,
+  });
+
+  useEffect(() => {
+    if (
+      !workspace ||
+      !selectedAsset ||
+      !shouldAutoSaveProofreadingConfirmationDraft({
+        canSaveConfirmationDraft,
+        isConfirmationDraftSaving,
+        isHumanFinalPublishing,
+        isDetailLoading,
+        confirmationDraftSignature,
+        savedConfirmationDraftSignature,
+      })
+    ) {
+      return;
+    }
+
+    const autoSaveHandle =
+      typeof window !== "undefined"
+        ? window.setTimeout(() => {
+            void saveProofreadingConfirmationDraft({
+              workspace,
+              asset: selectedAsset,
+              items: confirmationItems,
+            });
+          }, 1200)
+        : null;
+
+    return () => {
+      if (typeof autoSaveHandle === "number" && typeof window !== "undefined") {
+        window.clearTimeout(autoSaveHandle);
+      }
+    };
+  }, [
+    canSaveConfirmationDraft,
+    confirmationDraftSignature,
+    confirmationItems,
+    isConfirmationDraftSaving,
+    isDetailLoading,
+    isHumanFinalPublishing,
+    savedConfirmationDraftSignature,
+    selectedAsset,
+    workspace,
+  ]);
+
+  const confirmationDraftStatusLabel =
+    canSaveConfirmationDraft && confirmationDraftSignature !== savedConfirmationDraftSignature
+      ? confirmationDecisions.length > 0
+        ? "存在未保存修改"
+        : savedConfirmationDraftLabel
+      : savedConfirmationDraftLabel;
   const detailElement =
     workspace && selectedAsset && detailKind
       ? (
@@ -2567,6 +3053,24 @@ function buildTemplateContextActionResult(
             downloadHref={resolveBrowserApiUrl(
               `/api/v1/document-assets/${selectedAsset.id}/download`,
             )}
+            previewAsset={resolveDetailPreviewSourceAsset({
+              selectedAsset,
+              assets: workspace.assets,
+              currentManuscriptAsset: workspace.currentManuscriptAsset,
+              mode,
+            })}
+            previewDownloadHref={(() => {
+              const previewAsset = resolveDetailPreviewSourceAsset({
+                selectedAsset,
+                assets: workspace.assets,
+                currentManuscriptAsset: workspace.currentManuscriptAsset,
+                mode,
+              });
+
+              return previewAsset
+                ? resolveBrowserApiUrl(`/api/v1/document-assets/${previewAsset.id}/download`)
+                : null;
+            })()}
             previewSession={detailPreviewSession}
             reportBody={buildAssetReportPreviewBody(detailJob)}
             changeLedger={buildEditingChangeLedgerEntries(detailJob)}
@@ -2590,11 +3094,31 @@ function buildTemplateContextActionResult(
             screeningWorkspaceFocusItems={screeningWorkspaceFocusItems}
             editingDocumentBlocks={editingDocumentBlocks}
             proofreadingDocumentBlocks={proofreadingDocumentBlocks}
-            activeProofreadingIssueId={activeProofreadingIssueId}
+            activeProofreadingIssueId={activeProofreadingIssueSelection.issueId}
+            activeProofreadingLocateTarget={activeProofreadingIssueSelection.locateTarget}
             isFinalizeEnabled={confirmationReady}
+            onSaveDraft={
+              canSaveConfirmationDraft
+                ? () => {
+                    void saveProofreadingConfirmationDraft({
+                      workspace,
+                      asset: selectedAsset,
+                      items: confirmationItems,
+                    });
+                  }
+                : undefined
+            }
+            draftSaveLabel={canSaveConfirmationDraft ? confirmationDraftStatusLabel : ""}
+            isDraftSaving={isConfirmationDraftSaving}
             isFinalizing={isHumanFinalPublishing}
             savingEditingSlotKey={savingEditingSlotKey}
-            onProofreadingIssueSelect={setActiveProofreadingIssueId}
+            onProofreadingIssueSelect={(itemId) => {
+              const nextSelection = resolveProofreadingIssueSelection({
+                items: confirmationItems,
+                requestedItemId: itemId,
+              });
+              setActiveProofreadingIssueId(nextSelection.issueId);
+            }}
             onConfirmationActionChange={(itemId, action) => {
               setConfirmationState((current) => ({
                 ...current,
@@ -2643,10 +3167,7 @@ function buildTemplateContextActionResult(
               void publishHumanFinalFromConfirmation({
                 workspace,
                 asset: selectedAsset,
-                decisions: buildProofreadingConfirmationDecisions(
-                  confirmationItems,
-                  confirmationState,
-                ),
+                decisions: confirmationDecisions,
               });
             }}
           />
@@ -2713,6 +3234,24 @@ function buildTemplateContextActionResult(
             <span className="manuscript-workbench-loading-bar" />
             <span className="manuscript-workbench-loading-bar is-short" />
           </div>
+        </section>
+      ) : null}
+      {isDedicatedProofreadingDetail ? (
+        <section
+          className="manuscript-workbench-detail-focus-shell"
+          data-layout="proofreading-detail-focus"
+        >
+          <ManuscriptWorkbenchResultPanel
+            mode={resultPanelMode}
+            workspace={workspace}
+            latestJob={latestJob}
+            latestActionResult={latestActionResult}
+            detectedManuscriptTypeLabel={detectedManuscriptTypeLabel}
+            reviewedCaseSnapshotId={normalizedPrefilledReviewedCaseSnapshotId}
+            sampleSetItemId={normalizedPrefilledSampleSetItemId}
+            detailElement={detailElement}
+            advancedSummary={summaryElement}
+          />
         </section>
       ) : null}
       {shouldUseMainlineLayout ? (
@@ -2782,7 +3321,7 @@ function buildTemplateContextActionResult(
               </div>
             </section>
             <ManuscriptWorkbenchResultPanel
-              mode={mode}
+              mode={resultPanelMode}
               workspace={workspace}
               latestJob={latestJob}
               latestActionResult={latestActionResult}
@@ -2794,7 +3333,7 @@ function buildTemplateContextActionResult(
             />
           </div>
         </div>
-      ) : (
+      ) : isDedicatedProofreadingDetail ? null : (
         <section className="manuscript-workbench-intake-compat" data-pane="intake-compat">
           <ManuscriptWorkbenchControls
             mode={mode}
@@ -3116,6 +3655,10 @@ export function ManuscriptWorkbenchFocusCanvas({
                 value={templateSelection.selectedTemplateFamilyId}
                 onChange={(event) => templateSelection.onTemplateFamilySelect(event.target.value)}
               >
+                {templateSelection.selectedTemplateFamilyId.trim().length === 0 &&
+                templateSelection.templateFamilyOptions.length > 0 ? (
+                  <option value="">请选择基础模板家族</option>
+                ) : null}
                 {templateSelection.templateFamilyOptions.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
@@ -3887,6 +4430,22 @@ export function buildTemplateFamilyOptions(
   return options;
 }
 
+export function resolveTemplateSelectionApplyBlockMessage(input: {
+  currentTemplateFamilyId?: string | null;
+  selectedTemplateFamilyId: string;
+  availableTemplateFamilyCount: number;
+}): string | null {
+  if (
+    !input.currentTemplateFamilyId &&
+    input.selectedTemplateFamilyId.trim().length === 0 &&
+    input.availableTemplateFamilyCount > 0
+  ) {
+    return "请先选择基础模板家族，再保存模板上下文。";
+  }
+
+  return null;
+}
+
 export function buildJournalTemplateOptions(
   workspace: ManuscriptWorkbenchWorkspace,
 ): Array<{ value: string; label: string }> {
@@ -4541,16 +5100,50 @@ function attachEditingGovernanceSummariesToJob(
 
 export function resolveWorkbenchGeneratedAssetFileName(
   mode: ManuscriptWorkbenchRunMode,
+  outputBaseName?: string,
 ): string {
+  const normalizedOutputBaseName = normalizeWorkbenchOutputBaseName(outputBaseName);
   if (mode === "screening") {
-    return "screening-report.md";
+    return normalizedOutputBaseName
+      ? `${normalizedOutputBaseName}-初筛报告.md`
+      : "screening-report.md";
   }
 
   if (mode === "editing") {
-    return "editing-manuscript.docx";
+    return normalizedOutputBaseName
+      ? `${normalizedOutputBaseName}-编辑稿.docx`
+      : "editing-manuscript.docx";
   }
 
-  return "proofreading-draft-report.md";
+  return normalizedOutputBaseName
+    ? `${normalizedOutputBaseName}-校对草稿报告.md`
+    : "proofreading-draft-report.md";
+}
+
+export function resolveWorkbenchProofreadingAnnotatedFileName(
+  outputBaseName?: string,
+): string {
+  const normalizedOutputBaseName = normalizeWorkbenchOutputBaseName(outputBaseName);
+  return normalizedOutputBaseName
+    ? `${normalizedOutputBaseName}-校对批注稿.docx`
+    : "proofreading-final.docx";
+}
+
+export function resolveWorkbenchHumanFinalFileName(
+  outputBaseName?: string,
+): string {
+  const normalizedOutputBaseName = normalizeWorkbenchOutputBaseName(outputBaseName);
+  return normalizedOutputBaseName
+    ? `${normalizedOutputBaseName}-人工终稿.docx`
+    : "human-final.docx";
+}
+
+function normalizeWorkbenchOutputBaseName(value: string | undefined): string | undefined {
+  const normalized = value
+    ?.trim()
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, " ");
+  return normalized && normalized.length > 0 ? normalized : undefined;
 }
 
 export function buildWorkbenchModuleRunInput(input: {
@@ -4559,6 +5152,7 @@ export function buildWorkbenchModuleRunInput(input: {
   parentAssetId: string;
   actorRole: AuthRole;
   executionMode?: RunModuleAndLoadInput["executionMode"];
+  outputBaseName?: string;
 }): RunModuleAndLoadInput {
   return {
     mode: input.mode,
@@ -4566,7 +5160,10 @@ export function buildWorkbenchModuleRunInput(input: {
     parentAssetId: input.parentAssetId,
     actorRole: input.actorRole,
     storageKey: `runs/${input.manuscriptId}/${input.mode}/output`,
-    fileName: resolveWorkbenchGeneratedAssetFileName(input.mode),
+    fileName: resolveWorkbenchGeneratedAssetFileName(
+      input.mode,
+      input.outputBaseName,
+    ),
     ...(input.executionMode ? { executionMode: input.executionMode } : {}),
   };
 }
@@ -4659,7 +5256,7 @@ function resolveFocusableCurrentResultAsset(
   return materializedAsset.id === currentManuscriptAsset?.id ? null : materializedAsset;
 }
 
-function resolveMaterializedModuleResultAsset(
+export function resolveMaterializedModuleResultAsset(
   mode: ManuscriptWorkbenchRunMode,
   workspace: ManuscriptWorkbenchWorkspace,
 ): NonNullable<ManuscriptWorkbenchWorkspace["currentAsset"]> | null {
@@ -4706,9 +5303,76 @@ function resolveMaterializedModuleResultAsset(
       asset != null,
   );
 
-  return (
-    candidates.find((asset) => acceptableAssetTypes.has(asset.asset_type)) ?? null
+  let bestCandidate:
+    | NonNullable<ManuscriptWorkbenchWorkspace["currentAsset"]>
+    | null = null;
+  for (const candidate of candidates) {
+    if (!acceptableAssetTypes.has(candidate.asset_type)) {
+      continue;
+    }
+
+    if (
+      !bestCandidate ||
+      isPreferredMaterializedResultCandidate(mode, candidate, bestCandidate)
+    ) {
+      bestCandidate = candidate;
+    }
+  }
+
+  return bestCandidate;
+}
+
+function isPreferredMaterializedResultCandidate(
+  mode: ManuscriptWorkbenchRunMode,
+  candidate: NonNullable<ManuscriptWorkbenchWorkspace["currentAsset"]>,
+  currentBest: NonNullable<ManuscriptWorkbenchWorkspace["currentAsset"]>,
+): boolean {
+  const candidatePriority = resolveMaterializedAssetPriority(mode, candidate.asset_type);
+  const currentBestPriority = resolveMaterializedAssetPriority(
+    mode,
+    currentBest.asset_type,
   );
+
+  if (candidatePriority !== currentBestPriority) {
+    return candidatePriority > currentBestPriority;
+  }
+
+  if (candidate.is_current !== currentBest.is_current) {
+    return candidate.is_current;
+  }
+
+  if (candidate.status !== currentBest.status) {
+    return candidate.status === "active";
+  }
+
+  if (candidate.version_no !== currentBest.version_no) {
+    return candidate.version_no > currentBest.version_no;
+  }
+
+  return false;
+}
+
+function resolveMaterializedAssetPriority(
+  mode: ManuscriptWorkbenchRunMode,
+  assetType: NonNullable<ManuscriptWorkbenchWorkspace["currentAsset"]>["asset_type"],
+): number {
+  if (mode !== "proofreading") {
+    return 1;
+  }
+
+  if (assetType === "final_proof_annotated_docx") {
+    return 3;
+  }
+
+  if (assetType === "proofreading_draft_report") {
+    return 2;
+  }
+
+  if (assetType === "final_proof_issue_report") {
+    return 1;
+  }
+
+  return 0;
 }
 
 function doesCurrentExportSelectionMatchMode(
@@ -4823,19 +5487,31 @@ export function deriveUploadTitleFromFileName(
   return baseName.trim().length > 0 ? baseName : fallbackTitle;
 }
 
-function formatAssetOptionLabel(
+export function formatAssetOptionLabel(
   manuscriptTitle: string,
   asset: {
-  id: string;
-  asset_type: string;
-  file_name?: string | null;
-},
+    id: string;
+    asset_type: string;
+    status: "created" | "active" | "superseded" | "archived";
+    version_no: number;
+    is_current: boolean;
+    file_name?: string | null;
+  },
 ): string {
   const stagedDisplayName = buildWorkbenchAssetDisplayName(manuscriptTitle, asset);
-  if (stagedDisplayName.trim().length > 0) {
-    return stagedDisplayName;
-  }
+  const baseLabel =
+    stagedDisplayName.trim().length > 0
+      ? stagedDisplayName
+      : resolveFallbackAssetOptionLabel(asset);
+  const versionHint = resolveAssetOptionVersionHint(asset);
 
+  return versionHint ? `${baseLabel}（${versionHint}）` : baseLabel;
+}
+
+function resolveFallbackAssetOptionLabel(asset: {
+  asset_type: string;
+  file_name?: string | null;
+}): string {
   const baseName = asset.file_name?.trim();
   const displayName =
     baseName && baseName.length > 0
@@ -4844,6 +5520,22 @@ function formatAssetOptionLabel(
   const typeLabel = formatWorkbenchGeneratedOutputTypeLabel(asset.asset_type);
 
   return displayName === typeLabel ? displayName : `${displayName} · ${typeLabel}`;
+}
+
+function resolveAssetOptionVersionHint(asset: {
+  status: "created" | "active" | "superseded" | "archived";
+  version_no: number;
+  is_current: boolean;
+}): string | null {
+  if (asset.is_current) {
+    return null;
+  }
+
+  if (asset.status === "archived") {
+    return `已归档 v${asset.version_no}`;
+  }
+
+  return `历史 v${asset.version_no}`;
 }
 
 function formatDetectedManuscriptType(

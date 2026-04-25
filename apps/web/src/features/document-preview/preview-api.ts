@@ -1,5 +1,8 @@
 import type {
   DocumentNormalizationExecutionViewModel,
+  DocumentPreviewLocateTargetViewModel,
+  ProofreadingDocumentAnchorKind,
+  ProofreadingIssueAnchorInputViewModel,
   DocumentPreviewViewModel,
   DocumentPreviewSessionViewModel,
 } from "./types.ts";
@@ -55,4 +58,112 @@ export function createPreviewSession(
     url: "/api/v1/document-pipeline/preview-session",
     body: input,
   });
+}
+
+export function buildProofreadingLocateTarget(
+  input: ProofreadingIssueAnchorInputViewModel,
+): DocumentPreviewLocateTargetViewModel {
+  const locator = normalizeLocateDocumentLocator(input);
+  if (locator?.anchorKey && locator.anchorKind) {
+    return {
+      blockIndex: input.blockIndex,
+      quote: input.quote,
+      ...(input.sectionLabel
+        ? {
+            sectionLabel: input.sectionLabel,
+          }
+        : {}),
+      anchorKey: locator.anchorKey,
+      anchorKind: locator.anchorKind,
+      confidence: locator.confidence ?? "provided",
+      ...(locator.tableId
+        ? {
+            tableId: locator.tableId,
+          }
+        : {}),
+      ...(locator.tableTarget
+        ? {
+            tableTarget: locator.tableTarget,
+          }
+        : {}),
+      ...(locator.rowKey
+        ? {
+            rowKey: locator.rowKey,
+          }
+        : {}),
+      ...(locator.columnKey
+        ? {
+            columnKey: locator.columnKey,
+          }
+        : {}),
+      ...(locator.footnoteAnchor
+        ? {
+            footnoteAnchor: locator.footnoteAnchor,
+          }
+        : {}),
+    };
+  }
+
+  return {
+    blockIndex: input.blockIndex,
+    quote: input.quote,
+    ...(input.sectionLabel
+      ? {
+          sectionLabel: input.sectionLabel,
+        }
+      : {}),
+    anchorKey: `block:${input.blockIndex}`,
+    anchorKind: "block",
+    confidence: "fallback",
+  };
+}
+
+function normalizeLocateDocumentLocator(
+  input: ProofreadingIssueAnchorInputViewModel,
+): ProofreadingIssueAnchorInputViewModel["documentLocator"] {
+  const locator = input.documentLocator;
+  if (!locator?.anchorKey || !locator.anchorKind) {
+    return locator;
+  }
+
+  const derivedAnchorKind = inferProofreadingAnchorKind(input.blockKind);
+  if (locator.anchorKind !== "block" || derivedAnchorKind === "block") {
+    return locator;
+  }
+
+  const ordinalWithinSection = locator.ordinalWithinSection ?? input.blockIndex;
+
+  return {
+    anchorKind: derivedAnchorKind,
+    anchorKey: `${derivedAnchorKind}:${input.sectionLabel ?? "document"}:${ordinalWithinSection}`,
+    confidence: "derived",
+    blockIndex: input.blockIndex,
+    ...(input.sectionLabel
+      ? {
+          sectionLabel: input.sectionLabel,
+        }
+      : {}),
+    ordinalWithinSection,
+  };
+}
+
+function inferProofreadingAnchorKind(
+  blockKind: string | undefined,
+): ProofreadingDocumentAnchorKind {
+  switch (blockKind) {
+    case "paragraph":
+      return "paragraph";
+    case "heading":
+      return "heading";
+    case "table":
+      return "table";
+    case "image":
+      return "image";
+    case "caption":
+      return "caption";
+    case "reference_entry":
+      return "reference_entry";
+    default:
+      return "block";
+  }
 }

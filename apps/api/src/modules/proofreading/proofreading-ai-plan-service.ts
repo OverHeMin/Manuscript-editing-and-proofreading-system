@@ -11,6 +11,8 @@ import type {
   ProofreadingAiPlan,
   ProofreadingIssue,
   ProofreadingIssueAnchor,
+  ProofreadingIssueAnchorKind,
+  ProofreadingIssueDocumentLocator,
   ProofreadingIssueSeverity,
   ProofreadingIssueSource,
   ProofreadingLegacyCorrection,
@@ -154,6 +156,20 @@ function buildProofreadingSystemPrompt(): string {
             quote: "string",
             sectionLabel: "string",
             blockKind: "string",
+            documentLocator: {
+              anchorKind:
+                "block|paragraph|heading|table|table_cell|image|caption|reference_entry",
+              anchorKey: "string",
+              confidence: "provided|derived|fallback",
+              blockIndex: 0,
+              sectionLabel: "string",
+              ordinalWithinSection: 0,
+              tableId: "string",
+              tableTarget: "string",
+              rowKey: "string",
+              columnKey: "string",
+              footnoteAnchor: "string",
+            },
           },
           suggestion: {
             action: "replace_text|rewrite_manually|verify_fact|explain_only",
@@ -231,6 +247,20 @@ function buildProofreadingUserPayload(input: {
             quote: "string",
             sectionLabel: "string",
             blockKind: "string",
+            documentLocator: {
+              anchorKind:
+                "block|paragraph|heading|table|table_cell|image|caption|reference_entry",
+              anchorKey: "string",
+              confidence: "provided|derived|fallback",
+              blockIndex: 0,
+              sectionLabel: "string",
+              ordinalWithinSection: 0,
+              tableId: "string",
+              tableTarget: "string",
+              rowKey: "string",
+              columnKey: "string",
+              footnoteAnchor: "string",
+            },
           },
           suggestion: {
             action: "replace_text|rewrite_manually|verify_fact|explain_only",
@@ -641,9 +671,17 @@ function buildGovernedQualityIssuePayload(
   return (issues ?? []).map((issue) => ({
     severity: issue.severity ?? "info",
     issueType: issue.issue_type ?? "",
-    action: issue.action,
     explanation: issue.explanation ?? "",
-    excerpt: issue.text_excerpt ?? "",
+    ...(toNonEmptyString(issue.action)
+      ? {
+          action: toNonEmptyString(issue.action),
+        }
+      : {}),
+    ...(toNonEmptyString(issue.text_excerpt)
+      ? {
+          excerpt: toNonEmptyString(issue.text_excerpt),
+        }
+      : {}),
     ...(toNonEmptyString(issue.suggested_replacement)
       ? {
           suggestedReplacement: toNonEmptyString(issue.suggested_replacement),
@@ -918,6 +956,14 @@ function normalizeAnchor(
     sectionLabel:
       toNonEmptyString(value.sectionLabel) ?? matchedBlock?.sectionLabel,
     blockKind: toNonEmptyString(value.blockKind) ?? matchedBlock?.blockKind,
+    documentLocator: normalizeDocumentLocator({
+      value: value.documentLocator,
+      blockIndex,
+      sectionLabel:
+        toNonEmptyString(value.sectionLabel) ?? matchedBlock?.sectionLabel,
+      blockKind: toNonEmptyString(value.blockKind) ?? matchedBlock?.blockKind,
+      sourceBlocks,
+    }),
   };
 }
 
@@ -979,6 +1025,170 @@ function normalizeSourceBlocks(
   });
 }
 
+function normalizeDocumentLocator(input: {
+  value: unknown;
+  blockIndex: number;
+  sectionLabel?: string;
+  blockKind?: string;
+  sourceBlocks: Array<{
+    blockIndex: number;
+    text: string;
+    sectionLabel?: string;
+    blockKind?: string;
+  }>;
+}): ProofreadingIssueDocumentLocator | undefined {
+  const derivedLocator = buildDerivedDocumentLocator({
+    blockIndex: input.blockIndex,
+    sectionLabel: input.sectionLabel,
+    blockKind: input.blockKind,
+    sourceBlocks: input.sourceBlocks,
+  });
+  const providedLocator = isRecord(input.value)
+    ? buildProvidedDocumentLocator(input.value)
+    : undefined;
+  if (!providedLocator) {
+    return derivedLocator;
+  }
+
+  if (
+    providedLocator.anchorKind === "block" &&
+    derivedLocator.anchorKind !== "block"
+  ) {
+    return derivedLocator;
+  }
+
+  return providedLocator;
+}
+
+function buildProvidedDocumentLocator(
+  value: Record<string, unknown>,
+): ProofreadingIssueDocumentLocator | undefined {
+  const anchorKind = toAnchorKind(value.anchorKind);
+  const anchorKey = toNonEmptyString(value.anchorKey);
+  if (!anchorKind || !anchorKey) {
+    return undefined;
+  }
+
+  return {
+    anchorKind,
+    anchorKey,
+    confidence:
+      value.confidence === "provided" ||
+      value.confidence === "derived" ||
+      value.confidence === "fallback"
+        ? value.confidence
+        : "provided",
+    ...(typeof value.blockIndex === "number" && Number.isInteger(value.blockIndex)
+      ? {
+          blockIndex: value.blockIndex,
+        }
+      : {}),
+    ...(toNonEmptyString(value.sectionLabel)
+      ? {
+          sectionLabel: toNonEmptyString(value.sectionLabel),
+        }
+      : {}),
+    ...(typeof value.ordinalWithinSection === "number" &&
+    Number.isInteger(value.ordinalWithinSection)
+      ? {
+          ordinalWithinSection: value.ordinalWithinSection,
+        }
+      : {}),
+    ...(toNonEmptyString(value.tableId)
+      ? {
+          tableId: toNonEmptyString(value.tableId),
+        }
+      : {}),
+    ...(toNonEmptyString(value.tableTarget)
+      ? {
+          tableTarget: toNonEmptyString(value.tableTarget),
+        }
+      : {}),
+    ...(toNonEmptyString(value.rowKey)
+      ? {
+          rowKey: toNonEmptyString(value.rowKey),
+        }
+      : {}),
+    ...(toNonEmptyString(value.columnKey)
+      ? {
+          columnKey: toNonEmptyString(value.columnKey),
+        }
+      : {}),
+    ...(toNonEmptyString(value.footnoteAnchor)
+      ? {
+          footnoteAnchor: toNonEmptyString(value.footnoteAnchor),
+        }
+      : {}),
+  };
+}
+
+function buildDerivedDocumentLocator(input: {
+  blockIndex: number;
+  sectionLabel?: string;
+  blockKind?: string;
+  sourceBlocks: Array<{
+    blockIndex: number;
+    text: string;
+    sectionLabel?: string;
+    blockKind?: string;
+  }>;
+}): ProofreadingIssueDocumentLocator {
+  const anchorKind = inferAnchorKind(input.blockKind);
+  if (anchorKind === "block") {
+    return {
+      anchorKind,
+      anchorKey: `block:${input.blockIndex}`,
+      confidence: "fallback",
+      blockIndex: input.blockIndex,
+      ...(input.sectionLabel
+        ? {
+            sectionLabel: input.sectionLabel,
+          }
+        : {}),
+    };
+  }
+
+  const ordinalWithinSection = input.sourceBlocks
+    .filter((block) => block.blockIndex < input.blockIndex)
+    .filter(
+      (block) =>
+        (block.sectionLabel ?? "") === (input.sectionLabel ?? "") &&
+        inferAnchorKind(block.blockKind) === anchorKind,
+    ).length;
+
+  return {
+    anchorKind,
+    anchorKey: `${anchorKind}:${input.sectionLabel ?? "document"}:${ordinalWithinSection}`,
+    confidence: "derived",
+    blockIndex: input.blockIndex,
+    ...(input.sectionLabel
+      ? {
+          sectionLabel: input.sectionLabel,
+        }
+      : {}),
+    ordinalWithinSection,
+  };
+}
+
+function inferAnchorKind(blockKind: string | undefined): ProofreadingIssueAnchorKind {
+  switch (blockKind) {
+    case "paragraph":
+      return "paragraph";
+    case "heading":
+      return "heading";
+    case "table":
+      return "table";
+    case "image":
+      return "image";
+    case "caption":
+      return "caption";
+    case "reference_entry":
+      return "reference_entry";
+    default:
+      return "block";
+  }
+}
+
 function issuesToLegacyCorrections(
   issues: readonly ProofreadingIssue[],
 ): ProofreadingLegacyCorrection[] {
@@ -1038,6 +1248,19 @@ function toSource(value: unknown): ProofreadingIssueSource | undefined {
     value === "quality_check" ||
     value === "residual_ai" ||
     value === "legacy_correction"
+    ? value
+    : undefined;
+}
+
+function toAnchorKind(value: unknown): ProofreadingIssueAnchorKind | undefined {
+  return value === "block" ||
+    value === "paragraph" ||
+    value === "heading" ||
+    value === "table" ||
+    value === "table_cell" ||
+    value === "image" ||
+    value === "caption" ||
+    value === "reference_entry"
     ? value
     : undefined;
 }

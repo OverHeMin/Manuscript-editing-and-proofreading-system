@@ -317,6 +317,25 @@ test("proofreading governance handoff includes manual-only residual issues witho
       async listIssues() {
         return [
           {
+            id: "residual-manual-knowledge-1",
+            module: "proofreading",
+            manuscript_id: "manuscript-1",
+            manuscript_type: "clinical_study",
+            execution_snapshot_id: "snapshot-manual-knowledge-1",
+            issue_type: "terminology_definition_missing",
+            source_stage: "model_residual",
+            excerpt: "*P<0.05 vs control",
+            novelty_key: "terminology_definition_missing:pvalue-definition",
+            recurrence_count: 1,
+            system_confidence_band: "L1_review_pending",
+            risk_level: "high",
+            recommended_route: "manual_only",
+            status: "manual_review_pending",
+            harness_validation_status: "not_required",
+            created_at: "2026-04-18T10:31:30.000Z",
+            updated_at: "2026-04-18T10:32:00.000Z",
+          },
+          {
             id: "residual-manual-1",
             module: "proofreading",
             manuscript_id: "manuscript-1",
@@ -434,6 +453,18 @@ test("proofreading governance handoff includes manual-only residual issues witho
     })),
     [
       {
+        id: "residual-manual-knowledge-1",
+        source_status: "manual_review_pending",
+        review_status: "pending",
+        available_actions: [
+          "accept_change_only",
+          "reject_as_false_positive",
+          "archive_as_evidence_only",
+          "route_to_knowledge_candidate",
+        ],
+        recommended_route: "manual_only",
+      },
+      {
         id: "residual-manual-1",
         source_status: "manual_review_pending",
         review_status: "pending",
@@ -495,6 +526,21 @@ test("proofreading governance handoff scopes residual items and rule candidates 
       ],
     ],
     [
+      "candidate-current-knowledge",
+      [
+        {
+          id: "link-current-knowledge",
+          learning_candidate_id: "candidate-current-knowledge",
+          source_kind: "human_feedback",
+          snapshot_kind: "execution_snapshot",
+          snapshot_id: "snapshot-proof-current",
+          feedback_record_id: "feedback-proof-knowledge-current",
+          source_asset_id: "asset-proof-current",
+          created_at: "2026-04-23T10:02:00.000Z",
+        },
+      ],
+    ],
+    [
       "candidate-stale",
       [
         {
@@ -533,8 +579,8 @@ test("proofreading governance handoff scopes residual items and rule candidates 
       },
     } as never,
     learningService: {
-      async listLearningCandidates() {
-        return [
+      async listLearningCandidates(input?: { type?: "rule_candidate" | "knowledge_candidate" }) {
+        const candidates = [
           {
             id: "candidate-current-residual",
             type: "rule_candidate",
@@ -564,6 +610,20 @@ test("proofreading governance handoff scopes residual items and rule candidates 
             review_actions: [],
           },
           {
+            id: "candidate-current-knowledge",
+            type: "knowledge_candidate",
+            status: "pending_review",
+            manuscript_id: "manuscript-1",
+            module: "proofreading",
+            manuscript_type: "clinical_study",
+            governed_provenance_kind: "human_feedback",
+            title: "Current proofreading knowledge candidate",
+            created_by: "reviewer-1",
+            created_at: "2026-04-23T10:02:00.000Z",
+            updated_at: "2026-04-23T10:02:00.000Z",
+            review_actions: [],
+          },
+          {
             id: "candidate-stale",
             type: "rule_candidate",
             status: "pending_review",
@@ -578,6 +638,9 @@ test("proofreading governance handoff scopes residual items and rule candidates 
             review_actions: [],
           },
         ];
+        return input?.type
+          ? candidates.filter((candidate) => candidate.type === input.type)
+          : candidates;
       },
       async listLearningCandidateSourceLinksByCandidateId(candidateId: string) {
         return sourceLinksByCandidateId.get(candidateId) ?? [];
@@ -665,6 +728,9 @@ test("proofreading governance handoff scopes residual items and rule candidates 
     handoff.ruleCandidates.map((item) => item.id).sort(),
     ["candidate-current-human", "candidate-current-residual"],
   );
+  assert.deepEqual(handoff.knowledgeCandidates.map((item) => item.id), [
+    "candidate-current-knowledge",
+  ]);
 });
 
 test("human confirmation residuals preserve long-term routing truth for proofreading follow-up", async () => {

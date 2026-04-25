@@ -405,6 +405,249 @@ test("proofreading AI planning removes governed duplicates before keeping residu
   ]);
 });
 
+test("proofreading AI planning upgrades anchors with stage-2a document locator metadata", async () => {
+  const service = new ProofreadingAiPlanService({
+    mainlineAiRuntimeExecutor: {
+      async executeJson<T>(): Promise<T> {
+        return {
+          role: "医学稿件终校审校员",
+          summary: "Anchor metadata normalized.",
+          issues: [
+            {
+              itemId: "issue-paragraph-1",
+              title: "句子需要复核",
+              description: "Paragraph locator should be derived from the source block.",
+              severity: "medium",
+              source: "residual_ai",
+              issueType: "logic_consistency",
+              blocksFinal: false,
+              anchor: {
+                blockIndex: 1,
+                quote: "Dose was 5 mg/dL after normalization.",
+                sectionLabel: "results",
+              },
+              suggestion: {
+                action: "verify_fact",
+                note: "Review the sentence against the source table.",
+              },
+            },
+            {
+              itemId: "issue-table-1",
+              title: "表格单元格需要复核",
+              description: "Provided table locator should survive normalization.",
+              severity: "high",
+              source: "residual_ai",
+              issueType: "table_consistency",
+              blocksFinal: false,
+              anchor: {
+                blockIndex: 2,
+                quote: "ALT",
+                sectionLabel: "results",
+                blockKind: "table",
+                documentLocator: {
+                  anchorKind: "table_cell",
+                  anchorKey: "table:table-1:alanine_aminotransferase:value",
+                  confidence: "provided",
+                  tableId: "table-1",
+                  tableTarget: "data_cell",
+                  rowKey: "alanine_aminotransferase",
+                  columnKey: "value",
+                },
+              },
+              suggestion: {
+                action: "verify_fact",
+                note: "Confirm the ALT cell against the narrative text.",
+              },
+            },
+          ],
+          manualReviewItems: [],
+        } as T;
+      },
+      async executeMarkdown(): Promise<string> {
+        throw new Error("Proofreading AI planning should request JSON.");
+      },
+    } satisfies MainlineAiRuntimeExecutor,
+  });
+
+  const result = await service.createPlan({
+    manuscriptId: "manuscript-1",
+    sourceBlocks: [
+      {
+        section: "results",
+        block_kind: "heading",
+        text: "Results",
+      },
+      {
+        section: "results",
+        block_kind: "paragraph",
+        text: "Dose was 5 mg/dL after normalization.",
+      },
+      {
+        section: "results",
+        block_kind: "table",
+        text: "Table 1. ALT summary",
+      },
+    ],
+  } as never);
+
+  assert.deepEqual(result.issues, [
+    {
+      itemId: "issue-paragraph-1",
+      title: "句子需要复核",
+      description: "Paragraph locator should be derived from the source block.",
+      severity: "medium",
+      source: "residual_ai",
+      issueType: "logic_consistency",
+      blocksFinal: false,
+      anchor: {
+        blockIndex: 1,
+        quote: "Dose was 5 mg/dL after normalization.",
+        sectionLabel: "results",
+        blockKind: "paragraph",
+        documentLocator: {
+          anchorKind: "paragraph",
+          anchorKey: "paragraph:results:0",
+          confidence: "derived",
+          blockIndex: 1,
+          sectionLabel: "results",
+          ordinalWithinSection: 0,
+        },
+      },
+      suggestion: {
+        action: "verify_fact",
+        note: "Review the sentence against the source table.",
+      },
+    },
+    {
+      itemId: "issue-table-1",
+      title: "表格单元格需要复核",
+      description: "Provided table locator should survive normalization.",
+      severity: "high",
+      source: "residual_ai",
+      issueType: "table_consistency",
+      blocksFinal: false,
+      anchor: {
+        blockIndex: 2,
+        quote: "ALT",
+        sectionLabel: "results",
+        blockKind: "table",
+        documentLocator: {
+          anchorKind: "table_cell",
+          anchorKey: "table:table-1:alanine_aminotransferase:value",
+          confidence: "provided",
+          tableId: "table-1",
+          tableTarget: "data_cell",
+          rowKey: "alanine_aminotransferase",
+          columnKey: "value",
+        },
+      },
+      suggestion: {
+        action: "verify_fact",
+        note: "Confirm the ALT cell against the narrative text.",
+      },
+    },
+  ]);
+});
+
+test("proofreading AI planning upgrades generic block locators when source blocks provide richer anchor kinds", async () => {
+  const service = new ProofreadingAiPlanService({
+    mainlineAiRuntimeExecutor: {
+      async executeJson<T>(): Promise<T> {
+        return {
+          role: "医学稿件终校审校员",
+          summary: "Generic block locator should be upgraded.",
+          issues: [
+            {
+              itemId: "issue-paragraph-block-locator",
+              title: "段落定位需要升级",
+              description:
+                "A generic block locator should not survive when the source block is a paragraph.",
+              severity: "high",
+              source: "residual_ai",
+              issueType: "medical_fact_error",
+              blocksFinal: false,
+              anchor: {
+                blockIndex: 2,
+                quote: "the unit expression 5 mg per dL should be normalized.",
+                sectionLabel: "front_matter",
+                blockKind: "paragraph",
+                documentLocator: {
+                  anchorKind: "block",
+                  anchorKey: "block-2",
+                  confidence: "provided",
+                  blockIndex: 2,
+                  sectionLabel: "front_matter",
+                  ordinalWithinSection: 2,
+                },
+              },
+              suggestion: {
+                action: "verify_fact",
+                note: "Confirm the correct clinical unit before release.",
+              },
+            },
+          ],
+          manualReviewItems: [],
+        } as T;
+      },
+      async executeMarkdown(): Promise<string> {
+        throw new Error("Proofreading AI planning should request JSON.");
+      },
+    } satisfies MainlineAiRuntimeExecutor,
+  });
+
+  const result = await service.createPlan({
+    manuscriptId: "manuscript-1",
+    sourceBlocks: [
+      {
+        section: "front_matter",
+        block_kind: "paragraph",
+        text: "Proofreading Browser Smoke",
+      },
+      {
+        section: "front_matter",
+        block_kind: "paragraph",
+        text: "This is a proofreading smoke test manuscript for validating the detail workbench surface.",
+      },
+      {
+        section: "front_matter",
+        block_kind: "paragraph",
+        text: "ALT remained stable during follow-up, but the unit expression 5 mg per dL should be normalized.",
+      },
+    ],
+  } as never);
+
+  assert.deepEqual(result.issues, [
+    {
+      itemId: "issue-paragraph-block-locator",
+      title: "段落定位需要升级",
+      description:
+        "A generic block locator should not survive when the source block is a paragraph.",
+      severity: "high",
+      source: "residual_ai",
+      issueType: "medical_fact_error",
+      blocksFinal: false,
+      anchor: {
+        blockIndex: 2,
+        quote: "the unit expression 5 mg per dL should be normalized.",
+        sectionLabel: "front_matter",
+        blockKind: "paragraph",
+        documentLocator: {
+          anchorKind: "paragraph",
+          anchorKey: "paragraph:front_matter:2",
+          confidence: "derived",
+          blockIndex: 2,
+          sectionLabel: "front_matter",
+          ordinalWithinSection: 2,
+        },
+      },
+      suggestion: {
+        action: "verify_fact",
+        note: "Confirm the correct clinical unit before release.",
+      },
+    },
+  ]);
+});
+
 test("proofreading AI planning keeps whole-document mode for long manuscripts by switching to a document map payload", async () => {
   let recordedInput: ExecuteMainlineAiInput | undefined;
   const service = new ProofreadingAiPlanService({

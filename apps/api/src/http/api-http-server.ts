@@ -42,6 +42,7 @@ import {
   DocumentAssetDownloadUnsupportedError,
   LocalAssetMaterializationService,
 } from "./local-asset-materialization.ts";
+import { buildDownloadContentDispositionHeader } from "./download-content-disposition.ts";
 import {
   AgentProfileNotFoundError,
   AgentProfileService,
@@ -148,6 +149,7 @@ import {
 import {
   OnlyOfficeSessionService,
   type OnlyOfficeViewSession,
+  verifySurfaceSessionAccessToken,
 } from "../modules/document-pipeline/onlyoffice-session-service.ts";
 import {
   createEditorialRuleApi,
@@ -576,6 +578,9 @@ type HttpRouteMatch =
       route: "document-pipeline-preview-session";
     }
   | {
+      route: "document-pipeline-preview-callback";
+    }
+  | {
       route: "document-pipeline-export-current-asset";
     }
   | {
@@ -628,6 +633,9 @@ type HttpRouteMatch =
     }
   | {
       route: "modules-proofreading-finalize";
+    }
+  | {
+      route: "modules-proofreading-confirmation-draft";
     }
   | {
       route: "modules-proofreading-publish-human-final";
@@ -1826,9 +1834,7 @@ export function createInMemoryApiRuntime(input: {
   };
   const editingExecutor: MainlineAiRuntimeExecutor = {
     async executeJson<T>(input: ExecuteMainlineAiInput): Promise<T> {
-      const sourceBlocks = Array.isArray(input.userPayload.sourceBlocks)
-        ? input.userPayload.sourceBlocks
-        : [];
+      const sourceBlocks = readSeededSourceBlocks(input.userPayload);
       const targetText =
         findFirstSourceText(sourceBlocks) ?? "Abstract Objective";
       return {
@@ -1850,9 +1856,7 @@ export function createInMemoryApiRuntime(input: {
   };
   const proofreadingExecutor: MainlineAiRuntimeExecutor = {
     async executeJson<T>(input: ExecuteMainlineAiInput): Promise<T> {
-      const sourceBlocks = Array.isArray(input.userPayload.sourceBlocks)
-        ? input.userPayload.sourceBlocks
-        : [];
+      const sourceBlocks = readSeededSourceBlocks(input.userPayload);
       const targetText =
         findFirstSourceText(sourceBlocks) ?? "Proofreading target";
       return {
@@ -2254,6 +2258,18 @@ function findFirstSourceText(sourceBlocks: unknown[]): string | undefined {
   }
 
   return undefined;
+}
+
+function readSeededSourceBlocks(userPayload: Record<string, unknown>): unknown[] {
+  if (Array.isArray(userPayload.fullDocumentBlocks)) {
+    return userPayload.fullDocumentBlocks;
+  }
+
+  if (Array.isArray(userPayload.sourceBlocks)) {
+    return userPayload.sourceBlocks;
+  }
+
+  return [];
 }
 
 function seedDemoKnowledgeReviewData(input: {
@@ -4545,6 +4561,13 @@ async function handleRoute(
       >[0];
       return runtime.documentPipelineApi.createPreviewSession(body);
     }
+    case "document-pipeline-preview-callback":
+      return {
+        status: 200,
+        body: {
+          error: 0,
+        },
+      };
     case "document-pipeline-export-current-asset": {
       await requireManuscriptSurfaceSession(req, runtime, "manuscript export");
       const body = (await readJsonBody(req)) as Parameters<
@@ -4553,7 +4576,7 @@ async function handleRoute(
       return runtime.documentPipelineApi.exportCurrentAsset(body);
     }
     case "document-assets-download":
-      await requireManuscriptSurfaceSession(req, runtime, "manuscript export");
+      await requireDocumentAssetDownloadAccess(req, runtime, routeMatch.assetId);
       return runtime.documentPipelineApi.downloadAsset({
         assetId: routeMatch.assetId,
         uploadRootDir,
@@ -4699,6 +4722,18 @@ async function handleRoute(
       >[0];
 
       return runtime.proofreadingApi.confirmFinal({
+        ...body,
+        requestedBy: session.user.id,
+        actorRole: session.user.role,
+      });
+    }
+    case "modules-proofreading-confirmation-draft": {
+      const session = await requirePermission(req, runtime, "workbench.proofreading");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.proofreadingApi.saveConfirmationDraft
+      >[0];
+
+      return runtime.proofreadingApi.saveConfirmationDraft({
         ...body,
         requestedBy: session.user.id,
         actorRole: session.user.role,
@@ -6999,6 +7034,10 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "document-pipeline-preview-session" };
   }
 
+  if (method === "POST" && path === "/api/v1/document-pipeline/preview-callback") {
+    return { route: "document-pipeline-preview-callback" };
+  }
+
   if (method === "POST" && path === "/api/v1/document-pipeline/export-current-asset") {
     return { route: "document-pipeline-export-current-asset" };
   }
@@ -7063,6 +7102,10 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
   if (method === "POST" && path === "/api/v1/modules/proofreading/finalize") {
     return { route: "modules-proofreading-finalize" };
+  }
+
+  if (method === "POST" && path === "/api/v1/modules/proofreading/confirmation-draft") {
+    return { route: "modules-proofreading-confirmation-draft" };
   }
 
   if (method === "POST" && path === "/api/v1/modules/proofreading/publish-human-final") {
@@ -8749,6 +8792,45 @@ async function requireManuscriptSurfaceSession(
   return session;
 }
 
+async function requireDocumentAssetDownloadAccess(
+  req: IncomingMessage,
+  runtime: ApiServerRuntime,
+  assetId: string,
+): Promise<void> {
+  try {
+    await requireManuscriptSurfaceSession(req, runtime, "manuscript export");
+    return;
+  } catch (error) {
+    if (!(error instanceof AuthenticationRequiredError)) {
+      throw error;
+    }
+  }
+
+  const surfaceAccessToken = readDocumentPreviewSurfaceAccessToken(req);
+  const claims = verifySurfaceSessionAccessToken({
+    token: surfaceAccessToken ?? "",
+    secret: process.env.ONLYOFFICE_JWT_SECRET?.trim() ?? "",
+  });
+
+  if (!claims || claims.asset_id !== assetId) {
+    throw new AuthenticationRequiredError();
+  }
+}
+
+function readDocumentPreviewSurfaceAccessToken(
+  req: IncomingMessage,
+): string | null {
+  const queryToken =
+    readRequestUrl(req).searchParams.get("surfaceAccessToken")?.trim() ?? "";
+  if (queryToken.length > 0) {
+    return queryToken;
+  }
+
+  const authorizationHeader = req.headers.authorization?.trim() ?? "";
+  const bearerMatch = authorizationHeader.match(/^Bearer\s+(.+)$/iu);
+  return bearerMatch?.[1]?.trim() || null;
+}
+
 function resolveWorkbenchPermissionForModule(
   module: "screening" | "editing" | "proofreading",
 ): Parameters<PermissionGuard["assert"]>[1] {
@@ -9472,11 +9554,7 @@ function buildDownloadHeaders(
   return {
     "Content-Type": mimeType,
     "Content-Length": String(bytes.byteLength),
-    "Content-Disposition": `attachment; filename="${sanitizeDownloadFileName(fileName)}"`,
+    "Content-Disposition": buildDownloadContentDispositionHeader(fileName),
     "Cache-Control": "no-store",
   };
-}
-
-function sanitizeDownloadFileName(fileName: string): string {
-  return fileName.replace(/["\\]/g, "-");
 }

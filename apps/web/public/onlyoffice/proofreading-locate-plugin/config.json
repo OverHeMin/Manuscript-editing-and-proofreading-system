@@ -1,0 +1,20 @@
+{
+  "name": "Proofreading Locate Bridge",
+  "guid": "asc.{8DFA8E84-C2C5-4F1C-8A13-5D1B4E3A9C11}",
+  "variations": [
+    {
+      "description": "Bridge the proofreading issue queue to ONLYOFFICE text search.",
+      "url": "index.html?bridgeVersion=20260425-stage2b-document-selection-sync",
+      "type": "background",
+      "EditorsSupport": ["word"],
+      "isViewer": true,
+      "isDisplayedInViewer": true,
+      "isVisual": false,
+      "isModal": false,
+      "isInsideMode": false,
+      "initDataType": "none",
+      "initData": "",
+      "buttons": []
+    }
+  ]
+}

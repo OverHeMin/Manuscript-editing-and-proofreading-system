@@ -35,14 +35,14 @@ interface PersistentWorkbenchReviewBaselineDeps {
   manualReviewPolicyRepository: ManualReviewPolicyRepository;
 }
 
-const REVIEW_BASELINE_FAMILY = {
-  id: baselineUuid("00", "00"),
-  manuscript_type: "review" as const,
-  name: "Review 基础模板族",
-  status: "active" as const,
-};
+interface PersistentWorkbenchBaselineFamily {
+  id: string;
+  manuscript_type: "review" | "clinical_study";
+  name: string;
+  status: "active";
+}
 
-const REVIEW_BASELINE_MODULES: ReadonlyArray<{
+interface PersistentWorkbenchBaselineModuleConfig {
   module: TemplateModule;
   moduleTemplateId: string;
   promptTemplateId: string;
@@ -72,7 +72,21 @@ const REVIEW_BASELINE_MODULES: ReadonlyArray<{
   minRetrievalScore: number;
   minConfidenceThreshold: number;
   moduleBlocklistRules: string[];
-}> = [
+}
+
+interface PersistentWorkbenchBaselineConfig {
+  family: PersistentWorkbenchBaselineFamily;
+  modules: ReadonlyArray<PersistentWorkbenchBaselineModuleConfig>;
+}
+
+const REVIEW_BASELINE_FAMILY = {
+  id: baselineUuid("00", "00"),
+  manuscript_type: "review" as const,
+  name: "Review 基础模板族",
+  status: "active" as const,
+};
+
+const REVIEW_BASELINE_MODULES: ReadonlyArray<PersistentWorkbenchBaselineModuleConfig> = [
   {
     module: "screening",
     moduleTemplateId: baselineUuid("11", "01"),
@@ -168,35 +182,181 @@ const REVIEW_BASELINE_MODULES: ReadonlyArray<{
   },
 ];
 
+const CLINICAL_STUDY_BASELINE_FAMILY = {
+  id: baselineUuid("44", "00"),
+  manuscript_type: "clinical_study" as const,
+  name: "Clinical Study 基础模板族",
+  status: "active" as const,
+};
+
+const CLINICAL_STUDY_BASELINE_MODULES: ReadonlyArray<PersistentWorkbenchBaselineModuleConfig> = [
+  {
+    module: "screening",
+    moduleTemplateId: baselineUuid("55", "01"),
+    promptTemplateId: baselineUuid("55", "02"),
+    skillPackageId: baselineUuid("55", "03"),
+    ruleSetId: baselineUuid("55", "04"),
+    executionProfileId: baselineUuid("55", "05"),
+    sandboxProfileId: baselineUuid("55", "06"),
+    runtimeId: baselineUuid("55", "07"),
+    agentProfileId: baselineUuid("55", "08"),
+    toolPermissionPolicyId: baselineUuid("55", "09"),
+    runtimeBindingId: baselineUuid("55", "10"),
+    modelId: baselineUuid("55", "11"),
+    retrievalPresetId: baselineUuid("55", "12"),
+    manualReviewPolicyId: baselineUuid("55", "13"),
+    promptName: "persistent_clinical_study_screening_mainline",
+    skillName: "persistent_clinical_study_screening_skills",
+    runtimeName: "Persistent Clinical Study Screening Runtime",
+    sandboxName: "Persistent Clinical Study Screening Sandbox",
+    agentProfileName: "Persistent Clinical Study Screening Executor",
+    toolPermissionPolicyName: "Persistent Clinical Study Screening Policy",
+    modelName: "persistent-clinical-study-screening-model",
+    retrievalName: "Persistent Clinical Study Screening Retrieval",
+    manualReviewName: "Persistent Clinical Study Screening Policy",
+    sectionFilters: ["abstract", "methods"],
+    riskTagFilters: ["triage", "structure"],
+    citationRequired: false,
+    minRetrievalScore: 0.5,
+    minConfidenceThreshold: 0.82,
+    moduleBlocklistRules: ["medical-safety-escalation"],
+  },
+  {
+    module: "editing",
+    moduleTemplateId: baselineUuid("66", "01"),
+    promptTemplateId: baselineUuid("66", "02"),
+    skillPackageId: baselineUuid("66", "03"),
+    ruleSetId: baselineUuid("66", "04"),
+    executionProfileId: baselineUuid("66", "05"),
+    sandboxProfileId: baselineUuid("66", "06"),
+    runtimeId: baselineUuid("66", "07"),
+    agentProfileId: baselineUuid("66", "08"),
+    toolPermissionPolicyId: baselineUuid("66", "09"),
+    runtimeBindingId: baselineUuid("66", "10"),
+    modelId: baselineUuid("66", "11"),
+    retrievalPresetId: baselineUuid("66", "12"),
+    manualReviewPolicyId: baselineUuid("66", "13"),
+    promptName: "persistent_clinical_study_editing_mainline",
+    skillName: "persistent_clinical_study_editing_skills",
+    runtimeName: "Persistent Clinical Study Editing Runtime",
+    sandboxName: "Persistent Clinical Study Editing Sandbox",
+    agentProfileName: "Persistent Clinical Study Editing Executor",
+    toolPermissionPolicyName: "Persistent Clinical Study Editing Policy",
+    modelName: "persistent-clinical-study-editing-model",
+    retrievalName: "Persistent Clinical Study Editing Retrieval",
+    manualReviewName: "Persistent Clinical Study Editing Policy",
+    sectionFilters: ["introduction", "discussion"],
+    riskTagFilters: ["terminology", "grounding"],
+    citationRequired: true,
+    minRetrievalScore: 0.58,
+    minConfidenceThreshold: 0.84,
+    moduleBlocklistRules: ["unsupported-claim"],
+  },
+  {
+    module: "proofreading",
+    moduleTemplateId: baselineUuid("77", "01"),
+    promptTemplateId: baselineUuid("77", "02"),
+    skillPackageId: baselineUuid("77", "03"),
+    ruleSetId: baselineUuid("77", "04"),
+    executionProfileId: baselineUuid("77", "05"),
+    sandboxProfileId: baselineUuid("77", "06"),
+    runtimeId: baselineUuid("77", "07"),
+    agentProfileId: baselineUuid("77", "08"),
+    toolPermissionPolicyId: baselineUuid("77", "09"),
+    runtimeBindingId: baselineUuid("77", "10"),
+    modelId: baselineUuid("77", "11"),
+    retrievalPresetId: baselineUuid("77", "12"),
+    manualReviewPolicyId: baselineUuid("77", "13"),
+    promptName: "persistent_clinical_study_proofreading_mainline",
+    skillName: "persistent_clinical_study_proofreading_skills",
+    runtimeName: "Persistent Clinical Study Proofreading Runtime",
+    sandboxName: "Persistent Clinical Study Proofreading Sandbox",
+    agentProfileName: "Persistent Clinical Study Proofreading Executor",
+    toolPermissionPolicyName: "Persistent Clinical Study Proofreading Policy",
+    modelName: "persistent-clinical-study-proofreading-model",
+    retrievalName: "Persistent Clinical Study Proofreading Retrieval",
+    manualReviewName: "Persistent Clinical Study Proofreading Policy",
+    sectionFilters: ["results", "references"],
+    riskTagFilters: ["consistency", "residual"],
+    citationRequired: false,
+    minRetrievalScore: 0.48,
+    minConfidenceThreshold: 0.8,
+    moduleBlocklistRules: ["meaning-change"],
+  },
+];
+
+const PERSISTENT_WORKBENCH_BASELINES: ReadonlyArray<PersistentWorkbenchBaselineConfig> = [
+  {
+    family: REVIEW_BASELINE_FAMILY,
+    modules: REVIEW_BASELINE_MODULES,
+  },
+  {
+    family: CLINICAL_STUDY_BASELINE_FAMILY,
+    modules: CLINICAL_STUDY_BASELINE_MODULES,
+  },
+];
+
 export async function ensurePersistentWorkbenchReviewBaseline(
   deps: PersistentWorkbenchReviewBaselineDeps,
 ): Promise<void> {
   const templateFamilies = await deps.templateFamilyRepository.list();
-  const activeReviewFamily = templateFamilies.find(
-    (family) =>
-      family.manuscript_type === "review" && family.status === "active",
-  );
+  const seededModules: PersistentWorkbenchBaselineModuleConfig[] = [];
 
-  if (
-    activeReviewFamily &&
-    activeReviewFamily.id !== REVIEW_BASELINE_FAMILY.id
-  ) {
+  for (const baseline of PERSISTENT_WORKBENCH_BASELINES) {
+    const activeFamily = templateFamilies.find(
+      (family) =>
+        family.manuscript_type === baseline.family.manuscript_type &&
+        family.status === "active",
+    );
+
+    if (activeFamily && activeFamily.id !== baseline.family.id) {
+      continue;
+    }
+
+    if (!activeFamily) {
+      await deps.templateFamilyRepository.save(baseline.family);
+    }
+
+    await seedBaselineFamily(deps, baseline);
+    seededModules.push(...baseline.modules);
+  }
+
+  if (seededModules.length === 0) {
     return;
   }
 
-  if (!activeReviewFamily) {
-    await deps.templateFamilyRepository.save(REVIEW_BASELINE_FAMILY);
-  }
+  const modelRoutingPolicy = await deps.modelRoutingPolicyRepository.get();
+  await deps.modelRoutingPolicyRepository.save({
+    ...modelRoutingPolicy,
+    module_defaults: {
+      ...modelRoutingPolicy.module_defaults,
+    },
+    template_overrides: {
+      ...modelRoutingPolicy.template_overrides,
+      ...Object.fromEntries(
+        seededModules.map((config) => [
+          config.moduleTemplateId,
+          config.modelId,
+        ]),
+      ),
+    },
+  });
+}
 
-  for (const config of REVIEW_BASELINE_MODULES) {
+async function seedBaselineFamily(
+  deps: PersistentWorkbenchReviewBaselineDeps,
+  baseline: PersistentWorkbenchBaselineConfig,
+): Promise<void> {
+  for (const config of baseline.modules) {
     await deps.moduleTemplateRepository.save({
       id: config.moduleTemplateId,
-      template_family_id: REVIEW_BASELINE_FAMILY.id,
+      template_family_id: baseline.family.id,
       module: config.module,
-      manuscript_type: "review",
+      manuscript_type: baseline.family.manuscript_type,
       version_no: 1,
       status: "published",
-      prompt: `${config.module} instructions for governed review manuscripts.`,
+      prompt:
+        `${config.module} instructions for governed ${baseline.family.manuscript_type.replaceAll("_", " ")} manuscripts.`,
     });
     await deps.promptSkillRegistryRepository.savePromptTemplate({
       id: config.promptTemplateId,
@@ -204,7 +364,7 @@ export async function ensurePersistentWorkbenchReviewBaseline(
       version: "1.0.0",
       status: "published",
       module: config.module,
-      manuscript_types: ["review"],
+      manuscript_types: [baseline.family.manuscript_type],
     });
     await deps.promptSkillRegistryRepository.saveSkillPackage({
       id: config.skillPackageId,
@@ -216,7 +376,7 @@ export async function ensurePersistentWorkbenchReviewBaseline(
     });
     await deps.editorialRuleRepository.saveRuleSet({
       id: config.ruleSetId,
-      template_family_id: REVIEW_BASELINE_FAMILY.id,
+      template_family_id: baseline.family.id,
       module: config.module,
       version_no: 1,
       status: "published",
@@ -224,8 +384,8 @@ export async function ensurePersistentWorkbenchReviewBaseline(
     await deps.executionGovernanceRepository.saveProfile({
       id: config.executionProfileId,
       module: config.module,
-      manuscript_type: "review",
-      template_family_id: REVIEW_BASELINE_FAMILY.id,
+      manuscript_type: baseline.family.manuscript_type,
+      template_family_id: baseline.family.id,
       module_template_id: config.moduleTemplateId,
       rule_set_id: config.ruleSetId,
       prompt_template_id: config.promptTemplateId,
@@ -260,7 +420,7 @@ export async function ensurePersistentWorkbenchReviewBaseline(
       role_key: "subagent",
       status: "published",
       module_scope: [config.module],
-      manuscript_types: ["review"],
+      manuscript_types: [baseline.family.manuscript_type],
       admin_only: true,
     });
     await deps.toolPermissionPolicyRepository.save({
@@ -284,8 +444,8 @@ export async function ensurePersistentWorkbenchReviewBaseline(
     await deps.retrievalPresetRepository.save({
       id: config.retrievalPresetId,
       module: config.module,
-      manuscript_type: "review",
-      template_family_id: REVIEW_BASELINE_FAMILY.id,
+      manuscript_type: baseline.family.manuscript_type,
+      template_family_id: baseline.family.id,
       name: config.retrievalName,
       top_k: 4,
       section_filters: config.sectionFilters,
@@ -299,8 +459,8 @@ export async function ensurePersistentWorkbenchReviewBaseline(
     await deps.manualReviewPolicyRepository.save({
       id: config.manualReviewPolicyId,
       module: config.module,
-      manuscript_type: "review",
-      template_family_id: REVIEW_BASELINE_FAMILY.id,
+      manuscript_type: baseline.family.manuscript_type,
+      template_family_id: baseline.family.id,
       name: config.manualReviewName,
       min_confidence_threshold: config.minConfidenceThreshold,
       high_risk_force_review: true,
@@ -313,8 +473,8 @@ export async function ensurePersistentWorkbenchReviewBaseline(
     await deps.runtimeBindingRepository.save({
       id: config.runtimeBindingId,
       module: config.module,
-      manuscript_type: "review",
-      template_family_id: REVIEW_BASELINE_FAMILY.id,
+      manuscript_type: baseline.family.manuscript_type,
+      template_family_id: baseline.family.id,
       runtime_id: config.runtimeId,
       sandbox_profile_id: config.sandboxProfileId,
       agent_profile_id: config.agentProfileId,
@@ -328,23 +488,6 @@ export async function ensurePersistentWorkbenchReviewBaseline(
       version: 1,
     });
   }
-
-  const modelRoutingPolicy = await deps.modelRoutingPolicyRepository.get();
-  await deps.modelRoutingPolicyRepository.save({
-    ...modelRoutingPolicy,
-    module_defaults: {
-      ...modelRoutingPolicy.module_defaults,
-    },
-    template_overrides: {
-      ...modelRoutingPolicy.template_overrides,
-      ...Object.fromEntries(
-        REVIEW_BASELINE_MODULES.map((config) => [
-          config.moduleTemplateId,
-          config.modelId,
-        ]),
-      ),
-    },
-  });
 }
 
 function baselineUuid(moduleCode: string, assetCode: string): string {

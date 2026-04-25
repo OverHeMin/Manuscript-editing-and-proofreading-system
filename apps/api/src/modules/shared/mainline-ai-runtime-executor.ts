@@ -1,5 +1,6 @@
 import type { AiGatewayService } from "../ai-gateway/ai-gateway-service.ts";
 import type { AiProviderRuntimeService } from "../ai-provider-runtime/ai-provider-runtime-service.ts";
+import type { AiProviderRuntimeExecutableTarget } from "../ai-provider-runtime/ai-provider-runtime-record.ts";
 import type { TemplateModule } from "../templates/template-record.ts";
 
 export interface ExecuteMainlineAiInput {
@@ -17,7 +18,10 @@ export interface OpenAiMainlineAiRuntimeExecutorOptions {
   aiGatewayService: Pick<AiGatewayService, "resolveModelSelection">;
   aiProviderRuntimeService: Pick<AiProviderRuntimeService, "resolveSelectionRuntime">;
   fetch?: typeof fetch;
+  requestTimeoutMs?: number;
 }
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
 
 export class MainlineAiRuntimeExecutorError extends Error {
   constructor(message: string) {
@@ -38,27 +42,35 @@ export class OpenAiMainlineAiRuntimeExecutor
 
   private readonly fetchImpl: typeof fetch;
 
+  private readonly requestTimeoutMs: number;
+
   constructor(options: OpenAiMainlineAiRuntimeExecutorOptions) {
     this.aiGatewayService = options.aiGatewayService;
     this.aiProviderRuntimeService = options.aiProviderRuntimeService;
     this.fetchImpl = options.fetch ?? fetch;
+    this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   }
 
   async executeJson<T>(input: ExecuteMainlineAiInput): Promise<T> {
-    const content = await this.executeRequest({
+    const request = {
       ...input,
       responseFormat: {
         type: "json_object",
       },
-    });
-
-    try {
-      return JSON.parse(content) as T;
-    } catch (error) {
-      throw new MainlineAiRuntimeExecutorError(
-        `${formatModuleLabel(input.module)} AI returned invalid JSON${formatErrorSuffix(error)}.`,
-      );
+    } as const;
+    const firstAttempt = tryParseJsonResponse<T>(await this.executeRequest(request));
+    if (firstAttempt.ok) {
+      return firstAttempt.value;
     }
+
+    const secondAttempt = tryParseJsonResponse<T>(await this.executeRequest(request));
+    if (secondAttempt.ok) {
+      return secondAttempt.value;
+    }
+
+    throw new MainlineAiRuntimeExecutorError(
+      `${formatModuleLabel(input.module)} AI returned invalid JSON after retry${formatErrorSuffix(secondAttempt.error)}.`,
+    );
   }
 
   async executeMarkdown(input: ExecuteMainlineAiInput): Promise<string> {
@@ -78,45 +90,100 @@ export class OpenAiMainlineAiRuntimeExecutor
     const runtime = await this.aiProviderRuntimeService.resolveSelectionRuntime(
       selection,
     );
-    const response = await this.fetchImpl(runtime.primary.request_url, {
-      method: "POST",
-      headers: runtime.primary.headers,
-      body: JSON.stringify({
-        model: runtime.primary.model_name,
-        messages: [
-          {
-            role: "system",
-            content: input.systemPrompt,
-          },
-          {
-            role: "user",
-            content: JSON.stringify(input.userPayload),
-          },
-        ],
-        temperature: 0.2,
-        ...(input.responseFormat
-          ? {
-              response_format: input.responseFormat,
-            }
-          : {}),
-      }),
+    const requestBody = JSON.stringify({
+      model: runtime.primary.model_name,
+      messages: [
+        {
+          role: "system",
+          content: input.systemPrompt,
+        },
+        {
+          role: "user",
+          content: JSON.stringify(input.userPayload),
+        },
+      ],
+      temperature: 0.2,
+      ...(input.responseFormat
+        ? {
+            response_format: input.responseFormat,
+          }
+        : {}),
     });
 
-    if (!response.ok) {
-      throw new MainlineAiRuntimeExecutorError(
-        `${formatModuleLabel(input.module)} AI request failed with status ${response.status}.`,
-      );
+    try {
+      return await this.executeTargetRequest({
+        module: input.module,
+        target: runtime.primary,
+        requestBody,
+      });
+    } catch (error) {
+      if (!shouldRetryWithFallback(error) || runtime.fallback_chain.length === 0) {
+        throw formatExecutorRequestError(input.module, error);
+      }
     }
 
-    const body = (await response.json()) as {
-      choices?: Array<{
-        message?: {
-          content?: string | Array<{ type?: string; text?: string }>;
-        };
-      }>;
-    };
+    try {
+      return await this.executeTargetRequest({
+        module: input.module,
+        target: runtime.fallback_chain[0]!,
+        requestBody,
+      });
+    } catch (error) {
+      throw formatExecutorRequestError(input.module, error);
+    }
+  }
 
-    return extractOpenAiCompatibleContent(body, input.module);
+  private async executeTargetRequest(input: {
+    module: ExecuteMainlineAiInput["module"];
+    target: AiProviderRuntimeExecutableTarget;
+    requestBody: string;
+  }): Promise<string> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+
+    try {
+      const response = await this.fetchImpl(input.target.request_url, {
+        method: "POST",
+        headers: input.target.headers,
+        body: input.requestBody,
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new MainlineAiRuntimeHttpStatusError(response.status);
+      }
+
+      const body = (await response.json()) as {
+        choices?: Array<{
+          message?: {
+            content?: string | Array<{ type?: string; text?: string }>;
+          };
+        }>;
+      };
+
+      return extractOpenAiCompatibleContent(body, input.module);
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw new MainlineAiRuntimeTimeoutError(this.requestTimeoutMs);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+}
+
+class MainlineAiRuntimeTimeoutError extends Error {
+  constructor(readonly timeoutMs: number) {
+    super(`Timed out after ${timeoutMs}ms.`);
+    this.name = "MainlineAiRuntimeTimeoutError";
+  }
+}
+
+class MainlineAiRuntimeHttpStatusError extends Error {
+  constructor(readonly status: number) {
+    super(`HTTP ${status}`);
+    this.name = "MainlineAiRuntimeHttpStatusError";
   }
 }
 
@@ -167,4 +234,74 @@ function formatErrorSuffix(error: unknown): string {
   }
 
   return `: ${error.message}`;
+}
+
+function shouldRetryWithFallback(error: unknown): boolean {
+  if (error instanceof MainlineAiRuntimeTimeoutError) {
+    return true;
+  }
+
+  return (
+    error instanceof MainlineAiRuntimeHttpStatusError &&
+    (error.status === 429 || error.status >= 500)
+  );
+}
+
+function formatExecutorRequestError(
+  module: ExecuteMainlineAiInput["module"],
+  error: unknown,
+): MainlineAiRuntimeExecutorError {
+  if (error instanceof MainlineAiRuntimeTimeoutError) {
+    return new MainlineAiRuntimeExecutorError(
+      `${formatModuleLabel(module)} AI request timed out after ${error.timeoutMs}ms.`,
+    );
+  }
+
+  if (error instanceof MainlineAiRuntimeHttpStatusError) {
+    return new MainlineAiRuntimeExecutorError(
+      `${formatModuleLabel(module)} AI request failed with status ${error.status}.`,
+    );
+  }
+
+  if (error instanceof MainlineAiRuntimeExecutorError) {
+    return error;
+  }
+
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return new MainlineAiRuntimeExecutorError(
+      `${formatModuleLabel(module)} AI request failed: ${error.message}`,
+    );
+  }
+
+  return new MainlineAiRuntimeExecutorError(
+    `${formatModuleLabel(module)} AI request failed.`,
+  );
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+function tryParseJsonResponse<T>(
+  content: string,
+):
+  | {
+      ok: true;
+      value: T;
+    }
+  | {
+      ok: false;
+      error: unknown;
+    } {
+  try {
+    return {
+      ok: true,
+      value: JSON.parse(content) as T,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error,
+    };
+  }
 }

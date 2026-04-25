@@ -17,11 +17,41 @@ export type ProofreadingSuggestionAction =
   | "verify_fact"
   | "explain_only";
 
+export type ProofreadingIssueAnchorKind =
+  | "block"
+  | "paragraph"
+  | "heading"
+  | "table"
+  | "table_cell"
+  | "image"
+  | "caption"
+  | "reference_entry";
+
+export type ProofreadingIssueAnchorConfidence =
+  | "provided"
+  | "derived"
+  | "fallback";
+
+export interface ProofreadingIssueDocumentLocator {
+  anchorKind: ProofreadingIssueAnchorKind;
+  anchorKey: string;
+  confidence?: ProofreadingIssueAnchorConfidence;
+  blockIndex?: number;
+  sectionLabel?: string;
+  ordinalWithinSection?: number;
+  tableId?: string;
+  tableTarget?: string;
+  rowKey?: string;
+  columnKey?: string;
+  footnoteAnchor?: string;
+}
+
 export interface ProofreadingIssueAnchor {
   blockIndex: number;
   quote: string;
   sectionLabel?: string;
   blockKind?: string;
+  documentLocator?: ProofreadingIssueDocumentLocator;
 }
 
 export interface ProofreadingIssueSuggestion {

@@ -62,6 +62,7 @@ services:
     environment:
       JWT_ENABLED: ${ONLYOFFICE_JWT_ENABLED:-false}
       JWT_SECRET: ${ONLYOFFICE_JWT_SECRET:-change-me-in-prod}
+      ALLOW_PRIVATE_IP_ADDRESS: ${ONLYOFFICE_ALLOW_PRIVATE_IP_ADDRESS:-true}
     ports:
       - "${ONLYOFFICE_PORT:-58080}:80"
     healthcheck:

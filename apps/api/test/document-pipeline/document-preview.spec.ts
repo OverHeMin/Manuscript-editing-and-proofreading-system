@@ -51,7 +51,11 @@ function createPreviewHarness() {
   });
   const previewService = new DocumentPreviewService({
     assetRepository,
-    sessionService: new OnlyOfficeSessionService(),
+    sessionService: new OnlyOfficeSessionService({
+      createId: () => "11111111-1111-4111-8111-111111111111",
+      documentServerPublicUrl: "http://127.0.0.1:58080",
+      surfaceSessionSecret: "preview-session-secret",
+    }),
   });
   const documentPipelineApi = createDocumentPipelineApi({
     workflowService,
@@ -101,6 +105,98 @@ test("preview session is built from the current normalized asset and stays read-
   assert.equal(response.status, 200);
   assert.equal(response.body.viewer, "onlyoffice");
   assert.equal(response.body.mode, "view");
+  const body = response.body as typeof response.body & {
+    session_id?: string;
+    correlation_id?: string;
+    surface_mode?: string;
+    document?: {
+      document_key?: string;
+      file_name?: string;
+      file_extension?: string;
+      mime_type?: string;
+      download_path?: string;
+      permissions?: {
+        edit?: boolean;
+        comment?: boolean;
+        review?: boolean;
+        download?: boolean;
+        print?: boolean;
+      };
+    };
+    authorization?: {
+      kind?: string;
+      requires_surface_session?: boolean;
+    };
+    event_bridge?: {
+      provider?: string;
+      transport?: string;
+      capabilities?: {
+        ready_event?: boolean;
+        locate_to_anchor?: boolean;
+        selection_from_document?: boolean;
+        visible_issue_marks?: boolean;
+        bi_directional_sync?: boolean;
+      };
+    };
+  };
+  assert.match(body.session_id ?? "", /^[0-9a-f-]{36}$/u);
+  assert.equal(body.correlation_id, body.session_id);
+  assert.equal(body.surface_mode, "read_only_review");
+  assert.deepEqual(body.document, {
+    document_key: normalizationResult.normalized_asset?.id,
+    file_name: normalizationResult.normalized_asset?.file_name,
+    file_extension: "docx",
+    mime_type:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    download_path: `/api/v1/document-assets/${normalizationResult.normalized_asset?.id}/download`,
+    permissions: {
+      edit: false,
+      comment: false,
+      review: false,
+      download: true,
+      print: true,
+    },
+  });
+  assert.deepEqual(body.authorization, {
+    kind: "surface_session",
+    requires_surface_session: true,
+    token_scheme: "surface_session_jwt",
+    access_token: body.authorization?.access_token,
+  });
+  assert.match(body.authorization?.access_token ?? "", /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u);
+  assert.deepEqual(body.event_bridge, {
+    provider: "onlyoffice",
+    transport: "window_post_message",
+    capabilities: {
+      ready_event: true,
+      locate_to_anchor: true,
+      selection_from_document: true,
+      visible_issue_marks: true,
+      bi_directional_sync: true,
+    },
+  });
+  assert.deepEqual(body.embed, {
+    provider: "onlyoffice",
+    provider_origin: "http://127.0.0.1:58080",
+    api_js_url: "http://127.0.0.1:58080/web-apps/apps/api/documents/api.js",
+    document_type: "word",
+    ui_type: "desktop",
+    editor_config: {
+      mode: "view",
+      lang: "zh-CN",
+      customization: {
+        autosave: false,
+        chat: false,
+        comments: false,
+        compactHeader: true,
+        compactToolbar: true,
+        feedback: false,
+        forcesave: false,
+        help: false,
+        submitForm: false,
+      },
+    },
+  });
   assert.equal(response.body.comment_source, "onlyoffice");
   assert.equal(response.body.save_back_enabled, false);
   assert.equal(response.body.status, "ready");
@@ -132,6 +228,37 @@ test("preview session for pending normalization stays read-only and signals wait
   assert.equal(response.status, 200);
   assert.equal(response.body.viewer, "onlyoffice");
   assert.equal(response.body.status, "pending_normalization");
+  const body = response.body as typeof response.body & {
+    surface_mode?: string;
+    authorization?: {
+      kind?: string;
+      requires_surface_session?: boolean;
+      token_scheme?: string;
+      access_token?: string;
+    };
+    embed?: {
+      api_js_url?: string;
+      editor_config?: {
+        mode?: string;
+      };
+    };
+    event_bridge?: {
+      capabilities?: {
+        locate_to_anchor?: boolean;
+      };
+    };
+  };
+  assert.equal(body.surface_mode, "read_only_review");
+  assert.deepEqual(body.authorization, {
+    kind: "surface_session",
+    requires_surface_session: true,
+    token_scheme: "surface_session_jwt",
+    access_token: body.authorization?.access_token,
+  });
+  assert.match(body.authorization?.access_token ?? "", /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u);
+  assert.equal(body.embed?.api_js_url, "http://127.0.0.1:58080/web-apps/apps/api/documents/api.js");
+  assert.equal(body.embed?.editor_config?.mode, "view");
+  assert.equal(body.event_bridge?.capabilities?.locate_to_anchor, true);
   assert.equal(response.body.save_back_enabled, false);
   assert.equal(response.body.source_asset_type, "original");
 });

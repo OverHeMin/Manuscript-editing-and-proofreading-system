@@ -235,8 +235,62 @@ test("workbench http routes upload a manuscript and expose manuscript, asset, jo
   }
 });
 
+test("workbench http asset downloads support unicode file names via RFC 5987 content disposition", async () => {
+  const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-workbench-http-unicode-"));
+  const { server, baseUrl } = await startWorkbenchServer({
+    uploadRootDir,
+  });
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.user");
+    const uploadResponse = await fetch(`${baseUrl}/api/v1/manuscripts/upload`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: "Unicode Download Through HTTP",
+        manuscriptType: "review",
+        createdBy: "forged-user",
+        fileName: "医学稿件-校对批注稿.docx",
+        mimeType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        fileContentBase64: "VW5pY29kZSBkb3dubG9hZCBwYXlsb2Fk",
+      }),
+    });
+    const uploaded = (await uploadResponse.json()) as {
+      asset: {
+        id: string;
+      };
+    };
+    assert.equal(uploadResponse.status, 201);
+
+    const downloadResponse = await fetch(
+      `${baseUrl}/api/v1/document-assets/${uploaded.asset.id}/download`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+
+    assert.equal(downloadResponse.status, 200);
+    assert.match(
+      downloadResponse.headers.get("content-disposition") ?? "",
+      /filename\*=UTF-8''.*%E5%8C%BB%E5%AD%A6%E7%A8%BF%E4%BB%B6.*\.docx/i,
+    );
+    assert.equal(await downloadResponse.text(), "Unicode download payload");
+  } finally {
+    await stopServer(server);
+    await rm(uploadRootDir, { recursive: true, force: true });
+  }
+});
+
 test("workbench http preview-session route creates a read-only preview session for manuscript assets", async () => {
   const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-workbench-preview-http-"));
+  const originalOnlyOfficeJwtSecret = process.env.ONLYOFFICE_JWT_SECRET;
+  process.env.ONLYOFFICE_JWT_SECRET = "preview-session-http-secret";
   const { server, baseUrl } = await startWorkbenchServer({
     uploadRootDir,
   });
@@ -293,35 +347,104 @@ test("workbench http preview-session route creates a read-only preview session f
     const preview = (await previewResponse.json()) as {
       manuscript_id: string;
       source_asset_id: string;
+      session_id: string;
       viewer: string;
       mode: string;
       status: string;
       comment_source: string;
       save_back_enabled: boolean;
+      document: {
+        download_path: string;
+      };
+      authorization: {
+        token_scheme: string;
+        access_token?: string;
+      };
       comments: Array<{ id: string; body: string }>;
     };
 
     assert.equal(previewResponse.status, 200);
     assert.equal(preview.manuscript_id, uploaded.manuscript.id);
     assert.equal(preview.source_asset_id, uploaded.asset.id);
+    assert.match(preview.session_id, /^[0-9a-f-]{36}$/u);
     assert.equal(preview.viewer, "onlyoffice");
     assert.equal(preview.mode, "view");
     assert.equal(preview.status, "ready");
     assert.equal(preview.comment_source, "onlyoffice");
     assert.equal(preview.save_back_enabled, false);
+    assert.equal(preview.authorization.token_scheme, "surface_session_jwt");
+    assert.match(
+      preview.authorization.access_token ?? "",
+      /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u,
+    );
     assert.deepEqual(preview.comments, [
       {
         id: "comment-preview-1",
         body: "Confirm the manuscript preview opens in read-only mode.",
       },
     ]);
+
+    const unauthorizedDownloadResponse = await fetch(
+      `${baseUrl}${preview.document.download_path}`,
+    );
+    assert.equal(unauthorizedDownloadResponse.status, 401);
+
+    const surfaceDownloadUrl = new URL(
+      `${baseUrl}${preview.document.download_path}`,
+    );
+    surfaceDownloadUrl.searchParams.set(
+      "surfaceAccessToken",
+      preview.authorization.access_token ?? "",
+    );
+    const surfaceDownloadResponse = await fetch(surfaceDownloadUrl);
+    const downloadedBody = Buffer.from(
+      await surfaceDownloadResponse.arrayBuffer(),
+    ).toString("utf8");
+
+    assert.equal(surfaceDownloadResponse.status, 200);
+    assert.equal(downloadedBody, "Preview me through HTTP");
   } finally {
     await stopServer(server);
+    if (originalOnlyOfficeJwtSecret == null) {
+      delete process.env.ONLYOFFICE_JWT_SECRET;
+    } else {
+      process.env.ONLYOFFICE_JWT_SECRET = originalOnlyOfficeJwtSecret;
+    }
     await rm(uploadRootDir, { recursive: true, force: true });
   }
 });
 
-test("workbench http gives knowledge reviewers manuscript and export visibility without opening fresh submission", async () => {
+test("workbench http preview callback acknowledges read-only onlyoffice pings", async () => {
+  const { server, baseUrl } = await startWorkbenchServer();
+
+  try {
+    const callbackResponse = await fetch(
+      `${baseUrl}/api/v1/document-pipeline/preview-callback?sessionId=preview-session-http-1`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          status: 1,
+          key: "asset-preview-1",
+        }),
+      },
+    );
+    const callbackBody = (await callbackResponse.json()) as {
+      error?: number;
+    };
+
+    assert.equal(callbackResponse.status, 200);
+    assert.deepEqual(callbackBody, {
+      error: 0,
+    });
+  } finally {
+    await stopServer(server);
+  }
+});
+
+test("workbench http manuscript and export surfaces stay hidden from non-mainline public-beta roles", async () => {
   const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-workbench-surface-"));
   const { server, baseUrl } = await startWorkbenchServer({
     uploadRootDir,
@@ -2399,6 +2522,20 @@ test("workbench http proofreading routes create a draft and then finalize agains
         id: string;
         asset_type: string;
       };
+      job: {
+        payload?: {
+          proofreadingPlan?: {
+            issues?: Array<{
+              anchor?: {
+                quote?: string;
+              };
+            }>;
+          };
+          proofreadingSourceBlocks?: Array<{
+            text?: string;
+          }>;
+        };
+      };
       snapshot_id?: string;
       agent_execution_log_id?: string;
       model_id: string;
@@ -2411,6 +2548,14 @@ test("workbench http proofreading routes create a draft and then finalize agains
     assert.deepEqual(draft.knowledge_item_ids, [seededIds.proofreadingKnowledgeId]);
     assert.ok(draft.snapshot_id);
     assert.ok(draft.agent_execution_log_id);
+    assert.equal(
+      draft.job.payload?.proofreadingPlan?.issues?.[0]?.anchor?.quote,
+      draft.job.payload?.proofreadingSourceBlocks?.[0]?.text,
+    );
+    assert.notEqual(
+      draft.job.payload?.proofreadingPlan?.issues?.[0]?.anchor?.quote,
+      "Proofreading target",
+    );
 
     const draftRunsResponse = await fetch(
       `${baseUrl}/api/v1/verification-ops/evaluation-suites/${seededIds.proofreadingSuiteId}/runs`,
@@ -3352,6 +3497,150 @@ test("workbench http proofreading publish route creates a human-final asset and 
     assert.equal(exportResponse.status, 200);
     assert.equal(exported.asset.id, published.asset.id);
     assert.equal(exported.asset.asset_type, "human_final_docx");
+  } finally {
+    await stopServer(server);
+  }
+});
+
+test("workbench http proofreading confirmation-draft route persists review decisions on the confirmation job", async () => {
+  const { server, baseUrl, seededIds } = await startWorkbenchServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.proofreader");
+    const draftResponse = await fetch(`${baseUrl}/api/v1/modules/proofreading/draft`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptId: seededIds.manuscriptId,
+        parentAssetId: seededIds.originalAssetId,
+        requestedBy: "forged-proofreader",
+        actorRole: "admin",
+        storageKey: "runs/http-confirmation-draft/proofreading/draft.md",
+        fileName: "proofreading-draft.md",
+      }),
+    });
+    const draft = (await draftResponse.json()) as {
+      asset: {
+        id: string;
+      };
+    };
+    assert.equal(draftResponse.status, 201);
+
+    const finalizeResponse = await fetch(`${baseUrl}/api/v1/modules/proofreading/finalize`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptId: seededIds.manuscriptId,
+        draftAssetId: draft.asset.id,
+        requestedBy: "forged-proofreader",
+        actorRole: "admin",
+        storageKey: "runs/http-confirmation-draft/proofreading/final.docx",
+        fileName: "proofreading-final.docx",
+      }),
+    });
+    const finalized = (await finalizeResponse.json()) as {
+      asset: {
+        id: string;
+      };
+      job: {
+        id: string;
+      };
+    };
+    assert.equal(finalizeResponse.status, 201);
+
+    const saveDraftResponse = await fetch(
+      `${baseUrl}/api/v1/modules/proofreading/confirmation-draft`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          manuscriptId: seededIds.manuscriptId,
+          confirmationAssetId: finalized.asset.id,
+          requestedBy: "forged-proofreader",
+          actorRole: "admin",
+          confirmationDecisions: [
+            {
+              itemId: "issue-1",
+              targetText: "Proofreading target",
+              replacementText: "Proofreading target [proofread]",
+              action: "accepted_with_manual_edit",
+              editedReplacementText: "Proofreading target [human confirmed]",
+              note: "人工确认后保留统一表述。",
+            },
+          ],
+        }),
+      },
+    );
+    const saved = (await saveDraftResponse.json()) as {
+      job: {
+        id: string;
+        requested_by: string;
+      };
+    };
+
+    const savedJobResponse = await fetch(`${baseUrl}/api/v1/jobs/${saved.job.id}`, {
+      headers: {
+        Cookie: cookie,
+      },
+    });
+    const savedJob = (await savedJobResponse.json()) as {
+      id: string;
+      payload?: {
+        confirmationDraft?: {
+          assetId?: string;
+          savedDecisionCount?: number;
+          confirmationSummary?: {
+            acceptedIntoManuscriptCount?: number;
+          };
+          confirmationDecisions?: Array<{
+            itemId?: string;
+            action?: string;
+            finalReplacementText?: string;
+            note?: string;
+          }>;
+        };
+      };
+    };
+
+    assert.equal(saveDraftResponse.status, 200);
+    assert.equal(saved.job.id, finalized.job.id);
+    assert.equal(saved.job.requested_by, "dev-proofreader");
+    assert.equal(savedJobResponse.status, 200);
+    assert.equal(savedJob.id, finalized.job.id);
+    assert.equal(savedJob.payload?.confirmationDraft?.assetId, finalized.asset.id);
+    assert.equal(savedJob.payload?.confirmationDraft?.savedDecisionCount, 1);
+    assert.equal(
+      savedJob.payload?.confirmationDraft?.confirmationSummary
+        ?.acceptedIntoManuscriptCount,
+      1,
+    );
+    assert.equal(savedJob.payload?.confirmationDraft?.confirmationDecisions?.length, 1);
+    assert.equal(
+      savedJob.payload?.confirmationDraft?.confirmationDecisions?.[0]?.itemId,
+      "issue-1",
+    );
+    assert.equal(
+      savedJob.payload?.confirmationDraft?.confirmationDecisions?.[0]?.action,
+      "accepted_with_manual_edit",
+    );
+    assert.equal(
+      savedJob.payload?.confirmationDraft?.confirmationDecisions?.[0]
+        ?.finalReplacementText,
+      "Proofreading target [human confirmed]",
+    );
+    assert.equal(
+      savedJob.payload?.confirmationDraft?.confirmationDecisions?.[0]?.note,
+      "人工确认后保留统一表述。",
+    );
   } finally {
     await stopServer(server);
   }

@@ -42,9 +42,21 @@ export interface PublishProofreadingHumanFinalInput {
   confirmationDecisions?: ProofreadingConfirmationDecisionInput[];
 }
 
+export interface SaveProofreadingConfirmationDraftInput {
+  manuscriptId: string;
+  confirmationAssetId: string;
+  requestedBy: string;
+  actorRole: AuthRole;
+  confirmationDecisions: ProofreadingConfirmationDecisionInput[];
+}
+
 export interface ProofreadingHumanFinalPublishResultViewModel {
   job: ModuleJobViewModel;
   asset: DocumentAssetViewModel;
+}
+
+export interface ProofreadingConfirmationDraftSaveResultViewModel {
+  job: ModuleJobViewModel;
 }
 
 export type ProofreadingConfirmationDecisionAction =

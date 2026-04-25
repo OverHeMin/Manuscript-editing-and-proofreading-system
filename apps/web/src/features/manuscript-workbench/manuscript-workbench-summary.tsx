@@ -106,6 +106,12 @@ export interface ManuscriptWorkbenchManualFeedbackViewModel {
   onRecordManualOnly?(item: ManuscriptWorkbenchHighRiskReviewItemViewModel): void;
 }
 
+export interface ManuscriptWorkbenchProofreadingGovernanceActionsViewModel {
+  isSubmitting: boolean;
+  activeItemId?: string;
+  onRouteToKnowledgeCandidate(itemId: string): void;
+}
+
 export function buildLatestJobPostureDetails(
   latestJob: JobViewModel | ModuleJobViewModel | null,
   overview?: ManuscriptModuleExecutionOverviewViewModel,
@@ -832,6 +838,7 @@ export interface ManuscriptWorkbenchSummaryProps {
   executionContext?: ManuscriptWorkbenchReadOnlyExecutionContextViewModel | null;
   manualFeedback?: ManuscriptWorkbenchManualFeedbackViewModel;
   proofreadingGovernanceHandoff?: ManuscriptWorkbenchProofreadingGovernanceHandoffViewModel;
+  proofreadingGovernanceActions?: ManuscriptWorkbenchProofreadingGovernanceActionsViewModel;
   prefilledManuscriptId?: string;
   prefilledReviewedCaseSnapshotId?: string;
   prefilledSampleSetItemId?: string;
@@ -849,6 +856,7 @@ export function ManuscriptWorkbenchSummary({
   executionContext = null,
   manualFeedback,
   proofreadingGovernanceHandoff,
+  proofreadingGovernanceActions,
   prefilledManuscriptId,
   prefilledReviewedCaseSnapshotId,
   prefilledSampleSetItemId,
@@ -1346,6 +1354,39 @@ export function ManuscriptWorkbenchSummary({
               label="已生成候选"
               value={String(proofreadingGovernanceLoop.candidateCreatedCount)}
             />
+            {proofreadingGovernanceLoop.actionableKnowledgeRouteItems.length > 0 &&
+            proofreadingGovernanceActions ? (
+              <div className="manuscript-workbench-manual-feedback">
+                <p className="manuscript-workbench-manual-feedback-copy">
+                  可直接处理的术语类残差会先转入知识候选，继续走受治理审核链路。
+                </p>
+                {proofreadingGovernanceLoop.actionableKnowledgeRouteItems.map((item) => (
+                  <article
+                    key={item.id}
+                    className="manuscript-workbench-manual-feedback-result"
+                  >
+                    <p>{item.title}</p>
+                    <p>当前状态：{item.statusLabel}</p>
+                    <div className="manuscript-workbench-manual-feedback-options">
+                      <button
+                        type="button"
+                        className="manuscript-workbench-shortcut"
+                        disabled={proofreadingGovernanceActions.isSubmitting}
+                        onClick={() =>
+                          proofreadingGovernanceActions.onRouteToKnowledgeCandidate(
+                            item.id,
+                          )}
+                      >
+                        {proofreadingGovernanceActions.isSubmitting &&
+                        proofreadingGovernanceActions.activeItemId === item.id
+                          ? "处理中..."
+                          : "转为知识候选"}
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : null}
             <p className="manuscript-workbench-manual-feedback-copy">
               只显示校对主线需要关注的关键进度，详细复验和候选处理请到后续审核继续完成。
             </p>
@@ -1736,6 +1777,11 @@ interface ProofreadingGovernanceLoopSummaryViewModel {
   harnessPendingCount: number;
   candidateReadyCount: number;
   candidateCreatedCount: number;
+  actionableKnowledgeRouteItems: Array<{
+    id: string;
+    title: string;
+    statusLabel: string;
+  }>;
   targetHref?: string;
 }
 
@@ -2594,6 +2640,14 @@ function buildProofreadingGovernanceLoopSummary(input: {
       candidate.module === "proofreading" &&
       candidate.manuscript_id === input.manuscriptId,
   );
+  const knowledgeCandidates = (input.handoff.knowledgeCandidates ?? []).filter(
+    (candidate) =>
+      candidate.type === "knowledge_candidate" &&
+      (candidate.governed_provenance_kind === "residual_issue" ||
+        candidate.governed_provenance_kind === "human_feedback") &&
+      candidate.module === "proofreading" &&
+      candidate.manuscript_id === input.manuscriptId,
+  );
 
   const observedCount = residualReviewItems.filter(
     (item) => item.source_status === "observed",
@@ -2607,7 +2661,16 @@ function buildProofreadingGovernanceLoopSummary(input: {
   const candidateReadyCount = residualReviewItems.filter(
     (item) => item.source_status === "candidate_ready",
   ).length;
-  const candidateCreatedCount = ruleCandidates.length;
+  const candidateCreatedCount = ruleCandidates.length + knowledgeCandidates.length;
+  const actionableKnowledgeRouteItems = [...residualReviewItems]
+    .filter((item) => item.available_actions.includes("route_to_knowledge_candidate"))
+    .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
+    .slice(0, 2)
+    .map((item) => ({
+      id: item.id,
+      title: item.title,
+      statusLabel: formatResidualReviewSourceStatusLabel(item.source_status),
+    }));
 
   if (
     observedCount === 0 &&
@@ -2641,6 +2704,7 @@ function buildProofreadingGovernanceLoopSummary(input: {
     harnessPendingCount,
     candidateReadyCount,
     candidateCreatedCount,
+    actionableKnowledgeRouteItems,
     targetHref: input.canOpenLearningReview
       ? formatWorkbenchHash("template-governance", {
           manuscriptId: input.manuscriptId,
@@ -4332,6 +4396,8 @@ function formatActionResultActionLabel(actionLabel: string): string {
       return "提交复核项";
     case "Record Manual Only":
       return "仅记录人工处理";
+    case "Route Residual To Knowledge Candidate":
+      return "残差转知识候选";
     default:
       return actionLabel;
   }
@@ -4352,6 +4418,12 @@ export function formatWorkbenchActionResultMessage(message: string): string {
   const recordedManualOnlyMatch = /^Recorded manual-only review item (.+)$/u.exec(message);
   if (recordedManualOnlyMatch) {
     return `已记录人工处理 ${recordedManualOnlyMatch[1]}`;
+  }
+
+  const routedResidualKnowledgeMatch =
+    /^Routed residual issue (.+) to knowledge candidate$/u.exec(message);
+  if (routedResidualKnowledgeMatch) {
+    return "已转入知识候选";
   }
 
   const createdAssetMatch = /^Created asset (.+)$/u.exec(message);

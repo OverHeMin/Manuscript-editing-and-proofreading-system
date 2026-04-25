@@ -355,6 +355,190 @@ test("validated residual issues bridge into governed learning candidates with ro
   assert.equal(storedCandidates.length, 3);
 });
 
+test("manual-review terminology residual issues can be promoted into knowledge candidates after explicit human routing", async () => {
+  const {
+    learningService,
+    candidateRepository,
+    documentAssetService,
+    executionTrackingRepository,
+    originalAsset,
+  } = await seedResidualLearningContext();
+  const residualIssueRepository = new InMemoryResidualIssueRepository();
+  const residualLearningService = new ResidualLearningService({
+    residualIssueRepository,
+    learningService,
+    createId: () => "residual-manual-knowledge-generated-1",
+    now: () => new Date("2026-04-18T09:12:00.000Z"),
+  });
+
+  await seedExecutionSnapshot(executionTrackingRepository);
+
+  const sourceAsset = await documentAssetService.createAsset({
+    manuscriptId: "manuscript-1",
+    assetType: "final_proof_annotated_docx",
+    storageKey: "runs/manuscript-1/proofreading/manual-knowledge-annotated.docx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "editor-1",
+    fileName: "manual-knowledge-annotated.docx",
+    parentAssetId: originalAsset.id,
+    sourceModule: "proofreading",
+    sourceJobId: "job-1",
+  });
+
+  await residualIssueRepository.save({
+    id: "residual-manual-knowledge-1",
+    module: "proofreading",
+    manuscript_id: "manuscript-1",
+    manuscript_type: "clinical_study",
+    execution_snapshot_id: "execution-snapshot-1",
+    output_asset_id: sourceAsset.id,
+    issue_type: "terminology_definition_missing",
+    source_stage: "model_residual",
+    excerpt: "*P<0.05 vs control",
+    suggestion: "Clarify the comparison target before publication.",
+    rationale: "This terminology-style definition gap still needs reusable knowledge guidance.",
+    novelty_key: "terminology_definition_missing:pvalue-definition",
+    recurrence_count: 1,
+    system_confidence_band: "L1_review_pending",
+    risk_level: "high",
+    recommended_route: "manual_only",
+    status: "manual_review_pending",
+    harness_validation_status: "not_required",
+    created_at: "2026-04-18T09:11:00.000Z",
+    updated_at: "2026-04-18T09:11:00.000Z",
+  });
+
+  const candidate = await residualLearningService.createLearningCandidateFromIssue({
+    issueId: "residual-manual-knowledge-1",
+    requestedBy: "editor-1",
+    route: "knowledge_candidate",
+    title: "Manual-review terminology knowledge",
+  });
+
+  assert.equal(candidate.type, "knowledge_candidate");
+  assert.equal(candidate.governed_provenance_kind, "residual_issue");
+
+  const updatedIssue = await residualIssueRepository.findById(
+    "residual-manual-knowledge-1",
+  );
+  assert.equal(updatedIssue?.status, "candidate_created");
+  assert.equal(updatedIssue?.recommended_route, "knowledge_candidate");
+  assert.equal(updatedIssue?.learning_candidate_id, candidate.id);
+
+  const storedCandidates = await candidateRepository.list();
+  assert.equal(storedCandidates.length, 1);
+});
+
+test("human-confirmation residual issues can also bridge into rule and knowledge candidates", async () => {
+  const {
+    learningService,
+    candidateRepository,
+    documentAssetService,
+    executionTrackingRepository,
+    originalAsset,
+  } = await seedResidualLearningContext();
+  const residualIssueRepository = new InMemoryResidualIssueRepository();
+  const residualLearningService = new ResidualLearningService({
+    residualIssueRepository,
+    learningService,
+    createId: () => "residual-human-generated-1",
+    now: () => new Date("2026-04-18T09:20:00.000Z"),
+  });
+
+  await seedExecutionSnapshot(executionTrackingRepository);
+
+  const sourceAsset = await documentAssetService.createAsset({
+    manuscriptId: "manuscript-1",
+    assetType: "human_final_docx",
+    storageKey: "runs/manuscript-1/proofreading/human-final.docx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "editor-1",
+    fileName: "human-final.docx",
+    parentAssetId: originalAsset.id,
+    sourceModule: "manual",
+    sourceJobId: "job-human-final-1",
+  });
+
+  await residualIssueRepository.save({
+    id: "residual-human-rule-1",
+    module: "proofreading",
+    manuscript_id: "manuscript-1",
+    manuscript_type: "clinical_study",
+    execution_snapshot_id: "execution-snapshot-1",
+    output_asset_id: sourceAsset.id,
+    issue_type: "style_consistency_gap",
+    source_stage: "model_residual",
+    excerpt: "Patients improved however the sample stayed small.",
+    suggestion: "Patients improved; however, the sample stayed small.",
+    novelty_key: "style_consistency_gap:Patients improved however the sample stayed small.",
+    recurrence_count: 1,
+    system_confidence_band: "L2_candidate_ready",
+    risk_level: "low",
+    recommended_route: "rule_candidate",
+    status: "candidate_ready",
+    harness_validation_status: "passed",
+    signal_breakdown: {
+      promotion_evidence: {
+        source: "proofreading_confirmation",
+        decision_action: "accept_and_edit",
+        correction_category: "punctuation",
+      },
+    },
+    created_at: "2026-04-18T09:15:00.000Z",
+    updated_at: "2026-04-18T09:15:00.000Z",
+  });
+  await residualIssueRepository.save({
+    id: "residual-human-knowledge-1",
+    module: "proofreading",
+    manuscript_id: "manuscript-1",
+    manuscript_type: "clinical_study",
+    execution_snapshot_id: "execution-snapshot-1",
+    output_asset_id: sourceAsset.id,
+    issue_type: "terminology_gap",
+    source_stage: "model_residual",
+    excerpt: "ALT remained stable.",
+    suggestion: "Serum alanine aminotransferase (ALT) remained stable.",
+    novelty_key: "terminology_gap:ALT remained stable.",
+    recurrence_count: 1,
+    system_confidence_band: "L2_candidate_ready",
+    risk_level: "low",
+    recommended_route: "knowledge_candidate",
+    status: "candidate_ready",
+    harness_validation_status: "passed",
+    signal_breakdown: {
+      promotion_evidence: {
+        source: "proofreading_confirmation",
+        decision_action: "accept_and_edit",
+        correction_category: "terminology",
+      },
+    },
+    created_at: "2026-04-18T09:15:00.000Z",
+    updated_at: "2026-04-18T09:15:00.000Z",
+  });
+
+  const createdRule = await residualLearningService.createLearningCandidateFromIssue({
+    issueId: "residual-human-rule-1",
+    requestedBy: "editor-1",
+    title: "Human confirmation punctuation rule",
+  });
+  const createdKnowledge =
+    await residualLearningService.createLearningCandidateFromIssue({
+      issueId: "residual-human-knowledge-1",
+      requestedBy: "editor-1",
+      title: "Human confirmation terminology knowledge",
+    });
+
+  assert.equal(createdRule.type, "rule_candidate");
+  assert.equal(createdKnowledge.type, "knowledge_candidate");
+  assert.equal(createdRule.governed_provenance_kind, "residual_issue");
+  assert.equal(createdKnowledge.governed_provenance_kind, "residual_issue");
+
+  const storedCandidates = await candidateRepository.list();
+  assert.equal(storedCandidates.length, 2);
+});
+
 test("human-feedback governed rule candidates persist manuscript scope and can be filtered for proofreading handoff", async () => {
   const {
     learningService,
