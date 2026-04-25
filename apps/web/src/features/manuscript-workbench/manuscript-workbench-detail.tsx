@@ -607,12 +607,13 @@ export function buildScreeningWorkspaceFocusItems(input: {
   const riskLevel = readOptionalString(screeningReport?.riskLevel);
   const recommendedDecision = readOptionalString(screeningReport?.recommendedDecision);
   const summary = readOptionalString(screeningReport?.summary);
+  const highestAction = readOptionalString(qualityFindingSummary?.highest_action);
 
   if (riskLevel) {
     const riskDetailParts = [
-      readOptionalString(qualityFindingSummary?.highest_action)
+      highestAction
         ? `最高动作：${formatQualityActionLabel(
-            qualityFindingSummary.highest_action as
+            highestAction as
               NonNullable<
                 NonNullable<
                   ExecutionTrackingSnapshotViewModel["quality_findings_summary"]

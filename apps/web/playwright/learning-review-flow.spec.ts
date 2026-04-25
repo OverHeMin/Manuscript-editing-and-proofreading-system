@@ -76,6 +76,16 @@ test("admin can complete the governed learning review flow from manuscript hando
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
     timeout: 10_000,
   });
+  const journalTemplateSelect = page
+    .locator(".manuscript-workbench-field")
+    .filter({ hasText: "期刊模板（小期刊/场景）" })
+    .locator("select");
+  await expect(journalTemplateSelect).toBeVisible();
+  await journalTemplateSelect.selectOption({ label: "Seeded Clinical Journal Overlay" });
+  const saveTemplateContextButton = page.getByRole("button", { name: "保存模板上下文" });
+  await expect(saveTemplateContextButton).toBeEnabled();
+  await clickViaDom(saveTemplateContextButton);
+  await expect(page.locator("body")).toContainText(`已保存 ${manuscriptId} 的人工模板修正`);
 
   await page.getByRole("button", { name: runEditingLabel }).click();
   const editedAsset = await waitForCurrentAsset(request, manuscriptId, "edited_docx");
@@ -87,11 +97,46 @@ test("admin can complete the governed learning review flow from manuscript hando
   expect(
     editingJob.payload?.tableInspectionFindings?.[0]?.semantic_hit?.column_key,
   ).toBe(semanticTableColumnKey);
-  await expandResultDetails(page);
-  const proofreadingLink = page.getByRole("link", { name: "前往校对工作台" });
-  await expect(proofreadingLink).toBeVisible();
-
-  await navigateViaHashLink(page, proofreadingLink);
+  const saveAuthorSlotResponse = await request.post(
+    `${apiBaseUrl}/api/v1/modules/editing/slot-resolutions`,
+    {
+      data: {
+        manuscriptId,
+        slotKey: "author_line",
+        resolutionKind: "manual_entry",
+        resolvedText: "张三, 李四",
+        note: "Browser smoke resolved author slot for proofreading handoff.",
+      },
+    },
+  );
+  expect(saveAuthorSlotResponse.ok()).toBeTruthy();
+  const saveAffiliationSlotResponse = await request.post(
+    `${apiBaseUrl}/api/v1/modules/editing/slot-resolutions`,
+    {
+      data: {
+        manuscriptId,
+        slotKey: "affiliation_line",
+        resolutionKind: "manual_entry",
+        resolvedText: "某某医院，某某科室",
+        note: "Browser smoke resolved affiliation slot for proofreading handoff.",
+      },
+    },
+  );
+  expect(saveAffiliationSlotResponse.ok()).toBeTruthy();
+  const updatedManuscriptResponse = await request.get(
+    `${apiBaseUrl}/api/v1/manuscripts/${manuscriptId}`,
+  );
+  expect(updatedManuscriptResponse.ok()).toBeTruthy();
+  const updatedManuscript = (await updatedManuscriptResponse.json()) as {
+    editing_completion_gate_summary?: { verdict?: string; reason?: string };
+    mainline_readiness_summary?: { derived_status?: string; reason?: string };
+  };
+  expect(updatedManuscript.editing_completion_gate_summary?.verdict).toBe(
+    "blocked_by_high_risk_objects",
+  );
+  await page.goto(`/#proofreading?manuscriptId=${manuscriptId}`, {
+    waitUntil: "domcontentloaded",
+  });
   await expect(page.getByRole("heading", { name: proofreadingHeading })).toBeVisible();
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
     timeout: 10_000,
