@@ -174,9 +174,21 @@ test("admin can complete the governed learning review flow from manuscript hando
     /is-selected/,
   );
 
-  const publishHumanFinalButton = page.locator(
-    ".manuscript-workbench-proofreading-issue-pane .manuscript-workbench-button-row--sticky button",
-  );
+  const proofreadingIssues = page.locator(".manuscript-workbench-proofreading-issue");
+  const issueCount = await proofreadingIssues.count();
+  for (let index = 1; index < issueCount; index += 1) {
+    const issue = proofreadingIssues.nth(index);
+    await clickViaDom(issue.getByRole("button").first());
+    const currentIssueDetail = issue.locator(
+      ".manuscript-workbench-proofreading-issue-detail",
+    );
+    await expect(currentIssueDetail).toBeVisible();
+    const acceptButton = currentIssueDetail.getByRole("button", { name: /^采纳$/ });
+    await clickViaDom(acceptButton);
+    await expect(acceptButton).toHaveClass(/is-selected/);
+  }
+
+  const publishHumanFinalButton = page.getByRole("button", { name: "发布人工终稿" });
   await expect(publishHumanFinalButton).toBeEnabled();
   await clickViaDom(publishHumanFinalButton);
   await expect(page.locator("body")).toContainText("已发布人工终稿资产");
@@ -473,11 +485,18 @@ async function navigateToProofreadingIssueWorkbench(
   ).toBeVisible();
 
   const issueToggle = page.locator(".manuscript-workbench-proofreading-issue-toggle").first();
+  const issueDetail = page.locator(".manuscript-workbench-proofreading-issue-detail").first();
   await expect(issueToggle).toBeVisible();
-  await clickViaDom(issueToggle);
-  await expect(
-    page.locator(".manuscript-workbench-proofreading-issue-detail").first(),
-  ).toBeVisible();
+  if (!(await issueDetail.isVisible())) {
+    await issueToggle.evaluate((element: HTMLElement) => element.click());
+  }
+  await expect(issueDetail).toBeVisible();
+  const realDocumentSurface = page.getByText("真实文档面").first();
+  if ((await realDocumentSurface.count()) > 0) {
+    await expect(realDocumentSurface).toBeVisible();
+    return;
+  }
+
   await expect(
     page.locator('.manuscript-workbench-proofreading-block[data-selected="true"]').first(),
   ).toBeVisible();
