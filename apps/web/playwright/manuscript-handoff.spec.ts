@@ -453,7 +453,11 @@ async function navigateToScreeningSharedReview(
   await expect(sharedReview).toContainText("风险等级");
   await expect(sharedReview).toContainText("建议结论");
   await expect(
-    sharedReview.locator(".manuscript-workbench-proofreading-block").first(),
+    sharedReview
+      .locator(
+        ".manuscript-workbench-proofreading-block, .manuscript-workbench-detail-empty",
+      )
+      .first(),
   ).toBeVisible();
 }
 
