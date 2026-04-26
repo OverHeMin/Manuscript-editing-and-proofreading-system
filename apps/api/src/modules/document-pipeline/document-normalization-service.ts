@@ -27,6 +27,22 @@ export interface DocumentPipelineToolingStatus {
   libreOfficeAvailable: boolean;
 }
 
+export type DocumentConversionResult =
+  | {
+      status: "converted";
+    }
+  | {
+      status: "failed" | "tool_unavailable";
+      error?: string;
+    };
+
+export interface DocumentToDocxConverter {
+  convertDocToDocx(input: {
+    sourceStorageKey: string;
+    targetStorageKey: string;
+  }): Promise<DocumentConversionResult>;
+}
+
 export interface DocumentNormalizationPlan {
   manuscript_id: string;
   source_asset_id: string;
@@ -181,17 +197,20 @@ export interface DocumentNormalizationWorkflowServiceOptions {
   normalizationService: DocumentNormalizationService;
   assetService: DocumentAssetService;
   toolingStatus: DocumentPipelineToolingStatus;
+  converter?: DocumentToDocxConverter;
 }
 
 export class DocumentNormalizationWorkflowService {
   private readonly normalizationService: DocumentNormalizationService;
   private readonly assetService: DocumentAssetService;
   private readonly toolingStatus: DocumentPipelineToolingStatus;
+  private readonly converter?: DocumentToDocxConverter;
 
   constructor(options: DocumentNormalizationWorkflowServiceOptions) {
     this.normalizationService = options.normalizationService;
     this.assetService = options.assetService;
     this.toolingStatus = options.toolingStatus;
+    this.converter = options.converter;
   }
 
   async normalize(
@@ -203,17 +222,48 @@ export class DocumentNormalizationWorkflowService {
     );
 
     let normalizedAsset: DocumentAssetRecord | undefined;
+    const warnings = [...plan.warnings];
 
     if (plan.conversion.status === "not_required") {
       normalizedAsset = await this.registerNormalizedAsset({
         manuscriptId: input.manuscriptId,
         sourceAssetId: input.sourceAssetId,
-        storageKey: plan.derived_asset.storage_key,
+        storageKey: input.storageKey,
         fileName: plan.derived_asset.file_name,
         mimeType: plan.derived_asset.mime_type,
         createdBy: input.createdBy,
         sourceJobId: input.sourceJobId,
       });
+    }
+
+    if (plan.conversion.status === "queued") {
+      if (!this.converter) {
+        warnings.push(
+          "Document conversion was queued but no converter is configured.",
+        );
+      } else {
+        const conversionResult = await this.converter.convertDocToDocx({
+          sourceStorageKey: input.storageKey,
+          targetStorageKey: plan.derived_asset.storage_key,
+        });
+
+        if (conversionResult.status === "converted") {
+          normalizedAsset = await this.registerNormalizedAsset({
+            manuscriptId: input.manuscriptId,
+            sourceAssetId: input.sourceAssetId,
+            storageKey: plan.derived_asset.storage_key,
+            fileName: plan.derived_asset.file_name,
+            mimeType: plan.derived_asset.mime_type,
+            createdBy: input.createdBy,
+            sourceJobId: input.sourceJobId,
+          });
+        } else {
+          warnings.push(
+            conversionResult.error ??
+              "DOC to DOCX conversion failed; normalization remains pending.",
+          );
+        }
+      }
     }
 
     return {
@@ -225,7 +275,7 @@ export class DocumentNormalizationWorkflowService {
         source_asset_type: "normalized_docx",
         source_asset_id: normalizedAsset?.id ?? input.sourceAssetId,
         mime_type: plan.preview.mime_type,
-        warnings: [...plan.warnings],
+        warnings,
       },
     };
   }

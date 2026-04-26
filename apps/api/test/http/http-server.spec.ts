@@ -1172,6 +1172,143 @@ test("http server preserves full harness candidate bindings on evaluation run cr
   }
 });
 
+test("http upload runs document intake after creating the original asset", async () => {
+  const runtime = createInMemoryApiRuntime({
+    appEnv: "local",
+    seedDemoData: true,
+    uploadRootDir: "C:/tmp/http-upload-intake",
+  });
+  const intakeCalls: Array<{
+    manuscriptId: string;
+    sourceAssetId: string;
+    fileName: string;
+    mimeType: string;
+    storageKey: string;
+    createdBy: string;
+    sourceJobId?: string;
+  }> = [];
+  runtime.documentPipelineApi.intakeUploadedManuscript = async (input) => {
+    intakeCalls.push(input);
+    return {
+      status: 201,
+      body: {
+        normalization: {
+          plan: {
+            manuscript_id: input.manuscriptId,
+            source_asset_id: input.sourceAssetId,
+            source_type: "doc",
+            current_type: "doc",
+            target_type: "docx",
+            derived_asset: {
+              asset_type: "normalized_docx",
+              parent_asset_id: input.sourceAssetId,
+              file_name: "http-upload-intake.normalized.docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              storage_key: "normalized/http-upload-intake.normalized.docx",
+            },
+            conversion: {
+              required: true,
+              backend: "libreoffice",
+              status: "queued",
+            },
+            preview: {
+              viewer: "onlyoffice",
+              status: "ready",
+              source_asset_type: "normalized_docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            },
+            warnings: [],
+          },
+          normalized_asset: {
+            id: "asset-normalized-http-1",
+            manuscript_id: input.manuscriptId,
+            asset_type: "normalized_docx",
+            status: "active",
+            storage_key: "normalized/http-upload-intake.normalized.docx",
+            mime_type:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            parent_asset_id: input.sourceAssetId,
+            source_module: "upload",
+            source_job_id: input.sourceJobId,
+            created_by: input.createdBy,
+            version_no: 1,
+            is_current: true,
+            file_name: "http-upload-intake.normalized.docx",
+            created_at: "2026-04-26T00:00:00.000Z",
+            updated_at: "2026-04-26T00:00:00.000Z",
+          },
+          preview: {
+            viewer: "onlyoffice",
+            status: "ready",
+            source_asset_type: "normalized_docx",
+            source_asset_id: "asset-normalized-http-1",
+            mime_type:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            warnings: [],
+          },
+        },
+        preview: {
+          manuscript_id: input.manuscriptId,
+          source_asset_id: "asset-normalized-http-1",
+          normalized_asset_type: "normalized_docx",
+          viewer: "onlyoffice",
+          status: "ready",
+          mime_type:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          file_name: "http-upload-intake.normalized.docx",
+          storage_key: "normalized/http-upload-intake.normalized.docx",
+          warnings: [],
+        },
+      },
+    };
+  };
+  const { server, baseUrl } = await startServer({ runtime });
+
+  try {
+    const userCookie = await loginAsDemoUser(baseUrl, "dev.user");
+    const uploadResponse = await fetch(`${baseUrl}/api/v1/manuscripts/upload`, {
+      method: "POST",
+      headers: {
+        Cookie: userCookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: "HTTP Upload Intake",
+        manuscriptType: "clinical_study",
+        createdBy: "forged-user",
+        fileName: "http-upload-intake.doc",
+        mimeType: "application/msword",
+        storageKey: "uploads/http-upload-intake.doc",
+      }),
+    });
+    const uploaded = (await uploadResponse.json()) as {
+      manuscript: { id: string };
+      asset: { id: string };
+      job: { id: string };
+      intake: { preview: { status: string; source_asset_id?: string } };
+    };
+
+    assert.equal(uploadResponse.status, 201);
+    assert.equal(uploaded.intake.preview.status, "ready");
+    assert.equal(uploaded.intake.preview.source_asset_id, "asset-normalized-http-1");
+    assert.deepEqual(intakeCalls, [
+      {
+        manuscriptId: uploaded.manuscript.id,
+        sourceAssetId: uploaded.asset.id,
+        fileName: "http-upload-intake.doc",
+        mimeType: "application/msword",
+        storageKey: "uploads/http-upload-intake.doc",
+        createdBy: "dev-user",
+        sourceJobId: uploaded.job.id,
+      },
+    ]);
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("http server keeps the seeded base editing rule set publishable after publishing a journal override", async () => {
   const { server, baseUrl } = await startServer();
 

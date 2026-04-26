@@ -139,8 +139,13 @@ import {
   DocumentStructureService,
   DocumentExportService,
   EditorialDocxTransformService,
+  DocumentIntakeService,
+  DocumentNormalizationService,
+  DocumentNormalizationWorkflowService,
+  LocalDocToDocxConverter,
   PythonDocxSourceBlockResolver,
   PythonDocxStructureWorkerAdapter,
+  type DocumentIntakeResult,
 } from "../modules/document-pipeline/index.ts";
 import {
   DocumentPreviewAssetNotFoundError,
@@ -1375,6 +1380,15 @@ export interface ApiServerRuntime {
   proofreadingApi: ReturnType<typeof createProofreadingApi>;
   screeningApi: ReturnType<typeof createScreeningApi>;
   documentPipelineApi: {
+    intakeUploadedManuscript?: (input: {
+      manuscriptId: string;
+      sourceAssetId: string;
+      fileName: string;
+      mimeType: string;
+      storageKey: string;
+      createdBy: string;
+      sourceJobId?: string;
+    }) => Promise<RouteResponse<DocumentIntakeResult>>;
     createPreviewSession: (input: {
       manuscriptId: string;
       assetId: string;
@@ -1780,6 +1794,20 @@ export function createInMemoryApiRuntime(input: {
     jobRepository,
     templateFamilyRepository,
   });
+  const documentNormalizationWorkflowService =
+    new DocumentNormalizationWorkflowService({
+      normalizationService: new DocumentNormalizationService(),
+      assetService: documentAssetService,
+      toolingStatus: {
+        libreOfficeAvailable: true,
+      },
+      converter: new LocalDocToDocxConverter({
+        rootDir: input.uploadRootDir,
+      }),
+    });
+  const documentIntakeService = new DocumentIntakeService({
+    workflowService: documentNormalizationWorkflowService,
+  });
   const exportService = new DocumentExportService({
     assetRepository,
     manuscriptRepository,
@@ -2154,6 +2182,14 @@ export function createInMemoryApiRuntime(input: {
       screeningService,
     }),
     documentPipelineApi: {
+      async intakeUploadedManuscript(input) {
+        const result = await documentIntakeService.intakeUploadedManuscript(input);
+
+        return {
+          status: result.normalization.normalized_asset ? 201 : 202,
+          body: result,
+        };
+      },
       async createPreviewSession(input) {
         return {
           status: 200,
@@ -4499,12 +4535,35 @@ async function handleRoute(
         uploadRootDir,
       });
 
-      return runtime.manuscriptApi.upload({
+      const uploadResponse = await runtime.manuscriptApi.upload({
         ...uploadBody,
         fileContentBase64: body.fileContentBase64,
         createdBy: session.user.id,
         storageKey,
       });
+
+      if (!runtime.documentPipelineApi.intakeUploadedManuscript) {
+        return uploadResponse;
+      }
+
+      const intakeResponse =
+        await runtime.documentPipelineApi.intakeUploadedManuscript({
+          manuscriptId: uploadResponse.body.manuscript.id,
+          sourceAssetId: uploadResponse.body.asset.id,
+          fileName: uploadResponse.body.asset.file_name ?? uploadBody.fileName,
+          mimeType: uploadResponse.body.asset.mime_type,
+          storageKey: uploadResponse.body.asset.storage_key,
+          createdBy: session.user.id,
+          sourceJobId: uploadResponse.body.job.id,
+        });
+
+      return {
+        status: uploadResponse.status,
+        body: {
+          ...uploadResponse.body,
+          intake: intakeResponse.body,
+        },
+      };
     }
     case "manuscripts-upload-batch": {
       const session = await requirePermission(req, runtime, "manuscripts.submit");
@@ -4542,10 +4601,43 @@ async function handleRoute(
         }),
       );
 
-      return runtime.manuscriptApi.uploadBatch({
+      const uploadResponse = await runtime.manuscriptApi.uploadBatch({
         createdBy: session.user.id,
         items,
       });
+
+      if (!runtime.documentPipelineApi.intakeUploadedManuscript) {
+        return uploadResponse;
+      }
+
+      const normalizedItems = await Promise.all(
+        uploadResponse.body.items.map(async (item, index) => {
+          const sourceItem = items[index];
+          const intakeResponse =
+            await runtime.documentPipelineApi.intakeUploadedManuscript!({
+              manuscriptId: item.manuscript.id,
+              sourceAssetId: item.asset.id,
+              fileName: item.asset.file_name ?? sourceItem?.fileName ?? "",
+              mimeType: item.asset.mime_type,
+              storageKey: item.asset.storage_key,
+              createdBy: session.user.id,
+              sourceJobId: item.job.id,
+            });
+
+          return {
+            ...item,
+            intake: intakeResponse.body,
+          };
+        }),
+      );
+
+      return {
+        status: uploadResponse.status,
+        body: {
+          ...uploadResponse.body,
+          items: normalizedItems,
+        },
+      };
     }
     case "manuscripts-get":
       await requireManuscriptSurfaceSession(req, runtime, "manuscript workbench");

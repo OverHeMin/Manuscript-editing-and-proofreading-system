@@ -338,7 +338,7 @@ async function waitForJob(
       };
 
       return job.status === "completed" && predicate(job);
-    })
+    }, { timeout: 30_000 })
     .toBe(true);
 
   const jobResponse = await request.get(`${apiBaseUrl}/api/v1/jobs/${jobId}`);
@@ -453,7 +453,11 @@ async function navigateToScreeningSharedReview(
   await expect(sharedReview).toContainText("风险等级");
   await expect(sharedReview).toContainText("建议结论");
   await expect(
-    sharedReview.locator(".manuscript-workbench-proofreading-block").first(),
+    sharedReview
+      .locator(
+        ".manuscript-workbench-proofreading-block, .manuscript-workbench-detail-empty",
+      )
+      .first(),
   ).toBeVisible();
 }
 

@@ -55,6 +55,64 @@ function createDocumentPipelineHarness(libreOfficeAvailable: boolean) {
   };
 }
 
+function createDocumentPipelineHarnessWithConverter() {
+  const manuscriptRepository = new InMemoryManuscriptRepository();
+  const assetRepository = new InMemoryDocumentAssetRepository();
+  const jobRepository = new InMemoryJobRepository();
+  const issuedIds = [
+    "manuscript-1",
+    "asset-original-1",
+    "job-upload-1",
+    "asset-normalized-1",
+  ];
+  const nextId = () => {
+    const value = issuedIds.shift();
+    assert.ok(value, "Expected a test id to be available.");
+    return value;
+  };
+  const conversions: Array<{
+    sourceStorageKey: string;
+    targetStorageKey: string;
+  }> = [];
+
+  const manuscriptService = new ManuscriptLifecycleService({
+    manuscriptRepository,
+    assetRepository,
+    jobRepository,
+    now: () => new Date("2026-03-27T02:00:00.000Z"),
+    createId: nextId,
+  });
+  const assetService = new DocumentAssetService({
+    manuscriptRepository,
+    assetRepository,
+    now: () => new Date("2026-03-27T02:05:00.000Z"),
+    createId: nextId,
+  });
+  const normalizationService = new DocumentNormalizationService();
+  const workflowService = new DocumentNormalizationWorkflowService({
+    normalizationService,
+    assetService,
+    toolingStatus: {
+      libreOfficeAvailable: true,
+    },
+    converter: {
+      async convertDocToDocx(input) {
+        conversions.push(input);
+        return {
+          status: "converted",
+        };
+      },
+    },
+  });
+
+  return {
+    manuscriptService,
+    workflowService,
+    assetRepository,
+    conversions,
+  };
+}
+
 test("docx normalization materializes a normalized_docx asset and exposes a ready preview only after asset creation", async () => {
   const { manuscriptService, workflowService, assetRepository } =
     createDocumentPipelineHarness(false);
@@ -78,6 +136,7 @@ test("docx normalization materializes a normalized_docx asset and exposes a read
   });
 
   assert.equal(normalizationResult.preview.status, "ready");
+  assert.equal(normalizationResult.normalized_asset?.storage_key, "uploads/docx-intake.docx");
   assert.equal(
     normalizationResult.preview.source_asset_id,
     normalizationResult.normalized_asset?.id,
@@ -160,6 +219,50 @@ test("doc normalization without libreoffice keeps preview pending and does not c
   );
 
   assert.deepEqual(normalizedAssets, []);
+});
+
+test("doc normalization with converter materializes a normalized_docx asset", async () => {
+  const { manuscriptService, workflowService, assetRepository, conversions } =
+    createDocumentPipelineHarnessWithConverter();
+  const uploadResult = await manuscriptService.upload({
+    title: "Doc Intake",
+    manuscriptType: "review",
+    createdBy: "user-doc",
+    fileName: "doc-intake.doc",
+    mimeType: "application/msword",
+    storageKey: "uploads/doc-intake.doc",
+  });
+
+  const normalizationResult = await workflowService.normalize({
+    manuscriptId: uploadResult.manuscript.id,
+    sourceAssetId: uploadResult.asset.id,
+    fileName: uploadResult.asset.file_name ?? "doc-intake.doc",
+    mimeType: uploadResult.asset.mime_type,
+    storageKey: uploadResult.asset.storage_key,
+    createdBy: "user-doc",
+    sourceJobId: uploadResult.job.id,
+  });
+
+  assert.equal(normalizationResult.plan.conversion.status, "queued");
+  assert.equal(normalizationResult.preview.status, "ready");
+  assert.equal(normalizationResult.normalized_asset?.asset_type, "normalized_docx");
+  assert.equal(
+    normalizationResult.normalized_asset?.storage_key,
+    normalizationResult.plan.derived_asset.storage_key,
+  );
+  assert.deepEqual(conversions, [
+    {
+      sourceStorageKey: "uploads/doc-intake.doc",
+      targetStorageKey: normalizationResult.plan.derived_asset.storage_key,
+    },
+  ]);
+
+  const allAssets = await assetRepository.listByManuscriptId(uploadResult.manuscript.id);
+  const normalizedAssets = allAssets.filter(
+    (asset) => asset.asset_type === "normalized_docx",
+  );
+
+  assert.equal(normalizedAssets.length, 1);
 });
 
 test("normalization plans generate unique storage keys per source asset even when file names match", async () => {
