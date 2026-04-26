@@ -136,6 +136,7 @@ test("docx normalization materializes a normalized_docx asset and exposes a read
   });
 
   assert.equal(normalizationResult.preview.status, "ready");
+  assert.equal(normalizationResult.normalized_asset?.storage_key, "uploads/docx-intake.docx");
   assert.equal(
     normalizationResult.preview.source_asset_id,
     normalizationResult.normalized_asset?.id,

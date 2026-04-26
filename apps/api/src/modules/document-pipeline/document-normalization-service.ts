@@ -228,7 +228,7 @@ export class DocumentNormalizationWorkflowService {
       normalizedAsset = await this.registerNormalizedAsset({
         manuscriptId: input.manuscriptId,
         sourceAssetId: input.sourceAssetId,
-        storageKey: plan.derived_asset.storage_key,
+        storageKey: input.storageKey,
         fileName: plan.derived_asset.file_name,
         mimeType: plan.derived_asset.mime_type,
         createdBy: input.createdBy,
