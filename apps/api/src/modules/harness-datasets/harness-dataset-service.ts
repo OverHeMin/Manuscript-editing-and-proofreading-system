@@ -37,6 +37,11 @@ import {
   EvaluationRunNotFoundError,
   EvaluationSampleSetNotFoundError,
 } from "../verification-ops/verification-ops-service.ts";
+import {
+  GoldSetAssertionRunner,
+  type GoldSetAssertionInput,
+  type GoldSetAssertionResult,
+} from "./gold-set-assertion-runner.ts";
 
 export interface CreateGoldSetFamilyInput {
   name: string;
@@ -270,6 +275,12 @@ export class HarnessDatasetService {
       });
     this.createId = options.createId ?? (() => randomUUID());
     this.now = options.now ?? (() => new Date());
+  }
+
+  evaluateContentQualityGate(
+    input: GoldSetAssertionInput,
+  ): GoldSetAssertionResult {
+    return new GoldSetAssertionRunner().evaluate(input);
   }
 
   async createDraftCandidateFromReviewedCaseSnapshot(
