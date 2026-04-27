@@ -1155,7 +1155,7 @@ export function KnowledgeLibraryWorkbenchPage({
 
           {loadStatus === "loading" && (viewModel?.library.length ?? 0) === 0 ? (
             <section className="knowledge-library-panel">
-              <p className="knowledge-library-empty">正在加载知识�?..</p>
+              <p className="knowledge-library-empty">正在加载知识…</p>
             </section>
           ) : null}
 

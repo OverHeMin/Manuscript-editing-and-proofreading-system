@@ -14,6 +14,7 @@ import {
   LearningGovernanceConflictError,
   LearningGovernanceService,
 } from "../../src/modules/learning-governance/learning-governance-service.ts";
+import { LearningFeedbackLoopVerifier } from "../../src/modules/learning-governance/index.ts";
 import { InMemoryPromptSkillRegistryRepository } from "../../src/modules/prompt-skill-registry/in-memory-prompt-skill-repository.ts";
 import { PromptSkillRegistryService } from "../../src/modules/prompt-skill-registry/prompt-skill-service.ts";
 import {
@@ -441,4 +442,121 @@ test("approved rule candidates can write back into editorial rule drafts with ca
     await activationMetricsService.getRuleMetrics("existing-rule-1");
   assert.equal(recordedMetrics.totals.writeback_created_count, 1);
   assert.equal(recordedMetrics.totals.writeback_applied_count, 1);
+});
+
+test("learning feedback verifier proves residual confirmation to activated knowledge with coverage gain", () => {
+  const verifier = new LearningFeedbackLoopVerifier();
+
+  const result = verifier.evaluate({
+    residualIssue: {
+      id: "residual-1",
+      status: "candidate_created",
+      learningCandidateId: "candidate-1",
+      signalBreakdown: {
+        promotion_evidence: {
+          source: "proofreading_confirmation",
+        },
+      },
+    },
+    learningCandidate: {
+      id: "candidate-1",
+      status: "approved",
+    },
+    writeback: {
+      id: "writeback-1",
+      status: "applied",
+      targetType: "knowledge_item",
+      createdDraftAssetId: "knowledge-1",
+    },
+    laterProofreadingContext: {
+      knowledgeItemIds: ["knowledge-1"],
+      ruleIds: ["rule-1"],
+    },
+    goldSetCoverage: {
+      beforeHitCount: 1,
+      afterHitCount: 2,
+    },
+  });
+
+  assert.equal(result.status, "closed");
+  assert.deepEqual(result.stageStatus, {
+    detected: true,
+    humanConfirmed: true,
+    candidateCreated: true,
+    approved: true,
+    activated: true,
+  });
+  assert.equal(result.coverageDelta, 1);
+  assert.deepEqual(result.activatedKnowledgeItemIds, ["knowledge-1"]);
+  assert.deepEqual(result.failedGateIds, []);
+});
+
+test("learning feedback verifier blocks rejected candidates and requires no-regression explanation without coverage gain", () => {
+  const verifier = new LearningFeedbackLoopVerifier();
+
+  const rejected = verifier.evaluate({
+    residualIssue: {
+      id: "residual-2",
+      status: "candidate_created",
+      learningCandidateId: "candidate-2",
+    },
+    learningCandidate: {
+      id: "candidate-2",
+      status: "rejected",
+    },
+    writeback: {
+      id: "writeback-2",
+      status: "applied",
+      targetType: "knowledge_item",
+      createdDraftAssetId: "knowledge-2",
+    },
+    laterProofreadingContext: {
+      knowledgeItemIds: ["knowledge-2"],
+      ruleIds: [],
+    },
+    goldSetCoverage: {
+      beforeHitCount: 1,
+      afterHitCount: 1,
+    },
+  });
+
+  assert.equal(rejected.status, "blocked");
+  assert.equal(rejected.stageStatus.activated, false);
+  assert.ok(rejected.failedGateIds.includes("candidate_rejected"));
+
+  const explainedNoRegression = verifier.evaluate({
+    residualIssue: {
+      id: "residual-3",
+      status: "candidate_created",
+      learningCandidateId: "candidate-3",
+    },
+    learningCandidate: {
+      id: "candidate-3",
+      status: "approved",
+    },
+    writeback: {
+      id: "writeback-3",
+      status: "applied",
+      targetType: "knowledge_item",
+      createdDraftAssetId: "knowledge-3",
+    },
+    laterProofreadingContext: {
+      knowledgeItemIds: ["knowledge-3"],
+      ruleIds: [],
+    },
+    goldSetCoverage: {
+      beforeHitCount: 1,
+      afterHitCount: 1,
+      noRegressionExplanation:
+        "The activated knowledge targets a manual-only issue not present in this gold-set shard.",
+    },
+  });
+
+  assert.equal(explainedNoRegression.status, "closed");
+  assert.equal(explainedNoRegression.coverageDelta, 0);
+  assert.equal(
+    explainedNoRegression.noRegressionExplanation,
+    "The activated knowledge targets a manual-only issue not present in this gold-set shard.",
+  );
+  assert.deepEqual(explainedNoRegression.failedGateIds, []);
 });

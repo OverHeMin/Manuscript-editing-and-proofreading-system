@@ -771,7 +771,7 @@ test("template governance controller loads rules bound to the selected content m
   assert.equal(ledger.selectedModuleRules[0]?.bindingKind, "general_package");
   assert.equal(
     ledger.selectedModuleRules[0]?.canonicalText,
-    "浣滆€呫€侀鍚嶃€佹湡鍒婂悕涓庡勾浠介『搴忓簲缁熶竴銆?,
+    "\u4f5c\u8005\u3001\u9898\u540d\u3001\u671f\u520a\u540d\u4e0e\u5e74\u4efd\u987a\u5e8f\u5e94\u7edf\u4e00\u3002",
   );
   assert.deepEqual(ledger.selectedModuleRules[0]?.contentBlocks, []);
   assert.equal(ledger.selectedModuleRules[0]?.bindings.length, 1);

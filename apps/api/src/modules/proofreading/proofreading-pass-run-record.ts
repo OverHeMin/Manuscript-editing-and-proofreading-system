@@ -22,6 +22,35 @@ export interface ProofreadingPassRunOutputRecord {
     manualReviewItems: number;
     qualityFindings: number;
   };
+  contextEvidence?: ProofreadingPassRunContextEvidenceRecord;
+}
+
+export interface ProofreadingPassRunContextEvidenceRecord {
+  localBlockContext: {
+    blockCount: number;
+  };
+  neighborContext: {
+    windowCount: number;
+  };
+  sectionContext: {
+    sectionCount: number;
+    sectionLabels: string[];
+  };
+  globalConsistencyContext: {
+    passNo: number;
+    passKind: ProofreadingDeepPassKind;
+    wholeDocumentLayer: true;
+  };
+  ruleCitationContext: {
+    ruleIds: string[];
+  };
+  knowledgeCitationContext: {
+    knowledgeItemIds: string[];
+  };
+  residualAnalysisContext: {
+    passKind: ProofreadingDeepPassKind;
+    runsAfterGovernedCoverage: true;
+  };
 }
 
 export interface ProofreadingPassRunRecord {

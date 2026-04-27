@@ -4,3 +4,4 @@ export * from "./in-memory-harness-dataset-repository.ts";
 export * from "./postgres-harness-dataset-repository.ts";
 export * from "./harness-dataset-service.ts";
 export * from "./harness-dataset-api.ts";
+export * from "./gold-set-assertion-runner.ts";

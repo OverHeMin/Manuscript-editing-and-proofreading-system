@@ -51,6 +51,13 @@ export interface TemplateGovernanceOverviewPageProps {
   onOpenView?: (view: TemplateGovernanceView, mode?: RuleCenterMode) => void;
 }
 
+interface TemplateGovernanceOverviewMetricCard {
+  kind?: string;
+  label: string;
+  value: number;
+  detail?: string;
+}
+
 export function TemplateGovernanceOverviewPage({
   metrics,
   pendingItems = buildTemplateGovernanceOverviewFallbackPendingItems(metrics),
@@ -61,7 +68,7 @@ export function TemplateGovernanceOverviewPage({
     metrics.retrievalAnswerRelevancy != null ||
     metrics.retrievalContextPrecision != null ||
     metrics.retrievalContextRecall != null;
-  const metricCards = [
+  const metricCards: TemplateGovernanceOverviewMetricCard[] = [
     { label: "大模板台账", value: metrics.templateCount },
     { label: "规则台账", value: metrics.moduleCount },
     { label: "待审核知识项", value: metrics.pendingKnowledgeCount },
@@ -78,6 +85,11 @@ export function TemplateGovernanceOverviewPage({
     { label: "已回滚规则集", value: metrics.rolledBackRuleSetCount ?? 0 },
     { label: "发布阻塞项", value: metrics.blockedReleaseCount ?? 0 },
   ].filter((card, index) => index < 10 || shouldShowReleaseMetric(metrics, card.label));
+  metricCards.splice(
+    0,
+    metricCards.length,
+    ...buildTemplateGovernanceOverviewMetricCards(metrics),
+  );
 
   return (
     <section className="template-governance-overview-page">
@@ -96,6 +108,7 @@ export function TemplateGovernanceOverviewPage({
               <article
                 key={card.label}
                 className="template-governance-card template-governance-overview-metric"
+                data-governance-metric-kind={card.kind}
               >
                 <span className="template-governance-overview-metric-label">
                   {card.label}
@@ -103,6 +116,11 @@ export function TemplateGovernanceOverviewPage({
                 <strong className="template-governance-overview-metric-value">
                   {card.value}
                 </strong>
+                {card.detail ? (
+                  <small className="template-governance-overview-metric-detail">
+                    {card.detail}
+                  </small>
+                ) : null}
               </article>
             ))}
           </div>
@@ -373,6 +391,68 @@ function shouldShowReleaseMetric(
     default:
       return true;
   }
+}
+
+function buildTemplateGovernanceOverviewMetricCards(
+  metrics: TemplateGovernanceOverviewMetrics,
+): TemplateGovernanceOverviewMetricCard[] {
+  const cards: TemplateGovernanceOverviewMetricCard[] = [
+    {
+      kind: "template-ledger",
+      label: "\u5927\u6a21\u677f\u53f0\u8d26",
+      value: metrics.templateCount,
+      detail: `\u89c4\u5219\u53f0\u8d26 ${metrics.moduleCount} \u4e2a\u53ef\u590d\u7528\u8d44\u4ea7`,
+    },
+    {
+      kind: "knowledge-review",
+      label: "\u5f85\u5ba1\u6838\u77e5\u8bc6\u9879",
+      value: metrics.pendingKnowledgeCount,
+    },
+    {
+      kind: "extraction-confirmation",
+      label: "\u56de\u6d41\u5019\u9009\u5f85\u786e\u8ba4",
+      value: metrics.extractionAwaitingConfirmationCount,
+    },
+    {
+      kind: "manual-review",
+      label: "\u7edf\u4e00\u590d\u6838\u5f85\u5904\u7406",
+      value: metrics.pendingReviewCount ?? 0,
+      detail: `\u89c4\u5219\u8349\u7a3f\u5f85\u5199\u56de ${metrics.ruleDraftWritebackDraftCount ?? 0} \u4e2a\uff0c\u89c4\u5219\u8349\u7a3f\u5df2\u5199\u56de ${metrics.ruleDraftWritebackAppliedCount ?? 0} \u4e2a`,
+    },
+    {
+      kind: "harness",
+      label: "Harness \u5f85\u9a8c\u8bc1",
+      value: metrics.harnessQueuedCount ?? 0,
+      detail: `Harness \u5df2\u901a\u8fc7 ${metrics.harnessPassedCount ?? 0} \u6761\uff0cHarness \u672a\u901a\u8fc7 ${metrics.harnessFailedCount ?? 0} \u6761`,
+    },
+  ];
+
+  if (hasTemplateGovernanceReleasePostureMetrics(metrics)) {
+    cards.push({
+      kind: "release-posture",
+      label: "\u53d1\u5e03\u963b\u585e\u9879",
+      value: metrics.blockedReleaseCount ?? 0,
+      detail:
+        `\u5019\u9009\u89c4\u5219\u96c6 ${metrics.candidateRuleSetCount ?? 0} \u4e2a\uff0c` +
+        `Canary \u89c4\u5219\u96c6 ${metrics.canaryRuleSetCount ?? 0} \u4e2a\uff0c` +
+        `\u5df2\u751f\u6548\u89c4\u5219\u96c6 ${metrics.activeRuleSetCount ?? 0} \u4e2a\uff0c` +
+        `\u5df2\u56de\u6eda\u89c4\u5219\u96c6 ${metrics.rolledBackRuleSetCount ?? 0} \u4e2a`,
+    });
+  }
+
+  return cards;
+}
+
+function hasTemplateGovernanceReleasePostureMetrics(
+  metrics: TemplateGovernanceOverviewMetrics,
+): boolean {
+  return (
+    metrics.candidateRuleSetCount !== undefined ||
+    metrics.canaryRuleSetCount !== undefined ||
+    metrics.activeRuleSetCount !== undefined ||
+    metrics.rolledBackRuleSetCount !== undefined ||
+    metrics.blockedReleaseCount !== undefined
+  );
 }
 
 function formatTemplateGovernanceOverviewRetrievalMetric(value: number): string {

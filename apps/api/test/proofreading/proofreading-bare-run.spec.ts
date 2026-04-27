@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditorialDocxTransformService } from "../../src/modules/document-pipeline/editorial-docx-transform-service.ts";
+import { InMemoryProofreadingPassRunRepository } from "../../src/modules/proofreading/in-memory-proofreading-pass-run-repository.ts";
 import { ProofreadingService } from "../../src/modules/proofreading/proofreading-service.ts";
 import { InMemoryResidualIssueRepository } from "../../src/modules/residual-learning/in-memory-residual-learning-repository.ts";
 import { ResidualLearningService } from "../../src/modules/residual-learning/residual-learning-service.ts";
@@ -16,6 +17,7 @@ import { seedMedicalQualityFixture } from "../shared/medical-quality-fixture.ts"
 test("proofreading bare mode draft succeeds without a current template family while governed mode still fails", async () => {
   const harness = await seedMedicalQualityFixture();
   const residualIssueRepository = new InMemoryResidualIssueRepository();
+  const proofreadingPassRunRepository = new InMemoryProofreadingPassRunRepository();
   const residualLearningService = new ResidualLearningService({
     residualIssueRepository,
     createId: () => "residual-proofreading-bare-1",
@@ -130,6 +132,7 @@ test("proofreading bare mode draft succeeds without a current template family wh
       },
     },
     residualLearningService,
+    proofreadingPassRunRepository,
     proofreadingSourceBlockResolver: {
       async resolveBlocks() {
         return [
@@ -325,6 +328,39 @@ test("proofreading bare mode draft succeeds without a current template family wh
     (await residualIssueRepository.listByExecutionSnapshotId(result.snapshot_id))
       .length,
     0,
+  );
+  const passRuns = await proofreadingPassRunRepository.listByJobId(result.job.id);
+  assert.equal(passRuns.length, 5);
+  assert.deepEqual(
+    passRuns.map((run) => run.pass_kind),
+    [
+      "medical_facts_and_terminology",
+      "structure_logic_and_consistency",
+      "data_statistics_units_and_tables",
+      "language_style_punctuation_and_format",
+      "residual_synthesis",
+    ],
+  );
+  assert.equal(
+    passRuns[0]?.output?.contextEvidence?.localBlockContext.blockCount,
+    1,
+  );
+  assert.deepEqual(
+    passRuns[0]?.output?.contextEvidence?.ruleCitationContext.ruleIds,
+    [],
+  );
+  assert.deepEqual(
+    passRuns[0]?.output?.contextEvidence?.knowledgeCitationContext.knowledgeItemIds,
+    [],
+  );
+  assert.equal(
+    passRuns[4]?.output?.contextEvidence?.residualAnalysisContext.passKind,
+    "residual_synthesis",
+  );
+  assert.equal(
+    passRuns[4]?.output?.contextEvidence?.residualAnalysisContext
+      .runsAfterGovernedCoverage,
+    true,
   );
 });
 

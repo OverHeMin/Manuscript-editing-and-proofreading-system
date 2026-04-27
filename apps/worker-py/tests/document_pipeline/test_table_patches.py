@@ -407,3 +407,126 @@ def test_apply_table_patches_rebuilds_three_line_tables_from_rich_snapshot_evide
     assert 'val="nil"' in document_xml
     assert "03C7" in document_xml
     assert "<ns0:i />" in document_xml or "<w:i />" in document_xml
+
+
+def test_apply_table_patches_blocks_nested_table_rebuild_without_complete_fidelity_metadata():
+    root = build_advanced_document_root()
+    snapshot = build_controlled_rebuild_snapshot()
+    snapshot["grid_cells"][0]["nested_tables"] = [
+        {
+            "table_id": "nested-table-1",
+            "row_count": 1,
+            "column_count": 1,
+        }
+    ]
+
+    results = apply_table_patches(
+        root,
+        [
+            {
+                "patch_id": "patch-nested-unsafe",
+                "rule_id": "rule-style",
+                "table_id": "table-1",
+                "patch_type": "apply_three_line_table_style",
+                "anchor": {
+                    "table_id": "table-1",
+                    "semantic_target": "style_profile",
+                },
+                "execution_path": "controlled_rebuild",
+                "rebuild_payload": {
+                    "table_snapshot": snapshot,
+                },
+            },
+        ],
+    )
+
+    assert results[0]["status"] == "skipped_unsafe"
+    assert "Nested table rebuild requires complete fidelity metadata" in results[0]["reason"]
+
+
+def test_apply_table_patches_rebuilds_merged_cells_and_reports_continuation_metadata():
+    root = build_advanced_document_root()
+    snapshot = build_controlled_rebuild_snapshot()
+    snapshot["row_count"] = 3
+    snapshot["column_count"] = 3
+    snapshot["continuation"] = {
+        "continues_from_previous_page": True,
+        "continues_to_next_page": True,
+        "continuation_key": "table-1-page-1",
+    }
+    snapshot["grid_cells"] = [
+        {
+            **snapshot["grid_cells"][0],
+            "id": "merged-header",
+            "text": "Merged header",
+            "row_index": 0,
+            "column_index": 0,
+            "row_span": 1,
+            "column_span": 3,
+            "paragraphs": [
+                {
+                    **snapshot["grid_cells"][0]["paragraphs"][0],
+                    "text": "Merged header",
+                    "fragments": [
+                        {
+                            **snapshot["grid_cells"][0]["paragraphs"][0]["fragments"][0],
+                            "text": "Merged header",
+                        }
+                    ],
+                }
+            ],
+        },
+        {
+            **snapshot["grid_cells"][2],
+            "id": "row-merged-stub",
+            "text": "Repeated measure",
+            "row_index": 1,
+            "column_index": 0,
+            "row_span": 2,
+            "column_span": 1,
+            "paragraphs": [
+                {
+                    **snapshot["grid_cells"][2]["paragraphs"][0],
+                    "text": "Repeated measure",
+                    "fragments": [
+                        {
+                            **snapshot["grid_cells"][2]["paragraphs"][0]["fragments"][0],
+                            "text": "Repeated measure",
+                        }
+                    ],
+                }
+            ],
+        },
+        {**snapshot["grid_cells"][3], "row_index": 1, "column_index": 1},
+        {**snapshot["grid_cells"][3], "id": "cell-r1-c2", "row_index": 1, "column_index": 2},
+        {**snapshot["grid_cells"][3], "id": "cell-r2-c1", "row_index": 2, "column_index": 1},
+        {**snapshot["grid_cells"][3], "id": "cell-r2-c2", "row_index": 2, "column_index": 2},
+    ]
+
+    results = apply_table_patches(
+        root,
+        [
+            {
+                "patch_id": "patch-merged",
+                "rule_id": "rule-style",
+                "table_id": "table-1",
+                "patch_type": "apply_three_line_table_style",
+                "anchor": {
+                    "table_id": "table-1",
+                    "semantic_target": "style_profile",
+                },
+                "execution_path": "controlled_rebuild",
+                "rebuild_payload": {
+                    "table_snapshot": snapshot,
+                },
+            },
+        ],
+    )
+
+    document_xml = ET.tostring(root, encoding="unicode")
+    assert results[0]["status"] == "applied"
+    assert results[0]["table_continuation"] == snapshot["continuation"]
+    assert 'gridSpan' in document_xml
+    assert 'vMerge' in document_xml
+    assert "Merged header" in document_xml
+    assert "Repeated measure" in document_xml

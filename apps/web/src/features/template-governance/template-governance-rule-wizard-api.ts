@@ -1122,19 +1122,15 @@ function assignRecognizedTextBlock(
 ): boolean {
   switch (label) {
     case "规则正文":
-    case "瑙勫垯姝ｆ枃":
       state.ruleBody = text;
       return true;
     case "正例示例":
-    case "姝ｄ緥绀轰緥":
       state.positiveExample = text;
       return true;
     case "反例示例":
-    case "鍙嶄緥绀轰緥":
       state.negativeExample = text;
       return true;
     case "来源依据":
-    case "鏉ユ簮渚濇嵁":
       state.sourceBasis = text;
       return true;
     default:

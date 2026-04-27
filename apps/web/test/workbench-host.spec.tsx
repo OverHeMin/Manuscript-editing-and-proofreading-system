@@ -250,7 +250,6 @@ test("knowledge reviewer legacy learning-review hashes resolve to the live rule 
   );
   assert.doesNotMatch(markup, /learning-review-compat/u);
   return;
-  assert.match(markup, /workbench-header-focus-card[\s\S]*?瑙勫垯涓績/u);
   assert.doesNotMatch(markup, /learning-review-compat/u);
 });
 

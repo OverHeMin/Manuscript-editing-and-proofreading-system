@@ -4,3 +4,4 @@ export * from "./in-memory-learning-governance-repository.ts";
 export * from "./postgres-learning-governance-repository.ts";
 export * from "./learning-governance-service.ts";
 export * from "./learning-governance-api.ts";
+export * from "./learning-feedback-loop-verifier.ts";

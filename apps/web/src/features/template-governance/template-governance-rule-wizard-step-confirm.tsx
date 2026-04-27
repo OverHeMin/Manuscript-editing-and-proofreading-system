@@ -357,7 +357,7 @@ function RuleWizardMultiSelectField(props: {
       searchFieldClassName="knowledge-library-grid-search"
       searchPlaceholder={
         props.dataKey === "confirm-manuscript-types"
-          ? "\u93bc\u6ec5\u50a8\u7ecb\u5938\u6b22\u7eeb\u8bf2\u7037"
+          ? "\u641c\u7d22\u7a3f\u4ef6\u7c7b\u578b"
           : `搜索${props.label}`
       }
       optionsClassName="knowledge-library-toggle-group"

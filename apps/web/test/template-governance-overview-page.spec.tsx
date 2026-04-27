@@ -91,12 +91,45 @@ test("rule center overview renders approved A-layout shell", () => {
         /template-governance-card template-governance-overview-metric"/g,
       ) ?? []
     ).length,
-    10,
+    5,
   );
   assert.equal(
     (markup.match(/template-governance-overview-metric-value/g) ?? []).length,
-    10,
+    5,
   );
+});
+
+test("rule center overview collapses duplicate operational metrics into decision cards", () => {
+  const markup = renderToStaticMarkup(
+    <TemplateGovernanceOverviewPage
+      metrics={{
+        templateCount: 4,
+        moduleCount: 9,
+        pendingKnowledgeCount: 3,
+        extractionAwaitingConfirmationCount: 6,
+        pendingReviewCount: 5,
+        harnessQueuedCount: 2,
+        harnessPassedCount: 4,
+        harnessFailedCount: 1,
+        ruleDraftWritebackDraftCount: 2,
+        ruleDraftWritebackAppliedCount: 7,
+      }}
+    />,
+  );
+
+  assert.equal(
+    (
+      markup.match(
+        /template-governance-card template-governance-overview-metric"/g,
+      ) ?? []
+    ).length,
+    5,
+  );
+  assert.match(markup, /data-governance-metric-kind="harness"/u);
+  assert.match(markup, /data-governance-metric-kind="manual-review"/u);
+  assert.doesNotMatch(markup, /data-governance-metric-kind="harness-passed"/u);
+  assert.doesNotMatch(markup, /data-governance-metric-kind="harness-failed"/u);
+  assert.doesNotMatch(markup, /data-governance-metric-kind="rule-writeback-applied"/u);
 });
 
 test("rule center overview surfaces release posture and blocked promotion metrics", () => {
@@ -136,7 +169,7 @@ test("rule center overview surfaces release posture and blocked promotion metric
         /template-governance-card template-governance-overview-metric"/g,
       ) ?? []
     ).length,
-    15,
+    6,
   );
 });
 
