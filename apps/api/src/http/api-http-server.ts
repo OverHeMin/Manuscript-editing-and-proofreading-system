@@ -107,6 +107,7 @@ import {
 } from "../modules/ai-provider-runtime/index.ts";
 import {
   AiProviderCredentialCrypto,
+  AiProviderAutoConfigurationService,
   AiProviderConnectionNotFoundError,
   AiProviderConnectionValidationError,
   createAiProviderConnectionApi,
@@ -138,7 +139,10 @@ import {
   DocumentExportAssetNotFoundError,
   DocumentStructureService,
   DocumentExportService,
+  DocumentNormalizationService,
+  DocumentNormalizationWorkflowService,
   EditorialDocxTransformService,
+  LocalDocumentNormalizationConverter,
   PythonDocxSourceBlockResolver,
   PythonDocxStructureWorkerAdapter,
 } from "../modules/document-pipeline/index.ts";
@@ -329,6 +333,7 @@ import {
   ProofreadingDraftAssetRequiredError,
   ProofreadingDraftContextNotFoundError,
   ProofreadingFinalAssetRequiredError,
+  ProofreadingQualityGateError,
   ProofreadingService,
 } from "../modules/proofreading/index.ts";
 import type {
@@ -530,6 +535,9 @@ type HttpRouteMatch =
       route: "system-settings-ai-providers-create";
     }
   | {
+      route: "system-settings-ai-providers-auto-configure";
+    }
+  | {
       route: "system-settings-ai-providers-update";
       connectionId: string;
     }
@@ -554,6 +562,9 @@ type HttpRouteMatch =
       route: "system-settings-module-defaults-create";
     }
   | {
+      route: "manuscripts-list";
+    }
+  | {
       route: "manuscripts-upload";
     }
   | {
@@ -561,6 +572,10 @@ type HttpRouteMatch =
     }
   | {
       route: "manuscripts-get";
+      manuscriptId: string;
+    }
+  | {
+      route: "manuscripts-archive";
       manuscriptId: string;
     }
   | {
@@ -597,6 +612,23 @@ type HttpRouteMatch =
     }
   | {
       route: "harness-datasets-workbench";
+    }
+  | {
+      route: "harness-datasets-create-gold-set-family";
+    }
+  | {
+      route: "harness-datasets-create-rubric";
+    }
+  | {
+      route: "harness-datasets-publish-rubric";
+      rubricDefinitionId: string;
+    }
+  | {
+      route: "harness-datasets-create-gold-set-version";
+    }
+  | {
+      route: "harness-datasets-publish-gold-set-version";
+      goldSetVersionId: string;
     }
   | {
       route: "harness-datasets-export-gold-set-version";
@@ -653,6 +685,10 @@ type HttpRouteMatch =
     }
   | {
       route: "modules-proofreading-pass-run-retry";
+      passRunId: string;
+    }
+  | {
+      route: "modules-proofreading-pass-run-detail";
       passRunId: string;
     }
   | {
@@ -1372,6 +1408,7 @@ export interface ApiServerRuntime {
   editorialRuleApi: ReturnType<typeof createEditorialRuleApi>;
   editingApi: ReturnType<typeof createEditingApi>;
   manuscriptApi: ReturnType<typeof createManuscriptApi>;
+  documentNormalizationWorkflowService?: DocumentNormalizationWorkflowService;
   proofreadingApi: ReturnType<typeof createProofreadingApi>;
   screeningApi: ReturnType<typeof createScreeningApi>;
   documentPipelineApi: {
@@ -1439,6 +1476,7 @@ export interface ApiServerRuntime {
   toolPermissionPolicyApi: ReturnType<typeof createToolPermissionPolicyApi>;
   userAdminApi?: ReturnType<typeof createUserAdminApi>;
   aiProviderConnectionApi?: ReturnType<typeof createAiProviderConnectionApi>;
+  aiProviderAutoConfigurationService?: AiProviderAutoConfigurationService;
   permissionGuard: PermissionGuard;
 }
 
@@ -1579,6 +1617,18 @@ export function createInMemoryApiRuntime(input: {
     assetRepository,
     manuscriptRepository,
   });
+  const documentNormalizationWorkflowService =
+    new DocumentNormalizationWorkflowService({
+      normalizationService: new DocumentNormalizationService(),
+      assetService: documentAssetService,
+      toolingStatus: {
+        libreOfficeAvailable: true,
+      },
+      converter: new LocalDocumentNormalizationConverter({
+        rootDir: input.uploadRootDir,
+        libreOfficeAvailable: true,
+      }),
+    });
   const documentStructureService = new DocumentStructureService({
     adapter: new PythonDocxStructureWorkerAdapter({
       assetRepository,
@@ -1833,6 +1883,10 @@ export function createInMemoryApiRuntime(input: {
     credentialCrypto: new AiProviderCredentialCrypto({
       AI_PROVIDER_MASTER_KEY: Buffer.alloc(32, 0x41).toString("base64"),
     }),
+  });
+  const aiProviderAutoConfigurationService = new AiProviderAutoConfigurationService({
+    connectionService: aiProviderConnectionService,
+    modelRegistryService,
   });
   const screeningExecutor: MainlineAiRuntimeExecutor = {
     async executeJson<T>(_input: ExecuteMainlineAiInput): Promise<T> {
@@ -2091,6 +2145,7 @@ export function createInMemoryApiRuntime(input: {
     executionGovernanceService,
     executionTrackingService,
     jobRepository,
+    harnessDatasetRepository,
     proofreadingPassRunRepository,
     documentAssetService,
     aiGatewayService,
@@ -2147,6 +2202,7 @@ export function createInMemoryApiRuntime(input: {
       agentExecutionService,
       moduleExecutionConcurrencyController,
     }),
+    documentNormalizationWorkflowService,
     proofreadingApi: createProofreadingApi({
       proofreadingService,
     }),
@@ -2257,6 +2313,7 @@ export function createInMemoryApiRuntime(input: {
     aiProviderConnectionApi: createAiProviderConnectionApi({
       aiProviderConnectionService,
     }),
+    aiProviderAutoConfigurationService,
     permissionGuard,
   };
 }
@@ -4349,6 +4406,33 @@ async function handleRoute(
         input: body,
       });
     }
+    case "system-settings-ai-providers-auto-configure": {
+      const aiProviderAutoConfigurationService =
+        runtime.aiProviderAutoConfigurationService;
+      if (!aiProviderAutoConfigurationService) {
+        return createUnavailableAiProviderConnectionsResponse();
+      }
+
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        apiKey?: string;
+        providerKind?: string;
+        baseUrl?: string;
+        connectionName?: string;
+      };
+
+      return {
+        status: 201,
+        body: await aiProviderAutoConfigurationService.configureFromApiKey({
+          actorId: session.user.id,
+          actorRole: session.user.role,
+          apiKey: body.apiKey ?? "",
+          providerKind: coalesceOptionalString(body.providerKind),
+          baseUrl: coalesceOptionalString(body.baseUrl),
+          connectionName: coalesceOptionalString(body.connectionName),
+        }),
+      };
+    }
     case "system-settings-ai-providers-update": {
       const aiProviderConnectionApi = runtime.aiProviderConnectionApi;
       if (!aiProviderConnectionApi) {
@@ -4499,12 +4583,18 @@ async function handleRoute(
         uploadRootDir,
       });
 
-      return runtime.manuscriptApi.upload({
+      const response = await runtime.manuscriptApi.upload({
         ...uploadBody,
         fileContentBase64: body.fileContentBase64,
         createdBy: session.user.id,
         storageKey,
       });
+      await normalizeUploadedManuscriptIfAvailable({
+        runtime,
+        uploadResponse: response,
+      });
+
+      return response;
     }
     case "manuscripts-upload-batch": {
       const session = await requirePermission(req, runtime, "manuscripts.submit");
@@ -4542,14 +4632,30 @@ async function handleRoute(
         }),
       );
 
-      return runtime.manuscriptApi.uploadBatch({
+      const response = await runtime.manuscriptApi.uploadBatch({
         createdBy: session.user.id,
         items,
       });
+      for (const item of response.body.items) {
+        await normalizeUploadedManuscriptIfAvailable({
+          runtime,
+          uploadResponse: {
+            status: 201,
+            body: item,
+          },
+        });
+      }
+
+      return response;
     }
     case "manuscripts-get":
       await requireManuscriptSurfaceSession(req, runtime, "manuscript workbench");
       return runtime.manuscriptApi.getManuscript({
+        manuscriptId: routeMatch.manuscriptId,
+      });
+    case "manuscripts-archive":
+      await requireManuscriptSurfaceSession(req, runtime, "manuscript workbench");
+      return runtime.manuscriptApi.archiveManuscript({
         manuscriptId: routeMatch.manuscriptId,
       });
     case "manuscripts-harness-matrix":
@@ -4577,6 +4683,11 @@ async function handleRoute(
       await requireManuscriptSurfaceSession(req, runtime, "manuscript workbench");
       return runtime.manuscriptApi.listAssets({
         manuscriptId: routeMatch.manuscriptId,
+      });
+    case "manuscripts-list":
+      await requireManuscriptSurfaceSession(req, runtime, "manuscript workbench");
+      return runtime.manuscriptApi.listManuscripts({
+        limit: parsePositiveIntegerFromUrl(req.url, "limit"),
       });
     case "module-execution-concurrency":
       await requireManuscriptSurfaceSession(req, runtime, "manuscript workbench");
@@ -4618,6 +4729,62 @@ async function handleRoute(
       return runtime.harnessDatasetApi.listWorkbenchOverview({
         actorRole: session.user.role,
         exportRootDir: harnessExportRootDir,
+      });
+    }
+    case "harness-datasets-create-gold-set-family": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.harnessDatasetApi.createGoldSetFamily
+      >[0]["input"];
+      return runtime.harnessDatasetApi.createGoldSetFamily({
+        actorRole: session.user.role,
+        input: body,
+      });
+    }
+    case "harness-datasets-create-rubric": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.harnessDatasetApi.createRubricDefinition
+      >[0]["input"];
+      return runtime.harnessDatasetApi.createRubricDefinition({
+        actorRole: session.user.role,
+        input: {
+          ...body,
+          createdBy: session.user.id,
+        },
+      });
+    }
+    case "harness-datasets-publish-rubric": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      return runtime.harnessDatasetApi.publishRubricDefinition({
+        actorRole: session.user.role,
+        rubricDefinitionId: routeMatch.rubricDefinitionId,
+        input: {
+          publishedBy: session.user.id,
+        },
+      });
+    }
+    case "harness-datasets-create-gold-set-version": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.harnessDatasetApi.createGoldSetVersion
+      >[0]["input"];
+      return runtime.harnessDatasetApi.createGoldSetVersion({
+        actorRole: session.user.role,
+        input: {
+          ...body,
+          createdBy: session.user.id,
+        },
+      });
+    }
+    case "harness-datasets-publish-gold-set-version": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      return runtime.harnessDatasetApi.publishGoldSetVersion({
+        actorRole: session.user.role,
+        goldSetVersionId: routeMatch.goldSetVersionId,
+        input: {
+          publishedBy: session.user.id,
+        },
       });
     }
     case "harness-datasets-export-gold-set-version": {
@@ -4802,6 +4969,13 @@ async function handleRoute(
       return runtime.proofreadingApi.retryDeepPassRun({
         passRunId: routeMatch.passRunId,
         requestedBy: session.user.id,
+        actorRole: session.user.role,
+      });
+    }
+    case "modules-proofreading-pass-run-detail": {
+      const session = await requirePermission(req, runtime, "workbench.proofreading");
+      return runtime.proofreadingApi.getDeepPassRun({
+        passRunId: routeMatch.passRunId,
         actorRole: session.user.role,
       });
     }
@@ -6538,6 +6712,9 @@ async function handleRoute(
     }
     case "review-items-list":
       await requirePermission(req, runtime, "learning.review");
+      const reviewStatus = normalizeReviewItemReviewStatus(
+        readRequestUrl(req).searchParams.get("reviewStatus") ?? undefined,
+      );
       return runtime.reviewItemsApi.listReviewItems({
         sourceKind: normalizeReviewItemSourceKind(
           readRequestUrl(req).searchParams.get("sourceKind") ?? undefined,
@@ -6550,9 +6727,8 @@ async function handleRoute(
         riskLevel: normalizeReviewItemRiskLevel(
           readRequestUrl(req).searchParams.get("riskLevel") ?? undefined,
         ),
-        reviewStatus: normalizeReviewItemReviewStatus(
-          readRequestUrl(req).searchParams.get("reviewStatus") ?? undefined,
-        ),
+        reviewStatus,
+        includeDecided: reviewStatus !== undefined && reviewStatus !== "pending",
       });
     case "review-items-decide": {
       const body = (await readJsonBody(req)) as Record<string, unknown>;
@@ -6987,6 +7163,13 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "system-settings-ai-providers-create" };
   }
 
+  if (
+    method === "POST" &&
+    path === "/api/v1/system-settings/ai-providers/auto-configure"
+  ) {
+    return { route: "system-settings-ai-providers-auto-configure" };
+  }
+
   if (method === "GET" && path === "/api/v1/system-settings/models") {
     return { route: "system-settings-models-list" };
   }
@@ -7081,6 +7264,20 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "manuscripts-upload-batch" };
   }
 
+  if (method === "GET" && path === "/api/v1/manuscripts") {
+    return { route: "manuscripts-list" };
+  }
+
+  const manuscriptArchiveMatch = path.match(
+    /^\/api\/v1\/manuscripts\/([^/]+)\/archive$/,
+  );
+  if (method === "POST" && manuscriptArchiveMatch) {
+    return {
+      route: "manuscripts-archive",
+      manuscriptId: decodeURIComponent(manuscriptArchiveMatch[1]),
+    };
+  }
+
   if (method === "POST" && path === "/api/v1/document-pipeline/preview-session") {
     return { route: "document-pipeline-preview-session" };
   }
@@ -7105,6 +7302,38 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
   if (method === "GET" && path === "/api/v1/harness-datasets/workbench") {
     return { route: "harness-datasets-workbench" };
+  }
+
+  if (method === "POST" && path === "/api/v1/harness-datasets/gold-set-families") {
+    return { route: "harness-datasets-create-gold-set-family" };
+  }
+
+  if (method === "POST" && path === "/api/v1/harness-datasets/rubrics") {
+    return { route: "harness-datasets-create-rubric" };
+  }
+
+  const publishHarnessRubricMatch = path.match(
+    /^\/api\/v1\/harness-datasets\/rubrics\/([^/]+)\/publish$/,
+  );
+  if (method === "POST" && publishHarnessRubricMatch) {
+    return {
+      route: "harness-datasets-publish-rubric",
+      rubricDefinitionId: publishHarnessRubricMatch[1],
+    };
+  }
+
+  if (method === "POST" && path === "/api/v1/harness-datasets/gold-set-versions") {
+    return { route: "harness-datasets-create-gold-set-version" };
+  }
+
+  const publishHarnessGoldSetVersionMatch = path.match(
+    /^\/api\/v1\/harness-datasets\/gold-set-versions\/([^/]+)\/publish$/,
+  );
+  if (method === "POST" && publishHarnessGoldSetVersionMatch) {
+    return {
+      route: "harness-datasets-publish-gold-set-version",
+      goldSetVersionId: publishHarnessGoldSetVersionMatch[1],
+    };
   }
 
   const exportHarnessGoldSetVersionMatch = path.match(
@@ -7174,6 +7403,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return {
       route: "modules-proofreading-pass-run-retry",
       passRunId: proofreadingPassRunRetryMatch[1],
+    };
+  }
+
+  const proofreadingPassRunDetailMatch = path.match(
+    /^\/api\/v1\/modules\/proofreading\/pass-runs\/([^/]+)$/,
+  );
+  if (method === "GET" && proofreadingPassRunDetailMatch) {
+    return {
+      route: "modules-proofreading-pass-run-detail",
+      passRunId: proofreadingPassRunDetailMatch[1],
     };
   }
 
@@ -9451,6 +9690,7 @@ export function mapErrorToHttpResponse(
     error instanceof ToolPermissionPolicyUnknownToolError ||
     error instanceof ProofreadingDraftAssetRequiredError ||
     error instanceof ProofreadingFinalAssetRequiredError ||
+    error instanceof ProofreadingQualityGateError ||
     error instanceof AiProviderConnectionValidationError ||
     error instanceof InlineUploadStorageReferenceRequiredError ||
     error instanceof InlineUploadPayloadInvalidError ||
@@ -9725,12 +9965,48 @@ async function resolveUploadStorageKey(input: {
   throw new InlineUploadStorageReferenceRequiredError();
 }
 
+async function normalizeUploadedManuscriptIfAvailable(input: {
+  runtime: ApiServerRuntime;
+  uploadResponse: Awaited<ReturnType<ApiServerRuntime["manuscriptApi"]["upload"]>>;
+}): Promise<void> {
+  const workflowService = input.runtime.documentNormalizationWorkflowService;
+  if (!workflowService) {
+    return;
+  }
+
+  const { manuscript, asset, job } = input.uploadResponse.body;
+  await workflowService.normalize({
+    manuscriptId: manuscript.id,
+    sourceAssetId: asset.id,
+    fileName: asset.file_name ?? "uploaded.docx",
+    mimeType: asset.mime_type,
+    storageKey: asset.storage_key,
+    createdBy: asset.created_by,
+    sourceJobId: job.id,
+  });
+}
+
 function resolveDefaultUploadRootDir(appEnv: AppEnv): string {
   return path.resolve(process.cwd(), ".local-data", "uploads", appEnv);
 }
 
 function resolveDefaultHarnessExportRootDir(appEnv: AppEnv): string {
   return path.resolve(process.cwd(), ".local-data", "harness-exports", appEnv);
+}
+
+function parsePositiveIntegerFromUrl(
+  rawUrl: string | undefined,
+  parameterName: string,
+): number | undefined {
+  const value = new URL(rawUrl ?? "/", "http://localhost").searchParams.get(
+    parameterName,
+  );
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function buildDownloadHeaders(

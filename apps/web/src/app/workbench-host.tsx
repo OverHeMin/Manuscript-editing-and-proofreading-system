@@ -75,6 +75,11 @@ export function WorkbenchHost({
   const canOpenEvaluationWorkbench = visibleEntries.some(
     (entry) => entry.id === "evaluation-workbench",
   );
+  const isFullscreenManuscriptDetail =
+    routeState.presentation === "fullscreen" &&
+    routeState.activeWorkbenchId === "proofreading" &&
+    Boolean(routeState.manuscriptId) &&
+    Boolean(routeState.assetId);
 
   useEffect(() => {
     if (visibleEntries.length === 0) {
@@ -186,6 +191,16 @@ export function WorkbenchHost({
   const activeWorkbenchGroupLabel = activeNavigationGroup?.label ?? "当前工作区";
   const activeRenderKind = resolveWorkbenchRenderKind(activeWorkbenchId);
 
+  if (isFullscreenManuscriptDetail) {
+    return (
+      <main className="app-shell workbench-shell workbench-shell--fullscreen">
+        <section className="workbench-content workbench-content--manuscript-workbench workbench-content--fullscreen">
+          {renderContent()}
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="app-shell">
       <section className="workbench-host">
@@ -249,6 +264,7 @@ export function WorkbenchHost({
             mode={activeWorkbenchId as ManuscriptWorkbenchMode}
             prefilledManuscriptId={routeState.manuscriptId}
             prefilledAssetId={routeState.assetId}
+            presentation={routeState.presentation}
             prefilledReviewedCaseSnapshotId={routeState.reviewedCaseSnapshotId}
             prefilledSampleSetItemId={routeState.sampleSetItemId}
             accessibleHandoffModes={accessibleManuscriptWorkbenchModes}
@@ -380,6 +396,7 @@ export function WorkbenchHost({
       ruleCenterMode: handoff?.ruleCenterMode,
       settingsSection: handoff?.settingsSection,
       harnessSection: handoff?.harnessSection,
+      presentation: handoff?.presentation,
     });
 
     if (typeof window !== "undefined") {
@@ -516,6 +533,7 @@ function resolveInitialWorkbenchRoute(
       ruleCenterMode: "learning",
       settingsSection: location.settingsSection,
       harnessSection: location.harnessSection,
+      presentation: location.presentation,
     };
   }
 
@@ -538,6 +556,7 @@ function resolveInitialWorkbenchRoute(
       ruleCenterMode: location.ruleCenterMode,
       settingsSection: location.settingsSection,
       harnessSection: location.harnessSection,
+      presentation: location.presentation,
     };
   }
 

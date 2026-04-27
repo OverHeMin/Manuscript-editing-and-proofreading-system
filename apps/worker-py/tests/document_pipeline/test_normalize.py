@@ -5,7 +5,9 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from document_pipeline.normalize import (
+    DEFAULT_LIBREOFFICE_BINARY_CANDIDATES,
     build_normalization_job,
+    resolve_libreoffice_binary,
     run_libreoffice_conversion,
 )
 
@@ -88,16 +90,29 @@ def test_doc_file_without_libreoffice_stays_auditable_and_preview_pending():
     ]
 
 
-def test_libreoffice_adapter_reports_tool_unavailable_without_binary():
+def test_libreoffice_adapter_reports_tool_unavailable_without_binary(monkeypatch):
+    monkeypatch.setattr("shutil.which", lambda _: None)
+    monkeypatch.setattr("pathlib.Path.exists", lambda _: False)
+
     conversion_result = run_libreoffice_conversion(
         source_path="C:/tmp/submission.doc",
         output_dir="C:/tmp/output",
-        tooling={"libreoffice_binary": None},
+        tooling={},
     )
 
     assert conversion_result["status"] == "tool_unavailable"
     assert conversion_result["backend"] == "libreoffice"
     assert conversion_result["output_path"] is None
+
+
+def test_resolve_libreoffice_binary_checks_windows_default_install_path(monkeypatch):
+    monkeypatch.setattr("shutil.which", lambda _: None)
+    monkeypatch.setattr(
+        "pathlib.Path.exists",
+        lambda self: self.as_posix() == DEFAULT_LIBREOFFICE_BINARY_CANDIDATES[0],
+    )
+
+    assert resolve_libreoffice_binary() == DEFAULT_LIBREOFFICE_BINARY_CANDIDATES[0]
 
 
 def test_libreoffice_adapter_returns_converted_docx_path_when_runner_succeeds():

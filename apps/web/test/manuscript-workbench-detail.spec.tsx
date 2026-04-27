@@ -10,6 +10,8 @@ import {
   buildEditingGuardrailEntries,
   buildEditingSlotGovernanceSummary,
   buildProofreadingConfirmationItems,
+  buildProofreadingDeepPassAuditRuns,
+  buildProofreadingLayerMatrix,
   buildProofreadingDocumentBlocks,
   buildProofreadingIssueMarkers,
   buildProofreadingIssueSummary,
@@ -21,6 +23,135 @@ import {
   resolvePreviewOperationalState,
   resolveManuscriptAssetDetailKind,
 } from "../src/features/manuscript-workbench/manuscript-workbench-detail.tsx";
+
+test("proofreading confirmation detail renders deep pass segment audit evidence", () => {
+  const job = {
+    payload: {
+      proofreadingDeepPassRuns: [
+        {
+          id: "pass-run-1",
+          pass_no: 1,
+          pass_kind: "medical_facts_and_terminology",
+          status: "completed",
+          model_id: "qwen-max",
+          output: {
+            segmentation: {
+              segmentCount: 1,
+              completedSegmentCount: 1,
+              failedSegmentCount: 0,
+              coverageRatio: 0.5,
+              segments: [
+                {
+                  segmentNo: 1,
+                  status: "completed",
+                  attemptCount: 2,
+                  elapsedMs: 1234,
+                  issueCount: 3,
+                  blockIndexes: [0, 2, 5],
+                  inputPreview: [
+                    {
+                      blockIndex: 2,
+                      section: "结果",
+                      blockKind: "table",
+                      textPreview: "表1 两组患者基线资料比较",
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      ],
+      proofreadingLayerMatrix: [
+        {
+          layer_id: "context_consistency",
+          label: "Whole-document context consistency",
+          status: "completed",
+          required_for_release: true,
+          evidence: {
+            pass_kind: "structure_logic_and_consistency",
+            issue_count: 2,
+          },
+        },
+        {
+          layer_id: "statistics_expression",
+          label: "Statistics and numeric expression",
+          status: "completed",
+          required_for_release: true,
+          evidence: {
+            pass_kind: "data_statistics_units_and_tables",
+            issue_count: 3,
+          },
+        },
+      ],
+    },
+  };
+  const passRuns = buildProofreadingDeepPassAuditRuns(job);
+  const layerMatrix = buildProofreadingLayerMatrix(job);
+
+  assert.equal(passRuns.length, 1);
+  assert.deepEqual(passRuns[0]?.segments[0]?.blockIndexes, [0, 2, 5]);
+
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchAssetDetailPage
+      mode="proofreading"
+      manuscriptTitle="校对验收稿件"
+      asset={{
+        id: "asset-proofreading-1",
+        manuscript_id: "manuscript-1",
+        asset_type: "proofreading_draft_report",
+        status: "active",
+        storage_key: "runs/proofreading/report.md",
+        mime_type: "text/markdown",
+        source_module: "proofreading",
+        created_by: "proofreader-1",
+        version_no: 2,
+        is_current: true,
+        file_name: "proofreading-report.md",
+        created_at: "2026-04-26T09:00:00.000Z",
+        updated_at: "2026-04-26T09:05:00.000Z",
+      }}
+      detailKind="proofreading_confirmation"
+      backHref="#proofreading?manuscriptId=manuscript-1"
+      downloadHref="http://localhost/api/v1/document-assets/asset-proofreading-1/download"
+      proofreadingPassRuns={passRuns}
+      proofreadingLayerMatrix={layerMatrix}
+      confirmationItems={[
+        {
+          itemId: "issue-1",
+          title: "表格统计格式问题",
+          severity: "medium",
+          source: "segmented_deep_pass",
+          issueType: "table_statistics",
+          targetText: "P=0.001",
+          replacementText: "P＜0.001",
+          anchor: {
+            blockIndex: 2,
+            quote: "P=0.001",
+            sectionLabel: "结果",
+          },
+        },
+      ]}
+      proofreadingDocumentBlocks={[
+        {
+          blockId: "proofreading-block-2",
+          blockIndex: 2,
+          sectionLabel: "结果",
+          blockKind: "table",
+          text: "表1 两组患者基线资料比较",
+        },
+      ]}
+    />,
+  );
+
+  assert.match(markup, /校对分段审计/u);
+  assert.match(markup, /Pass 1: medical_facts_and_terminology/u);
+  assert.match(markup, /blocks: 0, 2, 5/u);
+  assert.match(markup, /Proofreading layer quality matrix/u);
+  assert.match(markup, /context_consistency/u);
+  assert.match(markup, /statistics_expression/u);
+  assert.match(markup, /表1 两组患者基线资料比较/u);
+});
 
 test("asset detail helpers build hash-based preview routes for manuscript assets", () => {
   assert.equal(
@@ -1203,6 +1334,144 @@ test("proofreading detail page renders the dedicated issue workbench with explic
   assert.match(markup, /data-active-locate-anchor-kind="paragraph"/);
   assert.doesNotMatch(markup, /proofreading-draft\.md/u);
 });
+
+test("editing detail renders the edited docx in an onlyoffice-first workspace", () => {
+  const editedAsset = {
+    id: "asset-edited-1",
+    manuscript_id: "manuscript-1",
+    asset_type: "edited_docx",
+    status: "active",
+    storage_key: "runs/editing/edited.docx",
+    mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    source_module: "editing",
+    created_by: "editor-1",
+    version_no: 2,
+    is_current: true,
+    file_name: "edited.docx",
+    created_at: "2026-04-24T09:00:00.000Z",
+    updated_at: "2026-04-24T09:00:00.000Z",
+  } as const;
+
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchAssetDetailPage
+      mode="editing"
+      manuscriptTitle="编辑可视化稿件"
+      asset={editedAsset}
+      detailKind="document_preview"
+      backHref="#editing?manuscriptId=manuscript-1"
+      downloadHref="http://localhost/api/v1/document-assets/asset-edited-1/download"
+      previewSession={{
+        manuscript_id: "manuscript-1",
+        source_asset_id: "asset-edited-1",
+        source_asset_type: "normalized_docx",
+        viewer: "onlyoffice",
+        mode: "view",
+        surface_mode: "read_only_review",
+        status: "ready",
+        mime_type:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        comment_source: "onlyoffice",
+        comments: [],
+        session_id: "preview-session-editing-1",
+        correlation_id: "preview-session-editing-1",
+        document: {
+          document_key: "asset-edited-1",
+          file_name: "edited.docx",
+          file_extension: "docx",
+          mime_type:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          download_path: "/api/v1/document-assets/asset-edited-1/download",
+          permissions: {
+            edit: false,
+            comment: false,
+            review: false,
+            download: true,
+            print: true,
+          },
+        },
+        authorization: {
+          kind: "surface_session",
+          requires_surface_session: true,
+          token_scheme: "none",
+        },
+        event_bridge: {
+          provider: "onlyoffice",
+          transport: "window_post_message",
+          capabilities: {
+            ready_event: true,
+            locate_to_anchor: true,
+            selection_from_document: true,
+            visible_issue_marks: false,
+            bi_directional_sync: true,
+          },
+        },
+        embed: {
+          provider: "onlyoffice",
+          provider_origin: "http://127.0.0.1:58080",
+          api_js_url: "http://127.0.0.1:58080/web-apps/apps/api/documents/api.js",
+          document_type: "word",
+          ui_type: "desktop",
+          editor_config: {
+            mode: "view",
+            lang: "zh-CN",
+            customization: {
+              autosave: false,
+              chat: false,
+              comments: false,
+              compactHeader: true,
+              compactToolbar: true,
+              feedback: false,
+              forcesave: false,
+              help: false,
+              submitForm: false,
+            },
+          },
+        },
+        save_back_enabled: false,
+        warnings: [],
+      }}
+    />,
+  );
+
+  assert.match(markup, /data-editing-layout="onlyoffice-review"/u);
+  assert.match(markup, /data-document-surface-provider="onlyoffice"/u);
+  assert.match(markup, /编辑可视化稿件/u);
+  assert.doesNotMatch(markup, /治理命中依据/u);
+});
+
+test("editing detail keeps the onlyoffice-first workspace without a preview session", () => {
+  const editedAsset = {
+    id: "asset-edited-pending",
+    manuscript_id: "manuscript-1",
+    asset_type: "edited_docx",
+    status: "active",
+    storage_key: "runs/editing/edited.docx",
+    mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    source_module: "editing",
+    created_by: "editor-1",
+    version_no: 2,
+    is_current: true,
+    file_name: "edited.docx",
+    created_at: "2026-04-24T09:00:00.000Z",
+    updated_at: "2026-04-24T09:00:00.000Z",
+  } as const;
+
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchAssetDetailPage
+      mode="editing"
+      manuscriptTitle="编辑待预览稿件"
+      asset={editedAsset}
+      detailKind="document_preview"
+      backHref="#editing?manuscriptId=manuscript-1"
+      downloadHref="http://localhost/api/v1/document-assets/asset-edited-pending/download"
+    />,
+  );
+
+  assert.match(markup, /data-editing-layout="onlyoffice-review"/u);
+  assert.match(markup, /\u7f16\u8f91\u5f85\u9884\u89c8\u7a3f\u4ef6/u);
+  assert.doesNotMatch(markup, /\u6cbb\u7406\u547d\u4e2d\u4f9d\u636e/u);
+});
+
 
 test("proofreading detail helpers rebuild confirmation draft state from the persisted confirmation draft payload", () => {
   const state = buildProofreadingConfirmationDraftState({

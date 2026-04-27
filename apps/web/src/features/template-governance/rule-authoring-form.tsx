@@ -62,6 +62,12 @@ export function RuleAuthoringForm({
             {selectedRuleSet.version_no}（
             {selectedRuleSet.journal_template_id ? "期刊加层" : "模板族基线"}）
           </p>
+          <p
+            className="template-governance-selected-note"
+            data-rule-compact-guidance="field"
+          >
+            规则中心负责可执行判断；知识条目只放证据、依据、范例或解释。
+          </p>
           <form className="template-governance-form-grid" onSubmit={onSubmit}>
             <label className="template-governance-field">
               <span>规则对象</span>
@@ -171,9 +177,6 @@ export function RuleAuthoringForm({
               draft={draft}
               onDraftChange={onDraftChange}
             />
-
-            <RuleAuthoringParameterGuide />
-
             <RuleAuthoringLinkedKnowledgeField
               draft={draft}
               knowledgeItems={knowledgeItems}
@@ -198,28 +201,6 @@ export function RuleAuthoringForm({
   );
 }
 
-function RuleAuthoringParameterGuide() {
-  return (
-    <section
-      className="template-governance-card template-governance-field-full"
-      data-rule-parameter-guide="field"
-    >
-      <strong>参数说明</strong>
-      <p>规则中心负责可执行判断，知识条目只放证据、依据、范例或解释。</p>
-      <div className="template-governance-chip-row">
-        <span className="template-governance-chip">
-          执行方式决定是自动改写还是只检查
-        </span>
-        <span className="template-governance-chip">
-          置信策略决定何时允许自动执行
-        </span>
-        <span className="template-governance-chip">
-          关联知识条目只挂支撑证据，不承载执行逻辑
-        </span>
-      </div>
-    </section>
-  );
-}
 
 function RuleAuthoringPlatformScopeFields({
   selectedRuleSet,

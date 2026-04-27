@@ -122,6 +122,35 @@ export function createManuscriptApi(options: CreateManuscriptApiOptions) {
   );
 
   return {
+    async listManuscripts({
+      limit,
+    }: {
+      limit?: number;
+    } = {}): Promise<RouteResponse<ManuscriptViewRecord[]>> {
+      const manuscripts = await manuscriptService.listRecentManuscripts(limit);
+
+      return {
+        status: 200,
+        body: await Promise.all(
+          manuscripts.map((manuscript) =>
+            enrichManuscriptView(manuscript, {
+              manuscriptService,
+              assetService,
+              executionResolutionService: options.executionResolutionService,
+              executionTrackingService: options.executionTrackingService,
+              executionTrackingViewOptions: {
+                executionGovernanceRepository: options.executionGovernanceRepository,
+                runtimeBindingReadinessService: options.runtimeBindingReadinessService,
+                agentExecutionService: options.agentExecutionService,
+                observationTime: observeNow(),
+                runningAttemptStaleAfterMs,
+              },
+            }),
+          ),
+        ),
+      };
+    },
+
     async upload(
       input: UploadManuscriptInput,
     ): Promise<RouteResponse<Awaited<ReturnType<ManuscriptLifecycleService["upload"]>>>> {
@@ -173,6 +202,31 @@ export function createManuscriptApi(options: CreateManuscriptApiOptions) {
       if (!manuscript) {
         throw new ManuscriptNotFoundError(manuscriptId);
       }
+
+      return {
+        status: 200,
+        body: await enrichManuscriptView(manuscript, {
+          manuscriptService,
+          assetService,
+          executionResolutionService: options.executionResolutionService,
+          executionTrackingService: options.executionTrackingService,
+          executionTrackingViewOptions: {
+            executionGovernanceRepository: options.executionGovernanceRepository,
+            runtimeBindingReadinessService: options.runtimeBindingReadinessService,
+            agentExecutionService: options.agentExecutionService,
+            observationTime: observeNow(),
+            runningAttemptStaleAfterMs,
+          },
+        }),
+      };
+    },
+
+    async archiveManuscript({
+      manuscriptId,
+    }: {
+      manuscriptId: string;
+    }): Promise<RouteResponse<ManuscriptViewRecord>> {
+      const manuscript = await manuscriptService.archiveManuscript(manuscriptId);
 
       return {
         status: 200,
@@ -352,6 +406,7 @@ export interface ManuscriptHarnessMatrixItemRecord {
     | "residual_issue"
     | "learning_candidate"
     | "proofreading_deep_pass"
+    | "gold_set_assertion"
     | "editing_completion_gate"
     | "observation";
   source_id?: string;
@@ -502,6 +557,10 @@ async function buildManuscriptHarnessMatrixModule(input: {
           ),
         )
       : [];
+  const goldSetAssertionItems =
+    input.module === "proofreading"
+      ? extractGoldSetAssertionMatrixItems(latestJob)
+      : [];
   const editingCompletionGateItems =
     input.module === "editing"
       ? extractEditingCompletionGateMatrixItems(
@@ -559,6 +618,7 @@ async function buildManuscriptHarnessMatrixModule(input: {
       ...knowledgeHitLogs.map(mapKnowledgeHitLogToHarnessMatrixItem),
       ...editingCompletionGateItems,
       ...proofreadingPassItems,
+      ...goldSetAssertionItems,
       ...input.reviewItems.map(mapReviewItemToHarnessMatrixItem),
     ],
   };
@@ -793,6 +853,46 @@ function extractProofreadingDeepPassMatrixItems(
   });
 }
 
+function extractGoldSetAssertionMatrixItems(
+  job: JobRecord | undefined,
+): ManuscriptHarnessMatrixItemRecord[] {
+  const payload = asRecord(job?.payload);
+  const result = asRecord(payload?.goldSetAssertionResult);
+  if (!result) {
+    return [];
+  }
+
+  const missedExpectedIssueCount = readNumber(result.missedExpectedIssueCount) ?? 0;
+  const falsePositiveIssueCount = readNumber(result.falsePositiveIssueCount) ?? 0;
+  const recall = readNumber(result.recall);
+  const criticalRecall = readNumber(result.criticalRecall);
+
+  return [
+    {
+      key: "gold_set.assertions",
+      label: "Gold Set assertions",
+      state:
+        missedExpectedIssueCount > 0
+          ? "missed"
+          : falsePositiveIssueCount > 0
+            ? "false_positive"
+            : "hit",
+      source_kind: "gold_set_assertion",
+      source_id: job?.id,
+      title: "Gold Set content assertions",
+      summary: `Recall ${formatHarnessPercent(recall)}; critical recall ${formatHarnessPercent(criticalRecall)}.`,
+      evidence: {
+        expected_issue_count: readNumber(result.expectedIssueCount),
+        matched_expected_issue_count: readNumber(result.matchedExpectedIssueCount),
+        missed_expected_issue_count: missedExpectedIssueCount,
+        false_positive_issue_count: falsePositiveIssueCount,
+        recall,
+        critical_recall: criticalRecall,
+      },
+    },
+  ];
+}
+
 function mapProofreadingPassRunToMatrixItem(
   passRun: ProofreadingPassRunRecord,
 ): ManuscriptHarnessMatrixItemRecord {
@@ -839,6 +939,14 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function readNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function formatHarnessPercent(value: number | undefined): string {
+  return value === undefined ? "not recorded" : `${Math.round(value * 100)}%`;
 }
 
 function deriveReviewItemMatrixState(

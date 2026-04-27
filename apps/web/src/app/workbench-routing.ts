@@ -32,6 +32,7 @@ export type TemplateGovernanceView =
   | "extraction-ledger"
   | "general-package-ledger"
   | "medical-package-ledger";
+export type WorkbenchPresentation = "default" | "fullscreen";
 
 export interface WorkbenchHandoff {
   manuscriptId?: string;
@@ -48,6 +49,7 @@ export interface WorkbenchHandoff {
   ruleCenterMode?: RuleCenterMode;
   settingsSection?: SettingsSection;
   harnessSection?: HarnessSection;
+  presentation?: WorkbenchPresentation;
 }
 
 export interface WorkbenchLocation {
@@ -66,6 +68,7 @@ export interface WorkbenchLocation {
   ruleCenterMode?: RuleCenterMode;
   settingsSection?: SettingsSection;
   harnessSection?: HarnessSection;
+  presentation?: WorkbenchPresentation;
 }
 
 export function resolveWorkbenchRenderKind(
@@ -157,6 +160,8 @@ export function formatWorkbenchHash(
     typeof handoff === "string" ? undefined : handoff?.settingsSection;
   const harnessSection =
     typeof handoff === "string" ? undefined : handoff?.harnessSection;
+  const presentation =
+    typeof handoff === "string" ? undefined : handoff?.presentation;
 
   if (manuscriptId && manuscriptId.trim().length > 0) {
     params.set("manuscriptId", manuscriptId.trim());
@@ -214,6 +219,10 @@ export function formatWorkbenchHash(
     params.set("harnessSection", harnessSection);
   }
 
+  if (presentation === "fullscreen") {
+    params.set("presentation", presentation);
+  }
+
   const query = params.toString();
   return `#${workbenchId}${query ? `?${query}` : ""}`;
 }
@@ -250,6 +259,7 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
   const ruleCenterMode = normalizeRuleCenterMode(params.get("ruleCenterMode"));
   const settingsSection = normalizeSettingsSection(params.get("settingsSection"));
   const harnessSection = normalizeHarnessSection(params.get("harnessSection"));
+  const presentation = normalizeWorkbenchPresentation(params.get("presentation"));
 
   return {
     workbenchId: rawWorkbenchId,
@@ -273,7 +283,14 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
     ...(ruleCenterMode ? { ruleCenterMode } : {}),
     ...(settingsSection ? { settingsSection } : {}),
     ...(harnessSection ? { harnessSection } : {}),
+    ...(presentation ? { presentation } : {}),
   };
+}
+
+function normalizeWorkbenchPresentation(
+  value: string | null,
+): WorkbenchPresentation | undefined {
+  return value === "fullscreen" ? "fullscreen" : undefined;
 }
 
 export function resolveKnowledgeLibraryEntryView(

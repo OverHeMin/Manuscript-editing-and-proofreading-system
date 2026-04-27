@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { DocumentAssetRepository } from "../assets/document-asset-repository.ts";
 import type {
@@ -26,6 +26,10 @@ export interface PythonDocxSourceBlockResolverOptions {
   assetRepository: DocumentAssetRepository;
   rootDir: string;
   workerRunner?: (sourcePath: string) => Promise<unknown>;
+  legacyDocConverter?: (input: {
+    sourcePath: string;
+    outputDir: string;
+  }) => Promise<{ status: "converted" | "tool_unavailable" | "failed"; outputPath?: string; error?: string }>;
 }
 
 export class PythonDocxSourceBlockResolver
@@ -34,11 +38,15 @@ export class PythonDocxSourceBlockResolver
   private readonly assetRepository: DocumentAssetRepository;
   private readonly rootDir: string;
   private readonly workerRunner: (sourcePath: string) => Promise<unknown>;
+  private readonly legacyDocConverter?: NonNullable<
+    PythonDocxSourceBlockResolverOptions["legacyDocConverter"]
+  >;
 
   constructor(options: PythonDocxSourceBlockResolverOptions) {
     this.assetRepository = options.assetRepository;
     this.rootDir = path.resolve(options.rootDir);
     this.workerRunner = options.workerRunner ?? runWorker;
+    this.legacyDocConverter = options.legacyDocConverter ?? convertLegacyDocWithPython;
   }
 
   async resolveBlocks(input: {
@@ -61,13 +69,58 @@ export class PythonDocxSourceBlockResolver
       throw error;
     }
 
-    try {
-      const raw = await this.workerRunner(sourcePath);
-      return normalizeBlocks(raw);
-    } catch {
+    const readableSourcePath = await this.resolveReadableDocxSourcePath({
+      asset,
+      sourcePath,
+    });
+    if (!readableSourcePath) {
       return [];
     }
+
+    const raw = await this.workerRunner(readableSourcePath);
+    return normalizeBlocks(raw);
   }
+
+  private async resolveReadableDocxSourcePath(input: {
+    asset: {
+      id: string;
+      manuscript_id: string;
+      file_name?: string;
+      mime_type: string;
+    };
+    sourcePath: string;
+  }): Promise<string | undefined> {
+    if (!isLegacyDocAsset(input.asset)) {
+      return input.sourcePath;
+    }
+
+    const outputDir = path.join(
+      this.rootDir,
+      ".normalized-cache",
+      input.asset.manuscript_id,
+      input.asset.id,
+    );
+    await mkdir(outputDir, { recursive: true });
+    const conversion = await this.legacyDocConverter?.({
+      sourcePath: input.sourcePath,
+      outputDir,
+    });
+    if (conversion?.status !== "converted" || !conversion.outputPath) {
+      return undefined;
+    }
+
+    return conversion.outputPath;
+  }
+}
+
+function isLegacyDocAsset(asset: {
+  file_name?: string;
+  mime_type: string;
+}): boolean {
+  return (
+    asset.file_name?.toLowerCase().endsWith(".doc") === true ||
+    asset.mime_type === "application/msword"
+  );
 }
 
 function normalizeBlocks(raw: unknown): EditorialTextBlock[] {
@@ -274,6 +327,122 @@ async function runWorker(sourcePath: string): Promise<unknown> {
   );
 }
 
+async function convertLegacyDocWithPython(input: {
+  sourcePath: string;
+  outputDir: string;
+}): Promise<{
+  status: "converted" | "tool_unavailable" | "failed";
+  outputPath?: string;
+  error?: string;
+}> {
+  let lastError: Error | undefined;
+
+  for (const pythonBin of buildPythonCommandCandidates()) {
+    try {
+      return await runLegacyDocConversionScript(pythonBin, input);
+    } catch (error) {
+      if (isCommandUnavailableError(error)) {
+        lastError = error;
+        continue;
+      }
+
+      return {
+        status: "failed",
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  return {
+    status: "tool_unavailable",
+    error: lastError?.message ?? "No usable Python interpreter was found.",
+  };
+}
+
+function runLegacyDocConversionScript(
+  pythonBin: string,
+  input: {
+    sourcePath: string;
+    outputDir: string;
+  },
+): Promise<{
+  status: "converted" | "tool_unavailable" | "failed";
+  outputPath?: string;
+  error?: string;
+}> {
+  const workerRoot = path.resolve(
+    import.meta.dirname,
+    "../../../../worker-py",
+  );
+  const script = `
+import json
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(${JSON.stringify(workerRoot)}).resolve() / "src"))
+from document_pipeline.normalize import run_libreoffice_conversion
+result = run_libreoffice_conversion(${JSON.stringify(input.sourcePath)}, ${JSON.stringify(input.outputDir)}, {})
+print(json.dumps({
+  "status": result.get("status"),
+  "outputPath": result.get("output_path"),
+  "error": result.get("error"),
+}, ensure_ascii=False))
+`;
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(pythonBin, ["-c", script], {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: buildPythonDocumentPipelineEnv(),
+    });
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code !== 0) {
+        reject(
+          new Error(
+            `Legacy DOC conversion failed with exit code ${code ?? "unknown"}: ${stderr.trim() || "No stderr output."}`,
+          ),
+        );
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(stdout) as {
+          status?: string;
+          outputPath?: string;
+          error?: string;
+        };
+        if (parsed.status === "converted" && parsed.outputPath) {
+          resolve({
+            status: "converted",
+            outputPath: parsed.outputPath,
+          });
+          return;
+        }
+        resolve({
+          status: parsed.status === "tool_unavailable" ? "tool_unavailable" : "failed",
+          error: parsed.error,
+        });
+      } catch (error) {
+        reject(
+          new Error(
+            `Legacy DOC conversion returned invalid JSON: ${String(error)}${
+              stdout.trim() ? `\n${stdout.trim()}` : ""
+            }`,
+          ),
+        );
+      }
+    });
+  });
+}
+
 function runPythonScript(pythonBin: string, sourcePath: string): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const child = spawn(
@@ -281,7 +450,7 @@ function runPythonScript(pythonBin: string, sourcePath: string): Promise<unknown
       [EXTRACT_DOCX_STRUCTURE_SCRIPT, "--source-path", sourcePath],
       {
         stdio: ["ignore", "pipe", "pipe"],
-        env: buildWorkspaceChildProcessEnv(),
+        env: buildPythonDocumentPipelineEnv(),
       },
     );
     let stdout = "";
@@ -321,6 +490,14 @@ function runPythonScript(pythonBin: string, sourcePath: string): Promise<unknown
       }
     });
   });
+}
+
+function buildPythonDocumentPipelineEnv(): NodeJS.ProcessEnv {
+  return {
+    ...buildWorkspaceChildProcessEnv(),
+    PYTHONIOENCODING: "utf-8",
+    PYTHONUTF8: "1",
+  };
 }
 
 function readOptionalString(value: unknown): string | undefined {

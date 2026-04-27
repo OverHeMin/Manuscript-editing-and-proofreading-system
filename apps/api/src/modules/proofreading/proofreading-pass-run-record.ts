@@ -22,6 +22,34 @@ export interface ProofreadingPassRunOutputRecord {
     manualReviewItems: number;
     qualityFindings: number;
   };
+  segmentation?: {
+    mode: "segmented_candidate_discovery";
+    segmentCount: number;
+    totalBlockCount: number;
+    coveredBlockCount: number;
+    coverageRatio: number;
+    completedSegmentCount: number;
+    failedSegmentCount: number;
+    segments: Array<{
+      segmentNo: number;
+      blockStartIndex: number;
+      blockEndIndex: number;
+      blockIndexes: number[];
+      blockCount: number;
+      inputPreview: Array<{
+        blockIndex: number;
+        section?: string;
+        blockKind?: string;
+        textPreview: string;
+      }>;
+      issueCount: number;
+      status: "completed" | "failed";
+      attemptCount: number;
+      elapsedMs: number;
+      modelId?: string;
+      errorMessage?: string;
+    }>;
+  };
 }
 
 export interface ProofreadingPassRunRecord {

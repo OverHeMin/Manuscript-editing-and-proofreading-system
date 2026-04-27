@@ -12,6 +12,18 @@ export interface AiProviderConnectivityProbeResult {
   errorSummary?: string;
 }
 
+export interface AiProviderDiscoveredModel {
+  id: string;
+  owned_by?: string;
+}
+
+export interface AiProviderModelDiscoveryResult {
+  status: AiProviderConnectionTestStatus;
+  testedAt: Date;
+  models: AiProviderDiscoveredModel[];
+  errorSummary?: string;
+}
+
 export interface AiProviderConnectivityProbe {
   testConnection(input: {
     providerKind: string;
@@ -20,6 +32,12 @@ export interface AiProviderConnectivityProbe {
     modelName: string;
     connectionMetadata?: Record<string, unknown>;
   }): Promise<AiProviderConnectivityProbeResult>;
+  discoverModels(input: {
+    providerKind: string;
+    baseUrl: string;
+    apiKey: string;
+    connectionMetadata?: Record<string, unknown>;
+  }): Promise<AiProviderModelDiscoveryResult>;
 }
 
 export interface OpenAiChatCompatibleConnectivityProbeOptions {
@@ -99,6 +117,63 @@ export class OpenAiChatCompatibleConnectivityProbe
       clearTimeout(timeout);
     }
   }
+
+  async discoverModels(input: {
+    providerKind: string;
+    baseUrl: string;
+    apiKey: string;
+    connectionMetadata?: Record<string, unknown>;
+  }): Promise<AiProviderModelDiscoveryResult> {
+    const testedAt = this.now();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    try {
+      const response = await this.fetchImpl(`${input.baseUrl.replace(/\/+$/u, "")}/models`, {
+        headers: {
+          Authorization: `Bearer ${input.apiKey}`,
+        },
+        method: "GET",
+        signal: controller.signal,
+      });
+      const rawBody = await response.text();
+
+      if (!response.ok) {
+        return {
+          status: "failed",
+          testedAt,
+          models: [],
+          errorSummary: summarizeResponseFailure(response.status, rawBody),
+        };
+      }
+
+      const parsed = parseJsonBody(rawBody);
+      const models = parseModelListPayload(parsed);
+      if (models.length === 0) {
+        return {
+          status: "failed",
+          testedAt,
+          models: [],
+          errorSummary: "Provider returned no discoverable models.",
+        };
+      }
+
+      return {
+        status: "passed",
+        testedAt,
+        models,
+      };
+    } catch (error) {
+      return {
+        status: "failed",
+        testedAt,
+        models: [],
+        errorSummary: summarizeError(error),
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
 }
 
 function parseJsonBody(rawBody: string): unknown {
@@ -123,6 +198,24 @@ function isSuccessfulChatCompletionPayload(payload: unknown): boolean {
   };
 
   return Array.isArray(candidate.choices) && candidate.choices.length > 0;
+}
+
+function parseModelListPayload(payload: unknown): AiProviderDiscoveredModel[] {
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+
+  const candidate = payload as { data?: Array<{ id?: unknown; owned_by?: unknown }> };
+  if (!Array.isArray(candidate.data)) {
+    return [];
+  }
+
+  return candidate.data
+    .map((item) => ({
+      id: typeof item.id === "string" ? item.id.trim() : "",
+      owned_by: typeof item.owned_by === "string" ? item.owned_by : undefined,
+    }))
+    .filter((item) => item.id.length > 0);
 }
 
 function summarizeResponseFailure(status: number, rawBody: string): string {

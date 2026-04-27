@@ -1,4 +1,6 @@
 import type {
+  AutoConfigureAiProviderInput,
+  AutoConfigureAiProviderResult,
   CreateAiProviderConnectionInput,
   CreateSystemSettingsRegisteredModelInput,
   CreateSystemSettingsUserInput,
@@ -143,6 +145,26 @@ export function createSystemSettingsAiProvider(
       credentials: {
         apiKey: input.apiKey,
       },
+    },
+  });
+}
+
+export function autoConfigureSystemSettingsAiProvider(
+  client: SystemSettingsHttpClient,
+  input: AutoConfigureAiProviderInput,
+) {
+  return client.request<AutoConfigureAiProviderResult>({
+    method: "POST",
+    url: "/api/v1/system-settings/ai-providers/auto-configure",
+    body: {
+      apiKey: input.apiKey,
+      providerKind: input.providerKind,
+      ...(normalizeOptionalText(input.baseUrl)
+        ? { baseUrl: normalizeOptionalText(input.baseUrl) }
+        : {}),
+      ...(normalizeOptionalText(input.connectionName ?? "")
+        ? { connectionName: normalizeOptionalText(input.connectionName ?? "") }
+        : {}),
     },
   });
 }

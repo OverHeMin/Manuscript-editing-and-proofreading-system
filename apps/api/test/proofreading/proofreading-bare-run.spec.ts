@@ -219,6 +219,41 @@ test("proofreading bare mode draft succeeds without a current template family wh
           }>;
           manualReviewItems?: unknown[];
         };
+        issueQualitySummary?: {
+          totalIssueCount?: number;
+          actionableIssueCount?: number;
+          highRiskIssueCount?: number;
+          duplicateCandidateCount?: number;
+          unattributedIssueCount?: number;
+          bySource?: {
+            rule?: number;
+            knowledge?: number;
+            residual?: number;
+            model?: number;
+          };
+        };
+        residualFreePlaySummary?: {
+          enabled?: boolean;
+          passKind?: string;
+          residualOnlyIssueCount?: number;
+          deduplicatedResidualIssueCount?: number;
+          requiresHumanSampling?: boolean;
+          limitations?: string[];
+        };
+        contextConsistencyLayer?: {
+          status?: string;
+          sourceBlockCount?: number;
+          tableBlockCount?: number;
+          neighborWindowSize?: number;
+          wholeDocumentAnchorCount?: number;
+          crossBlockCheckCount?: number;
+          checks?: Array<{
+            checkId?: string;
+            label?: string;
+            status?: string;
+          }>;
+          limitations?: string[];
+        };
       }
     | undefined;
 
@@ -286,6 +321,52 @@ test("proofreading bare mode draft succeeds without a current template family wh
   assert.deepEqual(proofreadingPayload.proofreadingPlan?.manualReviewItems, [
     "Verify the normalized unit against the source table before release.",
   ]);
+  assert.deepEqual(proofreadingPayload.issueQualitySummary, {
+    totalIssueCount: 1,
+    actionableIssueCount: 1,
+    highRiskIssueCount: 0,
+    duplicateCandidateCount: 0,
+    unattributedIssueCount: 0,
+    bySource: {
+      rule: 0,
+      knowledge: 0,
+      residual: 1,
+      model: 0,
+    },
+  });
+  assert.deepEqual(proofreadingPayload.residualFreePlaySummary, {
+    enabled: true,
+    passKind: "residual_synthesis",
+    residualOnlyIssueCount: 1,
+    deduplicatedResidualIssueCount: 1,
+    requiresHumanSampling: true,
+    limitations: [
+      "Residual free-play is an AI-assisted discovery layer and requires human sampling before claims of coverage.",
+      "Residual findings are counted separately from rule and knowledge hits unless explicit provenance ids are present.",
+    ],
+  });
+  assert.deepEqual(proofreadingPayload.contextConsistencyLayer, {
+    status: "completed",
+    sourceBlockCount: 1,
+    tableBlockCount: 0,
+    neighborWindowSize: 1,
+    wholeDocumentAnchorCount: 1,
+    crossBlockCheckCount: 8,
+    checks: [
+      { checkId: "terminology_consistency", label: "Terminology consistency", status: "planned" },
+      { checkId: "sample_size_consistency", label: "Sample size consistency", status: "planned" },
+      { checkId: "group_consistency", label: "Group consistency", status: "planned" },
+      { checkId: "time_point_consistency", label: "Time point consistency", status: "planned" },
+      { checkId: "unit_consistency", label: "Unit consistency", status: "planned" },
+      { checkId: "table_text_consistency", label: "Table-text consistency", status: "planned" },
+      { checkId: "reference_citation_consistency", label: "Reference citation consistency", status: "planned" },
+      { checkId: "conclusion_support_consistency", label: "Conclusion support consistency", status: "planned" },
+    ],
+    limitations: [
+      "This layer records deterministic coverage anchors; semantic consistency still depends on model output and human review.",
+      "Segmented proofreading can miss relationships outside the captured neighbor window or whole-document anchors.",
+    ],
+  });
   assert.deepEqual(
     proofreadingPayload?.proofreadingSourceBlocks?.map((block) => ({
       blockIndex: block.blockIndex,
@@ -1851,6 +1932,21 @@ test("publishHumanFinal preserves governed metadata for failed checks and qualit
 
   const payload = result.job.payload as
     | {
+        confirmationReconciliation?: {
+          sourceDraftAssetId?: string;
+          sourceFinalAssetId?: string;
+          humanFinalAssetId?: string;
+          decisions?: Array<{
+            itemId?: string;
+            issueId?: string;
+            decisionAction?: string;
+            targetText?: string;
+            requestedReplacementText?: string;
+            finalReplacementText?: string;
+            appliedToHumanFinal?: boolean;
+            finalAction?: string;
+          }>;
+        };
         writebackLedger?: Array<{
           itemId?: string;
           applied?: boolean;
@@ -1874,6 +1970,33 @@ test("publishHumanFinal preserves governed metadata for failed checks and qualit
       anchorBlockIndex: 2,
     },
   ]);
+  assert.deepEqual(payload?.confirmationReconciliation, {
+    sourceDraftAssetId: "asset-proof-draft-findings-1",
+    sourceFinalAssetId: "asset-proof-draft-findings-1",
+    humanFinalAssetId: result.asset.id,
+    decisions: [
+      {
+        itemId: "rule-safety-1",
+        issueId: "rule-safety-1",
+        decisionAction: "accepted",
+        targetText: "The hemoglobin were stable.",
+        requestedReplacementText: "The hemoglobin was stable.",
+        finalReplacementText: "The hemoglobin was stable.",
+        appliedToHumanFinal: true,
+        finalAction: "auto_writeback",
+      },
+      {
+        itemId: "quality-1",
+        issueId: "quality-1",
+        decisionAction: "accepted_with_manual_edit",
+        targetText: "P <0.05",
+        requestedReplacementText: "P < 0.05",
+        finalReplacementText: "P < 0.05",
+        appliedToHumanFinal: true,
+        finalAction: "auto_writeback",
+      },
+    ],
+  });
 
   assert.equal(residualObservations.length, 1);
   assert.deepEqual(residualObservations[0]?.sourceBlocks, [

@@ -4,7 +4,7 @@
   "variations": [
     {
       "description": "Bridge the proofreading issue queue to ONLYOFFICE text search.",
-      "url": "index.html?bridgeVersion=20260425-stage2b-document-selection-sync",
+      "url": "index.html?bridgeVersion=20260427-fullscreen-locate-comments-v3",
       "type": "background",
       "EditorsSupport": ["word"],
       "isViewer": true,

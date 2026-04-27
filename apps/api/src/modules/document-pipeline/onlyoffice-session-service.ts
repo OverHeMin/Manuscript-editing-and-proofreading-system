@@ -39,8 +39,8 @@ export interface OnlyOfficeViewSession {
     download_path: string;
     permissions: {
       edit: false;
-      comment: false;
-      review: false;
+      comment: true;
+      review: true;
       download: true;
       print: true;
     };
@@ -69,17 +69,18 @@ export interface OnlyOfficeViewSession {
     document_type: "word";
     ui_type: "desktop";
     editor_config: {
-      mode: "view";
+      mode: "edit";
       lang: "zh-CN";
       customization: {
         autosave: false;
         chat: false;
-        comments: false;
+        comments: true;
         compactHeader: true;
         compactToolbar: true;
         feedback: false;
         forcesave: false;
         help: false;
+        reviewDisplay: "markup";
         submitForm: false;
       };
     };
@@ -158,8 +159,8 @@ export class OnlyOfficeSessionService {
         download_path: `/api/v1/document-assets/${input.asset.id}/download`,
         permissions: {
           edit: false,
-          comment: false,
-          review: false,
+          comment: true,
+          review: true,
           download: true,
           print: true,
         },
@@ -192,17 +193,18 @@ export class OnlyOfficeSessionService {
         document_type: "word",
         ui_type: "desktop",
         editor_config: {
-          mode: "view",
+          mode: "edit",
           lang: "zh-CN",
           customization: {
             autosave: false,
             chat: false,
-            comments: false,
+            comments: true,
             compactHeader: true,
             compactToolbar: true,
             feedback: false,
             forcesave: false,
             help: false,
+            reviewDisplay: "markup",
             submitForm: false,
           },
         },

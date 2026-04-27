@@ -14,7 +14,7 @@ const {
   "../src/features/template-governance/template-governance-rule-ledger-page.tsx"
 );
 
-test("rule ledger page explains how to create modify and manage rules", () => {
+test("rule ledger page keeps direct actions while removing duplicate explanation card", () => {
   const Page = TemplateGovernanceRuleLedgerPage as unknown as (
     props: Record<string, unknown>,
   ) => React.ReactElement;
@@ -27,10 +27,10 @@ test("rule ledger page explains how to create modify and manage rules", () => {
     />,
   );
 
-  assert.match(markup, /规则中心操作说明/u);
-  assert.match(markup, /建立规则/u);
-  assert.match(markup, /修改规则/u);
-  assert.match(markup, /管理规则/u);
+  assert.doesNotMatch(markup, /规则中心操作说明/u);
+  assert.match(markup, /新建规则/u);
+  assert.match(markup, /规则台账/u);
+  assert.match(markup, /统一规则资产表/u);
   assert.doesNotMatch(markup, /打开旧版高级工作台/u);
 });
 

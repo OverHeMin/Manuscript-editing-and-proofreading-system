@@ -22,8 +22,14 @@ import type {
   ProofreadingSuggestionAction,
 } from "./proofreading-issue-contract.ts";
 
-const FULL_DOCUMENT_CONTEXT_CHAR_LIMIT = 24_000;
-const LONG_DOCUMENT_TOTAL_PREVIEW_CHAR_BUDGET = 10_000;
+const FULL_DOCUMENT_CONTEXT_CHAR_LIMIT = Number.parseInt(
+  process.env.PROOFREADING_FULL_TEXT_CHAR_LIMIT ?? "24000",
+  10,
+);
+const LONG_DOCUMENT_TOTAL_PREVIEW_CHAR_BUDGET = Number.parseInt(
+  process.env.PROOFREADING_DOCUMENT_MAP_CHAR_BUDGET ?? "10000",
+  10,
+);
 const LONG_DOCUMENT_BLOCK_PREVIEW_CHAR_LIMIT = 96;
 const LONG_DOCUMENT_MIN_BLOCK_PREVIEW_CHAR_LIMIT = 18;
 const LONG_DOCUMENT_KEY_TERM_LIMIT = 18;
@@ -87,6 +93,15 @@ export interface CreateProofreadingAiPlanInput {
     passKind: ProofreadingDeepPassKind;
     instruction: string;
   };
+  segmentContext?: {
+    segmentNo: number;
+    segmentCount: number;
+    blockStartIndex: number;
+    blockEndIndex: number;
+    totalBlockCount: number;
+    coveredBlockIndexes: number[];
+    documentMap?: ProofreadingPlanningContext["documentMap"];
+  };
 }
 
 export class ProofreadingAiPlanService {
@@ -113,7 +128,9 @@ export class ProofreadingAiPlanService {
     const payload =
       await this.mainlineAiRuntimeExecutor.executeJson<Record<string, unknown>>({
         module: "proofreading",
-        systemPrompt: buildProofreadingSystemPrompt(),
+        systemPrompt: input.segmentContext
+          ? buildSegmentedProofreadingSystemPrompt()
+          : buildProofreadingSystemPrompt(false),
         userPayload: buildProofreadingUserPayload({
           ...input,
           planningContext,
@@ -129,13 +146,16 @@ export class ProofreadingAiPlanService {
   }
 }
 
-function buildProofreadingSystemPrompt(): string {
+function buildProofreadingSystemPrompt(isSegmented = false): string {
   return [
     "你是“医学稿件终校审校员”。",
-    "这是一次整篇稿件单次校对，不允许按段分块改写后再拼接结论。",
+    isSegmented
+      ? "这是一次分段候选发现，但必须结合 segmentContext.documentMap 的全文事实图谱，不允许只按局部片段孤立判断。"
+      : "这是一次整篇稿件单次校对，不允许按段分块改写后再拼接结论。",
     "你的职责是基于整篇稿件上下文发现终校问题，而不是直接改写稿件。",
     "当 contextMode=full_text 时，先完整阅读 fullDocumentText，再回到 fullDocumentBlocks 给出可定位的问题。",
     "当 contextMode=document_map 时，要先完整理解 documentMap 提供的整篇结构、跨章节信号和关键术语，再结合 fullDocumentBlocks 的定位预览统一判断。",
+    "当提供 segmentContext 时，anchor.blockIndex 必须使用原稿全局 blockIndex，不得按当前分段重新编号。",
     "必须保持保守：证据不足时宁可少报，不要臆造问题。",
     "优先关注医学事实、术语、数值与单位、统计与表格正文一致性、前后逻辑链条、语法与标点格式。",
     "只返回 JSON，不要返回 Markdown，不要返回修改后的全文。",
@@ -191,6 +211,17 @@ function buildProofreadingSystemPrompt(): string {
   ].join(" ");
 }
 
+function buildSegmentedProofreadingSystemPrompt(): string {
+  return [
+    "你是医学期刊终校审校员。",
+    "这是分段候选发现任务，但必须参考 segmentContext.documentMap 里的全文结构和跨段核对信号。",
+    "只基于输入证据提出高置信校对问题，不要编造，不要输出 Markdown。",
+    "anchor.blockIndex 必须使用输入 fullDocumentBlocks 中的全局 blockIndex，不得重新编号。",
+    "优先找医学事实、术语、统计、单位、表格、摘要-正文-结论不一致问题；证据不足时使用 verify_fact。",
+    "返回 JSON：{role, summary, issues, manualReviewItems}。issues 元素包含 {title, description, severity, source, issueType, anchor:{blockIndex, quote}, suggestion:{action, replacementText, note}}。",
+  ].join(" ");
+}
+
 function buildProofreadingUserPayload(input: {
   manuscriptId: string;
   sourceFileName?: string;
@@ -202,6 +233,7 @@ function buildProofreadingUserPayload(input: {
   promptGuardrails?: CreateProofreadingAiPlanInput["promptGuardrails"];
   governanceContext?: AiGovernanceContext;
   passFocus?: CreateProofreadingAiPlanInput["passFocus"];
+  segmentContext?: CreateProofreadingAiPlanInput["segmentContext"];
 }) {
   const governance =
     input.governanceContext && !isAiGovernanceContextEmpty(input.governanceContext)
@@ -223,6 +255,15 @@ function buildProofreadingUserPayload(input: {
       : {}),
     contextMode: input.planningContext.contextMode,
     fullDocumentBlocks: input.planningContext.fullDocumentBlocks,
+    ...(input.segmentContext
+      ? {
+          segmentContext: {
+            ...input.segmentContext,
+            documentMap:
+              input.segmentContext.documentMap ?? input.planningContext.documentMap,
+          },
+        }
+      : {}),
     ...(input.planningContext.fullDocumentText
       ? {
           fullDocumentText: input.planningContext.fullDocumentText,
@@ -1034,13 +1075,38 @@ function normalizeSourceBlocks(
 
     return [
       {
-        blockIndex,
+        blockIndex: resolveSourceBlockIndex(block, blockIndex),
         text,
         sectionLabel: toNonEmptyString(block.section),
         blockKind: toNonEmptyString(block.block_kind),
       },
     ];
   });
+}
+
+function resolveSourceBlockIndex(
+  block: EditorialTextBlock,
+  fallbackIndex: number,
+): number {
+  const candidate = block as EditorialTextBlock & {
+    blockIndex?: unknown;
+    originalBlockIndex?: unknown;
+  };
+  if (
+    typeof candidate.blockIndex === "number" &&
+    Number.isInteger(candidate.blockIndex) &&
+    candidate.blockIndex >= 0
+  ) {
+    return candidate.blockIndex;
+  }
+  if (
+    typeof candidate.originalBlockIndex === "number" &&
+    Number.isInteger(candidate.originalBlockIndex) &&
+    candidate.originalBlockIndex >= 0
+  ) {
+    return candidate.originalBlockIndex;
+  }
+  return fallbackIndex;
 }
 
 function normalizeDocumentLocator(input: {

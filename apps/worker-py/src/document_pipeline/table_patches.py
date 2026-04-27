@@ -418,6 +418,20 @@ def apply_three_line_table_rebuild(context: TableRuntimeContext, patch: dict) ->
             "Controlled rebuild requires grid cell evidence and cannot fall back to approximation.",
         )
 
+    confidence_check = evaluate_rebuild_confidence(snapshot, patch)
+    if confidence_check is not None:
+        result = build_patch_result(
+            patch,
+            "escalated_manual_review",
+            (
+                "Controlled table rebuild confidence "
+                f"{confidence_check['confidence']:.2f} is below required "
+                f"{confidence_check['minimum_rebuild_confidence']:.2f}."
+            ),
+        )
+        result.update(confidence_check)
+        return result
+
     replacement = build_three_line_table_node(snapshot)
     replace_table_node(context, replacement)
     replace_caption_and_note_zone(context, snapshot)
@@ -438,6 +452,40 @@ def resolve_rebuild_snapshot(context: TableRuntimeContext, patch: dict) -> dict 
             return table_snapshot
 
     return context.snapshot if isinstance(context.snapshot, dict) else None
+
+
+def evaluate_rebuild_confidence(snapshot: dict, patch: dict) -> dict | None:
+    rebuild_payload = patch.get("rebuild_payload")
+    minimum_confidence = None
+    if isinstance(rebuild_payload, dict):
+        minimum_confidence = rebuild_payload.get("minimum_rebuild_confidence")
+    if not isinstance(minimum_confidence, (int, float)):
+        minimum_confidence = patch.get("minimum_rebuild_confidence")
+    if not isinstance(minimum_confidence, (int, float)):
+        return None
+
+    confidence = snapshot.get("rebuild_confidence")
+    if not isinstance(confidence, (int, float)):
+        return {
+            "confidence": 0.0,
+            "minimum_rebuild_confidence": float(minimum_confidence),
+            "escalation_reason": "missing rebuild confidence evidence",
+        }
+    if float(confidence) >= float(minimum_confidence):
+        return None
+
+    reasons = snapshot.get("confidence_reasons")
+    escalation_reason = (
+        "; ".join(reason for reason in reasons if isinstance(reason, str))
+        if isinstance(reasons, list)
+        else "rebuild confidence below threshold"
+    )
+
+    return {
+        "confidence": float(confidence),
+        "minimum_rebuild_confidence": float(minimum_confidence),
+        "escalation_reason": escalation_reason,
+    }
 
 
 def replace_table_node(context: TableRuntimeContext, replacement: ET.Element) -> None:
@@ -607,9 +655,10 @@ def _find_covering_grid_cell(
         start_column = read_int(cell.get("column_index"), default=-1)
         row_span = read_int(cell.get("row_span"), default=1)
         column_span = read_int(cell.get("column_span"), default=1)
-        if start_row < row_index < start_row + row_span and start_column == column_index:
-            return cell
-        if start_row == row_index and start_column < column_index < start_column + column_span:
+        if (
+            start_row <= row_index < start_row + row_span
+            and start_column <= column_index < start_column + column_span
+        ):
             return cell
     return None
 

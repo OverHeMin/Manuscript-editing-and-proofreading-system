@@ -1,4 +1,5 @@
 import {
+  autoConfigureSystemSettingsAiProvider,
   createSystemSettingsAiProvider,
   createSystemSettingsRegisteredModel,
   createSystemSettingsUser,
@@ -19,6 +20,8 @@ import {
   type SystemSettingsHttpClient,
 } from "./system-settings-api.ts";
 import type {
+  AutoConfigureAiProviderInput,
+  AutoConfigureAiProviderResult,
   CreateAiProviderConnectionInput,
   CreateSystemSettingsRegisteredModelInput,
   CreateSystemSettingsUserInput,
@@ -80,6 +83,10 @@ export interface SystemSettingsWorkbenchController {
   }>;
   createProviderConnectionAndReload(input: CreateAiProviderConnectionInput): Promise<{
     createdConnection: SystemSettingsAiProviderConnectionViewModel;
+    overview: SystemSettingsWorkbenchOverview;
+  }>;
+  autoConfigureProviderConnectionAndReload(input: AutoConfigureAiProviderInput): Promise<{
+    result: AutoConfigureAiProviderResult;
     overview: SystemSettingsWorkbenchOverview;
   }>;
   updateProviderConnectionAndReload(input: {
@@ -186,6 +193,16 @@ export function createSystemSettingsWorkbenchController(
         createdConnection,
         overview: await loadSystemSettingsOverview(client, {
           selectedConnectionId: createdConnection.id,
+        }),
+      };
+    },
+    async autoConfigureProviderConnectionAndReload(input) {
+      const result = (await autoConfigureSystemSettingsAiProvider(client, input)).body;
+
+      return {
+        result,
+        overview: await loadSystemSettingsOverview(client, {
+          selectedConnectionId: result.connection.id,
         }),
       };
     },

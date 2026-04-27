@@ -238,6 +238,11 @@ test("persistent governance runtime exposes ai provider overview readiness under
             status: "passed",
             testedAt: new Date("2026-04-10T10:00:00.000Z"),
           }),
+          discoverModels: async () => ({
+            status: "passed",
+            testedAt: new Date("2026-04-10T10:00:00.000Z"),
+            models: [{ id: "qwen-max" }],
+          }),
         },
       });
       try {

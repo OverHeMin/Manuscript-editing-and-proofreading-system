@@ -46,8 +46,15 @@ import type {
 } from "../execution-tracking/execution-tracking-service.ts";
 import type { JobRecord } from "../jobs/job-record.ts";
 import type { JobRepository } from "../jobs/job-repository.ts";
+import {
+  evaluateGoldSetAssertions,
+  type GoldSetAssertionEvaluationResult,
+  type HarnessDatasetRepository,
+  type HarnessGoldSetVersionRecord,
+} from "../harness-datasets/index.ts";
 import type { KnowledgeRepository } from "../knowledge/knowledge-repository.ts";
 import type { LearningCandidateRecord } from "../learning/learning-record.ts";
+import type { ManuscriptRecord } from "../manuscripts/manuscript-record.ts";
 import type { LearningService } from "../learning/learning-service.ts";
 import type { ManuscriptRepository } from "../manuscripts/manuscript-repository.ts";
 import type { ManualReviewPolicyService } from "../manual-review-policies/manual-review-policy-service.ts";
@@ -197,6 +204,10 @@ export interface ProofreadingServiceOptions {
   executionGovernanceService: ExecutionGovernanceService;
   executionTrackingService: ExecutionTrackingService;
   jobRepository: JobRepository;
+  harnessDatasetRepository?: Pick<
+    HarnessDatasetRepository,
+    "listGoldSetFamilies" | "listGoldSetVersionsByFamilyId"
+  >;
   proofreadingPassRunRepository?: ProofreadingPassRunRepository;
   documentAssetService: DocumentAssetService;
   aiGatewayService: AiGatewayService;
@@ -310,6 +321,15 @@ export class ProofreadingPassRunNotFoundError extends Error {
   }
 }
 
+export class ProofreadingQualityGateError extends Error {
+  constructor(readonly reasons: readonly string[]) {
+    super(
+      `Proofreading quality gate failed: ${reasons.length > 0 ? reasons.join("; ") : "unknown reason"}.`,
+    );
+    this.name = "ProofreadingQualityGateError";
+  }
+}
+
 export class ProofreadingService {
   private readonly manuscriptRepository: ManuscriptRepository;
   private readonly assetRepository: DocumentAssetRepository;
@@ -327,6 +347,10 @@ export class ProofreadingService {
   >;
   private readonly executionGovernanceService: ExecutionGovernanceService;
   private readonly executionTrackingService: ExecutionTrackingService;
+  private readonly harnessDatasetRepository?: Pick<
+    HarnessDatasetRepository,
+    "listGoldSetFamilies" | "listGoldSetVersionsByFamilyId"
+  >;
   private readonly proofreadingPassRunRepository?: ProofreadingPassRunRepository;
   private readonly documentAssetService: DocumentAssetService;
   private readonly aiGatewayService: AiGatewayService;
@@ -392,6 +416,7 @@ export class ProofreadingService {
     this.manualReviewPolicyService = options.manualReviewPolicyService;
     this.executionGovernanceService = options.executionGovernanceService;
     this.executionTrackingService = options.executionTrackingService;
+    this.harnessDatasetRepository = options.harnessDatasetRepository;
     this.proofreadingPassRunRepository = options.proofreadingPassRunRepository;
     this.documentAssetService = options.documentAssetService;
     this.aiGatewayService = options.aiGatewayService;
@@ -495,6 +520,11 @@ export class ProofreadingService {
 
     if (!pinnedContext) {
       throw new ProofreadingDraftContextNotFoundError(input.draftAssetId);
+    }
+
+    const qualityGate = buildProofreadingReleaseQualityGate(draftJobPayload);
+    if (!qualityGate.passed) {
+      throw new ProofreadingQualityGateError(qualityGate.reasons);
     }
 
     return this.runProofreadingJob({
@@ -615,6 +645,7 @@ export class ProofreadingService {
       const confirmationSummary = summarizeProofreadingConfirmationDecisions(
         normalizedDecisions,
       );
+      const writebackLedger = buildProofreadingWritebackLedger(normalizedDecisions);
 
       const documentAssetService = this.documentAssetService.createScoped({
         manuscriptRepository,
@@ -650,7 +681,7 @@ export class ProofreadingService {
           confirmationDecisions: serializeProofreadingConfirmationDecisions(
             normalizedDecisions,
           ),
-          writebackLedger: buildProofreadingWritebackLedger(normalizedDecisions),
+          writebackLedger,
         },
         attempt_count: 0,
         started_at: undefined,
@@ -755,6 +786,14 @@ export class ProofreadingService {
           ...queuedJob.payload,
           outputAssetId: asset.id,
           outputAssetType: asset.asset_type,
+          confirmationReconciliation:
+            buildProofreadingConfirmationReconciliation({
+              sourceDraftAssetId: parentDraftAsset?.id ?? input.finalAssetId,
+              sourceFinalAssetId: input.finalAssetId,
+              humanFinalAssetId: asset.id,
+              decisions: normalizedDecisions,
+              writebackLedger,
+            }),
         },
         attempt_count: 1,
         started_at: timestamp,
@@ -1039,7 +1078,21 @@ export class ProofreadingService {
             instruction: formatProofreadingDeepPassInstruction(existing.pass_kind),
           },
         };
-      const passPlan = await this.proofreadingAiPlanService.createPlan(replayInput);
+      const passPlan =
+        existing.output?.segmentation &&
+        replayInput.sourceBlocks &&
+        shouldUseSegmentedProofreadingDeepPasses(replayInput.sourceBlocks)
+          ? await this.runSegmentedProofreadingPass({
+              manuscriptId: replayInput.manuscriptId,
+              sourceFileName: replayInput.sourceFileName,
+              sourceBlocks: replayInput.sourceBlocks,
+              baseInput: replayInput,
+              resumeFrom: {
+                segmentation: existing.output.segmentation,
+                issues: existing.output.issues,
+              },
+            })
+          : await this.proofreadingAiPlanService.createPlan(replayInput);
       const finishedAt = new Date().toISOString();
       const completed: ProofreadingPassRunRecord = {
         ...running,
@@ -1055,6 +1108,11 @@ export class ProofreadingService {
               manualReviewItems: 0,
               qualityFindings: 0,
             },
+          ...(isSegmentedProofreadingPlan(passPlan)
+            ? {
+                segmentation: passPlan.segmentation,
+              }
+            : {}),
         },
         finished_at: finishedAt,
         updated_at: finishedAt,
@@ -1076,6 +1134,27 @@ export class ProofreadingService {
       await this.proofreadingPassRunRepository.save(failed);
       return failed;
     }
+  }
+
+  async getDeepPassRun(input: {
+    passRunId: string;
+    actorRole: RoleKey;
+  }): Promise<ProofreadingPassRunRecord> {
+    this.permissionGuard.assert(input.actorRole, "workbench.proofreading");
+    if (!this.proofreadingPassRunRepository) {
+      throw new ProofreadingServiceDependencyRequiredError(
+        "proofreadingPassRunRepository",
+      );
+    }
+
+    const passRun = await this.proofreadingPassRunRepository.findById(
+      input.passRunId,
+    );
+    if (!passRun) {
+      throw new ProofreadingPassRunNotFoundError(input.passRunId);
+    }
+
+    return passRun;
   }
 
   private async runProofreadingJob(input: {
@@ -1194,54 +1273,55 @@ export class ProofreadingService {
               }),
             )
           : [];
+      const initialProofreadingPlanInput: CreateProofreadingAiPlanInput = {
+        manuscriptId: input.manuscriptId,
+        sourceFileName:
+          sourceAsset?.file_name ?? input.fileName ?? input.parentAssetId,
+        sourceBlocks: proofreadingArtifacts?.sourceBlocks,
+        governedFailedChecks: proofreadingFindings?.failedChecks,
+        governedManualReviewItems: proofreadingFindings?.manualReviewItems,
+        qualityIssues: proofreadingFindings?.qualityFindings,
+        knowledgeHits: proofreadingKnowledgeHits,
+        promptGuardrails: {
+          roleLabel: "医学稿件终校审校员",
+          systemInstructions: proofreadingPromptTemplate?.system_instructions,
+          taskFrame: proofreadingPromptTemplate?.task_frame,
+          manualReviewPolicy: proofreadingPromptTemplate?.manual_review_policy,
+          forbiddenOperations: proofreadingPromptTemplate?.forbidden_operations,
+          outputContract: proofreadingPromptTemplate?.output_contract,
+        },
+        governanceContext: buildAiGovernanceContext({
+          hardRuleSummary: resolvedContext.instructionPayload?.hardRuleSummary,
+          allowedContentOperations:
+            resolvedContext.instructionPayload?.allowedContentOperations,
+          forbiddenOperations:
+            resolvedContext.instructionPayload?.forbiddenOperations,
+          manualReviewPolicy:
+            resolvedContext.instructionPayload?.manualReviewPolicy,
+          promptSnippets: resolvedContext.instructionPayload?.promptSnippets,
+          manualReviewItems:
+            resolvedContext.instructionPayload?.manualReviewItems.map(
+              (item) => `${item.ruleId}: ${item.reason}`,
+            ),
+          contentRuleCandidates:
+            resolvedContext.instructionPayload?.contentRuleCandidates.map(
+              (item) => `${item.ruleId}: ${item.actionKind}`,
+            ),
+          resolvedRules: resolvedContext.resolvedRules,
+          knowledgeHits: resolvedContext.knowledgeHits,
+        }),
+      };
       const proofreadingPlan =
         input.jobType === "proofreading_draft_run"
-          ? (structuredClone(
-              await this.proofreadingAiPlanService.createPlan({
-                manuscriptId: input.manuscriptId,
-                sourceFileName:
-                  sourceAsset?.file_name ?? input.fileName ?? input.parentAssetId,
-                sourceBlocks: proofreadingArtifacts?.sourceBlocks,
-                governedFailedChecks: proofreadingFindings?.failedChecks,
-                governedManualReviewItems:
-                  proofreadingFindings?.manualReviewItems,
-                qualityIssues: proofreadingFindings?.qualityFindings,
-                knowledgeHits: proofreadingKnowledgeHits,
-                promptGuardrails: {
-                  roleLabel: "医学稿件终校审校员",
-                  systemInstructions:
-                    proofreadingPromptTemplate?.system_instructions,
-                  taskFrame: proofreadingPromptTemplate?.task_frame,
-                  manualReviewPolicy:
-                    proofreadingPromptTemplate?.manual_review_policy,
-                  forbiddenOperations:
-                    proofreadingPromptTemplate?.forbidden_operations,
-                  outputContract: proofreadingPromptTemplate?.output_contract,
-                },
-                governanceContext: buildAiGovernanceContext({
-                  hardRuleSummary:
-                    resolvedContext.instructionPayload?.hardRuleSummary,
-                  allowedContentOperations:
-                    resolvedContext.instructionPayload?.allowedContentOperations,
-                  forbiddenOperations:
-                    resolvedContext.instructionPayload?.forbiddenOperations,
-                  manualReviewPolicy:
-                    resolvedContext.instructionPayload?.manualReviewPolicy,
-                  promptSnippets:
-                    resolvedContext.instructionPayload?.promptSnippets,
-                  manualReviewItems:
-                    resolvedContext.instructionPayload?.manualReviewItems.map(
-                      (item) => `${item.ruleId}: ${item.reason}`,
-                    ),
-                  contentRuleCandidates:
-                    resolvedContext.instructionPayload?.contentRuleCandidates.map(
-                      (item) => `${item.ruleId}: ${item.actionKind}`,
-                    ),
-                  resolvedRules: resolvedContext.resolvedRules,
-                  knowledgeHits: resolvedContext.knowledgeHits,
-                }),
-              }),
-            ) as ProofreadingAiPlan)
+          ? shouldUseSegmentedProofreadingDeepPasses(
+              proofreadingArtifacts?.sourceBlocks,
+            )
+            ? buildSegmentedInitialProofreadingPlan(input.manuscriptId)
+            : ((structuredClone(
+                await this.proofreadingAiPlanService.createPlan(
+                  initialProofreadingPlanInput,
+                ),
+              ) as ProofreadingAiPlan))
           : undefined;
       const storedProofreadingPlan = proofreadingPlan
         ? buildStoredProofreadingPlan(proofreadingPlan)
@@ -1273,6 +1353,30 @@ export class ProofreadingService {
       const storedFinalProofreadingPlan = finalProofreadingPlan
         ? buildStoredProofreadingPlan(finalProofreadingPlan)
         : storedProofreadingPlan;
+      const goldSetAssertionResult =
+        input.jobType === "proofreading_draft_run" &&
+        storedFinalProofreadingPlan &&
+        manuscript
+          ? await this.evaluatePublishedGoldSetAssertions({
+              manuscriptType: manuscript.manuscript_type,
+              actualIssues: storedFinalProofreadingPlan.issues,
+            })
+          : undefined;
+      const releaseQualityGateReport =
+        input.jobType === "proofreading_draft_run"
+          ? buildProofreadingReleaseQualityGateReport({
+              proofreadingPlan: storedFinalProofreadingPlan,
+              proofreadingDeepPassRuns,
+              proofreadingLayerMatrix: proofreadingDeepPassRuns
+                ? buildProofreadingLayerMatrix({
+                    sourceBlocks: proofreadingArtifacts?.sourceBlocks ?? [],
+                    proofreadingPlan: storedFinalProofreadingPlan,
+                    proofreadingDeepPassRuns,
+                  })
+                : undefined,
+              goldSetAssertionResult,
+            })
+          : undefined;
       const reportMarkdown =
         input.jobType === "proofreading_draft_run" && proofreadingFindings
           ? renderProofreadingReport(proofreadingFindings, storedFinalProofreadingPlan)
@@ -1510,6 +1614,27 @@ export class ProofreadingService {
                 proofreadingSourceBlocks: proofreadingArtifacts?.sourceBlocks.map(
                   (block) => structuredClone(block),
                 ),
+                issueQualitySummary: buildIssueQualitySummary({
+                  proofreadingPlan: storedFinalProofreadingPlan,
+                  proofreadingDeepPassRuns,
+                }),
+                residualFreePlaySummary: buildResidualFreePlaySummary({
+                  proofreadingPlan: storedFinalProofreadingPlan,
+                  proofreadingDeepPassRuns,
+                }),
+                contextConsistencyLayer: buildContextConsistencyLayer({
+                  sourceBlocks: proofreadingArtifacts?.sourceBlocks ?? [],
+                }),
+              }
+            : {}),
+          ...(goldSetAssertionResult
+            ? {
+                goldSetAssertionResult,
+              }
+            : {}),
+          ...(releaseQualityGateReport
+            ? {
+                releaseQualityGateReport,
               }
             : {}),
           ...(proofreadingDeepPassRuns
@@ -1522,6 +1647,11 @@ export class ProofreadingService {
                       }
                     : {}),
                 })),
+                proofreadingLayerMatrix: buildProofreadingLayerMatrix({
+                  sourceBlocks: proofreadingArtifacts?.sourceBlocks ?? [],
+                  proofreadingPlan: storedFinalProofreadingPlan,
+                  proofreadingDeepPassRuns,
+                }),
               }
             : {}),
           sourceManuscriptAssetId:
@@ -1680,7 +1810,7 @@ export class ProofreadingService {
     });
 
     const runs: ProofreadingDeepPassRunPayloadRecord[] = [];
-    for (const [index, passKind] of PROOFREADING_DEEP_PASS_KINDS.entries()) {
+    for (const [index, passKind] of getEnabledProofreadingDeepPassKinds().entries()) {
       const fallbackRun = fallbackRuns[index]!;
       const startedAt = new Date().toISOString();
       const replayContext = buildProofreadingPassRunReplayContext({
@@ -1695,7 +1825,7 @@ export class ProofreadingService {
         passKind,
       });
       try {
-        const passPlan = await this.proofreadingAiPlanService.createPlan({
+        const basePlanInput: CreateProofreadingAiPlanInput = {
           manuscriptId: input.manuscriptId,
           sourceFileName: input.sourceFileName,
           sourceBlocks: input.sourceBlocks,
@@ -1742,7 +1872,19 @@ export class ProofreadingService {
             passKind,
             instruction: formatProofreadingDeepPassInstruction(passKind),
           },
-        });
+        };
+        const segmentedPlan = shouldUseSegmentedProofreadingDeepPasses(
+          input.sourceBlocks,
+        )
+          ? await this.runSegmentedProofreadingPass({
+              manuscriptId: input.manuscriptId,
+              sourceFileName: input.sourceFileName,
+              sourceBlocks: input.sourceBlocks ?? [],
+              baseInput: basePlanInput,
+            })
+          : undefined;
+        const effectivePassPlan =
+          segmentedPlan ?? (await this.proofreadingAiPlanService.createPlan(basePlanInput));
         const finishedAt = new Date().toISOString();
         runs.push({
           pass_no: index + 1,
@@ -1756,10 +1898,15 @@ export class ProofreadingService {
           finished_at: finishedAt,
           output: {
             summary:
-              passPlan.summary ||
-              `Pass ${index + 1} checked ${passPlan.issues.length} issue(s).`,
-            issues: passPlan.issues.map((issue) => structuredClone(issue)),
+              effectivePassPlan.summary ||
+              `Pass ${index + 1} checked ${effectivePassPlan.issues.length} issue(s).`,
+            issues: effectivePassPlan.issues.map((issue) => structuredClone(issue)),
             governedEvidenceCounts,
+            ...(segmentedPlan
+              ? {
+                  segmentation: segmentedPlan.segmentation,
+                }
+              : {}),
           },
         });
       } catch (error) {
@@ -1776,6 +1923,237 @@ export class ProofreadingService {
     }
 
     return runs;
+  }
+
+  private async runSegmentedProofreadingPass(input: {
+    manuscriptId: string;
+    sourceFileName?: string;
+    sourceBlocks: EditorialTextBlock[];
+    baseInput: CreateProofreadingAiPlanInput;
+    resumeFrom?: {
+      segmentation: ProofreadingSegmentationMetadata;
+      issues?: ProofreadingIssue[];
+    };
+  }): Promise<SegmentedProofreadingPlan> {
+    const allSegments = buildProofreadingSourceBlockSegments(input.sourceBlocks);
+    const resumeCompletedSegments = new Map(
+      (input.resumeFrom?.segmentation.segments ?? [])
+        .filter((segment) => segment.status === "completed")
+        .map((segment) => [segment.segmentNo, segment]),
+    );
+    const resumeFailedSegmentNumbers = new Set(
+      (input.resumeFrom?.segmentation.segments ?? [])
+        .filter((segment) => segment.status === "failed")
+        .map((segment) => segment.segmentNo),
+    );
+    const segments = resumeFailedSegmentNumbers.size
+      ? allSegments.filter((_, index) => resumeFailedSegmentNumbers.has(index + 1))
+      : allSegments;
+    const documentMap = buildSegmentedProofreadingDocumentMap(input.sourceBlocks);
+    const issueMap = new Map<string, ProofreadingIssue>();
+    const manualReviewItems = new Set<string>();
+    const segmentMetadata: ProofreadingSegmentationMetadata["segments"] = [];
+    for (const issue of input.resumeFrom?.issues ?? []) {
+      issueMap.set(buildProofreadingIssueDedupeKey(issue), structuredClone(issue));
+    }
+    for (const segment of resumeCompletedSegments.values()) {
+      segmentMetadata.push({
+        ...segment,
+      });
+    }
+
+    for (const segment of segments) {
+      const segmentNo = allSegments.findIndex(
+        (candidate) =>
+          candidate.blockStartIndex === segment.blockStartIndex &&
+          candidate.blockEndIndex === segment.blockEndIndex &&
+          candidate.blockIndexes.join(",") === segment.blockIndexes.join(","),
+      ) + 1;
+      const segmentResult = await this.runProofreadingSegmentWithRetry({
+        manuscriptId: input.manuscriptId,
+        sourceFileName: input.sourceFileName,
+        baseInput: input.baseInput,
+        segment,
+        segmentNo,
+        segmentCount: allSegments.length,
+        totalBlockCount: input.sourceBlocks.length,
+        documentMap,
+      });
+
+      for (const issue of segmentResult.plan?.issues ?? []) {
+        issueMap.set(buildProofreadingIssueDedupeKey(issue), structuredClone(issue));
+      }
+      for (const item of segmentResult.plan?.manualReviewItems ?? []) {
+        manualReviewItems.add(item);
+      }
+    segmentMetadata.push({
+        segmentNo,
+        blockStartIndex: segment.blockStartIndex,
+        blockEndIndex: segment.blockEndIndex,
+        blockIndexes: [...segment.blockIndexes],
+        blockCount: segment.blocks.length,
+        inputPreview: buildProofreadingSegmentInputPreview(segment),
+        issueCount: segmentResult.plan?.issues.length ?? 0,
+        status: segmentResult.status,
+        attemptCount: segmentResult.attemptCount,
+        elapsedMs: segmentResult.elapsedMs,
+        ...(segmentResult.errorMessage
+          ? {
+              errorMessage: segmentResult.errorMessage,
+            }
+          : {}),
+      });
+    }
+
+    const issues = [...issueMap.values()];
+    const orderedSegmentMetadata = segmentMetadata.sort(
+      (left, right) => left.segmentNo - right.segmentNo,
+    );
+    const completedSegmentNumbers = new Set(
+      orderedSegmentMetadata
+        .filter((segment) => segment.status === "completed")
+        .map((segment) => segment.segmentNo),
+    );
+    const coveredBlockCount = new Set(
+      allSegments
+        .filter((_, index) => completedSegmentNumbers.has(index + 1))
+        .flatMap((segment) => segment.blockIndexes),
+    )
+      .size;
+    return {
+      role: "医学稿件终校审校员",
+      summary: `Segmented proofreading candidate discovery completed ${orderedSegmentMetadata.filter((segment) => segment.status === "completed").length}/${allSegments.length} segment(s), found ${issues.length} deduplicated issue(s).`,
+      issues,
+      corrections: issuesToCorrectionSeeds(issues).map((correction) => ({
+        targetText: correction.targetText,
+        replacementText: correction.replacementText,
+        ...(correction.category ? { category: correction.category } : {}),
+      })),
+      manualReviewItems: [...manualReviewItems],
+      segmentation: {
+        mode: "segmented_candidate_discovery",
+        segmentCount: allSegments.length,
+        totalBlockCount: input.sourceBlocks.length,
+        coveredBlockCount,
+        coverageRatio:
+          input.sourceBlocks.length > 0
+            ? coveredBlockCount / input.sourceBlocks.length
+            : 0,
+        completedSegmentCount: orderedSegmentMetadata.filter(
+          (segment) => segment.status === "completed",
+        ).length,
+        failedSegmentCount: orderedSegmentMetadata.filter(
+          (segment) => segment.status === "failed",
+        ).length,
+        segments: orderedSegmentMetadata,
+      },
+    };
+  }
+
+  private async runProofreadingSegmentWithRetry(input: {
+    manuscriptId: string;
+    sourceFileName?: string;
+    baseInput: CreateProofreadingAiPlanInput;
+    segment: {
+      blocks: EditorialTextBlock[];
+      blockIndexes: number[];
+      blockStartIndex: number;
+      blockEndIndex: number;
+    };
+    segmentNo: number;
+    segmentCount: number;
+    totalBlockCount: number;
+    documentMap: NonNullable<CreateProofreadingAiPlanInput["segmentContext"]>["documentMap"];
+  }): Promise<{
+    status: "completed" | "failed";
+    attemptCount: number;
+    elapsedMs: number;
+    plan?: ProofreadingAiPlan;
+    errorMessage?: string;
+  }> {
+    let lastError: unknown;
+    const maxAttempts = Math.max(1, PROOFREADING_SEGMENT_RETRY_COUNT + 1);
+    const startedAt = Date.now();
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return {
+          status: "completed",
+          attemptCount: attempt,
+          elapsedMs: Date.now() - startedAt,
+          plan: await this.proofreadingAiPlanService.createPlan({
+            ...input.baseInput,
+            manuscriptId: input.manuscriptId,
+            sourceFileName: input.sourceFileName,
+            sourceBlocks: input.segment.blocks,
+            segmentContext: {
+              segmentNo: input.segmentNo,
+              segmentCount: input.segmentCount,
+              blockStartIndex: input.segment.blockStartIndex,
+              blockEndIndex: input.segment.blockEndIndex,
+              totalBlockCount: input.totalBlockCount,
+              coveredBlockIndexes: input.segment.blockIndexes,
+              documentMap: input.documentMap,
+            },
+          }),
+        };
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    return {
+      status: "failed",
+      attemptCount: maxAttempts,
+      elapsedMs: Date.now() - startedAt,
+      errorMessage:
+        lastError instanceof Error
+          ? lastError.message
+          : "Proofreading segment failed.",
+    };
+  }
+
+  private async evaluatePublishedGoldSetAssertions(input: {
+    manuscriptType: ManuscriptRecord["manuscript_type"];
+    actualIssues: ProofreadingIssue[];
+  }) {
+    const version = await this.findLatestPublishedProofreadingGoldSetVersion(
+      input.manuscriptType,
+    );
+    if (!version) {
+      return undefined;
+    }
+
+    return evaluateGoldSetAssertions({
+      items: version.items,
+      actualIssues: input.actualIssues,
+    });
+  }
+
+  private async findLatestPublishedProofreadingGoldSetVersion(
+    manuscriptType: ManuscriptRecord["manuscript_type"],
+  ): Promise<HarnessGoldSetVersionRecord | undefined> {
+    if (!this.harnessDatasetRepository) {
+      return undefined;
+    }
+
+    const families = await this.harnessDatasetRepository.listGoldSetFamilies();
+    const matchingFamilies = families.filter(
+      (family) =>
+        family.scope.module === "proofreading" &&
+        family.scope.manuscript_types.includes(manuscriptType),
+    );
+    const versions = (
+      await Promise.all(
+        matchingFamilies.map((family) =>
+          this.harnessDatasetRepository!.listGoldSetVersionsByFamilyId(family.id),
+        ),
+      )
+    )
+      .flat()
+      .filter((version) => version.status === "published");
+
+    return versions.sort(compareGoldSetVersionsDescending)[0];
   }
 
   private async createProofreadingManuscriptAsset(input: {
@@ -3019,6 +3397,58 @@ function buildProofreadingWritebackLedger(
   });
 }
 
+function buildProofreadingConfirmationReconciliation(input: {
+  sourceDraftAssetId: string;
+  sourceFinalAssetId: string;
+  humanFinalAssetId: string;
+  decisions: readonly NormalizedProofreadingConfirmationDecision[];
+  writebackLedger: ReadonlyArray<{
+    itemId: string;
+    applied: boolean;
+    disposition: string;
+  }>;
+}): {
+  sourceDraftAssetId: string;
+  sourceFinalAssetId: string;
+  humanFinalAssetId: string;
+  decisions: Array<{
+    itemId: string;
+    issueId: string;
+    decisionAction: string;
+    targetText: string;
+    requestedReplacementText: string;
+    finalReplacementText?: string;
+    appliedToHumanFinal: boolean;
+    finalAction: string;
+  }>;
+} {
+  const ledgerByItemId = new Map(
+    input.writebackLedger.map((entry) => [entry.itemId, entry]),
+  );
+
+  return {
+    sourceDraftAssetId: input.sourceDraftAssetId,
+    sourceFinalAssetId: input.sourceFinalAssetId,
+    humanFinalAssetId: input.humanFinalAssetId,
+    decisions: input.decisions.map((decision) => {
+      const ledgerEntry = ledgerByItemId.get(decision.itemId);
+
+      return {
+        itemId: decision.itemId,
+        issueId: decision.itemId,
+        decisionAction: decision.action,
+        targetText: decision.targetText,
+        requestedReplacementText: decision.replacementText,
+        ...(decision.finalReplacementText
+          ? { finalReplacementText: decision.finalReplacementText }
+          : {}),
+        appliedToHumanFinal: ledgerEntry?.applied ?? false,
+        finalAction: ledgerEntry?.disposition ?? "not_evaluated",
+      };
+    }),
+  };
+}
+
 function buildHumanConfirmationResidualSourceBlocks(
   decisions: readonly NormalizedProofreadingConfirmationDecision[],
 ): ProofreadingResidualSourceBlock[] {
@@ -3179,6 +3609,19 @@ function buildStoredProofreadingPlan(
   };
 }
 
+function compareGoldSetVersionsDescending(
+  left: HarnessGoldSetVersionRecord,
+  right: HarnessGoldSetVersionRecord,
+): number {
+  const leftTimestamp = Date.parse(left.published_at ?? left.created_at);
+  const rightTimestamp = Date.parse(right.published_at ?? right.created_at);
+  if (leftTimestamp !== rightTimestamp) {
+    return rightTimestamp - leftTimestamp;
+  }
+
+  return right.version_no - left.version_no;
+}
+
 function issuesToCorrectionSeeds(
   issues: readonly ProofreadingIssue[],
 ): ProofreadingPlanCorrectionSeed[] {
@@ -3260,6 +3703,130 @@ function asObject(value: unknown): Record<string, unknown> | undefined {
 
 function readOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function buildProofreadingReleaseQualityGate(payload: Record<string, unknown> | undefined): {
+  passed: boolean;
+  reasons: string[];
+} {
+  const reasons: string[] = [];
+  const plan = asObject(payload?.proofreadingPlan);
+  const issues = Array.isArray(plan?.issues) ? plan.issues : [];
+  const passRuns = Array.isArray(payload?.proofreadingDeepPassRuns)
+    ? payload.proofreadingDeepPassRuns
+    : [];
+  const completedPassCount = passRuns.filter((entry) => {
+    const pass = asObject(entry);
+    return pass?.status === "completed";
+  }).length;
+  const residualPass = passRuns.find((entry) => {
+    const pass = asObject(entry);
+    return pass?.pass_kind === "residual_synthesis";
+  });
+  const failedSegments = passRuns.flatMap((entry) => {
+    const pass = asObject(entry);
+    const output = asObject(pass?.output);
+    const segmentation = asObject(output?.segmentation);
+    return Array.isArray(segmentation?.segments)
+      ? segmentation.segments.filter((segmentEntry) => {
+          const segment = asObject(segmentEntry);
+          return segment?.status === "failed";
+        })
+      : [];
+  });
+
+  if (issues.length === 0) {
+    reasons.push("no proofreading issues were produced");
+  }
+  if (passRuns.length > 0 && completedPassCount < 5) {
+    reasons.push(`only ${completedPassCount}/5 deep proofreading passes completed`);
+  }
+  if (passRuns.length > 0) {
+    const residual = asObject(residualPass);
+    if (!residual || residual.status !== "completed") {
+      reasons.push("residual synthesis pass did not complete");
+    }
+  }
+  if (failedSegments.length > 0) {
+    reasons.push(`${failedSegments.length} proofreading segment(s) failed`);
+  }
+  const layerMatrix = Array.isArray(payload?.proofreadingLayerMatrix)
+    ? payload.proofreadingLayerMatrix
+    : [];
+  const requiredLayers = layerMatrix.filter((entry) => {
+    const layer = asObject(entry);
+    return layer?.required_for_release === true;
+  });
+  const incompleteRequiredLayers = requiredLayers.flatMap((entry) => {
+    const layer = asObject(entry);
+    const layerId = typeof layer?.layer_id === "string" ? layer.layer_id : "unknown";
+    return layer?.status === "completed" ? [] : [layerId];
+  });
+  if (requiredLayers.length === 0) {
+    reasons.push("proofreading layer matrix is missing");
+  }
+  if (incompleteRequiredLayers.length > 0) {
+    reasons.push(
+      `required proofreading layer(s) incomplete: ${incompleteRequiredLayers.join(", ")}`,
+    );
+  }
+  const goldSetAssertionResult = asObject(payload?.goldSetAssertionResult);
+  const goldSetThresholds = asObject(goldSetAssertionResult?.thresholds);
+  if (goldSetThresholds?.criticalRecallPassed === false) {
+    reasons.push("gold set critical recall threshold failed");
+  }
+  if (goldSetThresholds?.falsePositiveReviewPassed === false) {
+    reasons.push("gold set false positive review threshold failed");
+  }
+  if (goldSetThresholds?.requiredLayerCoveragePassed === false) {
+    reasons.push("gold set required layer coverage failed");
+  }
+
+  return {
+    passed: reasons.length === 0,
+    reasons,
+  };
+}
+
+function buildProofreadingReleaseQualityGateReport(input: {
+  proofreadingPlan?: ProofreadingAiPlan;
+  proofreadingDeepPassRuns?: readonly ProofreadingDeepPassRunPayloadRecord[];
+  proofreadingLayerMatrix?: readonly ProofreadingLayerMatrixEntry[];
+  goldSetAssertionResult?: GoldSetAssertionEvaluationResult;
+}): {
+  mode: "evaluated";
+  passed: boolean;
+  reasons: string[];
+  enforcement: {
+    finalizeBlocking: boolean;
+    wouldBlockFinalize: boolean;
+  };
+} {
+  const payload: Record<string, unknown> = {
+    ...(input.proofreadingPlan
+      ? { proofreadingPlan: input.proofreadingPlan }
+      : {}),
+    ...(input.proofreadingDeepPassRuns
+      ? { proofreadingDeepPassRuns: input.proofreadingDeepPassRuns }
+      : {}),
+    ...(input.proofreadingLayerMatrix
+      ? { proofreadingLayerMatrix: input.proofreadingLayerMatrix }
+      : {}),
+    ...(input.goldSetAssertionResult
+      ? { goldSetAssertionResult: input.goldSetAssertionResult }
+      : {}),
+  };
+  const gate = buildProofreadingReleaseQualityGate(payload);
+
+  return {
+    mode: "evaluated",
+    passed: gate.passed,
+    reasons: gate.reasons,
+    enforcement: {
+      finalizeBlocking: true,
+      wouldBlockFinalize: !gate.passed,
+    },
+  };
 }
 
 function readRuntimeBindingReadinessStatus(
@@ -3731,8 +4298,64 @@ interface ProofreadingDeepPassRunPayloadRecord {
       manualReviewItems: number;
       qualityFindings: number;
     };
+    segmentation?: ProofreadingSegmentationMetadata;
   };
   error_message?: string;
+}
+
+interface ProofreadingSegmentationMetadata {
+  mode: "segmented_candidate_discovery";
+  segmentCount: number;
+  totalBlockCount: number;
+  coveredBlockCount: number;
+  coverageRatio: number;
+  completedSegmentCount: number;
+  failedSegmentCount: number;
+  segments: Array<{
+    segmentNo: number;
+    blockStartIndex: number;
+    blockEndIndex: number;
+    blockIndexes: number[];
+    inputPreview: Array<{
+      blockIndex: number;
+      section?: string;
+      blockKind?: string;
+      textPreview: string;
+    }>;
+    blockCount: number;
+    issueCount: number;
+    status: "completed" | "failed";
+    attemptCount: number;
+    elapsedMs: number;
+    errorMessage?: string;
+  }>;
+}
+
+type ProofreadingLayerStatus = "completed" | "failed" | "missing";
+
+interface ProofreadingLayerMatrixEntry {
+  layer_id: string;
+  label: string;
+  status: ProofreadingLayerStatus;
+  required_for_release: boolean;
+  evidence?: {
+    pass_kind?: ProofreadingDeepPassKind;
+    issue_count?: number;
+    source_block_count?: number;
+    table_block_count?: number;
+    failed_segment_count?: number;
+  };
+  notes?: string[];
+}
+
+type SegmentedProofreadingPlan = ProofreadingAiPlan & {
+  segmentation: ProofreadingSegmentationMetadata;
+};
+
+function isSegmentedProofreadingPlan(
+  plan: ProofreadingAiPlan,
+): plan is SegmentedProofreadingPlan {
+  return "segmentation" in plan;
 }
 
 const PROOFREADING_DEEP_PASS_KINDS: readonly ProofreadingDeepPassKind[] = [
@@ -3742,6 +4365,318 @@ const PROOFREADING_DEEP_PASS_KINDS: readonly ProofreadingDeepPassKind[] = [
   "language_style_punctuation_and_format",
   "residual_synthesis",
 ] as const;
+
+function getEnabledProofreadingDeepPassKinds(): readonly ProofreadingDeepPassKind[] {
+  const rawLimit = process.env.PROOFREADING_DEEP_PASS_LIMIT;
+  if (!rawLimit) {
+    return PROOFREADING_DEEP_PASS_KINDS;
+  }
+
+  const limit = Number.parseInt(rawLimit, 10);
+  if (!Number.isFinite(limit) || limit <= 0) {
+    return PROOFREADING_DEEP_PASS_KINDS;
+  }
+
+  return PROOFREADING_DEEP_PASS_KINDS.slice(
+    0,
+    Math.min(limit, PROOFREADING_DEEP_PASS_KINDS.length),
+  );
+}
+
+const PROOFREADING_SEGMENTED_DEEP_PASS_ENABLED =
+  process.env.PROOFREADING_SEGMENTED_DEEP_PASS === "1";
+const PROOFREADING_SEGMENT_BLOCK_LIMIT = Number.parseInt(
+  process.env.PROOFREADING_SEGMENT_BLOCK_LIMIT ?? "24",
+  10,
+);
+const PROOFREADING_SEGMENT_CHAR_LIMIT = Number.parseInt(
+  process.env.PROOFREADING_SEGMENT_CHAR_LIMIT ?? "4500",
+  10,
+);
+const PROOFREADING_SEGMENT_MAX_SEGMENTS = Number.parseInt(
+  process.env.PROOFREADING_SEGMENT_MAX_SEGMENTS ?? "0",
+  10,
+);
+const PROOFREADING_SEGMENT_BLOCK_TEXT_LIMIT = Number.parseInt(
+  process.env.PROOFREADING_SEGMENT_BLOCK_TEXT_LIMIT ?? "900",
+  10,
+);
+const PROOFREADING_SEGMENT_RETRY_COUNT = Number.parseInt(
+  process.env.PROOFREADING_SEGMENT_RETRY_COUNT ?? "1",
+  10,
+);
+
+function shouldUseSegmentedProofreadingDeepPasses(
+  sourceBlocks: readonly EditorialTextBlock[] | undefined,
+): boolean {
+  return Boolean(
+    PROOFREADING_SEGMENTED_DEEP_PASS_ENABLED &&
+      sourceBlocks &&
+      sourceBlocks.length > PROOFREADING_SEGMENT_BLOCK_LIMIT,
+  );
+}
+
+function buildProofreadingSourceBlockSegments(
+  sourceBlocks: readonly EditorialTextBlock[],
+): Array<{
+  blocks: EditorialTextBlock[];
+  blockIndexes: number[];
+  blockStartIndex: number;
+  blockEndIndex: number;
+}> {
+  const prioritizedBlocks = prioritizeProofreadingSourceBlocks(sourceBlocks);
+  const segments: Array<{
+    blocks: EditorialTextBlock[];
+    blockIndexes: number[];
+    blockStartIndex: number;
+    blockEndIndex: number;
+  }> = [];
+  let currentBlocks: EditorialTextBlock[] = [];
+  let currentIndexes: number[] = [];
+  let currentChars = 0;
+
+  const flush = () => {
+    if (!currentBlocks.length) {
+      return;
+    }
+    segments.push({
+      blocks: currentBlocks,
+      blockIndexes: currentIndexes,
+      blockStartIndex: Math.min(...currentIndexes),
+      blockEndIndex: Math.max(...currentIndexes),
+    });
+    currentBlocks = [];
+    currentIndexes = [];
+    currentChars = 0;
+  };
+
+  prioritizedBlocks.forEach(({ block, blockIndex }) => {
+    const text = block.text.trim();
+    if (!text) {
+      return;
+    }
+    const segmentText = truncateProofreadingSegmentBlockText(text);
+    const textLength = segmentText.length;
+    const wouldExceedBlockLimit =
+      currentBlocks.length >= PROOFREADING_SEGMENT_BLOCK_LIMIT;
+    const wouldExceedCharLimit =
+      currentBlocks.length > 0 &&
+      currentChars + textLength > PROOFREADING_SEGMENT_CHAR_LIMIT;
+    if (wouldExceedBlockLimit || wouldExceedCharLimit) {
+      flush();
+    }
+    currentBlocks.push({
+      ...block,
+      text: segmentText,
+      blockIndex,
+      originalBlockIndex: blockIndex,
+    } as EditorialTextBlock & { blockIndex: number; originalBlockIndex: number });
+    currentIndexes.push(blockIndex);
+    currentChars += textLength;
+  });
+  flush();
+
+  return PROOFREADING_SEGMENT_MAX_SEGMENTS > 0
+    ? segments.slice(0, PROOFREADING_SEGMENT_MAX_SEGMENTS)
+    : segments;
+}
+
+function buildProofreadingSegmentInputPreview(segment: {
+  blocks: EditorialTextBlock[];
+  blockIndexes: number[];
+}): Array<{
+  blockIndex: number;
+  section?: string;
+  blockKind?: string;
+  textPreview: string;
+}> {
+  return segment.blocks.map((block, index) => ({
+    blockIndex: segment.blockIndexes[index] ?? index,
+    ...(block.section ? { section: block.section } : {}),
+    ...(block.block_kind ? { blockKind: block.block_kind } : {}),
+    textPreview: block.text.trim().slice(0, 160),
+  }));
+}
+
+function truncateProofreadingSegmentBlockText(text: string): string {
+  if (
+    PROOFREADING_SEGMENT_BLOCK_TEXT_LIMIT <= 0 ||
+    text.length <= PROOFREADING_SEGMENT_BLOCK_TEXT_LIMIT
+  ) {
+    return text;
+  }
+  return `${text.slice(0, PROOFREADING_SEGMENT_BLOCK_TEXT_LIMIT)}…`;
+}
+
+function prioritizeProofreadingSourceBlocks(
+  sourceBlocks: readonly EditorialTextBlock[],
+): Array<{ block: EditorialTextBlock; blockIndex: number }> {
+  return sourceBlocks
+    .map((block, blockIndex) => ({ block, blockIndex }))
+    .filter(({ block }) => block.text.trim().length > 0)
+    .sort((left, right) => {
+      const scoreDelta =
+        scoreProofreadingSourceBlock(right.block) -
+        scoreProofreadingSourceBlock(left.block);
+      if (scoreDelta !== 0) {
+        return scoreDelta;
+      }
+      return left.blockIndex - right.blockIndex;
+    });
+}
+
+function scoreProofreadingSourceBlock(block: EditorialTextBlock): number {
+  const text = block.text.toLowerCase();
+  let score = 0;
+  if (block.block_kind === "table") {
+    score += 8;
+  }
+  if (block.section === "abstract" || text.includes("摘要") || text.includes("abstract")) {
+    score += 7;
+  }
+  if (block.section === "results" || text.includes("结果") || text.includes("p<") || text.includes("p＜")) {
+    score += 6;
+  }
+  if (text.includes("%") || text.includes("±") || text.includes("sd") || text.includes("χ")) {
+    score += 5;
+  }
+  if (text.includes("结论") || text.includes("conclusion") || text.includes("讨论")) {
+    score += 4;
+  }
+  if (text.includes("mg") || text.includes("ml") || text.includes("d") || text.includes("例")) {
+    score += 3;
+  }
+  return score;
+}
+
+function buildSegmentedInitialProofreadingPlan(
+  manuscriptId: string,
+): ProofreadingAiPlan {
+  return {
+    role: "医学稿件终校审校员",
+    summary: `Initial whole-document proofreading plan was skipped for ${manuscriptId}; segmented deep passes will perform candidate discovery.`,
+    issues: [],
+    corrections: [],
+    manualReviewItems: [],
+  };
+}
+
+function buildSegmentedProofreadingDocumentMap(
+  sourceBlocks: readonly EditorialTextBlock[],
+): {
+  totalBlockCount: number;
+  totalCharacterCount: number;
+  sectionOutline: Array<{
+    sectionLabel: string;
+    blockStartIndex: number;
+    blockEndIndex: number;
+    blockCount: number;
+    charCount: number;
+    representativePreview: string;
+  }>;
+  keyTerms: string[];
+  crossSectionSignals: string[];
+  blockCatalog: Array<{
+    blockIndex: number;
+    sectionLabel?: string;
+    blockKind?: string;
+    charCount: number;
+    preview: string;
+  }>;
+} {
+  const sectionOutline: Array<{
+    sectionLabel: string;
+    blockStartIndex: number;
+    blockEndIndex: number;
+    blockCount: number;
+    charCount: number;
+    representativePreview: string;
+  }> = [];
+  const blockCatalog: Array<{
+    blockIndex: number;
+    sectionLabel?: string;
+    blockKind?: string;
+    charCount: number;
+    preview: string;
+  }> = [];
+  let totalCharacterCount = 0;
+  sourceBlocks.forEach((block, blockIndex) => {
+    const text = block.text.trim();
+    if (!text) {
+      return;
+    }
+    totalCharacterCount += text.length;
+    const sectionLabel = block.section || "unlabeled";
+    blockCatalog.push({
+      blockIndex,
+      ...(block.section ? { sectionLabel: block.section } : {}),
+      ...(block.block_kind ? { blockKind: block.block_kind } : {}),
+      charCount: text.length,
+      preview: text.slice(0, 96),
+    });
+    const existing = sectionOutline.at(-1);
+    if (existing && existing.sectionLabel === sectionLabel) {
+      existing.blockEndIndex = blockIndex;
+      existing.blockCount += 1;
+      existing.charCount += text.length;
+      return;
+    }
+    sectionOutline.push({
+      sectionLabel,
+      blockStartIndex: blockIndex,
+      blockEndIndex: blockIndex,
+      blockCount: 1,
+      charCount: text.length,
+      representativePreview: text.slice(0, 120),
+    });
+  });
+
+  return {
+    totalBlockCount: sourceBlocks.length,
+    totalCharacterCount,
+    sectionOutline,
+    keyTerms: extractSegmentedProofreadingKeyTerms(sourceBlocks),
+    crossSectionSignals: buildSegmentedProofreadingCrossSectionSignals(
+      sectionOutline.map((section) => section.sectionLabel),
+    ),
+    blockCatalog,
+  };
+}
+
+function extractSegmentedProofreadingKeyTerms(
+  sourceBlocks: readonly EditorialTextBlock[],
+): string[] {
+  const terms = new Map<string, number>();
+  for (const block of sourceBlocks) {
+    const matches = block.text.match(/\b[A-Z][A-Z0-9-]{1,12}\b/gu) ?? [];
+    for (const match of matches) {
+      terms.set(match, (terms.get(match) ?? 0) + 1);
+    }
+  }
+  return [...terms.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, 18)
+    .map(([term]) => term);
+}
+
+function buildSegmentedProofreadingCrossSectionSignals(
+  sectionLabels: readonly string[],
+): string[] {
+  const normalized = new Set(sectionLabels.map((label) => label.toLowerCase()));
+  const signals = [
+    "分段候选发现必须回看全文文档地图，跨段矛盾不得因当前片段缺少上下文而直接放弃。",
+  ];
+  if (normalized.has("abstract") && normalized.has("results")) {
+    signals.push("重点核对摘要结果与正文 Results 的样本量、指标方向和 P 值是否一致。");
+  }
+  if (normalized.has("methods") && normalized.has("results")) {
+    signals.push("重点核对 Methods 与 Results 的研究对象、干预方案和统计口径是否一致。");
+  }
+  if (normalized.has("results") && normalized.has("conclusion")) {
+    signals.push("重点核对 Results 与 Conclusion 是否存在结论升级或未报告结局。");
+  }
+  return signals;
+}
 
 function buildProofreadingPassRunReplayContext(input: {
   manuscriptId: string;
@@ -3915,6 +4850,200 @@ function normalizeProofreadingDedupeText(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/gu, " ").slice(0, 160);
 }
 
+function buildIssueQualitySummary(input: {
+  proofreadingPlan: ProofreadingAiPlan;
+  proofreadingDeepPassRuns?: readonly ProofreadingDeepPassRunPayloadRecord[];
+}): {
+  totalIssueCount: number;
+  actionableIssueCount: number;
+  highRiskIssueCount: number;
+  duplicateCandidateCount: number;
+  unattributedIssueCount: number;
+  bySource: {
+    rule: number;
+    knowledge: number;
+    residual: number;
+    model: number;
+  };
+} {
+  const issues = input.proofreadingPlan.issues;
+  const dedupeKeys = new Set<string>();
+  let duplicateCandidateCount = 0;
+  let unattributedIssueCount = 0;
+  const bySource = {
+    rule: 0,
+    knowledge: 0,
+    residual: 0,
+    model: 0,
+  };
+
+  for (const issue of issues) {
+    const dedupeKey = buildProofreadingIssueDedupeKey(issue);
+    if (dedupeKeys.has(dedupeKey)) {
+      duplicateCandidateCount += 1;
+    } else {
+      dedupeKeys.add(dedupeKey);
+    }
+
+    switch (issue.source) {
+      case "governed_rule":
+      case "quality_check":
+        bySource.rule += 1;
+        break;
+      case "knowledge_base":
+        bySource.knowledge += 1;
+        break;
+      case "residual_ai":
+        bySource.residual += 1;
+        break;
+      case "legacy_correction":
+        bySource.model += 1;
+        break;
+      default:
+        unattributedIssueCount += 1;
+        break;
+    }
+  }
+
+  return {
+    totalIssueCount: issues.length,
+    actionableIssueCount: issues.filter(isActionableProofreadingIssue).length,
+    highRiskIssueCount: issues.filter((issue) =>
+      issue.severity === "critical" || issue.severity === "high",
+    ).length,
+    duplicateCandidateCount,
+    unattributedIssueCount,
+    bySource,
+  };
+}
+
+function isActionableProofreadingIssue(issue: ProofreadingIssue): boolean {
+  return Boolean(
+    issue.suggestion &&
+      issue.suggestion.action !== "explain_only" &&
+      (
+        issue.suggestion.replacementText?.trim().length ||
+        issue.suggestion.note?.trim().length ||
+        issue.suggestion.action === "rewrite_manually" ||
+        issue.suggestion.action === "verify_fact"
+      ),
+  );
+}
+
+function buildResidualFreePlaySummary(input: {
+  proofreadingPlan: ProofreadingAiPlan;
+  proofreadingDeepPassRuns?: readonly ProofreadingDeepPassRunPayloadRecord[];
+}): {
+  enabled: boolean;
+  passKind: "residual_synthesis";
+  residualOnlyIssueCount: number;
+  deduplicatedResidualIssueCount: number;
+  requiresHumanSampling: boolean;
+  limitations: string[];
+} {
+  const residualPass = input.proofreadingDeepPassRuns?.find(
+    (pass) => pass.pass_kind === "residual_synthesis",
+  );
+  const passIssues = Array.isArray(residualPass?.output?.issues)
+    ? residualPass.output.issues
+    : input.proofreadingPlan.issues.filter(
+        (issue) => issue.source === "residual_ai",
+      );
+  const residualIssues = passIssues.filter(
+    (issue) => issue.source === "residual_ai",
+  );
+  const dedupeKeys = new Set(
+    residualIssues.map((issue) => buildProofreadingIssueDedupeKey(issue)),
+  );
+
+  return {
+    enabled: Boolean(residualPass),
+    passKind: "residual_synthesis",
+    residualOnlyIssueCount: residualIssues.length,
+    deduplicatedResidualIssueCount: dedupeKeys.size,
+    requiresHumanSampling: residualIssues.length > 0,
+    limitations: [
+      "Residual free-play is an AI-assisted discovery layer and requires human sampling before claims of coverage.",
+      "Residual findings are counted separately from rule and knowledge hits unless explicit provenance ids are present.",
+    ],
+  };
+}
+
+const CONTEXT_CONSISTENCY_CHECKS = [
+  {
+    checkId: "terminology_consistency",
+    label: "Terminology consistency",
+  },
+  {
+    checkId: "sample_size_consistency",
+    label: "Sample size consistency",
+  },
+  {
+    checkId: "group_consistency",
+    label: "Group consistency",
+  },
+  {
+    checkId: "time_point_consistency",
+    label: "Time point consistency",
+  },
+  {
+    checkId: "unit_consistency",
+    label: "Unit consistency",
+  },
+  {
+    checkId: "table_text_consistency",
+    label: "Table-text consistency",
+  },
+  {
+    checkId: "reference_citation_consistency",
+    label: "Reference citation consistency",
+  },
+  {
+    checkId: "conclusion_support_consistency",
+    label: "Conclusion support consistency",
+  },
+] as const;
+
+function buildContextConsistencyLayer(input: {
+  sourceBlocks: readonly EditorialTextBlock[];
+}): {
+  status: "completed" | "missing";
+  sourceBlockCount: number;
+  tableBlockCount: number;
+  neighborWindowSize: number;
+  wholeDocumentAnchorCount: number;
+  crossBlockCheckCount: number;
+  checks: Array<{
+    checkId: string;
+    label: string;
+    status: "planned" | "missing";
+  }>;
+  limitations: string[];
+} {
+  const sourceBlockCount = input.sourceBlocks.length;
+  const tableBlockCount = input.sourceBlocks.filter(
+    (block) => block.block_kind === "table",
+  ).length;
+
+  return {
+    status: sourceBlockCount > 0 ? "completed" : "missing",
+    sourceBlockCount,
+    tableBlockCount,
+    neighborWindowSize: sourceBlockCount > 0 ? 1 : 0,
+    wholeDocumentAnchorCount: sourceBlockCount > 0 ? 1 : 0,
+    crossBlockCheckCount: CONTEXT_CONSISTENCY_CHECKS.length,
+    checks: CONTEXT_CONSISTENCY_CHECKS.map((check) => ({
+      checkId: check.checkId,
+      label: check.label,
+      status: sourceBlockCount > 0 ? "planned" : "missing",
+    })),
+    limitations: [
+      "This layer records deterministic coverage anchors; semantic consistency still depends on model output and human review.",
+      "Segmented proofreading can miss relationships outside the captured neighbor window or whole-document anchors.",
+    ],
+  };
+}
+
 function buildProofreadingDeepPassRuns(input: {
   jobId: string;
   snapshotId?: string;
@@ -3954,6 +5083,124 @@ function buildProofreadingDeepPassRuns(input: {
       },
     };
   });
+}
+
+function buildProofreadingLayerMatrix(input: {
+  sourceBlocks: readonly EditorialTextBlock[];
+  proofreadingPlan?: ProofreadingAiPlan;
+  proofreadingDeepPassRuns: readonly ProofreadingDeepPassRunPayloadRecord[];
+}): ProofreadingLayerMatrixEntry[] {
+  const passByKind = new Map(
+    input.proofreadingDeepPassRuns.map((pass) => [pass.pass_kind, pass]),
+  );
+  const tableBlockCount = input.sourceBlocks.filter(
+    (block) => block.block_kind === "table",
+  ).length;
+  const contextConsistencyLayer = buildContextConsistencyLayer({
+    sourceBlocks: input.sourceBlocks,
+  });
+
+  return [
+    {
+      layer_id: "document_structure",
+      label: "Document structure parsing",
+      status: input.sourceBlocks.length > 0 ? "completed" : "missing",
+      required_for_release: true,
+      evidence: {
+        source_block_count: input.sourceBlocks.length,
+        table_block_count: tableBlockCount,
+      },
+    },
+    buildPassBackedProofreadingLayer({
+      layerId: "context_consistency",
+      label: "Whole-document context consistency",
+      passKind: "structure_logic_and_consistency",
+      pass: passByKind.get("structure_logic_and_consistency"),
+      evidence: {
+        source_block_count: contextConsistencyLayer.sourceBlockCount,
+        table_block_count: contextConsistencyLayer.tableBlockCount,
+        neighbor_window_size: contextConsistencyLayer.neighborWindowSize,
+        whole_document_anchor_count:
+          contextConsistencyLayer.wholeDocumentAnchorCount,
+        cross_block_check_count: contextConsistencyLayer.crossBlockCheckCount,
+      },
+      notes: [...contextConsistencyLayer.limitations],
+    }),
+    buildPassBackedProofreadingLayer({
+      layerId: "statistics_expression",
+      label: "Statistics and numeric expression",
+      passKind: "data_statistics_units_and_tables",
+      pass: passByKind.get("data_statistics_units_and_tables"),
+    }),
+    buildPassBackedProofreadingLayer({
+      layerId: "table_proofreading",
+      label: "Table proofreading",
+      passKind: "data_statistics_units_and_tables",
+      pass: passByKind.get("data_statistics_units_and_tables"),
+      notes:
+        tableBlockCount > 0
+          ? [`${tableBlockCount} table block(s) were included in source parsing.`]
+          : ["No table blocks were detected in the parsed source."],
+    }),
+    buildPassBackedProofreadingLayer({
+      layerId: "residual_discovery",
+      label: "Residual AI discovery",
+      passKind: "residual_synthesis",
+      pass: passByKind.get("residual_synthesis"),
+    }),
+    {
+      layer_id: "final_regression_readiness",
+      label: "Final regression readiness",
+      status:
+        (input.proofreadingPlan?.issues.length ?? 0) > 0 &&
+        input.proofreadingDeepPassRuns.every((pass) => pass.status === "completed")
+          ? "completed"
+          : "missing",
+      required_for_release: true,
+      evidence: {
+        issue_count: input.proofreadingPlan?.issues.length ?? 0,
+        failed_segment_count: input.proofreadingDeepPassRuns.reduce(
+          (total, pass) => total + countFailedProofreadingSegments(pass),
+          0,
+        ),
+      },
+      notes: [
+        "Final DOCX regression must run after confirmed changes are materialized.",
+      ],
+    },
+  ];
+}
+
+function buildPassBackedProofreadingLayer(input: {
+  layerId: string;
+  label: string;
+  passKind: ProofreadingDeepPassKind;
+  pass?: ProofreadingDeepPassRunPayloadRecord;
+  evidence?: Record<string, unknown>;
+  notes?: string[];
+}): ProofreadingLayerMatrixEntry {
+  return {
+    layer_id: input.layerId,
+    label: input.label,
+    status: input.pass?.status === "completed" ? "completed" : "missing",
+    required_for_release: true,
+    evidence: {
+      pass_kind: input.passKind,
+      issue_count: input.pass?.output?.issues.length ?? 0,
+      failed_segment_count: input.pass ? countFailedProofreadingSegments(input.pass) : 0,
+      ...(input.evidence ?? {}),
+    },
+    ...(input.notes ? { notes: input.notes } : {}),
+  };
+}
+
+function countFailedProofreadingSegments(
+  pass: ProofreadingDeepPassRunPayloadRecord,
+): number {
+  return (
+    pass.output?.segmentation?.segments.filter((segment) => segment.status === "failed")
+      .length ?? 0
+  );
 }
 
 function buildProofreadingPassRunPersistenceRecords(input: {

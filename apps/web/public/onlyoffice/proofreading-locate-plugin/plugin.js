@@ -216,6 +216,47 @@
     };
   }
 
+  function buildLocateSearchCandidates(quote) {
+    var normalizedQuote = normalizeText(quote);
+    if (!normalizedQuote) {
+      return [];
+    }
+
+    var candidates = [normalizedQuote];
+    var punctuationSegments = normalizedQuote
+      .split(/[。！？；;,.，、\n\r]+/g)
+      .map(normalizeText)
+      .filter(function keepUsefulSegment(segment) {
+        return segment.length >= 4;
+      });
+
+    punctuationSegments.forEach(function addSegment(segment) {
+      candidates.push(segment);
+    });
+
+    if (normalizedQuote.length > 24) {
+      candidates.push(normalizedQuote.slice(0, 24));
+      candidates.push(normalizedQuote.slice(Math.max(0, normalizedQuote.length - 24)));
+    }
+
+    if (normalizedQuote.length > 12) {
+      var middleStart = Math.max(0, Math.floor(normalizedQuote.length / 2) - 8);
+      candidates.push(normalizedQuote.slice(middleStart, middleStart + 16));
+    }
+
+    var seen = Object.create(null);
+    return candidates
+      .map(normalizeText)
+      .filter(function keepUniqueCandidate(candidate) {
+        if (!candidate || candidate.length < 2 || seen[candidate]) {
+          return false;
+        }
+
+        seen[candidate] = true;
+        return true;
+      });
+  }
+
   function normalizeLocateMessage(payload) {
     if (!payload || payload.type !== "proofreading-locate") {
       return null;
@@ -416,7 +457,14 @@
         continue;
       }
 
-      var matchRange = findTextRange(paragraph.text, issue.quote);
+      var searchCandidates = buildLocateSearchCandidates(issue.quote);
+      var matchRange = null;
+      for (var candidateIndex = 0; candidateIndex < searchCandidates.length; candidateIndex += 1) {
+        matchRange = findTextRange(paragraph.text, searchCandidates[candidateIndex]);
+        if (matchRange) {
+          break;
+        }
+      }
       if (matchRange) {
         matches.push({
           paragraph: paragraph,
@@ -578,21 +626,38 @@
       return;
     }
 
-    window.Asc.plugin.executeMethod("MoveCursorToStart", [true], function () {
+    var searchCandidates = buildLocateSearchCandidates(locateMessage.quote);
+    var searchIndex = 0;
+    function searchNextCandidate() {
+      var searchString = searchCandidates[searchIndex] || locateMessage.quote;
+      searchIndex += 1;
       window.Asc.plugin.executeMethod(
         "SearchNext",
         [
           {
-            searchString: locateMessage.quote,
+            searchString: searchString,
             matchCase: false
           },
           true
         ],
-        function () {
-          dispatchLocateAck("executed", locateMessage);
+        function (found) {
+          if (found === true) {
+            dispatchLocateAck("executed", locateMessage);
+            return;
+          }
+
+          if (searchIndex < searchCandidates.length) {
+            dispatchLocateAck("received", locateMessage);
+            searchNextCandidate();
+            return;
+          }
+
+          dispatchLocateAck("received", locateMessage);
         }
       );
-    });
+    }
+
+    window.Asc.plugin.executeMethod("MoveCursorToStart", [true], searchNextCandidate);
   }
 
   function handleParagraphTextEvent(payload) {

@@ -5,6 +5,7 @@ This repository uses a layered collaboration model. This file defines the defaul
 Use this file together with:
 - `docs/CODE_QUALITY.md`
 - `docs/REVIEW_CHECKLIST.md`
+- `docs/STRICT_SUPERPOWERS_DELIVERY.md`
 - `docs/superpowers/specs/11-agent-runtime-and-portable-skills.md`
 
 ## Core Rule
@@ -16,6 +17,7 @@ Short version:
 - Build the smallest change that solves today's problem.
 - Touch only code directly related to the task.
 - Define verification before claiming the work is done.
+- For behavior changes and bug fixes, follow strict Red -> Green -> Verify delivery from `docs/STRICT_SUPERPOWERS_DELIVERY.md`.
 
 ## 1. Clarify Before Coding
 
@@ -57,9 +59,11 @@ Short version:
 ## 6. Collaboration Layers
 
 - `superpowers` defines what should be built, the plan, and the acceptance boundary.
+- `karpathy-governed-delivery` keeps implementation grounded in first principles, minimal scope, root cause, and strong verification.
 - `subagent` executes bounded work inside an already approved boundary.
 - `gstack` provides browser QA, release checks, and regression evidence.
 - This file governs how each layer should behave while doing its work.
+- For non-trivial delivery, apply the maximum collaboration protocol in `docs/STRICT_SUPERPOWERS_DELIVERY.md`: superpowers for design/TDD boundaries, karpathy-governed-delivery for disciplined implementation, and gstack for browser or end-to-end evidence.
 
 ## 7. Review Questions
 

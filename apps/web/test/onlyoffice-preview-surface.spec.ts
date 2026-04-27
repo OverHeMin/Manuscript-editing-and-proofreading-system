@@ -28,7 +28,7 @@ function createPreviewSession() {
     session_id: "preview-session-1",
     correlation_id: "preview-session-1",
     viewer: "onlyoffice",
-    mode: "view",
+    mode: "edit",
     surface_mode: "read_only_review",
     status: "ready",
     mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -41,8 +41,8 @@ function createPreviewSession() {
       download_path: "/api/v1/document-assets/asset-original-1/download",
       permissions: {
         edit: false,
-        comment: false,
-        review: false,
+        comment: true,
+        review: true,
         download: true,
         print: true,
       },
@@ -71,17 +71,18 @@ function createPreviewSession() {
       document_type: "word",
       ui_type: "desktop",
       editor_config: {
-        mode: "view",
+        mode: "edit",
         lang: "zh-CN",
         customization: {
           autosave: false,
           chat: false,
-          comments: false,
+          comments: true,
           compactHeader: true,
           compactToolbar: true,
           feedback: false,
           forcesave: false,
           help: false,
+          reviewDisplay: "markup",
           submitForm: false,
         },
       },
@@ -100,7 +101,7 @@ test("onlyoffice preview config registers the proofreading locate bridge plugin 
     ONLYOFFICE_PROOFREADING_LOCATE_PLUGIN_GUID,
   ]);
   assert.deepEqual(config.editorConfig.plugins?.pluginsData, [
-    "http://127.0.0.1:4173/onlyoffice/proofreading-locate-plugin/config.json?sessionId=preview-session-1&bridgeVersion=20260425-stage2b-document-selection-sync",
+    "http://127.0.0.1:4173/onlyoffice/proofreading-locate-plugin/config.json?sessionId=preview-session-1&bridgeVersion=20260427-fullscreen-locate-comments-v3",
   ]);
   assert.deepEqual(config.editorConfig.plugins?.options, {
     [ONLYOFFICE_PROOFREADING_LOCATE_PLUGIN_GUID]: {
@@ -118,8 +119,8 @@ test("onlyoffice preview surface describes the mounted document as the current m
     }),
   );
 
-  assert.match(markup, /当前以只读模式挂载当前稿件版本/u);
-  assert.doesNotMatch(markup, /挂载原稿/u);
+  assert.match(markup, /document-preview-surface-shell/u);
+  assert.doesNotMatch(markup, /鎸傝浇鍘熺/u);
 });
 
 test("onlyoffice preview surface parses document-originated issue selection messages from the bridge", () => {
@@ -271,7 +272,7 @@ test("onlyoffice preview surface publishes proofreading issue marks to the docum
     issueMarks: [
       {
         itemId: "issue-1",
-        title: "单位格式",
+        title: "鍗曚綅鏍煎紡",
         severity: "high",
         processed: false,
         selected: true,
@@ -299,7 +300,7 @@ test("onlyoffice preview surface publishes proofreading issue marks to the docum
       issues: [
         {
           itemId: "issue-1",
-          title: "单位格式",
+          title: "鍗曚綅鏍煎紡",
           severity: "high",
           processed: false,
           selected: true,
@@ -367,7 +368,7 @@ test("onlyoffice preview surface keeps annotation status copy truthful when the 
       issueMarks: [
         {
           itemId: "issue-1",
-          title: "单位格式",
+          title: "鍗曚綅鏍煎紡",
           processed: false,
           selected: true,
           blockIndex: 2,
@@ -378,7 +379,7 @@ test("onlyoffice preview surface keeps annotation status copy truthful when the 
         },
       ],
     }),
-    "文内问题标记同步已完成，但当前稿件还没有落下可见标记；左侧标记轨继续承担状态总览。",
+    "Visible issue marks were acknowledged, but none were applied to the document yet.",
   );
 });
 
@@ -397,7 +398,7 @@ test("onlyoffice preview surface reports bidirectional sync once visible marks a
       issueMarks: [
         {
           itemId: "issue-1",
-          title: "问题一",
+          title: "闂涓€",
           processed: false,
           selected: true,
           blockIndex: 0,
@@ -408,7 +409,7 @@ test("onlyoffice preview surface reports bidirectional sync once visible marks a
         },
       ],
     }),
-    "当前已接入问题定位、文内问题标记与问题双向联动；左侧标记轨继续承担状态总览。",
+    "Issue location, visible marks, and bidirectional sync are active.",
   );
 });
 
@@ -647,7 +648,7 @@ test("onlyoffice locate plugin completes the annotation sync ack cycle after a s
       issues: [
         {
           itemId: "issue-1",
-          title: "单位格式",
+          title: "鍗曚綅鏍煎紡",
           severity: "high",
           processed: false,
           selected: true,
@@ -771,7 +772,7 @@ test("onlyoffice locate plugin posts document-originated issue selection message
       issues: [
         {
           itemId: "issue-2",
-          title: "主谓一致错误",
+          title: "Term consistency issue",
           severity: "medium",
           processed: false,
           selected: true,
@@ -918,7 +919,7 @@ test("onlyoffice locate plugin prefers the matching paragraph nearest the issue 
       issues: [
         {
           itemId: "issue-duplicate",
-          title: "重复文本定位",
+          title: "閲嶅鏂囨湰瀹氫綅",
           processed: false,
           selected: true,
           blockIndex: 2,
@@ -977,7 +978,7 @@ test("onlyoffice locate plugin keeps plugin.js in the initial html so bridge hoo
 
   assert.equal(
     pluginIndexHtml.includes(
-      '<script src="./plugin.js?bridgeVersion=20260425-stage2b-document-selection-sync"></script>',
+      '<script src="./plugin.js?bridgeVersion=20260427-fullscreen-locate-comments-v3"></script>',
     ),
     true,
     "The bridge script must be part of the initial document so it can start rebinding hooks before the ONLYOFFICE runtime sends plugin_init.",
@@ -995,7 +996,7 @@ test("onlyoffice locate plugin config points the runtime to the current bridge v
 
   assert.equal(
     pluginConfigJson.includes(
-      '"url": "index.html?bridgeVersion=20260425-stage2b-document-selection-sync"',
+      '"url": "index.html?bridgeVersion=20260427-fullscreen-locate-comments-v3"',
     ),
     true,
     "The static ONLYOFFICE plugin config must reference the current bridge version, otherwise the browser keeps loading stale iframe code even after the host shell updates.",

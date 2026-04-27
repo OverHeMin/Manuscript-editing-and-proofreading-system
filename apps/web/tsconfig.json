@@ -6,6 +6,7 @@
     "moduleResolution": "Bundler",
     "baseUrl": ".",
     "paths": {
+      "@/*": ["src/*"],
       "@medical/contracts": ["../../packages/contracts/src/index.ts"]
     },
     "strict": true,

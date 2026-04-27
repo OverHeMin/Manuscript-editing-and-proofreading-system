@@ -27,6 +27,7 @@ import {
 import { AiGatewayService } from "../modules/ai-gateway/index.ts";
 import {
   type AiProviderConnectivityProbe,
+  AiProviderAutoConfigurationService,
   AiProviderCredentialCrypto,
   createAiProviderConnectionApi,
   createAiProviderConnectionService,
@@ -41,7 +42,10 @@ import {
 import {
   DocumentStructureService,
   DocumentExportService,
+  DocumentNormalizationService,
+  DocumentNormalizationWorkflowService,
   EditorialDocxTransformService,
+  LocalDocumentNormalizationConverter,
   PythonDocxSourceBlockResolver,
   PythonDocxStructureWorkerAdapter,
 } from "../modules/document-pipeline/index.ts";
@@ -470,6 +474,18 @@ export function createPersistentGovernanceRuntime(
     assetRepository,
     manuscriptRepository,
   });
+  const documentNormalizationWorkflowService =
+    new DocumentNormalizationWorkflowService({
+      normalizationService: new DocumentNormalizationService(),
+      assetService: documentAssetService,
+      toolingStatus: {
+        libreOfficeAvailable: true,
+      },
+      converter: new LocalDocumentNormalizationConverter({
+        rootDir: uploadRootDir,
+        libreOfficeAvailable: true,
+      }),
+    });
   const documentStructureService = new DocumentStructureService({
     adapter: new PythonDocxStructureWorkerAdapter({
       assetRepository,
@@ -899,6 +915,7 @@ export function createPersistentGovernanceRuntime(
     executionGovernanceService,
     executionTrackingService,
     jobRepository,
+    harnessDatasetRepository,
     proofreadingPassRunRepository,
     documentAssetService,
     aiGatewayService,
@@ -937,6 +954,10 @@ export function createPersistentGovernanceRuntime(
       options.aiProviderConnectivityProbe ??
       new OpenAiChatCompatibleConnectivityProbe(),
   });
+  const aiProviderAutoConfigurationService = new AiProviderAutoConfigurationService({
+    connectionService: aiProviderConnectionService,
+    modelRegistryService,
+  });
 
   return withRuntimeBootstrap(
     {
@@ -971,6 +992,7 @@ export function createPersistentGovernanceRuntime(
       agentExecutionService,
       proofreadingPassRunRepository,
     }),
+    documentNormalizationWorkflowService,
     proofreadingApi: createProofreadingApi({
       proofreadingService,
     }),
@@ -1091,6 +1113,7 @@ export function createPersistentGovernanceRuntime(
     aiProviderConnectionApi: createAiProviderConnectionApi({
       aiProviderConnectionService,
     }),
+    aiProviderAutoConfigurationService,
     permissionGuard,
     },
     runtimeBootstrap,

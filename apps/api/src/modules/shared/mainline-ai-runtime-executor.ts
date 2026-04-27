@@ -22,6 +22,7 @@ export interface OpenAiMainlineAiRuntimeExecutorOptions {
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
+const TRANSIENT_NETWORK_RETRY_COUNT = 2;
 
 export class MainlineAiRuntimeExecutorError extends Error {
   constructor(message: string) {
@@ -111,7 +112,7 @@ export class OpenAiMainlineAiRuntimeExecutor
     });
 
     try {
-      return await this.executeTargetRequest({
+      return await this.executeTargetRequestWithRetry({
         module: input.module,
         target: runtime.primary,
         requestBody,
@@ -123,7 +124,7 @@ export class OpenAiMainlineAiRuntimeExecutor
     }
 
     try {
-      return await this.executeTargetRequest({
+      return await this.executeTargetRequestWithRetry({
         module: input.module,
         target: runtime.fallback_chain[0]!,
         requestBody,
@@ -150,7 +151,10 @@ export class OpenAiMainlineAiRuntimeExecutor
       });
 
       if (!response.ok) {
-        throw new MainlineAiRuntimeHttpStatusError(response.status);
+        throw new MainlineAiRuntimeHttpStatusError(
+          response.status,
+          await readResponseErrorSnippet(response),
+        );
       }
 
       const body = (await response.json()) as {
@@ -171,6 +175,27 @@ export class OpenAiMainlineAiRuntimeExecutor
       clearTimeout(timeout);
     }
   }
+
+  private async executeTargetRequestWithRetry(input: {
+    module: ExecuteMainlineAiInput["module"];
+    target: AiProviderRuntimeExecutableTarget;
+    requestBody: string;
+  }): Promise<string> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= TRANSIENT_NETWORK_RETRY_COUNT; attempt += 1) {
+      try {
+        return await this.executeTargetRequest(input);
+      } catch (error) {
+        lastError = error;
+        if (!isRetryableTargetError(error) || attempt >= TRANSIENT_NETWORK_RETRY_COUNT) {
+          throw error;
+        }
+        await sleep(500 * (attempt + 1));
+      }
+    }
+
+    throw lastError;
+  }
 }
 
 class MainlineAiRuntimeTimeoutError extends Error {
@@ -181,8 +206,8 @@ class MainlineAiRuntimeTimeoutError extends Error {
 }
 
 class MainlineAiRuntimeHttpStatusError extends Error {
-  constructor(readonly status: number) {
-    super(`HTTP ${status}`);
+  constructor(readonly status: number, readonly bodySnippet?: string) {
+    super(`HTTP ${status}${bodySnippet ? `: ${bodySnippet}` : ""}`);
     this.name = "MainlineAiRuntimeHttpStatusError";
   }
 }
@@ -243,7 +268,15 @@ function shouldRetryWithFallback(error: unknown): boolean {
 
   return (
     error instanceof MainlineAiRuntimeHttpStatusError &&
-    (error.status === 429 || error.status >= 500)
+    (error.status === 403 || error.status === 429 || error.status >= 500)
+  );
+}
+
+function isRetryableTargetError(error: unknown): boolean {
+  return (
+    error instanceof TypeError &&
+    typeof error.message === "string" &&
+    error.message.toLowerCase().includes("fetch failed")
   );
 }
 
@@ -259,7 +292,7 @@ function formatExecutorRequestError(
 
   if (error instanceof MainlineAiRuntimeHttpStatusError) {
     return new MainlineAiRuntimeExecutorError(
-      `${formatModuleLabel(module)} AI request failed with status ${error.status}.`,
+      `${formatModuleLabel(module)} AI request failed with status ${error.status}${shouldIncludeProviderErrorBody() && error.bodySnippet ? `: ${error.bodySnippet}` : ""}.`,
     );
   }
 
@@ -276,6 +309,23 @@ function formatExecutorRequestError(
   return new MainlineAiRuntimeExecutorError(
     `${formatModuleLabel(module)} AI request failed.`,
   );
+}
+
+async function readResponseErrorSnippet(response: Response): Promise<string | undefined> {
+  try {
+    const text = await response.text();
+    return text.trim().slice(0, 500) || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function shouldIncludeProviderErrorBody(): boolean {
+  return process.env.AI_PROVIDER_ERROR_BODY_DEBUG === "1";
 }
 
 function isAbortError(error: unknown): boolean {

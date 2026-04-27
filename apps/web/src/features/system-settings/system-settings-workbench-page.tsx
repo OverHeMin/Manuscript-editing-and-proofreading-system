@@ -57,9 +57,8 @@ interface CreateProviderFormState {
   name: string;
   providerKind: AiProviderKind;
   baseUrl: string;
-  testModelName: string;
   apiKey: string;
-  enabled: boolean;
+  showAdvanced: boolean;
 }
 
 interface SelectedProviderFormState {
@@ -125,9 +124,8 @@ export function SystemSettingsWorkbenchPage({
     name: "",
     providerKind: "qwen",
     baseUrl: "",
-    testModelName: "qwen-max",
     apiKey: "",
-    enabled: true,
+    showAdvanced: false,
   });
   const [selectedProviderForm, setSelectedProviderForm] = useState<SelectedProviderFormState>({
     name: initialOverview?.selectedConnection?.name ?? "",
@@ -297,26 +295,23 @@ export function SystemSettingsWorkbenchPage({
 
   async function handleCreateProviderConnection(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!createProviderForm.name.trim() || !createProviderForm.testModelName.trim() || !createProviderForm.apiKey.trim()) {
+    if (!createProviderForm.apiKey.trim()) {
       setErrorMessage("请完整填写 AI 提供方连接信息。");
       return;
     }
     await runAction(async () => {
-      const result = await controller.createProviderConnectionAndReload({
-        name: createProviderForm.name.trim(),
+      const result = await controller.autoConfigureProviderConnectionAndReload({
+        connectionName: normalizeOptionalText(createProviderForm.name),
         providerKind: createProviderForm.providerKind,
         baseUrl: normalizeOptionalText(createProviderForm.baseUrl),
-        testModelName: createProviderForm.testModelName.trim(),
         apiKey: createProviderForm.apiKey,
-        enabled: createProviderForm.enabled,
       });
       setCreateProviderForm({
         name: "",
         providerKind: "qwen",
         baseUrl: "",
-        testModelName: "qwen-max",
         apiKey: "",
-        enabled: true,
+        showAdvanced: false,
       });
       return result.overview;
     }, "AI 提供方连接已创建。");
@@ -632,13 +627,16 @@ export function SystemSettingsWorkbenchPage({
                 <article className="system-settings-panel">
                   <div className="system-settings-panel-header"><div><h3>新增连接</h3><p>支持 Qwen、DeepSeek、OpenAI 与兼容 OpenAI 的聚合入口。</p></div></div>
                   <form className="system-settings-form-grid" onSubmit={handleCreateProviderConnection}>
-                    <label className="system-settings-field"><span>连接名称</span><input value={createProviderForm.name} onChange={(event) => setCreateProviderForm((current) => ({ ...current, name: event.target.value }))} placeholder="Qwen Production" /></label>
-                    <label className="system-settings-field"><span>提供方类型</span><select value={createProviderForm.providerKind} onChange={(event) => setCreateProviderForm((current) => ({ ...current, providerKind: event.target.value as AiProviderKind }))}>{providerKindOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-                    <label className="system-settings-field"><span>基础 URL</span><input value={createProviderForm.baseUrl} onChange={(event) => setCreateProviderForm((current) => ({ ...current, baseUrl: event.target.value }))} placeholder="https://api.deepseek.com" /></label>
-                    <label className="system-settings-field"><span>测试模型</span><input value={createProviderForm.testModelName} onChange={(event) => setCreateProviderForm((current) => ({ ...current, testModelName: event.target.value }))} placeholder="qwen-max" /></label>
                     <label className="system-settings-field"><span>API Key</span><input type="password" value={createProviderForm.apiKey} onChange={(event) => setCreateProviderForm((current) => ({ ...current, apiKey: event.target.value }))} placeholder="sk-..." /></label>
-                    <label className="system-settings-field"><span>启用状态</span><select value={createProviderForm.enabled ? "enabled" : "disabled"} onChange={(event) => setCreateProviderForm((current) => ({ ...current, enabled: event.target.value === "enabled" }))}><option value="enabled">启用</option><option value="disabled">停用</option></select></label>
-                    <div className="system-settings-actions system-settings-actions-full"><button type="submit" disabled={isBusy}>创建连接</button></div>
+                    <div className="system-settings-actions system-settings-actions-full"><button type="button" disabled={isBusy} onClick={() => setCreateProviderForm((current) => ({ ...current, showAdvanced: !current.showAdvanced }))}>{createProviderForm.showAdvanced ? "Hide advanced" : "Advanced"}</button></div>
+                    {createProviderForm.showAdvanced ? (
+                      <>
+                        <label className="system-settings-field"><span>Connection name</span><input value={createProviderForm.name} onChange={(event) => setCreateProviderForm((current) => ({ ...current, name: event.target.value }))} placeholder="Qwen Production" /></label>
+                        <label className="system-settings-field"><span>Provider</span><select value={createProviderForm.providerKind} onChange={(event) => setCreateProviderForm((current) => ({ ...current, providerKind: event.target.value as AiProviderKind }))}>{providerKindOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+                        <label className="system-settings-field"><span>Base URL</span><input value={createProviderForm.baseUrl} onChange={(event) => setCreateProviderForm((current) => ({ ...current, baseUrl: event.target.value }))} placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" /></label>
+                      </>
+                    ) : null}
+                    <div className="system-settings-actions system-settings-actions-full"><button type="submit" disabled={isBusy}>Auto discover models</button></div>
                   </form>
                 </article>
                 <article className="system-settings-panel">

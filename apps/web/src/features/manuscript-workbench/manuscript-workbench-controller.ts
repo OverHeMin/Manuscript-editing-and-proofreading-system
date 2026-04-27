@@ -15,10 +15,12 @@ import {
 import { getKnowledgeAssetDetail } from "../knowledge-library/knowledge-library-api.ts";
 import type { KnowledgeRevisionStatus } from "../knowledge-library/types.ts";
 import {
+  archiveManuscript,
   exportCurrentAsset,
   getJob,
   getManuscript,
   getModuleExecutionConcurrency,
+  listManuscripts,
   listManuscriptAssets,
   uploadManuscriptBatch,
   uploadManuscript,
@@ -265,6 +267,8 @@ export interface ManuscriptWorkbenchController {
     manuscriptId: string,
     options?: ManuscriptWorkbenchWorkspaceLoadOptions,
   ): Promise<ManuscriptWorkbenchWorkspace>;
+  listManuscripts(limit?: number): Promise<ManuscriptViewModel[]>;
+  archiveManuscript(manuscriptId: string): Promise<ManuscriptViewModel>;
   loadModuleExecutionConcurrency(): Promise<ModuleExecutionConcurrencySnapshotViewModel>;
   loadProofreadingGovernanceHandoff?(
     manuscriptId: string,
@@ -342,6 +346,14 @@ export function createManuscriptWorkbenchController(
   return {
     loadWorkspace(manuscriptId, options) {
       return loadWorkspaceWithKnowledge(manuscriptId, options);
+    },
+    async listManuscripts(limit) {
+      const response = await listManuscripts(client, limit);
+      return response.body;
+    },
+    async archiveManuscript(manuscriptId) {
+      const response = await archiveManuscript(client, manuscriptId);
+      return response.body;
     },
     async loadModuleExecutionConcurrency() {
       const response = await getModuleExecutionConcurrency(client);

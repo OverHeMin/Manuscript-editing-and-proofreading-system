@@ -14,6 +14,7 @@
     "preflight:persistent": "tsx ./src/ops/persistent-startup-preflight.ts",
     "recover:governed-orchestration": "tsx ./src/ops/recover-governed-execution-orchestration.ts",
     "db:seed-qwen-module-routing": "tsx ./src/database/scripts/seed-qwen-module-routing.ts",
+    "db:seed-deepseek-module-routing": "tsx ./src/database/scripts/seed-deepseek-module-routing.ts",
     "smoke:boot": "tsx ./src/ops/smoke-boot.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx ./test/run-tests.ts",

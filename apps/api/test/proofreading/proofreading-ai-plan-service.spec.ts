@@ -277,6 +277,110 @@ test("proofreading AI planning forwards governance context without losing whole-
   );
 });
 
+test("proofreading AI planning keeps global block indexes in segmented mode", async () => {
+  let recordedInput: ExecuteMainlineAiInput | undefined;
+  const service = new ProofreadingAiPlanService({
+    mainlineAiRuntimeExecutor: {
+      async executeJson<T>(input: ExecuteMainlineAiInput): Promise<T> {
+        recordedInput = structuredClone(input);
+        return {
+          role: "医学稿件终校审校员",
+          summary: "Segment checked.",
+          issues: [
+            {
+              title: "跨段疗程不一致",
+              description: "摘要与方法疗程不一致。",
+              severity: "high",
+              source: "residual_ai",
+              issueType: "structure_logic_and_consistency",
+              anchor: {
+                blockIndex: 12,
+                quote: "均治疗10d",
+              },
+              suggestion: {
+                action: "verify_fact",
+                note: "请人工核对疗程。",
+              },
+            },
+          ],
+          manualReviewItems: [],
+        } as T;
+      },
+      async executeMarkdown(): Promise<string> {
+        throw new Error("Proofreading AI planning should request JSON.");
+      },
+    } satisfies MainlineAiRuntimeExecutor,
+  });
+
+  const plan = await service.createPlan({
+    manuscriptId: "manuscript-segmented",
+    sourceFileName: "segmented.docx",
+    sourceBlocks: [
+      {
+        blockIndex: 12,
+        originalBlockIndex: 12,
+        section: "methods",
+        block_kind: "paragraph",
+        text: "两组均治疗10d。",
+      },
+      {
+        blockIndex: 13,
+        originalBlockIndex: 13,
+        section: "results",
+        block_kind: "table",
+        text: "表1 临床疗效。",
+      },
+    ] as never,
+    segmentContext: {
+      segmentNo: 2,
+      segmentCount: 4,
+      blockStartIndex: 12,
+      blockEndIndex: 13,
+      totalBlockCount: 80,
+      coveredBlockIndexes: [12, 13],
+      documentMap: {
+        totalBlockCount: 80,
+        sectionOutline: [
+          {
+            sectionLabel: "abstract",
+            blockStartIndex: 0,
+            blockEndIndex: 5,
+            blockCount: 6,
+          },
+          {
+            sectionLabel: "methods",
+            blockStartIndex: 10,
+            blockEndIndex: 20,
+            blockCount: 11,
+          },
+        ],
+        crossSectionSignals: ["核对摘要与方法疗程是否一致。"],
+      },
+    },
+  } as never);
+
+  const payload = recordedInput?.userPayload as
+    | {
+        fullDocumentBlocks?: Array<{ blockIndex: number; text: string }>;
+        segmentContext?: {
+          blockStartIndex?: number;
+          coveredBlockIndexes?: number[];
+          documentMap?: Record<string, unknown>;
+        };
+      }
+    | undefined;
+
+  assert.match(recordedInput?.systemPrompt ?? "", /全局 blockIndex/u);
+  assert.deepEqual(
+    payload?.fullDocumentBlocks?.map((block) => block.blockIndex),
+    [12, 13],
+  );
+  assert.equal(payload?.segmentContext?.blockStartIndex, 12);
+  assert.deepEqual(payload?.segmentContext?.coveredBlockIndexes, [12, 13]);
+  assert.equal(payload?.segmentContext?.documentMap?.totalBlockCount, 80);
+  assert.equal(plan.issues[0]?.anchor.blockIndex, 12);
+});
+
 test("proofreading AI planning removes governed duplicates before keeping residual issues", async () => {
   const service = new ProofreadingAiPlanService({
     mainlineAiRuntimeExecutor: {

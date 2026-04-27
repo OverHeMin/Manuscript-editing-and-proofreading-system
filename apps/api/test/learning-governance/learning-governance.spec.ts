@@ -116,6 +116,7 @@ function createLearningGovernanceHarness() {
     activationMetricsService,
     api,
     editorialRuleRepository,
+    knowledgeService,
     learningCandidateRepository,
     templateFamilyRepository,
     templateService,
@@ -198,7 +199,7 @@ test("only approved learning candidates can create writebacks and duplicate acti
 });
 
 test("admin can apply writebacks into governed draft assets and list them by candidate", async () => {
-  const { api, learningCandidateRepository, templateService } =
+  const { api, knowledgeService, learningCandidateRepository, templateService } =
     createLearningGovernanceHarness();
 
   await learningCandidateRepository.save({
@@ -279,6 +280,24 @@ test("admin can apply writebacks into governed draft assets and list them by can
 
   assert.equal(appliedKnowledge.body.status, "applied");
   assert.equal(appliedKnowledge.body.created_draft_asset_id, "knowledge-1");
+  const knowledgeDetail = await knowledgeService.getKnowledgeAsset(
+    appliedKnowledge.body.created_draft_asset_id,
+  );
+  assert.equal(
+    knowledgeDetail.selected_revision.source_learning_candidate_id,
+    "candidate-approved-1",
+  );
+  assert.equal(knowledgeDetail.selected_revision.status, "draft");
+  await knowledgeService.submitRevisionForReview(knowledgeDetail.selected_revision.id);
+  const approvedKnowledge = await knowledgeService.approveRevision(
+    knowledgeDetail.selected_revision.id,
+    "knowledge_reviewer",
+  );
+  assert.equal(approvedKnowledge.selected_revision.status, "approved");
+  assert.equal(
+    approvedKnowledge.asset.current_approved_revision_id,
+    knowledgeDetail.selected_revision.id,
+  );
   assert.equal(appliedTemplate.body.status, "applied");
   assert.equal(appliedTemplate.body.created_draft_asset_id, "template-1");
   assert.equal(listedCandidateOne.body.length, 1);

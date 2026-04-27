@@ -1072,7 +1072,7 @@ test("focus canvas shows the AI recognition action for governed module work whil
   );
   assert.match(
     markup,
-    /href="#editing\?manuscriptId=manuscript-1&amp;assetId=asset-edited-1"/,
+    /href="#editing\?manuscriptId=manuscript-1&amp;assetId=asset-edited-1&amp;presentation=fullscreen"/,
   );
   assert.match(
     markup,
@@ -1522,6 +1522,54 @@ test("proofreading workspace preview session input targets the manuscript asset 
   assert.equal(previewRequest?.comments[0]?.id, "issue-1");
   assert.equal(previewRequest?.comments[0]?.anchor_text, "5 mg per dL");
   assert.match(previewRequest?.comments[0]?.body ?? "", /5 mg\/dL/);
+});
+
+test("editing workspace preview session input targets the edited docx asset", () => {
+  const editedAsset = {
+    id: "asset-edited-1",
+    manuscript_id: "manuscript-1",
+    asset_type: "edited_docx",
+    status: "active",
+    storage_key: "runs/editing/edited.docx",
+    mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    source_module: "editing",
+    created_by: "editor-1",
+    version_no: 2,
+    is_current: true,
+    file_name: "edited.docx",
+    created_at: "2026-04-24T09:00:00.000Z",
+    updated_at: "2026-04-24T09:00:00.000Z",
+  } as never;
+
+  const previewRequest = buildDetailPreviewSessionInput({
+    workspace: {
+      manuscript: {
+        id: "manuscript-1",
+        title: "Editing manuscript",
+      },
+      assets: [editedAsset],
+      currentManuscriptAsset: null,
+    } as never,
+    selectedAsset: editedAsset,
+    detailJob: {
+      payload: {
+        editingPlan: {
+          replacements: [
+            {
+              before: "old phrasing",
+              after: "new phrasing",
+            },
+          ],
+        },
+      },
+    } as never,
+    mode: "editing",
+    actorRole: "editor",
+  });
+
+  assert.equal(previewRequest?.manuscriptId, "manuscript-1");
+  assert.equal(previewRequest?.assetId, "asset-edited-1");
+  assert.equal(previewRequest?.actorRole, "editor");
 });
 
 test("proofreading current result selection prefers the annotated proof asset over the draft report when both exist", () => {

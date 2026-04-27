@@ -1,5 +1,34 @@
 @import "../features/manuscript-workbench/manuscript-workbench.css";
 @import "../features/evaluation-workbench/evaluation-workbench.css";
+@import "tailwindcss";
+
+@theme {
+  --color-background: #141311;
+  --color-foreground: #f1e0b8;
+  --color-card: #fffaf2;
+  --color-card-foreground: #1f2832;
+  --color-popover: #fffaf2;
+  --color-popover-foreground: #1f2832;
+  --color-primary: #d8be84;
+  --color-primary-foreground: #19150e;
+  --color-secondary: #24201b;
+  --color-secondary-foreground: #f1e0b8;
+  --color-muted: #efe7d8;
+  --color-muted-foreground: #5c6570;
+  --color-accent: #b07a42;
+  --color-accent-foreground: #fffaf2;
+  --color-destructive: #7f3428;
+  --color-destructive-foreground: #fffaf2;
+  --color-border: rgba(126, 101, 51, 0.22);
+  --color-input: rgba(126, 101, 51, 0.22);
+  --color-ring: #d8be84;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --font-sans: "Source Han Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  --font-serif: "Source Han Serif SC", "Noto Serif SC", "Songti SC", serif;
+}
 
 :root {
   --font-body: "Source Han Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif;
@@ -244,10 +273,10 @@ a {
 
 .workbench-core-strip-card {
   display: grid;
-  gap: 6px;
-  padding: 12px 13px;
+  gap: 5px;
+  padding: 10px 11px;
   border: 1px solid rgba(126, 101, 51, 0.14);
-  border-radius: 16px;
+  border-radius: 14px;
   background:
     linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(247, 241, 230, 0.94));
   box-shadow:
@@ -264,7 +293,7 @@ a {
 }
 
 .workbench-core-strip-card-kicker {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -273,12 +302,50 @@ a {
 
 .workbench-core-strip-card strong {
   color: #2b2215;
-  font-size: 0.95rem;
+  font-size: 0.92rem;
 }
 
 .workbench-core-strip-card small {
   color: #6a5d49;
-  line-height: 1.45;
+  line-height: 1.35;
+}
+
+.workbench-core-strip-progress {
+  display: grid;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.workbench-core-strip-progress > span {
+  display: block;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(126, 101, 51, 0.14);
+}
+
+.workbench-core-strip-progress > span > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #9b7b3c, #d8be84);
+}
+
+.workbench-core-strip-progress > small {
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.workbench-core-strip-card[data-progress-status="running"] .workbench-core-strip-progress > span > span {
+  background: linear-gradient(90deg, #b07a42, #eed39b);
+}
+
+.workbench-core-strip-card[data-progress-status="failed"] .workbench-core-strip-progress > span > span {
+  background: linear-gradient(90deg, #9f3a2f, #deada4);
+}
+
+.workbench-core-strip-card[data-progress-status="not_started"] .workbench-core-strip-progress > span > span {
+  background: rgba(126, 101, 51, 0.34);
 }
 
 .workbench-core-strip.is-supporting .workbench-core-strip-card {
@@ -308,6 +375,14 @@ a {
     inset 0 1px 0 rgba(255, 255, 255, 0.04),
     0 18px 30px rgba(28, 21, 7, 0.16);
   transform: translateY(-1px);
+}
+
+.workbench-core-strip-card.is-active .workbench-core-strip-progress > span {
+  background: rgba(238, 211, 155, 0.16);
+}
+
+.workbench-core-strip-card.is-active .workbench-core-strip-progress > small {
+  color: rgba(245, 231, 195, 0.78);
 }
 
 .workbench-core-strip-card.is-active .workbench-core-strip-card-kicker {
@@ -669,6 +744,21 @@ a {
 
 .workbench-content--manuscript-workbench {
   --workbench-shell-viewport-offset: clamp(176px, 18vh, 204px);
+}
+
+.workbench-shell--fullscreen {
+  min-height: 100vh;
+  padding: 0;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, #f8f6f1 0%, #f1eee8 100%);
+}
+
+.workbench-content--fullscreen {
+  --workbench-shell-viewport-offset: 0px;
+  width: 100%;
+  min-height: 100vh;
+  animation: none;
 }
 
 .workbench-content--admin-governance,

@@ -81,5 +81,15 @@ export function createProofreadingApi(options: CreateProofreadingApiOptions) {
         body: await proofreadingService.retryDeepPassRun(input),
       };
     },
+
+    async getDeepPassRun(input: {
+      passRunId: string;
+      actorRole: CreateProofreadingDraftInput["actorRole"];
+    }): Promise<RouteResponse<ProofreadingPassRunRecord>> {
+      return {
+        status: 200,
+        body: await proofreadingService.getDeepPassRun(input),
+      };
+    },
   };
 }

@@ -133,6 +133,32 @@ export interface CreateAiProviderConnectionInput {
   enabled: boolean;
 }
 
+export interface AutoConfigureAiProviderInput {
+  apiKey: string;
+  providerKind: AiProviderKind;
+  baseUrl?: string;
+  connectionName?: string;
+}
+
+export interface AutoConfigureAiProviderResult {
+  connection: SystemSettingsAiProviderConnectionViewModel;
+  registeredModels: Array<{
+    id: string;
+    model_name: string;
+    fallback_model_id?: string | null;
+    connection_id?: string | null;
+  }>;
+  test: {
+    status: "unknown" | "passed" | "failed";
+    errorSummary?: string;
+  };
+  discovery: {
+    status: "unknown" | "passed" | "failed";
+    models: Array<{ id: string }>;
+    errorSummary?: string;
+  };
+}
+
 export interface UpdateAiProviderConnectionInput {
   name: string;
   baseUrl?: string;

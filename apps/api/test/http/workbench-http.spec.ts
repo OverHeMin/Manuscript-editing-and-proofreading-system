@@ -1,5 +1,5 @@
 import { once } from "node:events";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -66,6 +66,22 @@ test("workbench http routes upload a manuscript and expose manuscript, asset, jo
     assert.equal(uploaded.job.requested_by, "dev-user");
     assert.equal(uploaded.job.module, "upload");
 
+    const manuscriptsResponse = await fetch(`${baseUrl}/api/v1/manuscripts`, {
+      headers: {
+        Cookie: cookie,
+      },
+    });
+    const manuscripts = (await manuscriptsResponse.json()) as Array<{
+      id: string;
+      title: string;
+      module_execution_overview?: unknown;
+    }>;
+
+    assert.equal(manuscriptsResponse.status, 200);
+    assert.equal(manuscripts[0]?.id, uploaded.manuscript.id);
+    assert.equal(manuscripts[0]?.title, "Uploaded Through HTTP");
+    assert.ok(manuscripts[0]?.module_execution_overview);
+
     const manuscriptResponse = await fetch(
       `${baseUrl}/api/v1/manuscripts/${uploaded.manuscript.id}`,
       {
@@ -109,7 +125,11 @@ test("workbench http routes upload a manuscript and expose manuscript, asset, jo
         },
       },
     );
-    const assets = (await assetsResponse.json()) as Array<{ id: string }>;
+    const assets = (await assetsResponse.json()) as Array<{
+      id: string;
+      asset_type?: string;
+      parent_asset_id?: string;
+    }>;
 
     const jobResponse = await fetch(`${baseUrl}/api/v1/jobs/${uploaded.job.id}`, {
       headers: {
@@ -212,7 +232,18 @@ test("workbench http routes upload a manuscript and expose manuscript, asset, jo
     assert.equal(job.execution_tracking?.observation_status, "not_tracked");
     assert.equal(downloadResponse.status, 200);
     assert.equal(manuscript.id, uploaded.manuscript.id);
-    assert.deepEqual(assets.map((asset) => asset.id), [uploaded.asset.id]);
+    assert.equal(
+      assets.some((asset) => asset.id === uploaded.asset.id),
+      true,
+    );
+    assert.equal(
+      assets.some(
+        (asset) =>
+          asset.asset_type === "normalized_docx" &&
+          asset.parent_asset_id === uploaded.asset.id,
+      ),
+      true,
+    );
     assert.equal(job.id, uploaded.job.id);
     assert.equal(exported.manuscript_id, uploaded.manuscript.id);
     assert.equal(exported.asset.id, uploaded.asset.id);
@@ -235,6 +266,439 @@ test("workbench http routes upload a manuscript and expose manuscript, asset, jo
   }
 });
 
+test("workbench http doc uploads are marked for docx normalization", async () => {
+  const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-doc-upload-"));
+  const { server, baseUrl } = await startWorkbenchServer({
+    uploadRootDir,
+  });
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.user");
+    const uploadResponse = await fetch(`${baseUrl}/api/v1/manuscripts/upload`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: "Legacy Doc Upload",
+        manuscriptType: "clinical_study",
+        createdBy: "forged-user",
+        fileName: "legacy-submission.doc",
+        mimeType: "application/msword",
+        fileContentBase64: "RG9jIGJpbmFyeSBwbGFjZWhvbGRlcg==",
+      }),
+    });
+    const uploaded = (await uploadResponse.json()) as {
+      asset: {
+        file_name?: string;
+        mime_type: string;
+      };
+      job: {
+        payload?: {
+          normalization?: {
+            source_type?: string;
+            target_type?: string;
+            conversion?: {
+              required?: boolean;
+              status?: string;
+              backend?: string;
+            };
+            preview?: {
+              status?: string;
+            };
+            derived_asset?: {
+              asset_type?: string;
+              file_name?: string;
+            };
+          };
+        };
+      };
+    };
+
+    assert.equal(uploadResponse.status, 201);
+    assert.equal(uploaded.asset.file_name, "legacy-submission.doc");
+    assert.equal(uploaded.asset.mime_type, "application/msword");
+    assert.equal(uploaded.job.payload?.normalization?.source_type, "doc");
+    assert.equal(uploaded.job.payload?.normalization?.target_type, "docx");
+    assert.equal(
+      uploaded.job.payload?.normalization?.conversion?.required,
+      true,
+    );
+    assert.equal(
+      uploaded.job.payload?.normalization?.conversion?.backend,
+      "libreoffice",
+    );
+    assert.equal(
+      uploaded.job.payload?.normalization?.preview?.status,
+      "pending_normalization",
+    );
+    assert.equal(
+      uploaded.job.payload?.normalization?.derived_asset?.asset_type,
+      "normalized_docx",
+    );
+    assert.equal(
+      uploaded.job.payload?.normalization?.derived_asset?.file_name,
+      "legacy-submission.normalized.docx",
+    );
+  } finally {
+    await stopServer(server);
+    await rm(uploadRootDir, { recursive: true, force: true });
+  }
+});
+
+test("workbench http automatically converts doc uploads into downloadable normalized docx assets", async () => {
+  const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-doc-convert-http-"));
+  const { server, baseUrl } = await startWorkbenchServer({
+    uploadRootDir,
+    documentNormalization: {
+      libreOfficeAvailable: true,
+      libreOfficeBinary: "fake-soffice",
+      runCommand: async ({ args, outputDir }) => {
+        const sourcePath = args.at(-1);
+        assert.ok(sourcePath, "Expected libreoffice command to receive a source path.");
+        await writeFile(
+          path.join(outputDir, `${path.parse(sourcePath).name}.docx`),
+          "converted-docx",
+        );
+        return { exitCode: 0, stdout: "", stderr: "" };
+      },
+    },
+  });
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.user");
+    const uploadResponse = await fetch(`${baseUrl}/api/v1/manuscripts/upload`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: "Legacy Doc Auto Conversion",
+        manuscriptType: "clinical_study",
+        createdBy: "forged-user",
+        fileName: "legacy-convert.doc",
+        mimeType: "application/msword",
+        fileContentBase64: "TGVnYWN5IGRvYyBieXRlcw==",
+      }),
+    });
+    const uploaded = (await uploadResponse.json()) as {
+      manuscript: { id: string };
+      asset: { id: string };
+    };
+
+    const assetsResponse = await fetch(
+      `${baseUrl}/api/v1/manuscripts/${uploaded.manuscript.id}/assets`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const assetsPayload = (await assetsResponse.json()) as Array<{
+      id?: string;
+      asset_type?: string;
+      parent_asset_id?: string;
+      file_name?: string;
+      mime_type?: string;
+    }>;
+    const normalizedAsset = assetsPayload.find(
+      (asset) => asset.asset_type === "normalized_docx",
+    );
+
+    assert.equal(uploadResponse.status, 201);
+    assert.equal(assetsResponse.status, 200);
+    assert.equal(normalizedAsset?.parent_asset_id, uploaded.asset.id);
+    assert.equal(normalizedAsset?.file_name, "legacy-convert.normalized.docx");
+
+    const downloadResponse = await fetch(
+      `${baseUrl}/api/v1/document-assets/${normalizedAsset?.id}/download`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const downloadedBody = Buffer.from(await downloadResponse.arrayBuffer()).toString(
+      "utf8",
+    );
+
+    assert.equal(downloadResponse.status, 200);
+    assert.equal(downloadedBody, "converted-docx");
+  } finally {
+    await stopServer(server);
+    await rm(uploadRootDir, { recursive: true, force: true });
+  }
+});
+
+test("workbench http routes archive manuscripts from the recent manuscript list", async () => {
+  const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-workbench-http-"));
+  const { server, baseUrl } = await startWorkbenchServer({
+    uploadRootDir,
+  });
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.user");
+    const uploadResponse = await fetch(`${baseUrl}/api/v1/manuscripts/upload`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: "Archive From History",
+        manuscriptType: "review",
+        fileName: "archive-from-history.docx",
+        mimeType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        fileContentBase64: "QXJjaGl2ZSBmcm9tIGhpc3Rvcnk=",
+      }),
+    });
+    const uploaded = (await uploadResponse.json()) as {
+      manuscript: {
+        id: string;
+      };
+    };
+
+    const beforeArchiveResponse = await fetch(`${baseUrl}/api/v1/manuscripts`, {
+      headers: {
+        Cookie: cookie,
+      },
+    });
+    const beforeArchive = (await beforeArchiveResponse.json()) as Array<{
+      id: string;
+    }>;
+
+    assert.equal(uploadResponse.status, 201);
+    assert.equal(beforeArchiveResponse.status, 200);
+    assert.ok(beforeArchive.some((item) => item.id === uploaded.manuscript.id));
+
+    const archiveResponse = await fetch(
+      `${baseUrl}/api/v1/manuscripts/${uploaded.manuscript.id}/archive`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const archived = (await archiveResponse.json()) as {
+      id: string;
+      status: string;
+    };
+
+    const afterArchiveResponse = await fetch(`${baseUrl}/api/v1/manuscripts`, {
+      headers: {
+        Cookie: cookie,
+      },
+    });
+    const afterArchive = (await afterArchiveResponse.json()) as Array<{
+      id: string;
+    }>;
+
+    assert.equal(archiveResponse.status, 200);
+    assert.equal(archived.id, uploaded.manuscript.id);
+    assert.equal(archived.status, "archived");
+    assert.equal(afterArchiveResponse.status, 200);
+    assert.equal(afterArchive.some((item) => item.id === uploaded.manuscript.id), false);
+  } finally {
+    await stopServer(server);
+  }
+});
+
+test("workbench http automatically registers normalized assets for docx uploads", async () => {
+  const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-normalize-http-"));
+  const { server, baseUrl } = await startWorkbenchServer({
+    uploadRootDir,
+  });
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.user");
+    const uploadResponse = await fetch(`${baseUrl}/api/v1/manuscripts/upload`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        title: "Normalize Existing Docx",
+        manuscriptType: "clinical_study",
+        createdBy: "forged-user",
+        fileName: "already-docx.docx",
+        mimeType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        fileContentBase64: "RG9jeCBieXRlcw==",
+      }),
+    });
+    const uploaded = (await uploadResponse.json()) as {
+      manuscript: { id: string };
+      asset: {
+        id: string;
+        file_name?: string;
+        mime_type: string;
+        storage_key: string;
+      };
+      job: { id: string };
+    };
+
+    const assetsResponse = await fetch(
+      `${baseUrl}/api/v1/manuscripts/${uploaded.manuscript.id}/assets`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const assetsPayload = (await assetsResponse.json()) as Array<{
+        id?: string;
+        asset_type?: string;
+        parent_asset_id?: string;
+        file_name?: string;
+        mime_type?: string;
+      }>;
+    const normalizedAsset = assetsPayload.find(
+      (asset) => asset.asset_type === "normalized_docx",
+    );
+
+    assert.equal(assetsResponse.status, 200);
+    assert.equal(normalizedAsset?.asset_type, "normalized_docx");
+    assert.equal(normalizedAsset?.parent_asset_id, uploaded.asset.id);
+    assert.equal(
+      normalizedAsset?.mime_type,
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    );
+    assert.equal(normalizedAsset?.file_name, "already-docx.normalized.docx");
+
+    const downloadResponse = await fetch(
+      `${baseUrl}/api/v1/document-assets/${normalizedAsset?.id}/download`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const downloadedBody = Buffer.from(await downloadResponse.arrayBuffer());
+
+    assert.equal(downloadResponse.status, 200);
+    assert.match(
+      downloadResponse.headers.get("content-type") ?? "",
+      /application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document/i,
+    );
+    assert.equal(downloadedBody.toString("utf8"), "Docx bytes");
+  } finally {
+    await stopServer(server);
+    await rm(uploadRootDir, { recursive: true, force: true });
+  }
+});
+
+test("proofreading pass-run detail exposes segment audit fields", async () => {
+  const { server, baseUrl, seededIds, runtime } = await startWorkbenchServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.proofreader");
+    const timestamp = "2026-04-26T09:00:00.000Z";
+    await runtime.proofreadingPassRunRepository.save({
+      id: "pass-run-segment-audit-1",
+      manuscript_id: seededIds.manuscriptId,
+      job_id: "job-proofreading-segment-audit-1",
+      snapshot_id: "snapshot-proofreading-segment-audit-1",
+      pass_no: 1,
+      pass_kind: "medical_facts_and_terminology",
+      status: "completed",
+      model_id: seededIds.proofreadingModelId,
+      rule_ids: [],
+      knowledge_item_ids: [seededIds.proofreadingKnowledgeId],
+      quality_package_ids: [],
+      skill_package_ids: [],
+      output: {
+        summary: "Segmented audit run.",
+        issues: [],
+        governedEvidenceCounts: {
+          failedChecks: 0,
+          manualReviewItems: 0,
+          qualityFindings: 0,
+        },
+        segmentation: {
+          mode: "segmented_candidate_discovery",
+          segmentCount: 1,
+          totalBlockCount: 3,
+          coveredBlockCount: 2,
+          coverageRatio: 2 / 3,
+          completedSegmentCount: 1,
+          failedSegmentCount: 0,
+          segments: [
+            {
+              segmentNo: 1,
+              blockStartIndex: 0,
+              blockEndIndex: 2,
+              blockIndexes: [0, 2],
+              blockCount: 2,
+              inputPreview: [
+                {
+                  blockIndex: 2,
+                  section: "缁撴灉",
+                  blockKind: "table",
+                  textPreview: "Table 1 baseline comparison",
+                },
+              ],
+              issueCount: 0,
+              status: "completed",
+              attemptCount: 2,
+              elapsedMs: 321,
+            },
+          ],
+        },
+      },
+      retry_count: 0,
+      started_at: timestamp,
+      finished_at: timestamp,
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+
+    const response = await fetch(
+      `${baseUrl}/api/v1/modules/proofreading/pass-runs/pass-run-segment-audit-1`,
+      {
+        headers: { Cookie: cookie },
+      },
+    );
+    const detail = (await response.json()) as {
+      id: string;
+      output?: {
+        segmentation?: {
+          segments?: Array<{
+            blockIndexes?: number[];
+            inputPreview?: Array<{
+              blockIndex?: number;
+              textPreview?: string;
+            }>;
+            attemptCount?: number;
+            elapsedMs?: number;
+            status?: string;
+          }>;
+        };
+      };
+    };
+
+    assert.equal(response.status, 200);
+    assert.equal(detail.id, "pass-run-segment-audit-1");
+    assert.deepEqual(
+      detail.output?.segmentation?.segments?.[0]?.blockIndexes,
+      [0, 2],
+    );
+    assert.equal(
+      detail.output?.segmentation?.segments?.[0]?.inputPreview?.[0]?.textPreview,
+      "Table 1 baseline comparison",
+    );
+    assert.equal(detail.output?.segmentation?.segments?.[0]?.attemptCount, 2);
+    assert.equal(detail.output?.segmentation?.segments?.[0]?.elapsedMs, 321);
+    assert.equal(detail.output?.segmentation?.segments?.[0]?.status, "completed");
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("workbench http asset downloads support unicode file names via RFC 5987 content disposition", async () => {
   const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-workbench-http-unicode-"));
   const { server, baseUrl } = await startWorkbenchServer({
@@ -253,7 +717,7 @@ test("workbench http asset downloads support unicode file names via RFC 5987 con
         title: "Unicode Download Through HTTP",
         manuscriptType: "review",
         createdBy: "forged-user",
-        fileName: "医学稿件-校对批注稿.docx",
+        fileName: "medical-manuscript-proofreading.docx",
         mimeType:
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         fileContentBase64: "VW5pY29kZSBkb3dubG9hZCBwYXlsb2Fk",
@@ -278,7 +742,7 @@ test("workbench http asset downloads support unicode file names via RFC 5987 con
     assert.equal(downloadResponse.status, 200);
     assert.match(
       downloadResponse.headers.get("content-disposition") ?? "",
-      /filename\*=UTF-8''.*%E5%8C%BB%E5%AD%A6%E7%A8%BF%E4%BB%B6.*\.docx/i,
+      /filename\*=UTF-8''medical-manuscript-proofreading\.docx/i,
     );
     assert.equal(await downloadResponse.text(), "Unicode download payload");
   } finally {
@@ -623,6 +1087,30 @@ test("workbench http routes accept manuscript batch uploads and expose queued ba
     assert.equal(uploaded.items.length, 2);
     assert.equal(uploaded.items[0]?.manuscript.created_by, "dev-user");
     assert.equal(uploaded.items[1]?.job.requested_by, "dev-user");
+    for (const item of uploaded.items) {
+      const assetsResponse = await fetch(
+        `${baseUrl}/api/v1/manuscripts/${item.manuscript.id}/assets`,
+        {
+          headers: {
+            Cookie: cookie,
+          },
+        },
+      );
+      const assets = (await assetsResponse.json()) as Array<{
+        asset_type?: string;
+        parent_asset_id?: string;
+      }>;
+
+      assert.equal(assetsResponse.status, 200);
+      assert.equal(
+        assets.some(
+          (asset) =>
+            asset.asset_type === "normalized_docx" &&
+            asset.parent_asset_id === item.asset.id,
+        ),
+        true,
+      );
+    }
 
     const jobResponse = await fetch(`${baseUrl}/api/v1/jobs/${uploaded.batch_job.id}`, {
       headers: {
@@ -738,7 +1226,7 @@ test("workbench http routes expose the knowledge library revision lifecycle", as
               authority_markers: "authoritative",
             },
             facts: {
-              caption: { text: "表 1 基线特征", position: "above" },
+              caption: { text: "琛?1 鍩虹嚎鐗瑰緛", position: "above" },
               local_rich_text_fragments: [{ cell: "r1c1", italic: true }],
             },
           },
@@ -2657,6 +3145,159 @@ test("workbench http exposes internal-test production readiness without pretendi
   }
 });
 
+test("workbench http harness dataset routes let admins create and publish proofreading gold sets", async () => {
+  const { server, baseUrl } = await startWorkbenchServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.admin");
+    const familyResponse = await fetch(
+      `${baseUrl}/api/v1/harness-datasets/gold-set-families`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: "HTTP Proofreading Gold Set",
+          scope: {
+            module: "proofreading",
+            manuscriptTypes: ["clinical_study"],
+            measureFocus: "issue_detection",
+          },
+        }),
+      },
+    );
+    const family = (await familyResponse.json()) as {
+      id: string;
+      scope: {
+        module: string;
+      };
+    };
+
+    const rubricDraftResponse = await fetch(
+      `${baseUrl}/api/v1/harness-datasets/rubrics`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: "HTTP Proofreading Rubric",
+          scope: {
+            module: "proofreading",
+            manuscriptTypes: ["clinical_study"],
+          },
+          scoringDimensions: [
+            {
+              key: "critical_recall",
+              label: "Critical recall",
+            },
+          ],
+          createdBy: "forged-admin",
+        }),
+      },
+    );
+    const rubricDraft = (await rubricDraftResponse.json()) as { id: string };
+    const rubricResponse = await fetch(
+      `${baseUrl}/api/v1/harness-datasets/rubrics/${rubricDraft.id}/publish`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          publishedBy: "forged-admin",
+        }),
+      },
+    );
+    const rubric = (await rubricResponse.json()) as {
+      id: string;
+      status: string;
+    };
+
+    const versionResponse = await fetch(
+      `${baseUrl}/api/v1/harness-datasets/gold-set-versions`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          familyId: family.id,
+          rubricDefinitionId: rubric.id,
+          createdBy: "forged-admin",
+          items: [
+            {
+              sourceKind: "reviewed_case_snapshot",
+              sourceId: "snapshot-http-gold-1",
+              manuscriptId: "manuscript-http-gold-1",
+              manuscriptType: "clinical_study",
+              deidentificationPassed: true,
+              humanReviewed: true,
+              expectedStructuredOutput: {
+                expectedIssues: [
+                  {
+                    id: "expected-http-gold-1",
+                    severity: "critical",
+                    issueType: "sample_size_consistency",
+                    layerId: "context_consistency",
+                    quote: "n=120",
+                    blockIndex: 3,
+                  },
+                ],
+                criticalRecallThreshold: 1,
+                falsePositiveReviewThreshold: 0.2,
+                requiredLayers: ["context_consistency"],
+              },
+            },
+          ],
+          publicationNotes: "Created through HTTP admin route.",
+        }),
+      },
+    );
+    const version = (await versionResponse.json()) as {
+      id: string;
+      status: string;
+      item_count: number;
+    };
+    const publishedResponse = await fetch(
+      `${baseUrl}/api/v1/harness-datasets/gold-set-versions/${version.id}/publish`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          publishedBy: "forged-admin",
+        }),
+      },
+    );
+    const published = (await publishedResponse.json()) as {
+      status: string;
+      published_by?: string;
+    };
+
+    assert.equal(familyResponse.status, 201);
+    assert.equal(family.scope.module, "proofreading");
+    assert.equal(rubricDraftResponse.status, 201);
+    assert.equal(rubricResponse.status, 200);
+    assert.equal(rubric.status, "published");
+    assert.equal(versionResponse.status, 201);
+    assert.equal(version.status, "draft");
+    assert.equal(version.item_count, 1);
+    assert.equal(publishedResponse.status, 200);
+    assert.equal(published.status, "published");
+    assert.equal(published.published_by, "dev-admin");
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("workbench http editing route runs with the authenticated editor context", async () => {
   const { server, baseUrl, seededIds } = await startWorkbenchServer();
 
@@ -2871,7 +3512,16 @@ test("workbench http editing route runs with the authenticated editor context", 
 });
 
 test("workbench http proofreading routes create a draft and then finalize against the pinned draft context", async () => {
-  const { server, baseUrl, seededIds, runtime } = await startWorkbenchServer();
+  const recordedAiCalls: Array<{ userPayload: Record<string, unknown> }> = [];
+  const { server, baseUrl, seededIds, runtime } = await startWorkbenchServer({
+    recordMainlineAiCall(input) {
+      if (input.module === "proofreading") {
+        recordedAiCalls.push({
+          userPayload: input.userPayload,
+        });
+      }
+    },
+  });
 
   try {
     const cookie = await loginAsDemoUser(baseUrl, "dev.proofreader");
@@ -2900,6 +3550,7 @@ test("workbench http proofreading routes create a draft and then finalize agains
         asset_type: string;
       };
       job: {
+        id: string;
         payload?: {
           proofreadingPlan?: {
             issues?: Array<{
@@ -2924,6 +3575,29 @@ test("workbench http proofreading routes create a draft and then finalize agains
             };
             error_message?: string;
           }>;
+          proofreadingLayerMatrix?: Array<{
+            layer_id: string;
+            status: string;
+            required_for_release?: boolean;
+            evidence?: {
+              pass_kind?: string;
+              issue_count?: number;
+            };
+          }>;
+          goldSetAssertionResult?: {
+            expectedIssueCount: number;
+            matchedExpectedIssueCount: number;
+            missedExpectedIssueCount: number;
+            falsePositiveIssueCount: number;
+            recall: number;
+            criticalRecall: number;
+          };
+          rules?: Array<{ id: string }>;
+          resolvedRules?: Array<{ rule: { id: string } }>;
+          instructionPayload?: {
+            hardRuleSummary?: string;
+            promptSnippets?: string[];
+          };
         };
       };
       snapshot_id?: string;
@@ -2936,8 +3610,50 @@ test("workbench http proofreading routes create a draft and then finalize agains
     assert.equal(draft.asset.asset_type, "proofreading_draft_report");
     assert.equal(draft.model_id, seededIds.proofreadingModelId);
     assert.deepEqual(draft.knowledge_item_ids, [seededIds.proofreadingKnowledgeId]);
+    assert.ok(
+      draft.job.payload?.rules?.some(
+        (rule) => rule.id === "rule-proofreading-punctuation-1",
+      ),
+    );
+    assert.ok(
+      draft.job.payload?.resolvedRules?.some(
+        (entry) => entry.rule.id === "rule-proofreading-punctuation-1",
+      ),
+    );
     assert.ok(draft.snapshot_id);
     assert.ok(draft.agent_execution_log_id);
+    const initialProofreadingCall = recordedAiCalls.find(
+      (call) => !("passFocus" in call.userPayload),
+    );
+    const governedCoverage = initialProofreadingCall?.userPayload
+      .governedCoverage as
+      | {
+          knowledgeHits?: Array<{ knowledgeItemId?: string; canonicalText?: string }>;
+        }
+      | undefined;
+    const governance = initialProofreadingCall?.userPayload.governance as
+      | {
+          resolvedRules?: Array<{ ruleId?: string }>;
+          knowledgeHits?: Array<{ knowledgeItemId?: string }>;
+        }
+      | undefined;
+    assert.ok(
+      governedCoverage?.knowledgeHits?.some(
+        (hit) =>
+          hit.knowledgeItemId === seededIds.proofreadingKnowledgeId &&
+          hit.canonicalText === "Confirm punctuation consistency.",
+      ),
+    );
+    assert.ok(
+      governance?.resolvedRules?.some(
+        (rule) => rule.ruleId === "rule-proofreading-punctuation-1",
+      ),
+    );
+    assert.ok(
+      governance?.knowledgeHits?.some(
+        (hit) => hit.knowledgeItemId === seededIds.proofreadingKnowledgeId,
+      ),
+    );
     assert.equal(
       draft.job.payload?.proofreadingPlan?.issues?.[0]?.anchor?.quote,
       draft.job.payload?.proofreadingSourceBlocks?.[0]?.text,
@@ -2958,6 +3674,27 @@ test("workbench http proofreading routes create a draft and then finalize agains
         [3, "data_statistics_units_and_tables", "completed"],
         [4, "language_style_punctuation_and_format", "completed"],
         [5, "residual_synthesis", "completed"],
+      ],
+    );
+    assert.deepEqual(
+      draft.job.payload?.proofreadingLayerMatrix
+        ?.filter((layer) => layer.required_for_release)
+        .map((layer) => [layer.layer_id, layer.status, layer.evidence?.pass_kind]),
+      [
+        ["document_structure", "completed", undefined],
+        [
+          "context_consistency",
+          "completed",
+          "structure_logic_and_consistency",
+        ],
+        [
+          "statistics_expression",
+          "completed",
+          "data_statistics_units_and_tables",
+        ],
+        ["table_proofreading", "completed", "data_statistics_units_and_tables"],
+        ["residual_discovery", "completed", "residual_synthesis"],
+        ["final_regression_readiness", "completed", undefined],
       ],
     );
     assert.ok(
@@ -2982,6 +3719,26 @@ test("workbench http proofreading routes create a draft and then finalize agains
         (issue) => issue.title === "Pass 5 issue",
       ),
     );
+    draft.job.payload = {
+      ...draft.job.payload,
+      goldSetAssertionResult: {
+        expectedIssueCount: 2,
+        matchedExpectedIssueCount: 1,
+        missedExpectedIssueCount: 1,
+        falsePositiveIssueCount: 1,
+        recall: 0.5,
+        criticalRecall: 1,
+      },
+    };
+    const draftJobForGoldSet = await runtime.jobRepository.findById(draft.job.id);
+    assert.ok(draftJobForGoldSet);
+    await runtime.jobRepository.save({
+      ...draftJobForGoldSet,
+      payload: {
+        ...draftJobForGoldSet.payload,
+        goldSetAssertionResult: draft.job.payload.goldSetAssertionResult,
+      },
+    });
 
     const draftRunsResponse = await fetch(
       `${baseUrl}/api/v1/verification-ops/evaluation-suites/${seededIds.proofreadingSuiteId}/runs`,
@@ -3011,6 +3768,10 @@ test("workbench http proofreading routes create a draft and then finalize agains
             snapshot_id?: string;
             knowledge_item_ids?: string[];
             prompt_template_id?: string;
+            recall?: number;
+            critical_recall?: number;
+            missed_expected_issue_count?: number;
+            false_positive_issue_count?: number;
           };
         }>;
       }>;
@@ -3024,6 +3785,15 @@ test("workbench http proofreading routes create a draft and then finalize agains
       ) ?? [];
 
     assert.equal(matrixResponse.status, 200);
+    const goldSetAssertionItem = proofreadingMatrix?.matrix_items.find(
+      (item) => item.key === "gold_set.assertions",
+    );
+    assert.equal(goldSetAssertionItem?.source_kind, "gold_set_assertion");
+    assert.equal(goldSetAssertionItem?.state, "missed");
+    assert.equal(goldSetAssertionItem?.evidence?.recall, 0.5);
+    assert.equal(goldSetAssertionItem?.evidence?.critical_recall, 1);
+    assert.equal(goldSetAssertionItem?.evidence?.missed_expected_issue_count, 1);
+    assert.equal(goldSetAssertionItem?.evidence?.false_positive_issue_count, 1);
     assert.equal(passCoverageItems.length, 5);
     assert.ok(
       passCoverageItems.every(
@@ -3048,6 +3818,31 @@ test("workbench http proofreading routes create a draft and then finalize agains
     );
     const retryTarget = passCoverageItems[0];
     assert.ok(retryTarget?.source_id);
+    const passDetailResponse = await fetch(
+      `${baseUrl}/api/v1/modules/proofreading/pass-runs/${retryTarget.source_id}`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const passDetail = (await passDetailResponse.json()) as {
+      id: string;
+      output?: {
+        segmentation?: {
+          segments?: Array<{
+            blockIndexes?: number[];
+            inputPreview?: unknown[];
+          }>;
+        };
+      };
+    };
+    assert.equal(passDetailResponse.status, 200);
+    assert.equal(passDetail.id, retryTarget.source_id);
+    assert.ok(
+      passDetail.output?.segmentation === undefined ||
+        Array.isArray(passDetail.output.segmentation.segments),
+    );
     const storedPassRun =
       await runtime.proofreadingPassRunRepository.findById(retryTarget.source_id);
     assert.ok(storedPassRun);
@@ -3209,6 +4004,406 @@ test("workbench http proofreading routes create a draft and then finalize agains
   }
 });
 
+test("workbench http proofreading draft automatically evaluates published gold-set assertions", async () => {
+  const { server, baseUrl, seededIds, runtime } = await startWorkbenchServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.proofreader");
+    const adminCookie = await loginAsDemoUser(baseUrl, "dev.admin");
+    const family = await runtime.harnessDatasetApi.createGoldSetFamily({
+      actorRole: "admin",
+      input: {
+        name: "Proofreading HTTP gold set",
+        scope: {
+          module: "proofreading",
+          manuscriptTypes: ["clinical_study"],
+          measureFocus: "issue_detection",
+        },
+      },
+    });
+    const rubric = await runtime.harnessDatasetApi.publishRubricDefinition({
+      actorRole: "admin",
+      rubricDefinitionId: (
+        await runtime.harnessDatasetApi.createRubricDefinition({
+          actorRole: "admin",
+          input: {
+            name: "Proofreading HTTP rubric",
+            scope: {
+              module: "proofreading",
+              manuscriptTypes: ["clinical_study"],
+            },
+            scoringDimensions: [
+              {
+                key: "recall",
+                label: "Recall",
+              },
+            ],
+            createdBy: "admin-1",
+          },
+        })
+      ).body.id,
+      input: {
+        publishedBy: "admin-1",
+      },
+    });
+    const version = await runtime.harnessDatasetApi.createGoldSetVersion({
+      actorRole: "admin",
+      input: {
+        familyId: family.body.id,
+        rubricDefinitionId: rubric.body.id,
+        createdBy: "admin-1",
+        items: [
+          {
+            sourceKind: "reviewed_case_snapshot",
+            sourceId: "proofreading-http-snapshot-1",
+            manuscriptId: seededIds.manuscriptId,
+            manuscriptType: "clinical_study",
+            deidentificationPassed: true,
+            humanReviewed: true,
+            expectedStructuredOutput: {
+              expectedIssues: [
+                {
+                  id: "expected-pass-5-residual",
+                  severity: "medium",
+                  issueType: "residual_synthesis",
+                  quote: "Fallback source paragraph for deep proofreading",
+                },
+                {
+                  id: "expected-missed-statistics",
+                  severity: "critical",
+                  issueType: "statistics_expression",
+                  quote: "not present in actual proofreading issues",
+                },
+              ],
+              criticalRecallThreshold: 1,
+              falsePositiveReviewThreshold: 0.9,
+              requiredLayers: ["residual_discovery", "statistics_expression"],
+            },
+          },
+        ],
+        publicationNotes: "HTTP automatic gold-set assertion fixture.",
+      },
+    });
+    await runtime.harnessDatasetApi.publishGoldSetVersion({
+      actorRole: "admin",
+      goldSetVersionId: version.body.id,
+      input: {
+        publishedBy: "admin-1",
+      },
+    });
+
+    const draftResponse = await fetch(
+      `${baseUrl}/api/v1/modules/proofreading/draft`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          manuscriptId: seededIds.manuscriptId,
+          parentAssetId: seededIds.originalAssetId,
+          requestedBy: "forged-requester",
+          actorRole: "admin",
+          storageKey: "runs/http/proofreading/gold-set-auto-draft.md",
+          fileName: "proofreading-gold-set-auto-draft.md",
+        }),
+      },
+    );
+    const draft = (await draftResponse.json()) as {
+      asset: {
+        id: string;
+      };
+      job: {
+        payload?: {
+          goldSetAssertionResult?: {
+            expectedIssueCount: number;
+            matchedExpectedIssueCount: number;
+            missedExpectedIssueCount: number;
+            falsePositiveIssueCount: number;
+            recall: number;
+            criticalRecall: number;
+            missedExpectedIssueIds: string[];
+            harnessQualityReport?: {
+              mode?: string;
+              scope?: string;
+              caseCount?: number;
+              assertionCount?: number;
+              recall?: number;
+              falsePositiveCount?: number;
+              falseNegativeCount?: number;
+              manualReviewSamplingRequired?: boolean;
+              limitations?: string[];
+            };
+          };
+          releaseQualityGateReport?: {
+            mode?: string;
+            passed?: boolean;
+            reasons?: string[];
+            enforcement?: {
+              finalizeBlocking?: boolean;
+              wouldBlockFinalize?: boolean;
+            };
+          };
+        };
+      };
+    };
+
+    assert.equal(draftResponse.status, 201);
+    assert.deepEqual(draft.job.payload?.goldSetAssertionResult, {
+      expectedIssueCount: 2,
+      matchedExpectedIssueCount: 1,
+      missedExpectedIssueCount: 1,
+      falsePositiveIssueCount: 4,
+      recall: 0.5,
+      criticalRecall: 0,
+      missedExpectedIssueIds: ["expected-missed-statistics"],
+      falsePositiveIssueIds: [
+        "pass-1-issue",
+        "pass-2-issue",
+        "pass-3-issue",
+        "pass-4-issue",
+      ],
+      thresholds: {
+        criticalRecallThreshold: 1,
+        criticalRecallPassed: false,
+        falsePositiveReviewThreshold: 0.9,
+        falsePositiveReviewPassed: true,
+        requiredLayerCoveragePassed: false,
+      },
+      requiredLayers: ["residual_discovery", "statistics_expression"],
+      harnessQualityReport: {
+        mode: "report_only",
+        scope: "gold_set_assertions",
+        expectedIssueCount: 2,
+        actualIssueCount: 5,
+        caseCount: 1,
+        assertionCount: 2,
+        recall: 0.5,
+        falsePositiveCount: 4,
+        falseNegativeCount: 1,
+        ruleHitCoverage: 0,
+        knowledgeHitCoverage: 0,
+        residualCoverage: 0.5,
+        requiredLayerCoverage: {
+          requiredLayerCount: 2,
+          coveredLayerCount: 0,
+          missingLayerIds: ["residual_discovery", "statistics_expression"],
+        },
+        manualReviewSamplingRequired: true,
+        limitations: [
+          "Harness gold-set metrics are bounded by the published cases and do not represent universal manuscript accuracy.",
+          "Report-only gates record quality risks without changing release behavior unless enforcement is separately enabled.",
+        ],
+        residualRisks: [
+          "1 expected issue(s) were missed by the current proofreading output.",
+          "4 unmatched issue(s) require false-positive review.",
+          "2 required layer(s) were not covered by matched expected issues.",
+        ],
+      },
+    });
+    assert.deepEqual(draft.job.payload?.releaseQualityGateReport, {
+      mode: "evaluated",
+      passed: false,
+      reasons: [
+        "gold set critical recall threshold failed",
+        "gold set required layer coverage failed",
+      ],
+      enforcement: {
+        finalizeBlocking: true,
+        wouldBlockFinalize: true,
+      },
+    });
+
+    const matrixResponse = await fetch(
+      `${baseUrl}/api/v1/manuscripts/${seededIds.manuscriptId}/harness-matrix`,
+      {
+        headers: { Cookie: cookie },
+      },
+    );
+    const matrix = (await matrixResponse.json()) as {
+      modules: Array<{
+        module: string;
+        matrix_items: Array<{
+          key: string;
+          source_kind: string;
+          state: string;
+          evidence?: {
+            recall?: number;
+            critical_recall?: number;
+            missed_expected_issue_count?: number;
+          };
+        }>;
+      }>;
+    };
+    const proofreadingMatrix = matrix.modules.find(
+      (module) => module.module === "proofreading",
+    );
+    const goldSetAssertionItem = proofreadingMatrix?.matrix_items.find(
+      (item) => item.key === "gold_set.assertions",
+    );
+
+    assert.equal(matrixResponse.status, 200);
+    assert.equal(goldSetAssertionItem?.source_kind, "gold_set_assertion");
+    assert.equal(goldSetAssertionItem?.state, "missed");
+    assert.equal(goldSetAssertionItem?.evidence?.recall, 0.5);
+    assert.equal(goldSetAssertionItem?.evidence?.critical_recall, 0);
+    assert.equal(goldSetAssertionItem?.evidence?.missed_expected_issue_count, 1);
+
+    const finalizeResponse = await fetch(
+      `${baseUrl}/api/v1/modules/proofreading/finalize`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          manuscriptId: seededIds.manuscriptId,
+          draftAssetId: draft.asset.id,
+          requestedBy: "forged-requester",
+          actorRole: "admin",
+          storageKey: "runs/http/proofreading/gold-set-auto-final.docx",
+          fileName: "proofreading-gold-set-auto-final.docx",
+        }),
+      },
+    );
+    const finalizeBody = (await finalizeResponse.json()) as {
+      error?: string;
+      message?: string;
+    };
+
+    assert.equal(finalizeResponse.status, 400);
+    assert.equal(finalizeBody.error, "invalid_request");
+    assert.match(
+      finalizeBody.message ?? "",
+      /gold set critical recall threshold failed/i,
+    );
+  } finally {
+    await stopServer(server);
+  }
+});
+
+test("workbench http proofreading finalize blocks drafts that fail the release quality gate", async () => {
+  const { server, baseUrl, seededIds, runtime } = await startWorkbenchServer();
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.proofreader");
+    const adminCookie = await loginAsDemoUser(baseUrl, "dev.admin");
+    const draftResponse = await fetch(`${baseUrl}/api/v1/modules/proofreading/draft`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptId: seededIds.manuscriptId,
+        parentAssetId: seededIds.originalAssetId,
+        requestedBy: "forged-proofreader",
+        actorRole: "admin",
+        storageKey: "runs/http/proofreading/gate-draft.md",
+        fileName: "proofreading-gate-draft.md",
+      }),
+    });
+    const draft = (await draftResponse.json()) as {
+      asset: { id: string };
+      job: { id: string; payload?: Record<string, unknown> };
+    };
+    assert.equal(draftResponse.status, 201);
+
+    const draftJob = await runtime.jobRepository.findById(draft.job.id);
+    assert.ok(draftJob);
+    await runtime.jobRepository.save({
+      ...draftJob,
+      payload: {
+      ...draft.job.payload,
+      proofreadingPlan: {
+        role: "医学稿件终校审校员",
+        summary: "Injected failing quality gate.",
+        corrections: [],
+        issues: [],
+        manualReviewItems: [],
+      },
+      proofreadingDeepPassRuns: [
+        {
+          pass_no: 5,
+          pass_kind: "residual_synthesis",
+          status: "failed",
+          output: {
+            summary: "Injected failed residual pass.",
+            issues: [],
+            governedEvidenceCounts: {
+              failedChecks: 0,
+              manualReviewItems: 0,
+              qualityFindings: 0,
+            },
+            segmentation: {
+              mode: "segmented_candidate_discovery",
+              segmentCount: 1,
+              totalBlockCount: 1,
+              coveredBlockCount: 0,
+              coverageRatio: 0,
+              completedSegmentCount: 0,
+              failedSegmentCount: 1,
+              segments: [
+                {
+                  segmentNo: 1,
+                  blockStartIndex: 0,
+                  blockEndIndex: 0,
+                  blockIndexes: [0],
+                  blockCount: 1,
+                  inputPreview: [],
+                  issueCount: 0,
+                  status: "failed",
+                  attemptCount: 2,
+                  elapsedMs: 10,
+                  errorMessage: "Injected segment failure.",
+                },
+              ],
+            },
+          },
+        },
+      ],
+      proofreadingLayerMatrix: [
+        {
+          layer_id: "context_consistency",
+          status: "missing",
+          required_for_release: true,
+        },
+      ],
+      },
+    });
+
+    const finalizeResponse = await fetch(`${baseUrl}/api/v1/modules/proofreading/finalize`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptId: seededIds.manuscriptId,
+        draftAssetId: draft.asset.id,
+        requestedBy: "forged-proofreader",
+        actorRole: "admin",
+        storageKey: "runs/http/proofreading/gate-final.docx",
+        fileName: "proofreading-gate-final.docx",
+      }),
+    });
+    const body = (await finalizeResponse.json()) as {
+      error?: string;
+      message?: string;
+    };
+
+    assert.equal(finalizeResponse.status, 400);
+    assert.equal(body.error, "invalid_request");
+    assert.match(body.message ?? "", /quality gate failed/i);
+    assert.match(body.message ?? "", /no proofreading issues/i);
+    assert.match(body.message ?? "", /context_consistency/i);
+    assert.match(body.message ?? "", /segment/i);
+  } finally {
+    await stopServer(server);
+  }
+});
 test("workbench http export download route materializes a proofreading final docx artifact", async () => {
   const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-workbench-download-"));
   const { server, baseUrl, seededIds } = await startWorkbenchServer({
@@ -3217,6 +4412,7 @@ test("workbench http export download route materializes a proofreading final doc
 
   try {
     const cookie = await loginAsDemoUser(baseUrl, "dev.proofreader");
+    const adminCookie = await loginAsDemoUser(baseUrl, "dev.admin");
     const draftResponse = await fetch(`${baseUrl}/api/v1/modules/proofreading/draft`, {
       method: "POST",
       headers: {
@@ -3887,10 +5083,25 @@ async function seedInMemorySuiteFinalizations(
 }
 
 test("workbench http proofreading publish route creates a human-final asset and advances export resolution", async () => {
-  const { server, baseUrl, seededIds } = await startWorkbenchServer();
+  const docxTransforms: Array<{
+    outputStorageKey: string;
+    aiReplacements?: Array<{
+      targetText: string;
+      replacementText: string;
+    }>;
+  }> = [];
+  const { server, baseUrl, seededIds } = await startWorkbenchServer({
+    recordDocxTransform(input) {
+      docxTransforms.push({
+        outputStorageKey: input.outputStorageKey,
+        aiReplacements: input.aiReplacements,
+      });
+    },
+  });
 
   try {
     const cookie = await loginAsDemoUser(baseUrl, "dev.proofreader");
+    const adminCookie = await loginAsDemoUser(baseUrl, "dev.admin");
     const draftResponse = await fetch(`${baseUrl}/api/v1/modules/proofreading/draft`, {
       method: "POST",
       headers: {
@@ -3950,6 +5161,33 @@ test("workbench http proofreading publish route creates a human-final asset and 
           actorRole: "admin",
           storageKey: "runs/http-human-final/proofreading/human-final.docx",
           fileName: "human-final.docx",
+          confirmationDecisions: [
+            {
+              itemId: "pass-1-issue",
+              targetText: "Fallback source paragraph for deep proofreading",
+              replacementText: "Fallback source paragraph for deep proofreading [accepted]",
+              action: "accepted_with_manual_edit",
+              editedReplacementText:
+                "Fallback source paragraph for deep proofreading [human final]",
+              note: "accepted and edited by human reviewer",
+            },
+            {
+              itemId: "pass-2-issue",
+              targetText: "Fallback source paragraph for deep proofreading",
+              replacementText: "Fallback source paragraph for deep proofreading [rejected]",
+              action: "rejected",
+              note: "rejected as false positive",
+            },
+            {
+              itemId: "pass-3-issue",
+              targetText: "Fallback source paragraph for deep proofreading",
+              replacementText: "Fallback source paragraph for deep proofreading [knowledge]",
+              action: "route_to_knowledge_candidate",
+              editedReplacementText:
+                "Fallback source paragraph for deep proofreading [knowledge final]",
+              note: "promote to knowledge candidate",
+            },
+          ],
         }),
       },
     );
@@ -3959,7 +5197,30 @@ test("workbench http proofreading publish route creates a human-final asset and 
         module: string;
         job_type: string;
         requested_by: string;
-        payload?: Record<string, unknown>;
+        payload?: {
+          sourceAssetId?: string;
+          confirmationSummary?: {
+            acceptedIntoManuscriptCount?: number;
+            rejectedCount?: number;
+            routedKnowledgeCandidateCount?: number;
+          };
+          writebackLedger?: Array<{
+            itemId?: string;
+            applied?: boolean;
+            disposition?: string;
+          }>;
+          confirmationReconciliation?: {
+            sourceDraftAssetId?: string;
+            sourceFinalAssetId?: string;
+            humanFinalAssetId?: string;
+            decisions?: Array<{
+              itemId?: string;
+              decisionAction?: string;
+              appliedToHumanFinal?: boolean;
+              finalAction?: string;
+            }>;
+          };
+        };
       };
       asset: {
         id: string;
@@ -4007,6 +5268,69 @@ test("workbench http proofreading publish route creates a human-final asset and 
     assert.equal(published.job.job_type, "publish_human_final");
     assert.equal(published.job.requested_by, "dev-proofreader");
     assert.equal(published.job.payload?.sourceAssetId, finalized.asset.id);
+    assert.deepEqual(published.job.payload?.confirmationSummary, {
+      totalItems: 3,
+      acceptedIntoManuscriptCount: 2,
+      rejectedCount: 1,
+      routedRuleCandidateCount: 0,
+      routedKnowledgeCandidateCount: 1,
+      manualOnlyCount: 0,
+    });
+    assert.deepEqual(
+      published.job.payload?.writebackLedger?.map((item) => [
+        item.itemId,
+        item.applied,
+        item.disposition,
+      ]),
+      [
+        ["pass-1-issue", true, "auto_writeback"],
+        ["pass-2-issue", false, "rejected"],
+        ["pass-3-issue", true, "auto_writeback"],
+      ],
+    );
+    assert.equal(
+      published.job.payload?.confirmationReconciliation?.sourceDraftAssetId,
+      draft.asset.id,
+    );
+    assert.equal(
+      published.job.payload?.confirmationReconciliation?.sourceFinalAssetId,
+      finalized.asset.id,
+    );
+    assert.equal(
+      published.job.payload?.confirmationReconciliation?.humanFinalAssetId,
+      published.asset.id,
+    );
+    assert.deepEqual(
+      published.job.payload?.confirmationReconciliation?.decisions?.map((item) => [
+        item.itemId,
+        item.decisionAction,
+        item.appliedToHumanFinal,
+        item.finalAction,
+      ]),
+      [
+        ["pass-1-issue", "accepted_with_manual_edit", true, "auto_writeback"],
+        ["pass-2-issue", "rejected", false, "rejected"],
+        ["pass-3-issue", "route_to_knowledge_candidate", true, "auto_writeback"],
+      ],
+    );
+    const humanFinalTransform = docxTransforms.find(
+      (item) =>
+        item.outputStorageKey === "runs/http-human-final/proofreading/human-final.docx",
+    );
+    assert.deepEqual(humanFinalTransform?.aiReplacements, [
+      {
+        targetText: "Fallback source paragraph for deep proofreading",
+        replacementText:
+          "Fallback source paragraph for deep proofreading [human final]",
+        reason: "medical_facts_and_terminology",
+      },
+      {
+        targetText: "Fallback source paragraph for deep proofreading",
+        replacementText:
+          "Fallback source paragraph for deep proofreading [knowledge final]",
+        reason: "data_statistics_units_and_tables",
+      },
+    ]);
     assert.equal(published.asset.asset_type, "human_final_docx");
     assert.equal(published.asset.created_by, "dev-proofreader");
     assert.equal(published.asset.source_module, "manual");
@@ -4016,6 +5340,33 @@ test("workbench http proofreading publish route creates a human-final asset and 
     assert.equal(exportResponse.status, 200);
     assert.equal(exported.asset.id, published.asset.id);
     assert.equal(exported.asset.asset_type, "human_final_docx");
+
+    const reviewItemsResponse = await fetch(`${baseUrl}/api/v1/review-items?reviewStatus=routed`, {
+      headers: {
+        Cookie: adminCookie,
+      },
+    });
+    const reviewItems = (await reviewItemsResponse.json()) as Array<{
+      source_kind?: string;
+      feedback_category?: string;
+      title?: string;
+      source_status?: string;
+      review_status?: string;
+      learning_candidate_id?: string;
+    }>;
+    assert.equal(reviewItemsResponse.status, 200);
+    assert.ok(
+      reviewItems.some(
+        (item) =>
+          item.source_kind === "governed_hit" &&
+          item.feedback_category === "missing_knowledge" &&
+          item.title === "Proofreading confirmation pass-3-issue" &&
+          item.source_status === "routed_knowledge_candidate" &&
+          item.review_status === "routed" &&
+          typeof item.learning_candidate_id === "string",
+      ),
+      JSON.stringify(reviewItems),
+    );
   } finally {
     await stopServer(server);
   }
@@ -4093,7 +5444,7 @@ test("workbench http proofreading confirmation-draft route persists review decis
               replacementText: "Proofreading target [proofread]",
               action: "accepted_with_manual_edit",
               editedReplacementText: "Proofreading target [human confirmed]",
-              note: "人工确认后保留统一表述。",
+              note: "human confirmed table wording",
             },
           ],
         }),
@@ -4158,9 +5509,10 @@ test("workbench http proofreading confirmation-draft route persists review decis
     );
     assert.equal(
       savedJob.payload?.confirmationDraft?.confirmationDecisions?.[0]?.note,
-      "人工确认后保留统一表述。",
+      "human confirmed table wording",
     );
   } finally {
     await stopServer(server);
   }
 });
+

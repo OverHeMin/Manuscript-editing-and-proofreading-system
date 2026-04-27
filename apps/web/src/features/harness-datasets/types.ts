@@ -26,6 +26,7 @@ export interface HarnessDatasetSourceProvenanceViewModel {
   deidentificationPassed: boolean;
   humanReviewed: boolean;
   riskTags?: string[];
+  expectedStructuredOutput?: Record<string, unknown>;
 }
 
 export interface HarnessDatasetRubricAssignmentViewModel {
@@ -84,6 +85,16 @@ export interface HarnessDatasetExportResultViewModel {
   outputPath: string;
 }
 
+export interface QuickProofreadingGoldSetInput {
+  name: string;
+  manuscriptType: ManuscriptType;
+  sourceKind: HarnessDatasetSourceKind;
+  sourceId: string;
+  manuscriptId: string;
+  expectedStructuredOutput: Record<string, unknown>;
+  publicationNotes?: string;
+}
+
 export interface HarnessDatasetWorkbenchApiOverview {
   export_root_dir: string;
   versions: Array<{
@@ -113,6 +124,7 @@ export interface HarnessDatasetWorkbenchApiOverview {
       deidentification_passed: boolean;
       human_reviewed: boolean;
       risk_tags?: string[];
+      expected_structured_output?: Record<string, unknown>;
     }>;
     rubric_assignment: {
       status: HarnessRubricAssignmentStatus;

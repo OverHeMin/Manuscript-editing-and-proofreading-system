@@ -11,6 +11,7 @@ import { AiProviderCredentialCrypto } from "./ai-provider-credential-crypto.ts";
 import type {
   AiProviderConnectivityProbe,
   AiProviderConnectivityProbeResult,
+  AiProviderModelDiscoveryResult,
 } from "./openai-chat-compatible-connectivity-probe.ts";
 
 const MANAGE_PERMISSION = "permissions.manage";
@@ -327,6 +328,41 @@ export class AiProviderConnectionService {
     return updated;
   }
 
+  async discoverModels(input: {
+    actorId?: string;
+    actorRole: RoleKey;
+    connectionId: string;
+  }): Promise<AiProviderModelDiscoveryResult> {
+    this.assertAdmin(input.actorRole);
+
+    const connection = await this.requireConnection(input.connectionId);
+    const apiKeyResult = await this.decryptConnectionApiKey(connection);
+    if (!apiKeyResult.ok) {
+      return {
+        status: "failed",
+        testedAt: this.now(),
+        models: [],
+        errorSummary: apiKeyResult.errorSummary,
+      };
+    }
+
+    if (!this.connectivityProbe) {
+      return {
+        status: "failed",
+        testedAt: this.now(),
+        models: [],
+        errorSummary: "Connectivity probe is unavailable in this runtime.",
+      };
+    }
+
+    return this.connectivityProbe.discoverModels({
+      providerKind: connection.provider_kind,
+      baseUrl: connection.base_url,
+      apiKey: apiKeyResult.apiKey,
+      connectionMetadata: cloneConnectionMetadata(connection.connection_metadata),
+    });
+  }
+
   private async setConnectionEnabledState(input: {
     actorId?: string;
     actorRole: RoleKey;
@@ -374,25 +410,12 @@ export class AiProviderConnectionService {
     testModelName: string;
     metadata: Record<string, unknown>;
   }): Promise<AiProviderConnectivityProbeResult> {
-    const credential = await this.repository.findCredentialByConnectionId(input.connection.id);
-    if (!credential) {
+    const apiKeyResult = await this.decryptConnectionApiKey(input.connection);
+    if (!apiKeyResult.ok) {
       return {
         status: "failed",
         testedAt: this.now(),
-        errorSummary: "Connection credentials are not configured.",
-      };
-    }
-
-    let apiKey: string;
-    try {
-      apiKey = this.credentialCrypto.decrypt(
-        credential.credential_ciphertext,
-      ).apiKey;
-    } catch (error) {
-      return {
-        status: "failed",
-        testedAt: this.now(),
-        errorSummary: summarizeError(error),
+        errorSummary: apiKeyResult.errorSummary,
       };
     }
 
@@ -407,10 +430,38 @@ export class AiProviderConnectionService {
     return this.connectivityProbe.testConnection({
       providerKind: input.connection.provider_kind,
       baseUrl: input.connection.base_url,
-      apiKey,
+      apiKey: apiKeyResult.apiKey,
       modelName: input.testModelName,
       connectionMetadata: cloneConnectionMetadata(input.metadata),
     });
+  }
+
+  private async decryptConnectionApiKey(
+    connection: AiProviderConnectionRecord,
+  ): Promise<
+    | { ok: true; apiKey: string }
+    | { ok: false; errorSummary: string }
+  > {
+    const credential = await this.repository.findCredentialByConnectionId(connection.id);
+    if (!credential) {
+      return {
+        ok: false,
+        errorSummary: "Connection credentials are not configured.",
+      };
+    }
+
+    try {
+      return {
+        ok: true,
+        apiKey: this.credentialCrypto.decrypt(credential.credential_ciphertext)
+          .apiKey,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        errorSummary: summarizeError(error),
+      };
+    }
   }
 
   private async requireConnection(

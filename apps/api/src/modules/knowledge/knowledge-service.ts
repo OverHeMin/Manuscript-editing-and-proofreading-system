@@ -126,6 +126,7 @@ export interface UpdateKnowledgeRevisionDraftInput extends UpdateKnowledgeDraftI
   expiresAt?: string;
   sourceLearningCandidateId?: string;
   bindings?: KnowledgeRevisionBindingInput[];
+  expectedUpdatedAt?: string;
 }
 
 export interface KnowledgeContentBlockInput {
@@ -355,6 +356,22 @@ export class KnowledgeContentBlockOrderError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "KnowledgeContentBlockOrderError";
+  }
+}
+
+export class KnowledgeRevisionConflictError extends Error {
+  readonly revisionId: string;
+  readonly expectedUpdatedAt: string;
+  readonly actualUpdatedAt: string;
+
+  constructor(revisionId: string, expectedUpdatedAt: string, actualUpdatedAt: string) {
+    super(
+      `Knowledge revision ${revisionId} was updated by another author. Expected updated_at ${expectedUpdatedAt}, found ${actualUpdatedAt}.`,
+    );
+    this.name = "KnowledgeRevisionConflictError";
+    this.revisionId = revisionId;
+    this.expectedUpdatedAt = expectedUpdatedAt;
+    this.actualUpdatedAt = actualUpdatedAt;
   }
 }
 
@@ -739,6 +756,16 @@ export class KnowledgeService {
             revisionId,
             revision.status,
             "draft",
+          );
+        }
+        if (
+          input.expectedUpdatedAt !== undefined &&
+          input.expectedUpdatedAt !== revision.updated_at
+        ) {
+          throw new KnowledgeRevisionConflictError(
+            revisionId,
+            input.expectedUpdatedAt,
+            revision.updated_at,
           );
         }
 

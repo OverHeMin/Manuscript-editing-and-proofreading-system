@@ -91,8 +91,8 @@ export interface DocumentPreviewSessionViewModel {
     download_path: string;
     permissions: {
       edit: false;
-      comment: false;
-      review: false;
+      comment: boolean;
+      review: boolean;
       download: true;
       print: true;
     };
@@ -121,17 +121,18 @@ export interface DocumentPreviewSessionViewModel {
     document_type: "word";
     ui_type: "desktop";
     editor_config: {
-      mode: "view";
+      mode: "view" | "edit";
       lang: "zh-CN";
       customization: {
         autosave: false;
         chat: false;
-        comments: false;
+        comments: boolean;
         compactHeader: true;
         compactToolbar: true;
         feedback: false;
         forcesave: false;
         help: false;
+        reviewDisplay?: "original" | "markup" | "final";
         submitForm: false;
       };
     };

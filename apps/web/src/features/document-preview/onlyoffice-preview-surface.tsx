@@ -42,14 +42,14 @@ interface OnlyOfficeDocEditorConfig {
     url: string;
     permissions: {
       edit: false;
-      comment: false;
-      review: false;
+      comment: boolean;
+      review: boolean;
       download: true;
       print: true;
     };
   };
   editorConfig: {
-    mode: "view";
+    mode: "view" | "edit";
     lang: "zh-CN";
     callbackUrl: string;
     customization: DocumentPreviewSessionViewModel["embed"]["editor_config"]["customization"];
@@ -161,7 +161,7 @@ type OnlyOfficePreviewSurfaceState =
 export const ONLYOFFICE_PROOFREADING_LOCATE_PLUGIN_GUID =
   "asc.{8DFA8E84-C2C5-4F1C-8A13-5D1B4E3A9C11}";
 export const ONLYOFFICE_PROOFREADING_LOCATE_PLUGIN_VERSION =
-  "20260425-stage2b-document-selection-sync";
+  "20260427-fullscreen-locate-comments-v3";
 
 export function supportsOnlyOfficePreviewSurface(
   previewSession: DocumentPreviewSessionViewModel | null | undefined,
@@ -248,8 +248,8 @@ export function OnlyOfficePreviewSurface({
               setSurfaceError(
                 event.data?.errorDescription ??
                   (typeof event.data?.errorCode === "number"
-                    ? `文档面加载失败（错误码 ${event.data.errorCode}）。`
-                    : "文档面加载失败，请改用备用定位视图。"),
+                    ? `Document surface failed to load (${event.data.errorCode}).`
+                    : "Document surface failed to load. Use the fallback locating view."),
               );
             },
           },
@@ -262,7 +262,7 @@ export function OnlyOfficePreviewSurface({
 
         setSurfaceState("error");
         setSurfaceError(
-          error instanceof Error ? error.message : "文档面初始化失败，请改用备用定位视图。",
+          error instanceof Error ? error.message : "Document surface initialization failed. Use the fallback locating view.",
         );
       });
 
@@ -318,6 +318,10 @@ export function OnlyOfficePreviewSurface({
       window.removeEventListener("message", handleBridgeAck);
     };
   }, [onIssueSelection, previewSession.session_id]);
+
+  React.useEffect(() => {
+    setLastLocateAck(null);
+  }, [activeLocateTarget]);
 
   React.useEffect(() => {
     if (
@@ -462,15 +466,15 @@ export function OnlyOfficePreviewSurface({
     >
       <div className="document-preview-surface-toolbar">
         <div className="document-preview-surface-toolbar-copy">
-          <strong>真实文档面</strong>
-          <p>当前以只读模式挂载当前稿件版本，右侧仍然是人工确认主工作面。</p>
+          <strong>Document surface</strong>
+          <p>The current manuscript version is mounted in read-only review mode.</p>
         </div>
         <div className="document-preview-surface-toolbar-meta">
           <span>{formatSurfaceStateLabel(surfaceState)}</span>
           {activeLocateTarget ? (
             <small>{formatLocateTargetSummary(activeLocateTarget)}</small>
           ) : (
-            <small>当前未选择具体问题</small>
+            <small>No issue selected</small>
           )}
         </div>
       </div>
@@ -481,13 +485,13 @@ export function OnlyOfficePreviewSurface({
       />
       {surfaceState === "error" ? (
         <p className="document-preview-surface-message is-error">
-          {surfaceError ?? "文档面加载失败，请改用备用定位视图。"}
+          {surfaceError ?? "Document surface failed to load. Use the fallback locating view."}
         </p>
       ) : surfaceState === "loading" ? (
-        <p className="document-preview-surface-message">正在连接文档预览服务...</p>
+        <p className="document-preview-surface-message">Connecting document preview service...</p>
       ) : surfaceState === "pending_normalization" ? (
         <p className="document-preview-surface-message">
-          当前稿件仍在等待规范化，暂时无法挂载真实文档面。
+          The manuscript is waiting for normalization and cannot be mounted yet.
         </p>
       ) : (
         <p className="document-preview-surface-message">
@@ -542,7 +546,7 @@ export function buildOnlyOfficeDocEditorConfig(
       plugins: buildOnlyOfficeLocatePluginRegistration(previewSession),
       user: {
         id: `preview-${previewSession.session_id}`,
-        name: "校对工作台",
+        name: "Proofreading workspace",
       },
     },
     events: {
@@ -620,7 +624,7 @@ export function isOnlyOfficeLocateAckForRequest(
 ): boolean {
   return Boolean(
     ack &&
-      (ack.stage === "received" || ack.stage === "executed") &&
+      ack.stage === "executed" &&
       buildOnlyOfficeLocateAckFingerprint(ack) === requestFingerprint,
   );
 }
@@ -883,7 +887,7 @@ export function resolveOnlyOfficeIssueMarkSyncStatusMessage(input: {
   issueMarks: readonly OnlyOfficeProofreadingIssueMarkViewModel[];
 }): string {
   if (!input.visibleIssueMarksSupported) {
-    return "当前已接入问题定位，左侧标记轨可查看问题分布；文内原位批注与双向同步仍在后续阶段接入。";
+    return "Issue locating is available; visible in-document marks are not supported for this document yet.";
   }
 
   if (
@@ -893,24 +897,24 @@ export function resolveOnlyOfficeIssueMarkSyncStatusMessage(input: {
   ) {
     if (input.ack.appliedCount === input.issueMarks.length) {
       if (input.biDirectionalSyncSupported) {
-        return "当前已接入问题定位、文内问题标记与问题双向联动；左侧标记轨继续承担状态总览。";
+        return "Issue location, visible marks, and bidirectional sync are active.";
       }
 
-      return "当前已接入问题定位与文内问题标记；左侧标记轨继续承担状态总览。";
+      return "Issue location and visible marks are active.";
     }
 
     if (input.ack.appliedCount === 0) {
-      return "文内问题标记同步已完成，但当前稿件还没有落下可见标记；左侧标记轨继续承担状态总览。";
+      return "Visible issue marks were acknowledged, but none were applied to the document yet.";
     }
 
-    return `文内问题标记同步已完成，但当前仅落下 ${input.ack.appliedCount}/${input.ack.issueCount} 处可见标记；左侧标记轨继续承担状态总览。`;
+    return `Visible issue marks were partially applied: ${input.ack.appliedCount}/${input.ack.issueCount}.`;
   }
 
   if (input.ack?.stage === "received") {
-    return "文内问题标记同步已送达，正在等待文档面完成落位；左侧标记轨继续承担状态总览。";
+    return "Visible issue mark sync was received and is waiting for document reconciliation.";
   }
 
-  return "当前已发送文内问题标记同步请求，正在等待文档面确认；左侧标记轨继续承担状态总览。";
+  return "Visible issue mark sync was requested and is waiting for document acknowledgement.";
 }
 
 function isOnlyOfficeIssueMarkSyncAckCurrent(
@@ -926,7 +930,7 @@ function isOnlyOfficeIssueMarkSyncAckCurrent(
 
 async function loadOnlyOfficeDocsApi(sourceUrl: string): Promise<OnlyOfficeDocsApi> {
   if (typeof window === "undefined") {
-    throw new Error("浏览器环境未就绪，无法加载真实文档面。");
+    throw new Error("Browser environment is required to load the document surface.");
   }
 
   if (window.DocsAPI?.DocEditor) {
@@ -961,10 +965,10 @@ async function loadOnlyOfficeDocsApi(sourceUrl: string): Promise<OnlyOfficeDocsA
         return;
       }
 
-      reject(new Error("OnlyOffice 文档脚本已加载，但未暴露 DocsAPI。"));
+      reject(new Error("OnlyOffice script loaded but DocsAPI was not exposed."));
     };
     script.onerror = () => {
-      reject(new Error("OnlyOffice 文档脚本加载失败，请检查文档服务是否可访问。"));
+      reject(new Error("OnlyOffice script failed to load. Check document service access."));
     };
 
     if (!existingScript) {
@@ -1010,25 +1014,25 @@ function attachSurfaceAccessToken(
 
 function formatSurfaceStateLabel(state: OnlyOfficePreviewSurfaceState): string {
   if (state === "ready") {
-    return "文档面就绪";
+    return "Ready";
   }
 
   if (state === "loading" || state === "mountable") {
-    return "正在挂载";
+    return "Loading";
   }
 
   if (state === "pending_normalization") {
-    return "等待规范化";
+    return "Pending normalization";
   }
 
-  return "挂载失败";
+  return "Error";
 }
 
 function formatLocateTargetSummary(
   locateTarget: DocumentPreviewLocateTargetViewModel,
 ): string {
-  const headline = locateTarget.sectionLabel ?? `段落 ${locateTarget.blockIndex + 1}`;
-  return `${headline} · ${locateTarget.anchorKind}`;
+  const headline = locateTarget.sectionLabel ?? `Block ${locateTarget.blockIndex + 1}`;
+  return `${headline} / ${locateTarget.anchorKind}`;
 }
 
 function sanitizeDomId(value: string): string {

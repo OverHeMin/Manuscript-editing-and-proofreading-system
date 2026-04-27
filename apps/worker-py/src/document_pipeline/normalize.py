@@ -10,6 +10,10 @@ DOCX_MIME_TYPES = {
 DOCX_MIME_TYPE = (
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 )
+DEFAULT_LIBREOFFICE_BINARY_CANDIDATES = (
+    "C:/Program Files/LibreOffice/program/soffice.exe",
+    "C:/Program Files (x86)/LibreOffice/program/soffice.exe",
+)
 
 
 class UnsupportedDocumentFormatError(ValueError):
@@ -57,7 +61,15 @@ def resolve_libreoffice_binary(tooling: dict | None = None) -> str | None:
     if explicit_binary:
         return explicit_binary
 
-    return shutil.which("soffice") or shutil.which("libreoffice")
+    path_binary = shutil.which("soffice") or shutil.which("libreoffice")
+    if path_binary:
+        return path_binary
+
+    for candidate in DEFAULT_LIBREOFFICE_BINARY_CANDIDATES:
+        if Path(candidate).exists():
+            return candidate
+
+    return None
 
 
 def build_libreoffice_command(

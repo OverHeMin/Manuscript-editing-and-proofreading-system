@@ -2,12 +2,250 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { AuthorizationError } from "../../src/auth/permission-guard.ts";
 import {
+  evaluateGoldSetAssertions,
   createHarnessDatasetApi,
   InMemoryHarnessDatasetRepository,
   HarnessDatasetService,
   HarnessGoldSetVersionNotEditableError,
   HarnessGoldSetVersionPublishValidationError,
 } from "../../src/modules/harness-datasets/index.ts";
+
+test("gold set assertion runner reports recall misses and false positives", () => {
+  const result = evaluateGoldSetAssertions({
+    items: [
+      {
+        source_kind: "reviewed_case_snapshot",
+        source_id: "snapshot-proofreading-1",
+        manuscript_id: "manuscript-1",
+        manuscript_type: "clinical_study",
+        deidentification_passed: true,
+        human_reviewed: true,
+        expected_structured_output: {
+          expectedIssues: [
+            {
+              id: "expected-context-1",
+              severity: "critical",
+              issueType: "sample_size_consistency",
+              layerId: "context_consistency",
+              quote: "120例",
+            },
+            {
+              id: "expected-stat-1",
+              severity: "medium",
+              issueType: "p_value_format",
+              layerId: "statistics_expression",
+              quote: "P=0.001",
+            },
+          ],
+          criticalRecallThreshold: 1,
+          falsePositiveReviewThreshold: 0.2,
+          requiredLayers: ["context_consistency", "statistics_expression"],
+        },
+      },
+    ],
+    actualIssues: [
+      {
+        itemId: "actual-context-1",
+        title: "样本量前后不一致",
+        description: "摘要和结果样本量不一致。",
+        severity: "critical",
+        source: "residual_ai",
+        issueType: "sample_size_consistency",
+        blocksFinal: true,
+        anchor: {
+          blockIndex: 2,
+          quote: "120例",
+        },
+      },
+      {
+        itemId: "actual-extra-1",
+        title: "疑似额外问题",
+        description: "没有命中 gold set。",
+        severity: "low",
+        source: "residual_ai",
+        issueType: "language_style",
+        blocksFinal: false,
+        anchor: {
+          blockIndex: 5,
+          quote: "明显",
+        },
+      },
+    ],
+  });
+
+  assert.equal(result.expectedIssueCount, 2);
+  assert.equal(result.matchedExpectedIssueCount, 1);
+  assert.equal(result.missedExpectedIssueCount, 1);
+  assert.equal(result.falsePositiveIssueCount, 1);
+  assert.equal(result.recall, 0.5);
+  assert.equal(result.criticalRecall, 1);
+  assert.deepEqual(result.missedExpectedIssueIds, ["expected-stat-1"]);
+  assert.deepEqual(result.falsePositiveIssueIds, ["actual-extra-1"]);
+  assert.equal(result.thresholds.criticalRecallPassed, true);
+  assert.equal(result.thresholds.falsePositiveReviewPassed, false);
+  assert.equal(result.thresholds.requiredLayerCoveragePassed, false);
+  assert.deepEqual(result.harnessQualityReport, {
+    mode: "report_only",
+    scope: "gold_set_assertions",
+    expectedIssueCount: 2,
+    actualIssueCount: 2,
+    caseCount: 1,
+    assertionCount: 2,
+    recall: 0.5,
+    falsePositiveCount: 1,
+    falseNegativeCount: 1,
+    ruleHitCoverage: 0,
+    knowledgeHitCoverage: 0,
+    residualCoverage: 0.5,
+    requiredLayerCoverage: {
+      requiredLayerCount: 2,
+      coveredLayerCount: 1,
+      missingLayerIds: ["statistics_expression"],
+    },
+    manualReviewSamplingRequired: true,
+    limitations: [
+      "Harness gold-set metrics are bounded by the published cases and do not represent universal manuscript accuracy.",
+      "Report-only gates record quality risks without changing release behavior unless enforcement is separately enabled.",
+    ],
+    residualRisks: [
+      "1 expected issue(s) were missed by the current proofreading output.",
+      "1 unmatched issue(s) require false-positive review.",
+      "1 required layer(s) were not covered by matched expected issues.",
+    ],
+  });
+});
+
+test("gold set assertion runner requires severity, layer, and block locator matches when provided", () => {
+  const result = evaluateGoldSetAssertions({
+    items: [
+      {
+        source_kind: "reviewed_case_snapshot",
+        source_id: "snapshot-proofreading-locator",
+        manuscript_id: "manuscript-1",
+        manuscript_type: "clinical_study",
+        deidentification_passed: true,
+        human_reviewed: true,
+        expected_structured_output: {
+          expectedIssues: [
+            {
+              id: "expected-locator-1",
+              severity: "critical",
+              issueType: "sample_size_consistency",
+              layerId: "context_consistency",
+              quote: "n=120",
+              blockIndex: 3,
+            },
+          ],
+        },
+      },
+    ],
+    actualIssues: [
+      {
+        itemId: "actual-wrong-severity-layer-block",
+        title: "Same quote but wrong locator metadata",
+        description: "This should not satisfy the stricter gold-set assertion.",
+        severity: "medium",
+        source: "residual_ai",
+        issueType: "sample_size_consistency",
+        blocksFinal: false,
+        anchor: {
+          blockIndex: 4,
+          quote: "n=120",
+        },
+      },
+    ],
+  });
+
+  assert.equal(result.matchedExpectedIssueCount, 0);
+  assert.deepEqual(result.missedExpectedIssueIds, ["expected-locator-1"]);
+  assert.deepEqual(result.falsePositiveIssueIds, [
+    "actual-wrong-severity-layer-block",
+  ]);
+});
+
+test("gold set residual discovery layer matches residual-ai issues without residual issue type wording", () => {
+  const result = evaluateGoldSetAssertions({
+    items: [
+      {
+        source_kind: "reviewed_case_snapshot",
+        source_id: "snapshot-proofreading-residual-source",
+        manuscript_id: "manuscript-1",
+        manuscript_type: "clinical_study",
+        deidentification_passed: true,
+        human_reviewed: true,
+        expected_structured_output: {
+          expectedIssues: [
+            {
+              id: "expected-residual-source-1",
+              layerId: "residual_discovery",
+            },
+          ],
+          requiredLayers: ["residual_discovery"],
+        },
+      },
+    ],
+    actualIssues: [
+      {
+        itemId: "actual-terminology-error-1",
+        title: "英文摘要中药物名称翻译错误",
+        description: "真实模型残差发现的术语错误。",
+        severity: "critical",
+        source: "residual_ai",
+        issueType: "terminology_error",
+        blocksFinal: false,
+        anchor: {
+          blockIndex: 1,
+          quote: "Edaravone and Dexmedetomidine",
+        },
+      },
+    ],
+  });
+
+  assert.equal(result.matchedExpectedIssueCount, 1);
+  assert.equal(result.thresholds.requiredLayerCoveragePassed, true);
+});
+
+test("gold set residual discovery layer matches residual-ai terminology consistency issues from real acceptance", () => {
+  const result = evaluateGoldSetAssertions({
+    items: [
+      {
+        source_kind: "reviewed_case_snapshot",
+        source_id: "snapshot-proofreading-residual-terminology",
+        manuscript_id: "manuscript-1",
+        manuscript_type: "clinical_study",
+        deidentification_passed: true,
+        human_reviewed: true,
+        expected_structured_output: {
+          expectedIssues: [
+            {
+              id: "expected-residual-terminology-1",
+              layerId: "residual_discovery",
+            },
+          ],
+          requiredLayers: ["residual_discovery"],
+        },
+      },
+    ],
+    actualIssues: [
+      {
+        itemId: "actual-terminology-consistency-1",
+        title: "正文首次出现PD-1时未给出英文全称",
+        description: "真实模型残差发现的术语一致性问题。",
+        severity: "medium",
+        source: "residual_ai",
+        issueType: "terminology_consistency",
+        blocksFinal: false,
+        anchor: {
+          blockIndex: 12,
+          quote: "程序性死亡受体-1（programmed death-1，PD-1）",
+        },
+      },
+    ],
+  });
+
+  assert.equal(result.matchedExpectedIssueCount, 1);
+  assert.equal(result.thresholds.requiredLayerCoveragePassed, true);
+});
 
 function createHarnessDatasetGovernanceHarness() {
   const repository = new InMemoryHarnessDatasetRepository();

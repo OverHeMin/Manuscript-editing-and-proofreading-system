@@ -151,8 +151,8 @@ test("preview session is built from the current normalized asset and stays read-
     download_path: `/api/v1/document-assets/${normalizationResult.normalized_asset?.id}/download`,
     permissions: {
       edit: false,
-      comment: false,
-      review: false,
+      comment: true,
+      review: true,
       download: true,
       print: true,
     },
@@ -182,17 +182,18 @@ test("preview session is built from the current normalized asset and stays read-
     document_type: "word",
     ui_type: "desktop",
     editor_config: {
-      mode: "view",
+      mode: "edit",
       lang: "zh-CN",
       customization: {
         autosave: false,
         chat: false,
-        comments: false,
+        comments: true,
         compactHeader: true,
         compactToolbar: true,
         feedback: false,
         forcesave: false,
         help: false,
+        reviewDisplay: "markup",
         submitForm: false,
       },
     },
@@ -257,7 +258,7 @@ test("preview session for pending normalization stays read-only and signals wait
   });
   assert.match(body.authorization?.access_token ?? "", /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u);
   assert.equal(body.embed?.api_js_url, "http://127.0.0.1:58080/web-apps/apps/api/documents/api.js");
-  assert.equal(body.embed?.editor_config?.mode, "view");
+  assert.equal(body.embed?.editor_config?.mode, "edit");
   assert.equal(body.event_bridge?.capabilities?.locate_to_anchor, true);
   assert.equal(response.body.save_back_enabled, false);
   assert.equal(response.body.source_asset_type, "original");

@@ -441,7 +441,7 @@ test("table authoring form renders proofreading scenario shortcuts", () => {
   assert.match(markup, /单位与统计注释一致/u);
 });
 
-test("rule authoring form explains parameter intent and rule knowledge boundary", () => {
+test("rule authoring form keeps rule knowledge boundary without a separate guide card", () => {
   const draft = createRuleAuthoringDraft("table");
 
   const markup = renderToStaticMarkup(
@@ -461,12 +461,8 @@ test("rule authoring form explains parameter intent and rule knowledge boundary"
     }),
   );
 
-  assert.match(markup, /data-rule-parameter-guide="field"/u);
-  assert.match(markup, /参数说明/u);
-  assert.match(markup, /规则中心负责可执行判断/u);
-  assert.match(markup, /知识条目只放证据、依据、范例或解释/u);
-  assert.match(markup, /执行方式决定是自动改写还是只检查/u);
-  assert.match(markup, /置信策略决定何时允许自动执行/u);
+  assert.doesNotMatch(markup, /data-rule-parameter-guide="field"/u);
+  assert.match(markup, /data-rule-compact-guidance="field"/u);
 });
 
 test("rule authoring serialization stores linked knowledge items in linkage payload", () => {

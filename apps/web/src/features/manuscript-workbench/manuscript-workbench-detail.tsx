@@ -151,6 +151,49 @@ export type ProofreadingSeverityFilter =
   | "low";
 
 export type ProofreadingStatusFilter = "all" | "pending" | "processed" | "blocking";
+
+export interface ProofreadingDeepPassAuditPreviewBlockViewModel {
+  blockIndex: number;
+  section?: string;
+  blockKind?: string;
+  textPreview: string;
+}
+
+export interface ProofreadingDeepPassAuditSegmentViewModel {
+  segmentNo: number;
+  status: string;
+  attemptCount: number;
+  elapsedMs: number;
+  issueCount: number;
+  blockIndexes: number[];
+  inputPreview: ProofreadingDeepPassAuditPreviewBlockViewModel[];
+  errorMessage?: string;
+}
+
+export interface ProofreadingDeepPassAuditRunViewModel {
+  id?: string;
+  passNo: number;
+  passKind: string;
+  status: string;
+  modelId?: string;
+  segmentCount: number;
+  completedSegmentCount: number;
+  failedSegmentCount: number;
+  coverageRatio: number;
+  segments: ProofreadingDeepPassAuditSegmentViewModel[];
+}
+
+export interface ProofreadingLayerMatrixEntryViewModel {
+  layerId: string;
+  label: string;
+  status: string;
+  requiredForRelease: boolean;
+  passKind?: string;
+  issueCount?: number;
+  failedSegmentCount?: number;
+  notes: string[];
+}
+
 export interface EditingSlotManualSaveInput {
   slotKey: string;
   resolutionKind: EditingSlotManualResolutionKind;
@@ -182,6 +225,10 @@ export interface ManuscriptWorkbenchAssetDetailPageProps {
   >;
   confirmationItems?: readonly ProofreadingConfirmationItemViewModel[];
   confirmationState?: Readonly<Record<string, ProofreadingConfirmationDraftState>>;
+  proofreadingPassRuns?: readonly ProofreadingDeepPassAuditRunViewModel[];
+  proofreadingLayerMatrix?: readonly ProofreadingLayerMatrixEntryViewModel[];
+  retryingProofreadingPassRunId?: string | null;
+  onProofreadingPassRunRetry?: (passRunId: string) => void;
   screeningDocumentBlocks?: readonly ProofreadingDocumentBlockViewModel[];
   screeningWorkspaceFocusItems?: readonly ScreeningWorkspaceFocusItemViewModel[];
   editingDocumentBlocks?: readonly ProofreadingDocumentBlockViewModel[];
@@ -211,12 +258,14 @@ export function buildWorkbenchAssetDetailHref(input: {
   assetId: string;
   reviewedCaseSnapshotId?: string;
   sampleSetItemId?: string;
+  presentation?: "default" | "fullscreen";
 }): string {
   return formatWorkbenchHash(input.mode, {
     manuscriptId: input.manuscriptId,
     assetId: input.assetId,
     reviewedCaseSnapshotId: input.reviewedCaseSnapshotId,
     sampleSetItemId: input.sampleSetItemId,
+    presentation: input.presentation,
   });
 }
 
@@ -491,6 +540,115 @@ export function buildProofreadingConfirmationItems(
     ...qualityFindingItems,
     ...failedCheckItems,
   ]);
+}
+
+export function buildProofreadingDeepPassAuditRuns(
+  job: Pick<JobViewModel, "payload"> | null | undefined,
+): ProofreadingDeepPassAuditRunViewModel[] {
+  const payload = asRecord(job?.payload);
+  const runs = Array.isArray(payload?.proofreadingDeepPassRuns)
+    ? payload.proofreadingDeepPassRuns
+    : [];
+
+  return runs
+    .map((entry): ProofreadingDeepPassAuditRunViewModel | null => {
+      const run = asRecord(entry);
+      const output = asRecord(run?.output);
+      const segmentation = asRecord(output?.segmentation);
+      if (!run || !segmentation) {
+        return null;
+      }
+
+      const segments = Array.isArray(segmentation.segments)
+        ? segmentation.segments
+            .map((segmentEntry): ProofreadingDeepPassAuditSegmentViewModel | null => {
+              const segment = asRecord(segmentEntry);
+              if (!segment) {
+                return null;
+              }
+
+              return {
+                segmentNo: readOptionalNumber(segment.segmentNo) ?? 0,
+                status: readOptionalString(segment.status) ?? "unknown",
+                attemptCount: readOptionalNumber(segment.attemptCount) ?? 0,
+                elapsedMs: readOptionalNumber(segment.elapsedMs) ?? 0,
+                issueCount: readOptionalNumber(segment.issueCount) ?? 0,
+                blockIndexes: Array.isArray(segment.blockIndexes)
+                  ? segment.blockIndexes.filter(
+                      (value): value is number =>
+                        typeof value === "number" && Number.isFinite(value),
+                    )
+                  : [],
+                inputPreview: normalizeProofreadingSegmentInputPreview(
+                  segment.inputPreview,
+                ),
+                ...(readOptionalString(segment.errorMessage)
+                  ? { errorMessage: readOptionalString(segment.errorMessage) }
+                  : {}),
+              };
+            })
+            .filter(
+              (segment): segment is ProofreadingDeepPassAuditSegmentViewModel =>
+                segment !== null,
+            )
+        : [];
+
+      return {
+        id: readOptionalString(run.id),
+        passNo: readOptionalNumber(run.pass_no) ?? 0,
+        passKind: readOptionalString(run.pass_kind) ?? "unknown",
+        status: readOptionalString(run.status) ?? "unknown",
+        modelId: readOptionalString(run.model_id),
+        segmentCount: readOptionalNumber(segmentation.segmentCount) ?? segments.length,
+        completedSegmentCount:
+          readOptionalNumber(segmentation.completedSegmentCount) ??
+          segments.filter((segment) => segment.status === "completed").length,
+        failedSegmentCount:
+          readOptionalNumber(segmentation.failedSegmentCount) ??
+          segments.filter((segment) => segment.status === "failed").length,
+        coverageRatio: readOptionalNumber(segmentation.coverageRatio) ?? 0,
+        segments,
+      };
+    })
+    .filter((run): run is ProofreadingDeepPassAuditRunViewModel => run !== null);
+}
+
+export function buildProofreadingLayerMatrix(
+  job: Pick<JobViewModel, "payload"> | null | undefined,
+): ProofreadingLayerMatrixEntryViewModel[] {
+  const payload = asRecord(job?.payload);
+  const layers = Array.isArray(payload?.proofreadingLayerMatrix)
+    ? payload.proofreadingLayerMatrix
+    : [];
+
+  return layers
+    .map((entry): ProofreadingLayerMatrixEntryViewModel | null => {
+      const layer = asRecord(entry);
+      if (!layer) {
+        return null;
+      }
+      const evidence = asRecord(layer.evidence);
+      const layerId = readOptionalString(layer.layer_id);
+      const label = readOptionalString(layer.label);
+      const status = readOptionalString(layer.status);
+      if (!layerId || !label || !status) {
+        return null;
+      }
+
+      return {
+        layerId,
+        label,
+        status,
+        requiredForRelease: layer.required_for_release === true,
+        passKind: readOptionalString(evidence?.pass_kind),
+        issueCount: readOptionalNumber(evidence?.issue_count),
+        failedSegmentCount: readOptionalNumber(evidence?.failed_segment_count),
+        notes: readStringArray(layer.notes),
+      };
+    })
+    .filter(
+      (layer): layer is ProofreadingLayerMatrixEntryViewModel => layer !== null,
+    );
 }
 
 export function buildProofreadingDocumentBlocks(
@@ -1155,6 +1313,10 @@ export function ManuscriptWorkbenchAssetDetailPage({
   knowledgeReferences,
   confirmationItems = [],
   confirmationState = {},
+  proofreadingPassRuns = [],
+  proofreadingLayerMatrix = [],
+  retryingProofreadingPassRunId = null,
+  onProofreadingPassRunRetry,
   screeningDocumentBlocks = [],
   screeningWorkspaceFocusItems = [],
   editingDocumentBlocks = [],
@@ -1187,6 +1349,18 @@ export function ManuscriptWorkbenchAssetDetailPage({
     knowledgeHitLogs,
     knowledgeReferences,
   });
+  const proofreadingPassAuditCard =
+    proofreadingPassRuns.length > 0
+      ? renderProofreadingPassAuditCard({
+          runs: proofreadingPassRuns,
+          retryingRunId: retryingProofreadingPassRunId,
+          onRetry: onProofreadingPassRunRetry,
+        })
+      : null;
+  const proofreadingLayerMatrixCard =
+    proofreadingLayerMatrix.length > 0
+      ? renderProofreadingLayerMatrixCard({ layers: proofreadingLayerMatrix })
+      : null;
   const editingGuardrailCard =
     editingGuardrails.length > 0
       ? renderEditingGuardrailCard({
@@ -1498,6 +1672,7 @@ export function ManuscriptWorkbenchAssetDetailPage({
         </div>
 
         <div className="manuscript-workbench-detail-layout manuscript-workbench-detail-layout--supporting">
+          {proofreadingPassAuditCard}
           {governanceEvidenceCard}
         </div>
       </section>
@@ -1952,8 +2127,123 @@ export function ManuscriptWorkbenchAssetDetailPage({
                 {draftSaveLabel}
               </p>
             ) : null}
+            {proofreadingLayerMatrixCard}
+            {proofreadingPassAuditCard}
             {governanceEvidenceCard}
           </article>
+        </div>
+      </section>
+    );
+  }
+
+  if (
+    mode === "editing" &&
+    detailKind === "document_preview" &&
+    asset.asset_type === "edited_docx" &&
+    (previewSession != null ||
+      (editingDocumentBlocks.length === 0 &&
+        !executionSnapshot &&
+        (!knowledgeHitLogs || knowledgeHitLogs.length === 0)))
+  ) {
+    const showsOnlyOfficeSurface = Boolean(
+      previewSession && supportsOnlyOfficePreviewSurface(previewSession),
+    );
+    const reviewCards = [
+      editingCompletionGateCard,
+      changeLedgerCard,
+      editingGuardrailCard,
+      editingSlotGovernanceCard,
+    ].filter(Boolean);
+
+    return (
+      <section
+        className="manuscript-workbench-detail-page manuscript-workbench-editing-onlyoffice-layout"
+        data-detail-kind={detailKind}
+        data-editing-layout="onlyoffice-review"
+      >
+        <header className="manuscript-workbench-detail-header">
+          <div className="manuscript-workbench-detail-copy">
+            <span className="manuscript-workbench-section-eyebrow">
+              ?????
+            </span>
+            <h3>??????</h3>
+            <p>{manuscriptTitle}</p>
+          </div>
+          <div className="manuscript-workbench-detail-actions">
+            <a className="manuscript-workbench-shortcut" href={backHref}>
+              ?????
+            </a>
+            <a
+              className="manuscript-workbench-shortcut"
+              href={downloadHref}
+              target="_blank"
+              rel="noreferrer"
+            >
+              ??????
+            </a>
+            <a className="manuscript-workbench-shortcut" href={downloadHref} download>
+              {resolveDetailDownloadLabel(asset)}
+            </a>
+          </div>
+        </header>
+
+        <div className="manuscript-workbench-editing-onlyoffice-grid">
+          <article className="manuscript-workbench-editing-onlyoffice-document">
+            <div className="manuscript-workbench-detail-card-header">
+              <div>
+                <h4>?????</h4>
+                <p>{assetDisplayName}</p>
+                <small>{assetRoleLabel}</small>
+              </div>
+              {previewSession ? (
+                <div className="manuscript-workbench-detail-session-metrics">
+                  <span>{formatPreviewViewerLabel(previewSession.viewer)}</span>
+                  <strong>
+                    {formatPreviewStatusLabel(
+                      previewOperationalState?.status ?? previewSession.status,
+                    )}
+                  </strong>
+                </div>
+              ) : null}
+            </div>
+            {showsOnlyOfficeSurface ? (
+              <OnlyOfficePreviewSurface previewSession={previewSession!} />
+            ) : previewOperationalState ? (
+              <div
+                className="manuscript-workbench-detail-preview-state"
+                data-preview-state={previewOperationalState.status}
+              >
+                <strong>{formatPreviewStatusLabel(previewOperationalState.status)}</strong>
+                <p>{previewOperationalState.warnings.join("?") || "??????????????????"}</p>
+              </div>
+            ) : (
+              <div className="manuscript-workbench-detail-empty">
+                <strong>?????????</strong>
+                <p>???????????? OnlyOffice ???????????????</p>
+              </div>
+            )}
+          </article>
+
+          <aside className="manuscript-workbench-editing-review-pane">
+            <div className="manuscript-workbench-detail-card-header">
+              <div>
+                <h4>????</h4>
+                <p>??? AI ????????????????????????</p>
+              </div>
+            </div>
+            {reviewCards.length > 0 ? (
+              <div className="manuscript-workbench-editing-review-list">
+                {reviewCards.map((card, index) => (
+                  <React.Fragment key={index}>{card}</React.Fragment>
+                ))}
+              </div>
+            ) : (
+              <div className="manuscript-workbench-detail-empty">
+                <strong>??????????????</strong>
+                <p>?????????????? AI ???????</p>
+              </div>
+            )}
+          </aside>
         </div>
       </section>
     );
@@ -2311,6 +2601,160 @@ const CONFIRMATION_ACTIONS: ReadonlyArray<{
   { value: "route_to_rule_candidate", label: "转规则候选" },
   { value: "route_to_knowledge_candidate", label: "转知识候选" },
 ];
+
+function renderProofreadingPassAuditCard(input: {
+  runs: readonly ProofreadingDeepPassAuditRunViewModel[];
+  retryingRunId?: string | null;
+  onRetry?: (passRunId: string) => void;
+}) {
+  const failedSegmentCount = input.runs.reduce(
+    (total, run) => total + run.failedSegmentCount,
+    0,
+  );
+  const retryableRunCount = input.runs.filter(
+    (run) => run.failedSegmentCount > 0 && run.id,
+  ).length;
+
+  return (
+    <article className="manuscript-workbench-detail-ledger-card manuscript-workbench-detail-governance-card">
+      <div className="manuscript-workbench-detail-card-header">
+        <div>
+          <h4>校对分段审计</h4>
+          <p>
+            Shows every deep-proofreading pass, segment coverage, source blocks,
+            and failed segment evidence before final publishing.
+          </p>
+        </div>
+      </div>
+      {failedSegmentCount > 0 ? (
+        <div className="manuscript-workbench-detail-warning">
+          <strong>Quality gate blocked</strong>
+          <p>{`${failedSegmentCount} segment(s) failed across ${retryableRunCount} pass(es). Final publishing stays blocked until failed segments are retried or manually reviewed.`}</p>
+        </div>
+      ) : null}
+      <ul className="manuscript-workbench-detail-comment-list">
+        {input.runs.map((run) => {
+          const isRetrying = input.retryingRunId === run.id;
+          return (
+            <li
+              key={run.id ?? `${run.passNo}:${run.passKind}`}
+              className="manuscript-workbench-detail-comment-item"
+            >
+              <strong>{`Pass ${run.passNo}: ${run.passKind}`}</strong>
+              <p>{`status: ${run.status}; model: ${run.modelId ?? "not recorded"}; segments: ${run.completedSegmentCount}/${run.segmentCount} completed; coverage: ${(run.coverageRatio * 100).toFixed(1)}%.`}</p>
+              <dl className="manuscript-workbench-detail-metadata">
+                <div>
+                  <dt>Failed segments</dt>
+                  <dd>{run.failedSegmentCount}</dd>
+                </div>
+                <div>
+                  <dt>Audit ID</dt>
+                  <dd>{run.id ?? "not recorded"}</dd>
+                </div>
+              </dl>
+              {run.failedSegmentCount > 0 && run.id && input.onRetry ? (
+                <button
+                  className="manuscript-workbench-detail-secondary-action"
+                  type="button"
+                  disabled={isRetrying}
+                  onClick={() => input.onRetry?.(run.id!)}
+                >
+                  {isRetrying ? "Retrying failed segments..." : "Retry failed segments"}
+                </button>
+              ) : null}
+              {run.segments.length > 0 ? (
+                <ul className="manuscript-workbench-detail-comment-list">
+                  {run.segments.map((segment) => (
+                    <li
+                      key={`${run.id ?? run.passNo}:${segment.segmentNo}`}
+                      className="manuscript-workbench-detail-comment-item"
+                    >
+                      <strong>{`Segment ${segment.segmentNo} - ${segment.status}`}</strong>
+                      <p>{`blocks: ${segment.blockIndexes.join(", ") || "not recorded"}; issues: ${segment.issueCount}; attempts: ${segment.attemptCount}; elapsed: ${segment.elapsedMs}ms`}</p>
+                      {segment.errorMessage ? <p>{segment.errorMessage}</p> : null}
+                      {segment.inputPreview.length > 0 ? (
+                        <dl className="manuscript-workbench-detail-metadata">
+                          {segment.inputPreview.slice(0, 4).map((preview) => (
+                            <div key={`${segment.segmentNo}:${preview.blockIndex}`}>
+                              <dt>{`Block ${preview.blockIndex}`}</dt>
+                              <dd>
+                                {[preview.section, preview.blockKind]
+                                  .filter(Boolean)
+                                  .join(" / ")}
+                                {preview.section || preview.blockKind ? "; " : ""}
+                                {preview.textPreview}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </article>
+  );
+}
+
+function renderProofreadingLayerMatrixCard(input: {
+  layers: readonly ProofreadingLayerMatrixEntryViewModel[];
+}) {
+  return (
+    <article className="manuscript-workbench-detail-ledger-card manuscript-workbench-detail-governance-card">
+      <div className="manuscript-workbench-detail-card-header">
+        <div>
+          <h4>校对层质量矩阵</h4>
+          <small>Proofreading layer quality matrix</small>
+          <p>
+            Shows release-critical proofreading layers, including context,
+            statistics, table checks, residual discovery, and final regression readiness.
+          </p>
+        </div>
+      </div>
+      <ul className="manuscript-workbench-detail-comment-list">
+        {input.layers.map((layer) => (
+          <li key={layer.layerId} className="manuscript-workbench-detail-comment-item">
+            <strong>{layer.layerId}</strong>
+            <p>{layer.label}</p>
+            <dl className="manuscript-workbench-detail-metadata">
+              <div>
+                <dt>Status</dt>
+                <dd>{layer.status}</dd>
+              </div>
+              <div>
+                <dt>Required</dt>
+                <dd>{layer.requiredForRelease ? "yes" : "no"}</dd>
+              </div>
+              {layer.passKind ? (
+                <div>
+                  <dt>Pass</dt>
+                  <dd>{layer.passKind}</dd>
+                </div>
+              ) : null}
+              {layer.issueCount !== undefined ? (
+                <div>
+                  <dt>Issues</dt>
+                  <dd>{layer.issueCount}</dd>
+                </div>
+              ) : null}
+              {layer.failedSegmentCount !== undefined ? (
+                <div>
+                  <dt>Failed segments</dt>
+                  <dd>{layer.failedSegmentCount}</dd>
+                </div>
+              ) : null}
+            </dl>
+            {layer.notes.length > 0 ? <p>{layer.notes.join(" ")}</p> : null}
+          </li>
+        ))}
+      </ul>
+    </article>
+  );
+}
 
 function renderGovernanceEvidenceCard(input: {
   executionSnapshot?: ExecutionTrackingSnapshotViewModel | null;
@@ -4083,6 +4527,41 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 function readOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function readOptionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function normalizeProofreadingSegmentInputPreview(
+  value: unknown,
+): ProofreadingDeepPassAuditPreviewBlockViewModel[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry): ProofreadingDeepPassAuditPreviewBlockViewModel | null => {
+      const preview = asRecord(entry);
+      const blockIndex = readOptionalNumber(preview?.blockIndex);
+      const textPreview = readOptionalString(preview?.textPreview);
+      if (blockIndex === undefined || !textPreview) {
+        return null;
+      }
+
+      const section = readOptionalString(preview?.section);
+      const blockKind = readOptionalString(preview?.blockKind);
+      return {
+        blockIndex,
+        ...(section ? { section } : {}),
+        ...(blockKind ? { blockKind } : {}),
+        textPreview,
+      };
+    })
+    .filter(
+      (preview): preview is ProofreadingDeepPassAuditPreviewBlockViewModel =>
+        preview !== null,
+    );
 }
 
 function readStringArray(value: unknown): string[] {

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, type ReactNode } from "react";
+﻿import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { WorkbenchCoreStrip } from "../../app/workbench-core-strip.tsx";
 import { createBrowserHttpClient, BrowserHttpClientError } from "../../lib/browser-http-client.ts";
 import {
@@ -9,6 +9,7 @@ import type {
   HarnessDatasetExportFormat,
   HarnessDatasetVersionViewModel,
   HarnessDatasetsWorkbenchOverview,
+  QuickProofreadingGoldSetInput,
 } from "./types.ts";
 
 if (typeof document !== "undefined") {
@@ -39,6 +40,26 @@ export function HarnessDatasetsWorkbenchPage({
   const [isBusy, setIsBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [quickGoldSetJson, setQuickGoldSetJson] = useState(
+    JSON.stringify(
+      {
+        expectedIssues: [
+          {
+            id: "expected-issue-1",
+            severity: "critical",
+            issueType: "sample_size_consistency",
+            layerId: "context_consistency",
+            quote: "n=120",
+          },
+        ],
+        criticalRecallThreshold: 1,
+        falsePositiveReviewThreshold: 0.2,
+        requiredLayers: ["context_consistency"],
+      },
+      null,
+      2,
+    ),
+  );
 
   useEffect(() => {
     if (initialOverview != null) {
@@ -101,6 +122,24 @@ export function HarnessDatasetsWorkbenchPage({
         </section>
       ) : null}
 
+      <section className="harness-datasets-embedded-banner">
+        <strong>Medical proofreading Gold Set</strong>
+        <p className="harness-datasets-copy">
+          Use proofreading gold sets to pin expected issues, context consistency
+          checks, statistics/table assertions, and false positive/false negative
+          review thresholds before a model or rule change is promoted.
+        </p>
+        <p className="harness-datasets-copy">
+          Operator flow: Family → Version → Case → Assertion → Publish.
+          Required validation: source asset, expected issues, published rubric,
+          de-identification, human review.
+        </p>
+        <p className="harness-datasets-copy">
+          Import/export guidance: JSON for reviewer handoff, JSONL for batch
+          evaluation.
+        </p>
+      </section>
+
       {errorMessage ? (
         <p className="harness-datasets-error" role="alert">
           {errorMessage}
@@ -129,6 +168,55 @@ export function HarnessDatasetsWorkbenchPage({
       </section>
 
       <div className="harness-datasets-layout">
+        <article className="harness-datasets-panel">
+          <div className="harness-datasets-panel-header">
+            <h3>快速创建 Proofreading Gold Set</h3>
+            <span>管理员入口</span>
+          </div>
+          <form className="harness-datasets-stack" onSubmit={handleQuickGoldSetSubmit}>
+            <label>
+              <span>Gold Set 名称</span>
+              <input name="name" defaultValue="Proofreading issue detection gold set" />
+            </label>
+            <label>
+              <span>稿件类型</span>
+              <select name="manuscriptType" defaultValue="clinical_study">
+                <option value="clinical_study">临床研究</option>
+                <option value="review">综述</option>
+                <option value="case_report">病例报告</option>
+              </select>
+            </label>
+            <label>
+              <span>来源类型</span>
+              <select name="sourceKind" defaultValue="reviewed_case_snapshot">
+                <option value="reviewed_case_snapshot">已复核案例快照</option>
+                <option value="human_final_asset">人工终稿资产</option>
+                <option value="evaluation_evidence_pack">评测证据包</option>
+              </select>
+            </label>
+            <label>
+              <span>来源 ID</span>
+              <input name="sourceId" defaultValue="snapshot-1" />
+            </label>
+            <label>
+              <span>稿件 ID</span>
+              <input name="manuscriptId" defaultValue="manuscript-1" />
+            </label>
+            <label>
+              <span>预期问题 JSON</span>
+              <textarea
+                name="expectedStructuredOutput"
+                rows={8}
+                value={quickGoldSetJson}
+                onChange={(event) => setQuickGoldSetJson(event.currentTarget.value)}
+              />
+            </label>
+            <button type="submit" disabled={isBusy}>
+              创建并发布 Gold Set
+            </button>
+          </form>
+        </article>
+
         <article className="harness-datasets-panel">
           <div className="harness-datasets-panel-header">
             <h3>待整理队列</h3>
@@ -230,6 +318,46 @@ export function HarnessDatasetsWorkbenchPage({
       setIsBusy(false);
     }
   }
+
+  async function handleQuickGoldSetSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+    setIsBusy(true);
+    setErrorMessage(null);
+    setStatusMessage(null);
+
+    try {
+      const formData = new FormData(event.currentTarget);
+      const expectedStructuredOutput = JSON.parse(quickGoldSetJson) as Record<
+        string,
+        unknown
+      >;
+      const input: QuickProofreadingGoldSetInput = {
+        name: readRequiredFormValue(formData, "name"),
+        manuscriptType: readRequiredFormValue(
+          formData,
+          "manuscriptType",
+        ) as QuickProofreadingGoldSetInput["manuscriptType"],
+        sourceKind: readRequiredFormValue(
+          formData,
+          "sourceKind",
+        ) as QuickProofreadingGoldSetInput["sourceKind"],
+        sourceId: readRequiredFormValue(formData, "sourceId"),
+        manuscriptId: readRequiredFormValue(formData, "manuscriptId"),
+        expectedStructuredOutput,
+        publicationNotes: "Created from Harness datasets workbench quick form.",
+      };
+      const nextOverview = await controller.createProofreadingGoldSetAndReload(input);
+      setOverview(nextOverview);
+      setLoadStatus("ready");
+      setStatusMessage("Proofreading Gold Set 已创建并发布。");
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setIsBusy(false);
+    }
+  }
 }
 
 function HarnessDatasetVersionCard(props: {
@@ -238,6 +366,7 @@ function HarnessDatasetVersionCard(props: {
 }) {
   const { version, actions } = props;
   const releaseFreezeStatus = describeReleaseFreezeStatus(version);
+  const assertionSummary = summarizeGoldSetAssertions(version);
 
   return (
     <article className="harness-datasets-card">
@@ -267,6 +396,25 @@ function HarnessDatasetVersionCard(props: {
         评分规则：{describeRubricAssignment(version)}
       </p>
       <p className="harness-datasets-copy">样本条目：{version.itemCount}</p>
+      {assertionSummary ? (
+        <div className="harness-datasets-provenance">
+          <strong>Content-level assertions</strong>
+          <p className="harness-datasets-copy">
+            {`Expected issues: ${assertionSummary.expectedIssueCount}`}
+            {assertionSummary.criticalRecallThreshold !== undefined
+              ? ` · critical recall: ${formatPercent(assertionSummary.criticalRecallThreshold)}`
+              : ""}
+            {assertionSummary.falsePositiveReviewThreshold !== undefined
+              ? ` · false positive review: ${formatPercent(assertionSummary.falsePositiveReviewThreshold)}`
+              : ""}
+          </p>
+          {assertionSummary.requiredLayers.length > 0 ? (
+            <p className="harness-datasets-copy">
+              Required layers: {assertionSummary.requiredLayers.join(", ")}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       {releaseFreezeStatus != null ? (
         <div className="harness-datasets-provenance">
           <strong>{releaseFreezeStatus.label}</strong>
@@ -323,6 +471,67 @@ function describeRubricAssignment(version: HarnessDatasetVersionViewModel) {
   return `${version.rubricAssignment.rubricName ?? "已分配规则"} v${
     version.rubricAssignment.rubricVersionNo ?? "?"
   }（${formatVersionStatusLabel(version.rubricAssignment.status)}）`;
+}
+
+function summarizeGoldSetAssertions(version: HarnessDatasetVersionViewModel):
+  | {
+      expectedIssueCount: number;
+      criticalRecallThreshold?: number;
+      falsePositiveReviewThreshold?: number;
+      requiredLayers: string[];
+    }
+  | null {
+  const summaries = version.sourceProvenance
+    .map((source) => asAssertionObject(source.expectedStructuredOutput))
+    .filter((value): value is Record<string, unknown> => value !== null);
+
+  if (summaries.length === 0) {
+    return null;
+  }
+
+  return {
+    expectedIssueCount: summaries.reduce(
+      (total, summary) =>
+        total +
+        (Array.isArray(summary.expectedIssues) ? summary.expectedIssues.length : 0),
+      0,
+    ),
+    criticalRecallThreshold: maxOptionalNumber(
+      summaries.map((summary) => summary.criticalRecallThreshold),
+    ),
+    falsePositiveReviewThreshold: maxOptionalNumber(
+      summaries.map((summary) => summary.falsePositiveReviewThreshold),
+    ),
+    requiredLayers: Array.from(
+      new Set(
+        summaries.flatMap((summary) =>
+          Array.isArray(summary.requiredLayers)
+            ? summary.requiredLayers.filter(
+                (entry): entry is string =>
+                  typeof entry === "string" && entry.trim().length > 0,
+              )
+            : [],
+        ),
+      ),
+    ),
+  };
+}
+
+function asAssertionObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function maxOptionalNumber(values: unknown[]): number | undefined {
+  const numbers = values.filter(
+    (value): value is number => typeof value === "number" && Number.isFinite(value),
+  );
+  return numbers.length > 0 ? Math.max(...numbers) : undefined;
+}
+
+function formatPercent(value: number): string {
+  return `${Math.round(value * 100)}%`;
 }
 
 function describeReleaseFreezeStatus(version: HarnessDatasetVersionViewModel) {
@@ -450,6 +659,16 @@ function formatRiskTagLabel(value: string) {
       return value;
   }
 }
+
+function readRequiredFormValue(formData: FormData, key: string): string {
+  const value = formData.get(key);
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`请填写 ${key}。`);
+  }
+
+  return value.trim();
+}
+
 function toErrorMessage(error: unknown) {
   if (error instanceof BrowserHttpClientError) {
     const body =

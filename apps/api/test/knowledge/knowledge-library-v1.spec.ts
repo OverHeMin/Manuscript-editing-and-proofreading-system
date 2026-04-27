@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { AuthorizationError } from "../../src/auth/permission-guard.ts";
 import {
   InMemoryKnowledgeRepository,
   InMemoryKnowledgeReviewActionRepository,
@@ -7,6 +8,7 @@ import {
 import {
   KnowledgeService,
   type KnowledgeAssetDetailRecord,
+  KnowledgeRevisionConflictError,
   KnowledgeRevisionReviewGateError,
 } from "../../src/modules/knowledge/knowledge-service.ts";
 import type { DocumentStructureTableSnapshot } from "../../src/modules/document-pipeline/document-structure-service.ts";
@@ -14,6 +16,7 @@ import type { DocumentStructureTableSnapshot } from "../../src/modules/document-
 function createKnowledgeLibraryHarness() {
   const repository = new InMemoryKnowledgeRepository();
   const reviewActionRepository = new InMemoryKnowledgeReviewActionRepository();
+  let currentTime = new Date("2026-04-08T10:00:00.000Z");
   const issuedIds = [
     "asset-1",
     "review-action-1",
@@ -32,13 +35,16 @@ function createKnowledgeLibraryHarness() {
     repository,
     reviewActionRepository,
     createId: nextId,
-    now: () => new Date("2026-04-08T10:00:00.000Z"),
+    now: () => new Date(currentTime),
   });
 
   return {
     repository,
     reviewActionRepository,
     service,
+    setNow: (value: string) => {
+      currentTime = new Date(value);
+    },
   };
 }
 
@@ -389,6 +395,135 @@ test("editing an approved asset derives a new draft revision and keeps runtime a
   assert.equal(runtimeProjection?.id, "asset-1");
   assert.equal(runtimeProjection?.status, "approved");
   assert.equal(runtimeProjection?.title, "Privacy checklist");
+});
+
+test("stale draft revision updates are rejected without overwriting newer author changes", async () => {
+  const { service, setNow } = createKnowledgeLibraryHarness();
+
+  const created = await service.createLibraryDraft({
+    title: "Concurrent dosage rule",
+    canonicalText: "Dose units must be standardized before proofreading.",
+    knowledgeKind: "rule",
+    moduleScope: "proofreading",
+    manuscriptTypes: ["clinical_study"],
+  });
+  const firstEditorTimestamp = created.selected_revision.updated_at;
+
+  setNow("2026-04-08T10:01:00.000Z");
+  const firstUpdate = await service.updateRevisionDraft(
+    created.selected_revision.id,
+    {
+      canonicalText: "Dose units must use mg/kg consistently before proofreading.",
+      expectedUpdatedAt: firstEditorTimestamp,
+    },
+  );
+
+  await assert.rejects(
+    () =>
+      service.updateRevisionDraft(created.selected_revision.id, {
+        canonicalText: "Dose units can be normalized later by the editor.",
+        expectedUpdatedAt: firstEditorTimestamp,
+      }),
+    (error) => {
+      assert.ok(error instanceof KnowledgeRevisionConflictError);
+      assert.equal(error.revisionId, created.selected_revision.id);
+      assert.equal(error.expectedUpdatedAt, firstEditorTimestamp);
+      assert.equal(error.actualUpdatedAt, firstUpdate.selected_revision.updated_at);
+      return true;
+    },
+  );
+
+  const detail = await service.getKnowledgeAsset(
+    created.asset.id,
+    created.selected_revision.id,
+  );
+  assert.equal(
+    detail.selected_revision.canonical_text,
+    "Dose units must use mg/kg consistently before proofreading.",
+  );
+});
+
+test("multi-user review requires reviewer permission, records audit history, and pins runtime until approval", async () => {
+  const { service, repository, setNow } = createKnowledgeLibraryHarness();
+
+  const created = await service.createLibraryDraft({
+    title: "Internal intake rule",
+    canonicalText: "Internal contributors can draft knowledge but reviewer approval gates runtime use.",
+    knowledgeKind: "rule",
+    moduleScope: "proofreading",
+    manuscriptTypes: ["clinical_study"],
+  });
+
+  setNow("2026-04-08T10:01:00.000Z");
+  await service.submitRevisionForReview({
+    revisionId: created.selected_revision.id,
+    acknowledgedByRole: "editor",
+  });
+
+  await assert.rejects(
+    () => service.approveRevision(created.selected_revision.id, "editor"),
+    (error) => {
+      assert.ok(error instanceof AuthorizationError);
+      return true;
+    },
+  );
+
+  setNow("2026-04-08T10:02:00.000Z");
+  await service.approveRevision(
+    created.selected_revision.id,
+    "knowledge_reviewer",
+    "Approved after reviewer audit.",
+  );
+
+  const derived = await service.createDraftRevisionFromApprovedAsset(created.asset.id);
+  setNow("2026-04-08T10:03:00.000Z");
+  await service.updateRevisionDraft(derived.selected_revision.id, {
+    canonicalText:
+      "Updated internal contributors can draft knowledge but reviewer approval gates runtime use.",
+  });
+
+  const history = await service.listReviewActionsByRevision(
+    created.selected_revision.id,
+  );
+  const detail = await service.getKnowledgeAsset(
+    created.asset.id,
+    derived.selected_revision.id,
+  );
+  const runtimeProjection = await repository.findApprovedById(created.asset.id);
+
+  assert.deepEqual(
+    history.map((record) => ({
+      action: record.action,
+      actor_role: record.actor_role,
+      review_note: record.review_note,
+      created_at: record.created_at,
+    })),
+    [
+      {
+        action: "submitted_for_review",
+        actor_role: "editor",
+        review_note: undefined,
+        created_at: "2026-04-08T10:01:00.000Z",
+      },
+      {
+        action: "approved",
+        actor_role: "knowledge_reviewer",
+        review_note: "Approved after reviewer audit.",
+        created_at: "2026-04-08T10:02:00.000Z",
+      },
+    ],
+  );
+  assert.equal(detail.asset.current_revision_id, derived.selected_revision.id);
+  assert.equal(
+    detail.asset.current_approved_revision_id,
+    created.selected_revision.id,
+  );
+  assert.equal(detail.selected_revision.status, "draft");
+  assert.equal(runtimeProjection?.title, "Internal intake rule");
+  assert.equal(
+    runtimeProjection?.canonical_text,
+    "Internal contributors can draft knowledge but reviewer approval gates runtime use.",
+  );
 });
 
 test("approved runtime projections filter out not-yet-effective and expired revisions", async () => {

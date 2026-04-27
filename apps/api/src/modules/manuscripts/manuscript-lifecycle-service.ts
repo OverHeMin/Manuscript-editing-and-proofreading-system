@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import path from "node:path";
 import type { ManuscriptTypeDetectionSummary } from "@medical/contracts";
 import { ManuscriptNotFoundError } from "../assets/document-asset-service.ts";
 import type { DocumentAssetRepository } from "../assets/document-asset-repository.ts";
@@ -26,6 +27,10 @@ import {
 import type { ManuscriptRepository } from "./manuscript-repository.ts";
 
 const MAX_MANUSCRIPT_BATCH_UPLOAD_COUNT = 10;
+const DOCX_MIME_TYPE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const DOC_MIME_TYPES = new Set(["application/msword"]);
+const DOCX_MIME_TYPES = new Set([DOCX_MIME_TYPE]);
 
 export interface UploadManuscriptInput {
   title: string;
@@ -188,6 +193,12 @@ export class ManuscriptLifecycleService {
         const manuscriptId = this.createId();
         const assetId = this.createId();
         const jobId = this.createId();
+        const normalization = buildUploadNormalizationPayload({
+          manuscriptId,
+          sourceAssetId: assetId,
+          fileName: input.fileName,
+          mimeType: input.mimeType,
+        });
 
         const manuscript: ManuscriptRecord = {
           id: manuscriptId,
@@ -235,6 +246,7 @@ export class ManuscriptLifecycleService {
             assetId,
             fileName: input.fileName,
             mimeType: input.mimeType,
+            normalization,
           },
           attempt_count: 0,
           started_at: undefined,
@@ -247,7 +259,6 @@ export class ManuscriptLifecycleService {
         await manuscriptRepository.save(manuscript);
         await jobRepository.save(job);
         await assetRepository.save(asset);
-
         return {
           manuscript,
           asset,
@@ -301,6 +312,12 @@ export class ManuscriptLifecycleService {
           const manuscriptId = this.createId();
           const assetId = this.createId();
           const jobId = this.createId();
+          const normalization = buildUploadNormalizationPayload({
+            manuscriptId,
+            sourceAssetId: assetId,
+            fileName: item.fileName,
+            mimeType: item.mimeType,
+          });
           const manuscript: ManuscriptRecord = {
             id: manuscriptId,
             title: item.title,
@@ -347,6 +364,7 @@ export class ManuscriptLifecycleService {
               assetId,
               fileName: item.fileName,
               mimeType: item.mimeType,
+              normalization,
               batchJobId,
               batchItemId: buildBatchItemId(index),
             },
@@ -573,6 +591,23 @@ export class ManuscriptLifecycleService {
 
   listJobsByManuscriptId(manuscriptId: string): Promise<JobRecord[]> {
     return this.jobRepository.listByManuscriptId(manuscriptId);
+  }
+
+  listRecentManuscripts(limit?: number): Promise<ManuscriptRecord[]> {
+    return this.manuscriptRepository.listRecent(limit);
+  }
+
+  async archiveManuscript(manuscriptId: string): Promise<ManuscriptRecord> {
+    const archived = await this.manuscriptRepository.archive(
+      manuscriptId,
+      this.now().toISOString(),
+    );
+
+    if (!archived) {
+      throw new ManuscriptNotFoundError(manuscriptId);
+    }
+
+    return archived;
   }
 
   async markBatchItemRunning(input: {
@@ -858,6 +893,61 @@ function mapBatchLifecycleStatusToJobStatus(
     case "cancelled":
       return "cancelled";
   }
+}
+
+function buildUploadNormalizationPayload(input: {
+  manuscriptId: string;
+  sourceAssetId: string;
+  fileName: string;
+  mimeType: string;
+}): Record<string, unknown> {
+  const sourceType = sniffUploadDocumentType(input.fileName, input.mimeType);
+  const conversionRequired = sourceType === "doc";
+  const normalizedFileName = `${path.parse(input.fileName).name}.normalized.docx`;
+
+  return {
+    manuscript_id: input.manuscriptId,
+    source_asset_id: input.sourceAssetId,
+    source_type: sourceType,
+    current_type: sourceType,
+    target_type: "docx",
+    derived_asset: {
+      asset_type: "normalized_docx",
+      parent_asset_id: input.sourceAssetId,
+      file_name: normalizedFileName,
+      mime_type: DOCX_MIME_TYPE,
+      storage_key: `normalized/${input.manuscriptId}/${input.sourceAssetId}/${normalizedFileName}`,
+    },
+    conversion: {
+      required: conversionRequired,
+      backend: conversionRequired ? "libreoffice" : undefined,
+      status: conversionRequired ? "tool_unavailable" : "not_required",
+    },
+    preview: {
+      status: conversionRequired ? "pending_normalization" : "ready",
+    },
+    warnings: conversionRequired
+      ? ["LibreOffice unavailable; doc to docx normalization deferred."]
+      : [],
+  };
+}
+
+function sniffUploadDocumentType(fileName: string, mimeType: string): "doc" | "docx" {
+  const suffix = path.extname(fileName).toLowerCase();
+  if (suffix === ".docx") {
+    return "docx";
+  }
+  if (suffix === ".doc") {
+    return "doc";
+  }
+  if (DOCX_MIME_TYPES.has(mimeType)) {
+    return "docx";
+  }
+  if (DOC_MIME_TYPES.has(mimeType)) {
+    return "doc";
+  }
+
+  return "docx";
 }
 
 function reconcileDetectionSummaryWithTemplateFamily(

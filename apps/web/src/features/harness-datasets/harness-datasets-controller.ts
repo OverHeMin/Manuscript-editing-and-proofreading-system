@@ -1,4 +1,5 @@
 import {
+  createAndPublishProofreadingGoldSet,
   exportHarnessGoldSetVersion,
   getHarnessDatasetsWorkbenchOverview,
   type HarnessDatasetsHttpClient,
@@ -12,6 +13,7 @@ import type {
   HarnessDatasetsWorkbenchOverview,
   HarnessDatasetWorkbenchApiOverview,
   HarnessDatasetRubricSummaryViewModel,
+  QuickProofreadingGoldSetInput,
 } from "./types.ts";
 
 export interface HarnessDatasetsWorkbenchController {
@@ -23,6 +25,9 @@ export interface HarnessDatasetsWorkbenchController {
     overview: HarnessDatasetsWorkbenchOverview;
     exportResult: HarnessDatasetExportResultViewModel;
   }>;
+  createProofreadingGoldSetAndReload(
+    input: QuickProofreadingGoldSetInput,
+  ): Promise<HarnessDatasetsWorkbenchOverview>;
 }
 
 export function createHarnessDatasetsWorkbenchController(
@@ -47,6 +52,10 @@ export function createHarnessDatasetsWorkbenchController(
         exportResult,
         overview: await loadHarnessDatasetsWorkbenchOverview(client),
       };
+    },
+    async createProofreadingGoldSetAndReload(input) {
+      await createAndPublishProofreadingGoldSet(client, input);
+      return loadHarnessDatasetsWorkbenchOverview(client);
     },
   };
 }
@@ -119,6 +128,7 @@ function mapVersion(
       deidentificationPassed: item.deidentification_passed,
       humanReviewed: item.human_reviewed,
       riskTags: item.risk_tags ? [...item.risk_tags] : undefined,
+      expectedStructuredOutput: item.expected_structured_output,
     })),
     publications: version.publications.map(mapPublication),
   };

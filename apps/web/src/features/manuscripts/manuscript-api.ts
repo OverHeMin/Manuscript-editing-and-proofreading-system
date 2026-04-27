@@ -44,10 +44,27 @@ export function uploadManuscriptBatch(
   });
 }
 
+export function listManuscripts(client: ManuscriptHttpClient, limit = 50) {
+  return client.request<ManuscriptViewModel[]>({
+    method: "GET",
+    url: limit === 50 ? "/api/v1/manuscripts" : `/api/v1/manuscripts?limit=${encodeURIComponent(String(limit))}`,
+  });
+}
+
 export function getManuscript(client: ManuscriptHttpClient, manuscriptId: string) {
   return client.request<ManuscriptViewModel>({
     method: "GET",
     url: `/api/v1/manuscripts/${manuscriptId}`,
+  });
+}
+
+export function archiveManuscript(
+  client: ManuscriptHttpClient,
+  manuscriptId: string,
+) {
+  return client.request<ManuscriptViewModel>({
+    method: "POST",
+    url: `/api/v1/manuscripts/${encodeURIComponent(manuscriptId)}/archive`,
   });
 }
 
@@ -68,6 +85,47 @@ export function retryProofreadingDeepPassRun(
   return client.request<unknown>({
     method: "POST",
     url: `/api/v1/modules/proofreading/pass-runs/${passRunId}/retry`,
+  });
+}
+
+export interface ProofreadingPassRunDetailViewModel {
+  id: string;
+  status: string;
+  pass_no: number;
+  pass_kind: string;
+  output?: {
+    summary?: string;
+    segmentation?: {
+      mode: string;
+      segmentCount: number;
+      completedSegmentCount: number;
+      failedSegmentCount: number;
+      coverageRatio: number;
+      segments: Array<{
+        segmentNo: number;
+        status: string;
+        attemptCount: number;
+        elapsedMs: number;
+        blockIndexes: number[];
+        inputPreview: Array<{
+          blockIndex: number;
+          section?: string;
+          blockKind?: string;
+          textPreview: string;
+        }>;
+        errorMessage?: string;
+      }>;
+    };
+  };
+}
+
+export function getProofreadingDeepPassRun(
+  client: ManuscriptHttpClient,
+  passRunId: string,
+) {
+  return client.request<ProofreadingPassRunDetailViewModel>({
+    method: "GET",
+    url: `/api/v1/modules/proofreading/pass-runs/${passRunId}`,
   });
 }
 

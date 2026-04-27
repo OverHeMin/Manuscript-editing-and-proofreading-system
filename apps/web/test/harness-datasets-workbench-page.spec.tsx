@@ -45,6 +45,23 @@ function createHarnessDatasetsOverviewFixture() {
             manuscriptType: "clinical_study",
             deidentificationPassed: true,
             humanReviewed: true,
+            expectedStructuredOutput: {
+              expectedIssues: [
+                {
+                  id: "gold-issue-1",
+                  severity: "critical",
+                  layerId: "context_consistency",
+                },
+                {
+                  id: "gold-issue-2",
+                  severity: "medium",
+                  layerId: "statistics_expression",
+                },
+              ],
+              criticalRecallThreshold: 1,
+              falsePositiveReviewThreshold: 0.2,
+              requiredLayers: ["context_consistency", "statistics_expression"],
+            },
           },
         ],
         publications: [],
@@ -276,6 +293,22 @@ test("harness datasets workbench page renders curation queue, published exports,
   assert.match(markup, /待整理队列/);
   assert.match(markup, /已发布版本/);
   assert.match(markup, /Proofreading gold set/);
+  assert.match(markup, /Medical proofreading Gold Set/u);
+  assert.match(markup, /Family → Version → Case → Assertion → Publish/u);
+  assert.match(
+    markup,
+    /source asset, expected issues, published rubric, de-identification, human review/u,
+  );
+  assert.match(markup, /JSON for reviewer handoff, JSONL for batch evaluation/u);
+  assert.match(markup, /快速创建 Proofreading Gold Set/u);
+  assert.match(markup, /Gold Set 名称/u);
+  assert.match(markup, /预期问题 JSON/u);
+  assert.match(markup, /context consistency/u);
+  assert.match(markup, /false positive\/false negative/u);
+  assert.match(markup, /Expected issues: 2/u);
+  assert.match(markup, /critical recall: 100%/u);
+  assert.match(markup, /false positive review: 20%/u);
+  assert.match(markup, /context_consistency/u);
   assert.match(markup, /Editing gold set/);
   assert.match(markup, /评分规则：需要人工指定/);
   assert.match(markup, /评分规则：Editing rubric v2（已发布）/u);

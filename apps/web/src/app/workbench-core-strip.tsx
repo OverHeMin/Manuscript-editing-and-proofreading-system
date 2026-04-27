@@ -11,6 +11,12 @@ export interface WorkbenchCoreStripProps {
   variant?: WorkbenchCoreStripVariant;
   heading?: string;
   description?: string;
+  moduleProgress?: ReadonlyArray<{
+    id: WorkbenchCoreStripPillarId;
+    status: "not_started" | "queued" | "running" | "completed" | "failed";
+    percent: number;
+    label: string;
+  }>;
 }
 
 const coreStripPillars: ReadonlyArray<{
@@ -45,6 +51,7 @@ export function WorkbenchCoreStrip({
   variant = "primary",
   heading,
   description,
+  moduleProgress = [],
 }: WorkbenchCoreStripProps) {
   const resolvedHeading = heading ?? resolveDefaultHeading(variant);
   const resolvedDescription = description ?? resolveDefaultDescription(variant);
@@ -67,17 +74,27 @@ export function WorkbenchCoreStrip({
       <div className="workbench-core-strip-grid">
         {coreStripPillars.map((pillar) => {
           const isActive = pillar.id === activePillarId;
+          const progress = moduleProgress.find((item) => item.id === pillar.id);
 
           return (
             <article
               key={pillar.id}
               className={`workbench-core-strip-card${isActive ? " is-active" : ""}`}
+              data-progress-status={progress?.status ?? "not_started"}
             >
               <span className="workbench-core-strip-card-kicker">
                 {resolveCardKicker(variant, isActive)}
               </span>
               <strong>{pillar.label}</strong>
               <small>{pillar.summary}</small>
+              {progress ? (
+                <div className="workbench-core-strip-progress" aria-label={progress.label}>
+                  <span>
+                    <span style={{ width: `${progress.percent}%` }} />
+                  </span>
+                  <small>{progress.label}</small>
+                </div>
+              ) : null}
             </article>
           );
         })}

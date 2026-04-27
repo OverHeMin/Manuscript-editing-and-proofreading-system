@@ -25,17 +25,34 @@ import { InMemoryAgentProfileRepository } from "../../../src/modules/agent-profi
 import { AgentRuntimeService } from "../../../src/modules/agent-runtime/agent-runtime-service.ts";
 import { InMemoryAgentRuntimeRepository } from "../../../src/modules/agent-runtime/in-memory-agent-runtime-repository.ts";
 import { AiGatewayService } from "../../../src/modules/ai-gateway/ai-gateway-service.ts";
+import { createAiProviderRuntimeService } from "../../../src/modules/ai-provider-runtime/index.ts";
+import {
+  AiProviderCredentialCrypto,
+  InMemoryAiProviderConnectionRepository,
+} from "../../../src/modules/ai-provider-connections/index.ts";
 import { DocumentExportService } from "../../../src/modules/document-pipeline/document-export-service.ts";
+import {
+  DocumentNormalizationService,
+  DocumentNormalizationWorkflowService,
+  LocalDocumentNormalizationConverter,
+  type LocalDocumentNormalizationCommandResult,
+} from "../../../src/modules/document-pipeline/document-normalization-service.ts";
 import { DocumentPreviewService } from "../../../src/modules/document-pipeline/document-preview-service.ts";
 import { OnlyOfficeSessionService } from "../../../src/modules/document-pipeline/onlyoffice-session-service.ts";
 import { PythonDocxSourceBlockResolver } from "../../../src/modules/document-pipeline/python-docx-source-block-resolver.ts";
 import { createEditingApi } from "../../../src/modules/editing/editing-api.ts";
 import { EditingService } from "../../../src/modules/editing/editing-service.ts";
 import { InMemoryEditorialRuleRepository } from "../../../src/modules/editorial-rules/in-memory-editorial-rule-repository.ts";
+import { InMemoryExtractionTaskRepository } from "../../../src/modules/editorial-rules/in-memory-extraction-task-repository.ts";
 import { InMemoryExecutionGovernanceRepository } from "../../../src/modules/execution-governance/in-memory-execution-governance-repository.ts";
 import { ExecutionGovernanceService } from "../../../src/modules/execution-governance/execution-governance-service.ts";
 import { createHarnessControlPlaneApi } from "../../../src/modules/harness-control-plane/harness-control-plane-api.ts";
 import { HarnessControlPlaneService } from "../../../src/modules/harness-control-plane/harness-control-plane-service.ts";
+import {
+  createHarnessDatasetApi,
+  HarnessDatasetService,
+  InMemoryHarnessDatasetRepository,
+} from "../../../src/modules/harness-datasets/index.ts";
 import { ExecutionTrackingService } from "../../../src/modules/execution-tracking/execution-tracking-service.ts";
 import { InMemoryExecutionTrackingRepository } from "../../../src/modules/execution-tracking/in-memory-execution-tracking-repository.ts";
 import { InMemoryJobRepository } from "../../../src/modules/jobs/in-memory-job-repository.ts";
@@ -55,6 +72,8 @@ import {
 import { KnowledgeSemanticLayerService } from "../../../src/modules/knowledge/knowledge-semantic-layer-service.ts";
 import { KnowledgeService } from "../../../src/modules/knowledge/knowledge-service.ts";
 import { KnowledgeUploadService } from "../../../src/modules/knowledge/knowledge-upload-service.ts";
+import { InMemoryKnowledgeRetrievalRepository } from "../../../src/modules/knowledge-retrieval/in-memory-knowledge-retrieval-repository.ts";
+import { KnowledgeRetrievalService } from "../../../src/modules/knowledge-retrieval/knowledge-retrieval-service.ts";
 import { createManuscriptApi } from "../../../src/modules/manuscripts/manuscript-api.ts";
 import { ManuscriptLifecycleService } from "../../../src/modules/manuscripts/manuscript-lifecycle-service.ts";
 import { InMemoryManuscriptRepository } from "../../../src/modules/manuscripts/in-memory-manuscript-repository.ts";
@@ -76,7 +95,11 @@ import { InMemoryFeedbackGovernanceRepository } from "../../../src/modules/feedb
 import { LearningService } from "../../../src/modules/learning/index.ts";
 import { InMemoryLearningCandidateRepository } from "../../../src/modules/learning/index.ts";
 import { InMemoryReviewedCaseSnapshotRepository } from "../../../src/modules/learning/index.ts";
-import { ResidualLearningService } from "../../../src/modules/residual-learning/index.ts";
+import { createLearningApi } from "../../../src/modules/learning/index.ts";
+import {
+  createResidualLearningApi,
+  ResidualLearningService,
+} from "../../../src/modules/residual-learning/index.ts";
 import { InMemoryResidualIssueRepository } from "../../../src/modules/residual-learning/index.ts";
 import { createReviewItemsApi } from "../../../src/modules/review-items/index.ts";
 import { ReviewItemsService } from "../../../src/modules/review-items/index.ts";
@@ -92,9 +115,15 @@ import type {
   ExecuteMainlineAiInput,
   MainlineAiRuntimeExecutor,
 } from "../../../src/modules/shared/mainline-ai-runtime-executor.ts";
+import { OpenAiMainlineAiRuntimeExecutor } from "../../../src/modules/shared/mainline-ai-runtime-executor.ts";
 import { createScreeningApi } from "../../../src/modules/screening/screening-api.ts";
 import { ScreeningService } from "../../../src/modules/screening/screening-service.ts";
-import { InMemoryModuleTemplateRepository } from "../../../src/modules/templates/in-memory-template-family-repository.ts";
+import {
+  InMemoryModuleTemplateRepository,
+  InMemoryTemplateFamilyRepository,
+} from "../../../src/modules/templates/in-memory-template-family-repository.ts";
+import { createTemplateApi } from "../../../src/modules/templates/template-api.ts";
+import { TemplateGovernanceService } from "../../../src/modules/templates/template-governance-service.ts";
 import { InMemoryToolPermissionPolicyRepository } from "../../../src/modules/tool-permission-policies/in-memory-tool-permission-policy-repository.ts";
 import { ToolPermissionPolicyService } from "../../../src/modules/tool-permission-policies/tool-permission-policy-service.ts";
 import { InMemoryVerificationOpsRepository } from "../../../src/modules/verification-ops/in-memory-verification-ops-repository.ts";
@@ -116,11 +145,43 @@ export interface WorkbenchSeededIds {
   proofreadingModelId: string;
 }
 
+export interface WorkbenchRealModelRuntimeOptions {
+  enabled: boolean;
+  providerKind?: "openai" | "qwen" | "deepseek" | "openai_compatible";
+  baseUrl?: string;
+  apiKey: string;
+  modelName: string;
+  fallbackModelName?: string;
+  modelVersion?: string;
+  requestTimeoutMs?: number;
+}
+
+export type WorkbenchMainlineAiCallRecorder = (input: ExecuteMainlineAiInput) => void;
+export type WorkbenchDocxTransformRecorder = (input: {
+  outputStorageKey: string;
+  aiReplacements?: Array<{
+    targetText: string;
+    replacementText: string;
+  }>;
+}) => void;
+
+export interface WorkbenchDocumentNormalizationOptions {
+  libreOfficeAvailable?: boolean;
+  libreOfficeBinary?: string;
+  runCommand?: (input: {
+    command: string;
+    args: string[];
+    outputDir: string;
+  }) => Promise<LocalDocumentNormalizationCommandResult>;
+}
+
 export interface WorkbenchRuntimeBundle {
   authRuntime: DemoHttpAuthRuntime;
   permissionGuard: PermissionGuard;
   manuscriptRepository: InMemoryManuscriptRepository;
+  jobRepository: InMemoryJobRepository;
   manuscriptApi: ReturnType<typeof createManuscriptApi>;
+  documentNormalizationWorkflowService?: DocumentNormalizationWorkflowService;
   documentPipelineApi: {
     createPreviewSession: (input: {
       manuscriptId: string;
@@ -183,16 +244,24 @@ export interface WorkbenchRuntimeBundle {
   proofreadingApi: ReturnType<typeof createProofreadingApi>;
   proofreadingPassRunRepository: InMemoryProofreadingPassRunRepository;
   knowledgeApi: ReturnType<typeof createKnowledgeApi>;
+  templateApi: ReturnType<typeof createTemplateApi>;
+  learningApi: ReturnType<typeof createLearningApi>;
+  harnessDatasetApi: ReturnType<typeof createHarnessDatasetApi>;
   harnessControlPlaneApi: ReturnType<typeof createHarnessControlPlaneApi>;
   retrievalPresetApi: ReturnType<typeof createRetrievalPresetApi>;
   manualReviewPolicyApi: ReturnType<typeof createManualReviewPolicyApi>;
   verificationOpsApi: ReturnType<typeof createVerificationOpsApi>;
+  residualLearningApi: ReturnType<typeof createResidualLearningApi>;
   reviewItemsApi: ReturnType<typeof createReviewItemsApi>;
   seededIds: WorkbenchSeededIds;
 }
 
 export async function startWorkbenchServer(input: {
   uploadRootDir?: string;
+  realModelRuntime?: WorkbenchRealModelRuntimeOptions;
+  recordMainlineAiCall?: WorkbenchMainlineAiCallRecorder;
+  recordDocxTransform?: WorkbenchDocxTransformRecorder;
+  documentNormalization?: WorkbenchDocumentNormalizationOptions;
 } = {}): Promise<{
   server: ApiHttpServer;
   baseUrl: string;
@@ -201,6 +270,10 @@ export async function startWorkbenchServer(input: {
 }> {
   const runtime = createWorkbenchRuntime({
     uploadRootDir: input.uploadRootDir,
+    realModelRuntime: input.realModelRuntime,
+    recordMainlineAiCall: input.recordMainlineAiCall,
+    recordDocxTransform: input.recordDocxTransform,
+    documentNormalization: input.documentNormalization,
   });
   const server = createApiHttpServer({
     appEnv: "local",
@@ -255,6 +328,10 @@ export async function loginAsDemoUser(
 
 export function createWorkbenchRuntime(input: {
   uploadRootDir?: string;
+  realModelRuntime?: WorkbenchRealModelRuntimeOptions;
+  recordMainlineAiCall?: WorkbenchMainlineAiCallRecorder;
+  recordDocxTransform?: WorkbenchDocxTransformRecorder;
+  documentNormalization?: WorkbenchDocumentNormalizationOptions;
 } = {}): WorkbenchRuntimeBundle {
   const authRuntime = createDemoHttpAuthRuntime();
   const permissionGuard = new PermissionGuard();
@@ -266,6 +343,7 @@ export function createWorkbenchRuntime(input: {
   const knowledgeReviewActionRepository =
     new InMemoryKnowledgeReviewActionRepository();
   const editorialRuleRepository = new InMemoryEditorialRuleRepository();
+  const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
   const moduleTemplateRepository = new InMemoryModuleTemplateRepository();
   const promptSkillRegistryRepository = new InMemoryPromptSkillRegistryRepository();
   const executionGovernanceRepository = new InMemoryExecutionGovernanceRepository();
@@ -280,11 +358,15 @@ export function createWorkbenchRuntime(input: {
   const feedbackGovernanceRepository = new InMemoryFeedbackGovernanceRepository();
   const learningCandidateRepository = new InMemoryLearningCandidateRepository();
   const reviewedCaseSnapshotRepository = new InMemoryReviewedCaseSnapshotRepository();
+  const extractionTaskRepository = new InMemoryExtractionTaskRepository();
+  const harnessDatasetRepository = new InMemoryHarnessDatasetRepository();
+  const knowledgeRetrievalRepository = new InMemoryKnowledgeRetrievalRepository();
   const residualIssueRepository = new InMemoryResidualIssueRepository();
   const reviewItemsRepository = new InMemoryReviewItemsRepository();
   const agentExecutionRepository = new InMemoryAgentExecutionRepository();
   const modelRepository = new InMemoryModelRegistryRepository();
   const routingPolicyRepository = new InMemoryModelRoutingPolicyRepository();
+  const aiProviderConnectionRepository = new InMemoryAiProviderConnectionRepository();
   const modelRoutingGovernanceRepository =
     new InMemoryModelRoutingGovernanceRepository();
   const retrievalPresetRepository = new InMemoryRetrievalPresetRepository();
@@ -335,6 +417,27 @@ export function createWorkbenchRuntime(input: {
   const manualReviewPolicyService = new ManualReviewPolicyService({
     repository: manualReviewPolicyRepository,
   });
+  const knowledgeRetrievalService = new KnowledgeRetrievalService({
+    repository: knowledgeRetrievalRepository,
+  });
+  const templateService = new TemplateGovernanceService({
+    templateFamilyRepository,
+    moduleTemplateRepository,
+    contentModuleRepository: templateFamilyRepository,
+    templateCompositionRepository: templateFamilyRepository,
+    extractionTaskRepository,
+    learningCandidateRepository,
+    harnessDatasetRepository,
+    knowledgeRetrievalRepository,
+    knowledgeRetrievalService,
+  });
+  const aiProviderCredentialCrypto = new AiProviderCredentialCrypto({
+    AI_PROVIDER_MASTER_KEY: Buffer.alloc(32, 0x41).toString("base64"),
+  });
+  const aiProviderRuntimeService = createAiProviderRuntimeService({
+    repository: aiProviderConnectionRepository,
+    credentialCrypto: aiProviderCredentialCrypto,
+  });
   const documentAssetService = new DocumentAssetService({
     assetRepository,
     manuscriptRepository,
@@ -347,10 +450,29 @@ export function createWorkbenchRuntime(input: {
       input.uploadRootDir ??
       path.resolve(process.cwd(), ".local-data", "uploads", "test"),
   });
+  const documentNormalizationWorkflowService =
+    new DocumentNormalizationWorkflowService({
+      normalizationService: new DocumentNormalizationService(),
+      assetService: documentAssetService,
+      toolingStatus: {
+        libreOfficeAvailable:
+          input.documentNormalization?.libreOfficeAvailable ?? true,
+      },
+      converter: new LocalDocumentNormalizationConverter({
+        rootDir:
+          input.uploadRootDir ??
+          path.resolve(process.cwd(), ".local-data", "uploads", "test"),
+        libreOfficeAvailable:
+          input.documentNormalization?.libreOfficeAvailable ?? true,
+        libreOfficeBinary: input.documentNormalization?.libreOfficeBinary,
+        runCommand: input.documentNormalization?.runCommand,
+      }),
+    });
   const manuscriptService = new ManuscriptLifecycleService({
     manuscriptRepository,
     assetRepository,
     jobRepository,
+    templateFamilyRepository,
     createId: () => nextId("upload"),
     now: () => new Date("2026-03-31T08:00:00.000Z"),
   });
@@ -489,8 +611,23 @@ export function createWorkbenchRuntime(input: {
   const runtimeUploadRootDir =
     input.uploadRootDir ??
     path.resolve(process.cwd(), ".local-data", "uploads", "local");
-  const screeningExecutor: MainlineAiRuntimeExecutor = {
-    async executeJson<T>(_input: ExecuteMainlineAiInput): Promise<T> {
+  const recordMainlineAiCall = input.recordMainlineAiCall;
+  const recordDocxTransform = input.recordDocxTransform;
+  const realMainlineExecutor =
+    input.realModelRuntime?.enabled
+      ? createRealModelWorkbenchExecutor({
+          options: input.realModelRuntime,
+          modelRepository,
+          routingPolicyRepository,
+          aiProviderConnectionRepository,
+          aiProviderCredentialCrypto,
+          aiGatewayService,
+          aiProviderRuntimeService,
+        })
+      : undefined;
+  const screeningExecutor: MainlineAiRuntimeExecutor = realMainlineExecutor ?? {
+    async executeJson<T>(input: ExecuteMainlineAiInput): Promise<T> {
+      recordMainlineAiCall?.(input);
       return {
         summary: "AI screening summary for HTTP closure.",
         majorFindings: ["Primary endpoint definition is incomplete."],
@@ -503,8 +640,9 @@ export function createWorkbenchRuntime(input: {
       throw new Error("Screening HTTP closure expects structured JSON output.");
     },
   };
-  const editingExecutor: MainlineAiRuntimeExecutor = {
+  const editingExecutor: MainlineAiRuntimeExecutor = realMainlineExecutor ?? {
     async executeJson<T>(input: ExecuteMainlineAiInput): Promise<T> {
+      recordMainlineAiCall?.(input);
       const sourceBlocks = Array.isArray(input.userPayload.sourceBlocks)
         ? input.userPayload.sourceBlocks
         : [];
@@ -541,6 +679,7 @@ export function createWorkbenchRuntime(input: {
         replacementText: string;
       }>;
     }) {
+      recordDocxTransform?.(input);
       const outputPath = resolveRuntimeStoragePath(
         runtimeUploadRootDir,
         input.outputStorageKey,
@@ -566,8 +705,9 @@ export function createWorkbenchRuntime(input: {
       };
     },
   };
-  const proofreadingExecutor: MainlineAiRuntimeExecutor = {
+  const proofreadingExecutor: MainlineAiRuntimeExecutor = realMainlineExecutor ?? {
     async executeJson<T>(input: ExecuteMainlineAiInput): Promise<T> {
+      recordMainlineAiCall?.(input);
       const sourceBlocks = readSeededSourceBlocks(input.userPayload);
       const firstBlock = sourceBlocks.find(
         (entry): entry is { text: string } =>
@@ -641,6 +781,7 @@ export function createWorkbenchRuntime(input: {
         replacementText: string;
       }>;
     }) {
+      recordDocxTransform?.(input);
       const outputPath = resolveRuntimeStoragePath(
         runtimeUploadRootDir,
         input.outputStorageKey,
@@ -674,6 +815,7 @@ export function createWorkbenchRuntime(input: {
     assetRepository,
     knowledgeRepository,
     editorialRuleRepository,
+    templateFamilyRepository,
     moduleTemplateRepository,
     promptSkillRegistryRepository,
     executionGovernanceRepository,
@@ -689,6 +831,17 @@ export function createWorkbenchRuntime(input: {
     modelRepository,
     routingPolicyRepository,
   });
+  if (input.realModelRuntime?.enabled) {
+    createRealModelWorkbenchExecutor({
+      options: input.realModelRuntime,
+      modelRepository,
+      routingPolicyRepository,
+      aiProviderConnectionRepository,
+      aiProviderCredentialCrypto,
+      aiGatewayService,
+      aiProviderRuntimeService,
+    });
+  }
 
   const harnessControlPlaneService = new HarnessControlPlaneService({
     executionGovernanceService,
@@ -697,12 +850,19 @@ export function createWorkbenchRuntime(input: {
     retrievalPresetService,
     manualReviewPolicyService,
   });
+  const harnessDatasetService = new HarnessDatasetService({
+    repository: harnessDatasetRepository,
+    createId: () => nextId("harness-dataset"),
+    now: () => new Date("2026-03-31T08:00:00.000Z"),
+  });
 
   return {
     authRuntime,
     permissionGuard,
     manuscriptRepository,
+    jobRepository,
     manuscriptApi: manuscriptHarnessApi,
+    documentNormalizationWorkflowService,
     documentPipelineApi: {
       async createPreviewSession(input) {
         return {
@@ -818,6 +978,7 @@ export function createWorkbenchRuntime(input: {
         executionGovernanceService,
         executionTrackingService,
         jobRepository,
+        harnessDatasetRepository,
         proofreadingPassRunRepository,
         documentAssetService,
         aiGatewayService,
@@ -833,20 +994,27 @@ export function createWorkbenchRuntime(input: {
           input.uploadRootDir ??
           path.resolve(process.cwd(), ".local-data", "uploads", "local"),
         editorialDocxTransformService: proofreadingTransformService,
-        proofreadingSourceBlockResolver: {
-          async resolveBlocks(input) {
-            const blocks = await docxSourceBlockResolver.resolveBlocks(input);
-            return blocks.length > 0
-              ? blocks
-              : [
-                  {
-                    text: "Fallback source paragraph for deep proofreading",
-                    section: "body",
-                    block_kind: "paragraph",
-                  },
-                ];
-          },
-        },
+        proofreadingSourceBlockResolver:
+          input.realModelRuntime?.enabled ||
+          process.env.ACCEPTANCE_STRICT_SOURCE_BLOCKS === "1"
+          ? docxSourceBlockResolver
+          : {
+              async resolveBlocks(input) {
+                const blocks = await docxSourceBlockResolver.resolveBlocks(input);
+                return blocks.length > 0
+                  ? blocks
+                  : [
+                      {
+                        text: "Fallback source paragraph for deep proofreading",
+                        section: "body",
+                        block_kind: "paragraph",
+                      },
+                    ];
+              },
+            },
+        reviewItemsService,
+        learningService,
+        residualLearningService,
         createId: () => nextId("job-proofreading"),
         now: () => new Date("2026-03-31T08:00:00.000Z"),
       }),
@@ -858,6 +1026,11 @@ export function createWorkbenchRuntime(input: {
       semanticLayerService: knowledgeSemanticLayerService,
       uploadService: knowledgeUploadService,
     }),
+    templateApi: createTemplateApi({ templateService }),
+    learningApi: createLearningApi({ learningService }),
+    harnessDatasetApi: createHarnessDatasetApi({
+      harnessDatasetService,
+    }),
     harnessControlPlaneApi: createHarnessControlPlaneApi({
       harnessControlPlaneService,
     }),
@@ -868,6 +1041,10 @@ export function createWorkbenchRuntime(input: {
       manualReviewPolicyService,
     }),
     verificationOpsApi: createVerificationOpsApi({
+      verificationOpsService,
+    }),
+    residualLearningApi: createResidualLearningApi({
+      residualLearningService,
       verificationOpsService,
     }),
     reviewItemsApi: createReviewItemsApi({
@@ -975,6 +1152,7 @@ function seedWorkbenchGovernance(input: {
   assetRepository: InMemoryDocumentAssetRepository;
   knowledgeRepository: InMemoryKnowledgeRepository;
   editorialRuleRepository: InMemoryEditorialRuleRepository;
+  templateFamilyRepository: InMemoryTemplateFamilyRepository;
   moduleTemplateRepository: InMemoryModuleTemplateRepository;
   promptSkillRegistryRepository: InMemoryPromptSkillRegistryRepository;
   executionGovernanceRepository: InMemoryExecutionGovernanceRepository;
@@ -1020,6 +1198,12 @@ function seedWorkbenchGovernance(input: {
     file_name: "seeded-original.docx",
     created_at: "2026-03-31T07:56:00.000Z",
     updated_at: "2026-03-31T07:56:00.000Z",
+  });
+  void input.templateFamilyRepository.save({
+    id: "family-seeded-1",
+    manuscript_type: "clinical_study",
+    name: "Seeded Clinical Study Family",
+    status: "active",
   });
 
   void input.moduleTemplateRepository.save({
@@ -1198,6 +1382,46 @@ function seedWorkbenchGovernance(input: {
     module: "proofreading",
     version_no: 1,
     status: "published",
+  });
+  void input.editorialRuleRepository.saveRule({
+    id: "rule-proofreading-punctuation-1",
+    rule_set_id: "rule-set-proofreading-1",
+    order_no: 1,
+    priority: 10,
+    rule_object: "punctuation_consistency",
+    rule_type: "format",
+    rule_domain: "body_paragraph",
+    execution_mode: "inspect",
+    structured_action: {
+      kind: "inspect_only",
+      requires_validation: true,
+      manual_review_reason: "Confirm punctuation consistency before final proof.",
+    },
+    automation_grade: "C",
+    scope_layer: "general",
+    scope: {
+      manuscript_types: ["clinical_study"],
+      sections: ["body"],
+    },
+    selector: {
+      text_contains: "。",
+    },
+    trigger: {
+      kind: "always",
+    },
+    action: {
+      kind: "manual_review_required",
+      checklist: "Confirm punctuation consistency.",
+    },
+    authoring_payload: {
+      source: "seed",
+    },
+    explanation_payload: {
+      rationale: "Proofreading must verify punctuation consistency.",
+    },
+    confidence_policy: "manual_only",
+    severity: "warning",
+    enabled: true,
   });
 
   void input.executionGovernanceRepository.saveProfile({
@@ -1750,4 +1974,86 @@ function resolveRuntimeStoragePath(rootDir: string, storageKey: string): string 
     .filter((segment) => segment.length > 0);
 
   return path.resolve(rootDir, ...normalizedSegments);
+}
+
+function createRealModelWorkbenchExecutor(input: {
+  options: WorkbenchRealModelRuntimeOptions;
+  modelRepository: InMemoryModelRegistryRepository;
+  routingPolicyRepository: InMemoryModelRoutingPolicyRepository;
+  aiProviderConnectionRepository: InMemoryAiProviderConnectionRepository;
+  aiProviderCredentialCrypto: AiProviderCredentialCrypto;
+  aiGatewayService: AiGatewayService;
+  aiProviderRuntimeService: ReturnType<typeof createAiProviderRuntimeService>;
+}): MainlineAiRuntimeExecutor {
+  const providerKind = input.options.providerKind ?? "openai";
+  const modelVersion = input.options.modelVersion ?? "real-model-runtime";
+  const baseUrl =
+    input.options.baseUrl ??
+    (providerKind === "deepseek"
+      ? "https://api.deepseek.com/v1"
+      : providerKind === "qwen"
+        ? "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        : "https://api.openai.com/v1");
+  const connectionId = "connection-real-model-1";
+  const modelId = "model-real-mainline-1";
+  const fallbackModelId = input.options.fallbackModelName
+    ? "model-real-mainline-fallback-1"
+    : undefined;
+
+  void input.aiProviderConnectionRepository.save({
+    id: connectionId,
+    name: "Real Model Acceptance Provider",
+    provider_kind: providerKind,
+    compatibility_mode: "openai_chat_compatible",
+    base_url: baseUrl,
+    enabled: true,
+    last_test_status: "unknown",
+  });
+  void input.aiProviderConnectionRepository.saveCredential({
+    id: `${connectionId}-credential`,
+    connection_id: connectionId,
+    credential_ciphertext: input.aiProviderCredentialCrypto.encrypt({
+      apiKey: input.options.apiKey,
+    }),
+    credential_mask: input.aiProviderCredentialCrypto.maskApiKey(
+      input.options.apiKey,
+    ),
+    last_rotated_at: new Date("2026-04-26T00:00:00.000Z"),
+  });
+  void input.modelRepository.save({
+    id: modelId,
+    provider: providerKind === "openai_compatible" ? "other" : providerKind,
+    model_name: input.options.modelName,
+    model_version: modelVersion,
+    allowed_modules: ["screening", "editing", "proofreading"],
+    is_prod_allowed: true,
+    connection_id: connectionId,
+    ...(fallbackModelId ? { fallback_model_id: fallbackModelId } : {}),
+  });
+  if (fallbackModelId && input.options.fallbackModelName) {
+    void input.modelRepository.save({
+      id: fallbackModelId,
+      provider: providerKind === "openai_compatible" ? "other" : providerKind,
+      model_name: input.options.fallbackModelName,
+      model_version: `${modelVersion}-fallback`,
+      allowed_modules: ["screening", "editing", "proofreading"],
+      is_prod_allowed: true,
+      connection_id: connectionId,
+    });
+  }
+  void input.routingPolicyRepository.save({
+    system_default_model_id: modelId,
+    module_defaults: {
+      screening: modelId,
+      editing: modelId,
+      proofreading: modelId,
+    },
+    template_overrides: {},
+  });
+
+  return new OpenAiMainlineAiRuntimeExecutor({
+    aiGatewayService: input.aiGatewayService,
+    aiProviderRuntimeService: input.aiProviderRuntimeService,
+    requestTimeoutMs: input.options.requestTimeoutMs,
+  });
 }

@@ -372,6 +372,13 @@ async function startPersistentSystemSettingsServer(databaseUrl: string) {
             testedAt: new Date("2026-04-10T00:00:00.000Z"),
           };
         },
+        async discoverModels() {
+          return {
+            status: "passed" as const,
+            testedAt: new Date("2026-04-10T00:00:00.000Z"),
+            models: [{ id: "gpt-4o-mini" }],
+          };
+        },
       },
     }),
   });

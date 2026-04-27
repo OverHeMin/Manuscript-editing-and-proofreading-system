@@ -1,4 +1,4 @@
-import type { FormEvent } from "react";
+﻿import type { FormEvent } from "react";
 import { TemplateGovernanceLedgerSearchPage } from "./template-governance-ledger-search-page.tsx";
 import { TemplateGovernanceLedgerToolbar } from "./template-governance-ledger-toolbar.tsx";
 import type {
@@ -85,7 +85,7 @@ export function TemplateGovernanceRuleLedgerPage({
   onSelectRow,
   onOpenCreateRule,
   onOpenSelectedItem,
-  selectedItemActionLabel = "编辑规则",
+  selectedItemActionLabel = "缂栬緫瑙勫垯",
   onOpenSearch,
   onOpenFilter,
   onOpenBulkActions,
@@ -137,27 +137,6 @@ export function TemplateGovernanceRuleLedgerPage({
       {statusMessage ? <p className="template-governance-status">{statusMessage}</p> : null}
       {errorMessage ? <p className="template-governance-error">{errorMessage}</p> : null}
       <TemplateGovernanceLedgerSearchPage searchState={searchState} />
-
-      <article className="template-governance-card template-governance-ledger-section">
-        <header className="template-governance-ledger-section-header">
-          <h2>规则中心操作说明</h2>
-          <p>先分清规则本体、规则包和模板族各自负责什么，再进入具体台账或规则向导。</p>
-        </header>
-        <div className="template-governance-rule-hint-list">
-          <article className="template-governance-rule-hint-card">
-            <strong>建立规则</strong>
-            <p>从“新建规则”进入五步向导，先录正文和证据，再确认语义、绑定规则包与模板族，最后提交发布。</p>
-          </article>
-          <article className="template-governance-rule-hint-card">
-            <strong>修改规则</strong>
-            <p>从规则台账或规则包里的默认规则进入编辑。已批准规则会先派生修订草稿，不直接覆盖当前已发布版本。</p>
-          </article>
-          <article className="template-governance-rule-hint-card">
-            <strong>管理规则</strong>
-            <p>规则台账管理规则本体，规则包负责复用组合，模板族决定默认适用稿件范围，三者配合完成治理。</p>
-          </article>
-        </div>
-      </article>
 
       {filterState.isOpen ? (
         <article className="template-governance-card template-governance-ledger-section">
@@ -288,15 +267,15 @@ export function TemplateGovernanceRuleLedgerPage({
           <table className="template-governance-ledger-table">
             <thead>
               <tr>
-                {bulkState.isOpen ? <th>选择</th> : null}
-                <th>资产名称</th>
-                <th>资产类别</th>
-                <th>适用模块</th>
-                <th>稿件类型</th>
+                {bulkState.isOpen ? <th>閫夋嫨</th> : null}
+                <th>璧勪骇鍚嶇О</th>
+                <th>璧勪骇绫诲埆</th>
+                <th>閫傜敤妯″潡</th>
+                <th>绋夸欢绫诲瀷</th>
                 <th>语义状态</th>
                 <th>发布状态</th>
                 <th>贡献者</th>
-                <th>更新时间</th>
+                <th>鏇存柊鏃堕棿</th>
               </tr>
             </thead>
             <tbody>
@@ -355,19 +334,19 @@ export function TemplateGovernanceRuleLedgerPage({
           </header>
           <div className="template-governance-detail-grid">
             <div>
-              <span>资产名称</span>
+              <span>璧勪骇鍚嶇О</span>
               <p>{viewModel.selectedRow.title}</p>
             </div>
             <div>
-              <span>资产类别</span>
+              <span>璧勪骇绫诲埆</span>
               <p>{formatRuleLedgerCategoryLabel(viewModel.selectedRow.asset_kind)}</p>
             </div>
             <div>
-              <span>适用模块</span>
+              <span>閫傜敤妯″潡</span>
               <p>{viewModel.selectedRow.module_label}</p>
             </div>
             <div>
-              <span>稿件类型</span>
+              <span>绋夸欢绫诲瀷</span>
               <p>{viewModel.selectedRow.manuscript_type_label}</p>
             </div>
             <div>
@@ -383,7 +362,7 @@ export function TemplateGovernanceRuleLedgerPage({
               <p>{viewModel.selectedRow.contributor_label}</p>
             </div>
             <div>
-              <span>更新时间</span>
+              <span>鏇存柊鏃堕棿</span>
               <p>{formatRuleLedgerTimestamp(viewModel.selectedRow.updated_at)}</p>
             </div>
           </div>
@@ -407,7 +386,7 @@ export function TemplateGovernanceRuleLedgerPage({
                       >
                         <span>{rule.title}</span>
                         <small>
-                          {rule.publish_status} 路 {rule.module_label}
+                          {rule.publish_status} / {rule.module_label}
                         </small>
                       </button>
                     </li>
@@ -479,11 +458,11 @@ export function buildTemplateGovernanceRuleLedgerSearchState(
   return {
     mode: "results",
     query,
-    title: "搜索结果预览",
+    title: "鎼滅储缁撴灉棰勮",
     rows: filteredRows.map((row) => ({
       id: row.id,
       primary: row.title,
-      secondary: `${formatRuleLedgerCategoryLabel(row.asset_kind)} · ${row.publish_status}`,
+      secondary: `${formatRuleLedgerCategoryLabel(row.asset_kind)} 路 ${row.publish_status}`,
       cells: [row.module_label, row.manuscript_type_label, row.semantic_status],
     })),
   };
@@ -577,3 +556,4 @@ function formatRuleLedgerTimestamp(value: string | undefined): string {
 
   return value.replace("T", " ").replace(".000Z", "");
 }
+

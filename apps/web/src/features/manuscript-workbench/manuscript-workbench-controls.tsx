@@ -225,13 +225,13 @@ export function ManuscriptWorkbenchControls({
                 </p>
               ) : null}
               <div className="manuscript-workbench-button-row manuscript-workbench-button-row--sticky">
-                {utilities.canPublishHumanFinal && utilities.onPublishHumanFinal ? (
+                {utilities.onPublishHumanFinal ? (
                   <button
                     type="button"
-                    disabled={busy}
+                    disabled={busy || !utilities.canPublishHumanFinal}
                     onClick={() => utilities.onPublishHumanFinal?.()}
                   >
-                    {utilitiesPrimaryActionLabel}
+                    {mode === "proofreading" ? "打开全屏校对页" : utilitiesPrimaryActionLabel}
                   </button>
                 ) : null}
                 <button
@@ -258,6 +258,11 @@ export function ManuscriptWorkbenchControls({
                   </button>
                 ) : null}
               </div>
+              {mode === "proofreading" && !utilities.canPublishHumanFinal ? (
+                <p className="manuscript-workbench-help">
+                  生成校对草稿后即可打开全屏校对页。
+                </p>
+              ) : null}
             </div>
           </article>
         ) : null}
