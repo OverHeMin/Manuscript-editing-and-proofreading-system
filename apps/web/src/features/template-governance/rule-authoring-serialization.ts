@@ -1368,7 +1368,7 @@ function describeRuleAuthoringAutomationRisk(draft: RuleAuthoringDraft): string 
     const patchType = normalizeTablePatchType(draft.payload.patchType);
     const applyScope = normalizeTableApplyScope(draft.payload.applyScope, patchType);
     return patchType === "inspect_only" || applyScope === "inspect_only"
-      ? "浠呮鏌?"
+      ? "\u4ec5\u68c0\u67e5"
       : "editing_only auto-apply";
   }
 
@@ -1380,8 +1380,8 @@ function describeAutomationRisk(draft: RuleAuthoringDraft): string {
     const patchType = normalizeTablePatchType(draft.payload.patchType);
     const applyScope = normalizeTableApplyScope(draft.payload.applyScope, patchType);
     return patchType === "inspect_only" || applyScope === "inspect_only"
-      ? "浠呮鏌?"
-      : "缂栬緫浜х墿鑷姩搴旂敤锛堝彈 guard 绾︽潫锛?";
+      ? "\u4ec5\u68c0\u67e5"
+      : "\u7f16\u8f91\u4ea7\u7269\u81ea\u52a8\u5e94\u7528\uff08\u53d7 guard \u7ea6\u675f\uff09";
   }
 
   if (draft.executionMode === "inspect" || draft.confidencePolicy === "manual_only") {

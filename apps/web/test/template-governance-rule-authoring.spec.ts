@@ -274,10 +274,17 @@ test("table authoring form renders semantic selector fields", () => {
   assert.match(markup, /表头路径/);
   assert.match(markup, /列标识/);
   assert.match(markup, /预期表格形态/);
+  assert.match(markup, /\u81ea\u52a8\u5e94\u7528\u7b49\u7ea7/u);
+  assert.match(markup, /PATCH \u7c7b\u578b/u);
+  assert.match(markup, /\u5e94\u7528\u8303\u56f4/u);
+  assert.match(markup, /\u5fc5\u9700 snapshot \u80fd\u529b/u);
   assert.match(markup, /data-table-auto-apply-grade="field"/u);
   assert.match(markup, /data-table-auto-apply-patch-type="field"/u);
   assert.match(markup, /data-table-auto-apply-scope="field"/u);
   assert.match(markup, /data-table-auto-apply-capabilities="field"/u);
+  assert.doesNotMatch(markup, /\u9477\ue044\u59e9/u);
+  assert.doesNotMatch(markup, /\u7eeb\u8bf2\u7037/u);
+  assert.doesNotMatch(markup, /\u6434\u65c2\u6564/u);
 });
 
 test("rule authoring form renders platform scope and priority controls", () => {

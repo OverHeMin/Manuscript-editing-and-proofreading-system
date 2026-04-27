@@ -2131,11 +2131,11 @@ test("proofreading nested quality findings expose rule routing metadata on the h
         qualityFindings: [
           {
             id: "quality-1",
-            title: "ç»Ÿè®¡å­¦è¡¨è¾¾éœ€äººå·¥ç¡®è®¤",
-            summary: "P å€¼è¡¨è¾¾ä¸ŽæœŸåˆŠè§„èŒƒä¸ä¸€è‡´",
+            title: "\u7edf\u8ba1\u5b66\u8868\u8fbe\u9700\u4eba\u5de5\u786e\u8ba4",
+            summary: "P \u503c\u8868\u8fbe\u4e0e\u671f\u520a\u89c4\u8303\u4e0d\u4e00\u81f4",
             excerpt: "P < 0.05",
             suggestion: "P=0.032",
-            rationale: "ç»Ÿè®¡è¡¨è¾¾å­˜åœ¨é«˜é£Žé™©è¯¯è§£ç©ºé—´",
+            rationale: "\u7edf\u8ba1\u8868\u8fbe\u5b58\u5728\u9ad8\u98ce\u9669\u8bef\u89e3\u7a7a\u95f4",
             candidate_posture: "candidate_change",
             evidence_pack: {
               location: {
@@ -2143,7 +2143,7 @@ test("proofreading nested quality findings expose rule routing metadata on the h
               },
               excerpt: "P < 0.05",
               suggestion: "P=0.032",
-              rationale: "ç»Ÿè®¡è¡¨è¾¾å­˜åœ¨é«˜é£Žé™©è¯¯è§£ç©ºé—´",
+              rationale: "\u7edf\u8ba1\u8868\u8fbe\u5b58\u5728\u9ad8\u98ce\u9669\u8bef\u89e3\u7a7a\u95f4",
             },
             severity: "error",
             location: {

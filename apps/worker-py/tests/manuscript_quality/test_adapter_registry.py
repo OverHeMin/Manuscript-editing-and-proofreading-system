@@ -63,7 +63,7 @@ def test_run_quality_checks_keeps_external_adapter_findings_advisory_only():
                         "severity": "critical",
                         "action": "block",
                         "confidence": 0.92,
-                        "text_excerpt": "璇ヨ鍙ヤ緷璧栧閮ㄩ€傞厤鍣ㄥ垽瀹氥€?",
+                        "text_excerpt": "\u8be5\u8bed\u53e5\u4f9d\u8d56\u5916\u90e8\u9002\u914d\u5668\u5224\u5b9a\u3002",
                         "explanation": "External adapter flagged the sentence as risky.",
                     }
                 ]
@@ -72,7 +72,12 @@ def test_run_quality_checks_keeps_external_adapter_findings_advisory_only():
     )
 
     report = run_quality_checks(
-        [{"text": "璇ヨ鍙ュ彲浠ョ敤浜庢祴璇曞閮ㄩ€傞厤鍣ㄣ€?", "style": "Normal"}],
+        [
+            {
+                "text": "\u8be5\u8bed\u53e5\u53ef\u4ee5\u7528\u4e8e\u6d4b\u8bd5\u5916\u90e8\u9002\u914d\u5668\u3002",
+                "style": "Normal",
+            }
+        ],
         registry=registry,
     )
 

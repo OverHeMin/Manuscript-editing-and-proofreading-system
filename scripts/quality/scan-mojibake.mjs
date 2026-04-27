@@ -17,6 +17,8 @@ const TEXT_EXTENSIONS = new Set([
   ".py",
 ]);
 
+const SOURCE_SCAN_ROOTS = ["apps", "packages", "scripts", "docs"];
+
 const MOJIBAKE_TOKENS = [
   [0x5bb8, 0x8336],
   [0x93bf],
@@ -34,6 +36,18 @@ const MOJIBAKE_TOKENS = [
   [0x9357],
   [0x95c2],
   [0x93c9],
+  [0x9477, 0xe044],
+  [0x6434, 0x65c2, 0x6564],
+  [0x7eeb, 0x8bf2, 0x7037],
+  [0x93bc, 0x6ec5, 0x50a8],
+  [0x6d63, 0x6ec6, 0x20ac],
+  [0x7f02, 0x682c, 0x7deb],
+  [0x8e47, 0x544c, 0x6e36],
+  [0x951b, 0x581d, 0x5f48],
+  [0x00e7, 0x00bb, 0x0178],
+  [0x00e8, 0x00ae, 0x00a1],
+  [0x00e5, 0x00ad, 0x00a6],
+  [0x00e5, 0x20ac, 0x00bc],
 ].map((points) => String.fromCodePoint(...points));
 
 export async function scanMojibakeInFiles(files) {
@@ -48,7 +62,9 @@ export async function scanMojibakeInFiles(files) {
       if (
         matched.length ||
         line.includes("?".repeat(4)) ||
-        line.includes(String.fromCodePoint(0xfffd))
+        line.includes(String.fromCodePoint(0xfffd)) ||
+        hasPrivateUseMojibakeMarker(line) ||
+        hasC1ControlMojibakeMarker(line)
       ) {
         hits.push({ file, line: index + 1, text: line.trim(), matched });
       }
@@ -57,15 +73,64 @@ export async function scanMojibakeInFiles(files) {
   return { hits };
 }
 
+export function collectMojibakeScanFiles({
+  explicitFiles = process.argv.slice(2),
+  changedFiles: changedFileList,
+  sourceFiles,
+} = {}) {
+  const candidates = explicitFiles.length
+    ? explicitFiles
+    : [
+        ...(changedFileList ?? changedFiles()),
+        ...(sourceFiles ?? sourceTreeFiles()),
+      ];
+
+  return uniqueStrings(candidates).filter(isScannablePath);
+}
+
 function isTextFile(file) {
   return TEXT_EXTENSIONS.has(path.extname(file));
 }
 
 function changedFiles() {
-  const output = execFileSync("git", ["diff", "--name-only", "origin/main...HEAD"], {
-    encoding: "utf8",
-  });
-  return output.split(/\r?\n/u).filter(Boolean);
+  return readGitFileList(["diff", "--name-only", "origin/main...HEAD"]);
+}
+
+function sourceTreeFiles() {
+  return readGitFileList(["ls-files", "--", ...SOURCE_SCAN_ROOTS]);
+}
+
+function readGitFileList(args) {
+  try {
+    const output = execFileSync("git", args, {
+      encoding: "utf8",
+    });
+    return output.split(/\r?\n/u).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function uniqueStrings(values) {
+  return [...new Set(values)];
+}
+
+function isScannablePath(file) {
+  const normalized = file.replace(/\\/gu, "/");
+  return (
+    normalized !== "node_modules" &&
+    !normalized.startsWith("node_modules/") &&
+    !normalized.includes("/node_modules/") &&
+    isTextFile(file)
+  );
+}
+
+function hasPrivateUseMojibakeMarker(line) {
+  return /[\ue000-\uf8ff]/u.test(line);
+}
+
+function hasC1ControlMojibakeMarker(line) {
+  return /[\u0080-\u009f]/u.test(line);
 }
 
 function isMain() {
@@ -73,7 +138,7 @@ function isMain() {
 }
 
 if (isMain()) {
-  const files = process.argv.slice(2).length ? process.argv.slice(2) : changedFiles();
+  const files = collectMojibakeScanFiles();
   const result = await scanMojibakeInFiles(files);
   for (const hit of result.hits) {
     console.log(`${hit.file}:${hit.line}: ${hit.text}`);
