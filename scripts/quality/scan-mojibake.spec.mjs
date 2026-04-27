@@ -32,7 +32,8 @@ test("scanMojibakeInFiles allows normal Chinese and English", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "mojibake-scan-"));
   try {
     const file = path.join(dir, "good.tsx");
-    await writeFile(file, "const label = \"编辑规则：校对与知识回流\";\n", "utf8");
+    const normalLabel = codePoints(0x7f16, 0x8f91, 0x89c4, 0x5219, 0xff1a, 0x6821, 0x5bf9, 0x4e0e, 0x77e5, 0x8bc6, 0x56de, 0x6d41);
+    await writeFile(file, `const label = ${JSON.stringify(normalLabel)};\n`, "utf8");
     const result = await scanMojibakeInFiles([file]);
     assert.deepEqual(result.hits, []);
   } finally {

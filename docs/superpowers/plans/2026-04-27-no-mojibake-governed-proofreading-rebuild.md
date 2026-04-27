@@ -21,6 +21,16 @@
 - Prefer rebuilding features from `origin/main` by copying logic only after a targeted diff review.
 - Commit after each passing slice so rollback points are obvious.
 
+## PowerShell And UTF-8 Operating Charter
+
+- PowerShell may run ASCII-only commands such as `git`, `pnpm.cmd`, `node`, and `python` invocations.
+- Do not pass Chinese UI text, manuscript text, or regex replacement strings through PowerShell stdin, heredocs, `-Command` string interpolation, or `Set-Content` unless the content is ASCII-only.
+- If a file needs Chinese content, write it from Node/Python file APIs using Unicode code points, `JSON.stringify`, or copy an already verified UTF-8 file byte-for-byte.
+- Before any command that can display or transform text, set `$env:PYTHONIOENCODING='utf-8'`; do not rely on terminal rendering as proof of file correctness.
+- Never use PowerShell as the source of truth for Chinese replacement text. Use `git show origin/main:path` for known-good existing text or code-point generated strings for new labels.
+- Every UI/test/doc change containing Chinese must be followed by `pnpm.cmd run scan:mojibake` before staging.
+
+
 ## Branch And Remote Strategy
 
 - Keep `origin/main` at current clean commit `a9bec5e` unless new upstream changes appear.
@@ -39,7 +49,7 @@
 - Modify: `package.json`
   - Adds `scan:mojibake` and includes it in release verification scripts.
 - Create: `scripts/quality/scan-mojibake.spec.mjs`
-  - Proves the scanner catches `宸茶`, `鎿`, `缂栬`, `鍗曚綅鏍煎紡`, `????`, and `�`.
+  - Proves the scanner catches `U+5BB8 U+8336`, `U+93BF`, `U+7F02 U+682A U+8F91`, four question marks, and `U+FFFD` by generating those samples from code points inside the test.
 
 ### AI Provider And DeepSeek/Qwen Routing
 - Modify: `apps/api/src/modules/ai-provider-connections/*`
@@ -83,6 +93,78 @@
 - Modify: `apps/web/src/features/template-governance/*`
 - Modify: `apps/web/src/features/harness-datasets/*`
 - Modify browser tests under `apps/web/playwright/`.
+
+---
+
+## Task 0: Clean-Room Branch And Rollback Preflight
+
+**Files:**
+- No source files.
+- Record evidence in terminal output before feature work.
+
+- [ ] **Step 1: Fetch and confirm remote baseline**
+
+Run:
+
+```powershell
+git fetch origin --prune
+git log --oneline --decorate --max-count=5 origin/main
+git status --short --branch
+```
+
+Expected:
+- `origin/main` is the intended clean base.
+- Working tree is clean before branch creation.
+- If dirty, stop and either commit unrelated work elsewhere or back it up before continuing.
+
+- [ ] **Step 2: Record dirty branch evidence before deletion**
+
+Run:
+
+```powershell
+git ls-remote --heads origin codex/ai-key-auto-model-discovery codex/ai-key-model-discovery-clean
+git branch --show-current
+git rev-parse origin/main
+```
+
+Expected:
+- The old dirty branch SHAs are visible in terminal history before deletion.
+- `origin/main` SHA is recorded as the rollback point.
+
+- [ ] **Step 3: Reset local base to remote clean main**
+
+Run only after Step 1 confirms no uncommitted work needs saving:
+
+```powershell
+git checkout main
+git reset --hard origin/main
+git status --short --branch
+```
+
+Expected:
+- Local `main` equals `origin/main`.
+- Working tree is clean.
+
+- [ ] **Step 4: Create a new branch with a new name**
+
+Run:
+
+```powershell
+git checkout -b codex/no-mojibake-governed-proofreading-rebuild
+git status --short --branch
+```
+
+Expected:
+- Current branch is `codex/no-mojibake-governed-proofreading-rebuild`.
+- No old dirty branch is checked out.
+
+- [ ] **Step 5: Remote rollback rules**
+
+Rules:
+- Do not delete old remote dirty branches until the user explicitly approves deletion.
+- If a pushed feature branch becomes contaminated, do not force-push blindly. Prefer creating a new clean branch from `origin/main` and closing the contaminated PR.
+- If the current new branch must be abandoned, preserve its SHA with `git rev-parse HEAD`, then create a new branch from `origin/main`.
+- Never rewrite `origin/main`.
 
 ---
 
@@ -310,11 +392,13 @@ git commit -m "feat: add safe ai provider auto configuration"
 - [ ] **Step 1: Add failing gold-set tests**
 
 Tests must assert:
-- Expected issue recall is calculated.
-- Expected rule hit IDs are required.
-- Expected knowledge item IDs are required.
-- False positives and false negatives are counted.
-- Manual review pass rate is reported.
+- Gold set fixture contains at least 3 manuscripts or manuscript snippets: one terminology issue, one table/text consistency issue, and one statistical expression issue.
+- Expected issue recall is calculated and fails below `0.80` for internal-test mode.
+- Precision is calculated and fails below `0.60` when false positives dominate.
+- Expected rule hit IDs are required for deterministic findings.
+- Expected knowledge item IDs are required for knowledge-backed findings.
+- False positives and false negatives are counted with item IDs and reasons.
+- Manual review pass rate is reported and fails below `0.90` for high-risk findings.
 - A run can fail content gates even if execution status is `passed`.
 
 - [ ] **Step 2: Implement runner**
@@ -403,9 +487,11 @@ git commit -m "feat: add proofreading context and residual layers"
 
 Tests must prove:
 - Manual confirmation creates a learning candidate.
+- Residual finding moves through `detected -> human_confirmed -> candidate_created -> approved -> activated`.
 - Candidate can be approved into knowledge/rule draft.
 - Rejected candidate does not activate.
 - Approved knowledge is retrievable by later proofreading context.
+- Re-running the same gold set after activation increases rule/knowledge hit coverage or records a no-regression explanation.
 
 - [ ] **Step 2: Implement service wiring**
 
@@ -443,15 +529,21 @@ git commit -m "feat: close proofreading learning feedback loop"
 
 Tests must prove:
 - `.doc` upload is marked for normalization.
-- `.doc` upload creates a normalized `.docx` asset automatically.
+- `.doc` upload creates a normalized `.docx` asset automatically when the local converter is available.
+- Converter-unavailable state returns a clear blocked reason and does not pretend conversion succeeded.
 - Current asset pointers prefer normalized `.docx` for downstream modules.
+- Windows local and CI paths are configurable through environment variables, not hardcoded.
 
 - [ ] **Step 2: Add failing complex table tests**
 
 Tests must prove:
 - Merged cells survive reconstruction.
 - Header rows survive reconstruction.
+- Nested tables are detected and blocked from unsafe automatic rewrite unless fidelity metadata is complete.
+- Cross-page table continuation is represented with continuation metadata.
 - Footnotes/captions are preserved.
+- Table-to-text consistency findings can reference row/column coordinates after reconstruction.
+- Round-trip DOCX output can be reopened by the existing source-block resolver.
 - Rebuilt table is flagged when fidelity is uncertain.
 
 - [ ] **Step 3: Implement conversion/reconstruction**
@@ -555,6 +647,21 @@ node --test scripts/harness/proofreading-closure-preflight.spec.mjs scripts/harn
 pnpm.cmd run scan:mojibake
 ```
 
+Manual real-provider gate before PR readiness:
+
+```powershell
+$env:REAL_ACCEPTANCE_PROVIDER='deepseek'
+$env:REAL_ACCEPTANCE_BASE_URL='https://api.deepseek.com/v1'
+$env:REAL_ACCEPTANCE_MODEL='deepseek-chat'
+$env:REAL_ACCEPTANCE_API_KEY='<set in shell only>'
+pnpm.cmd run verify:proofreading-preflight
+pnpm.cmd run verify:real-proofreading
+```
+
+Expected:
+- API key is never printed.
+- Output includes model name, issue count, rule hit count, knowledge hit count, residual count, recall estimate, and final gate verdict.
+
 Commit:
 
 ```powershell
@@ -575,9 +682,13 @@ Run:
 
 ```powershell
 pnpm.cmd run scan:mojibake
+pnpm.cmd run verify:proofreading-preflight
+pnpm.cmd run verify:real-proofreading
 pnpm.cmd verify:manuscript-workbench
 pnpm.cmd --filter @medsys/web exec node --import tsx --test ./test/onlyoffice-preview-surface.spec.ts ./test/template-governance-rule-ledger-page.spec.tsx
 rg -n "<<<<<<<|=======|>>>>>>>|9243f4e0|ee555c|sk-[A-Za-z0-9_-]{20,}" .
+git diff --check
+git status --short --branch
 ```
 
 Expected:
@@ -585,6 +696,9 @@ Expected:
 - Workbench release gate passes.
 - Focused tests pass.
 - Secret scan finds only fake test keys, never user-provided real keys.
+- `git diff --check` reports no whitespace/error marker issues.
+- PR checks must pass on GitHub before merge. If `gh` is installed, run `gh pr checks --watch`; otherwise verify the Actions page manually.
+- PR description must include the model used for real acceptance, elapsed time, issue count, gate verdict, and explicit `scan:mojibake` zero-hit evidence.
 
 - [ ] **Step 2: Push new branch**
 
