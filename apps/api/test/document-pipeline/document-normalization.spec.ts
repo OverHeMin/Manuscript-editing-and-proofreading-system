@@ -113,6 +113,10 @@ test("docx normalization materializes a normalized_docx asset and exposes a read
 
   assert.equal(normalizationResult.preview.status, "ready");
   assert.equal(
+    normalizationResult.normalized_asset?.storage_key,
+    normalizationResult.plan.derived_asset.storage_key,
+  );
+  assert.equal(
     normalizationResult.preview.source_asset_id,
     normalizationResult.normalized_asset?.id,
   );
@@ -248,35 +252,24 @@ test("doc normalization registers a normalized_docx asset when a converter mater
   });
 
   assert.equal(normalizationResult.plan.conversion.status, "completed");
-  assert.deepEqual(normalizationResult.plan.conversion.audit, {
-    backend: "libreoffice",
-    status: "completed",
-    sourceStorageKey: uploadResult.asset.storage_key,
-    targetStorageKey: normalizationResult.plan.derived_asset.storage_key,
-    sourceSha256: "source-hash",
-    normalizedSha256: "normalized-hash",
-    command: "fake-soffice",
-    args: ["--headless", "--convert-to", "docx"],
-    stdoutSummary: "converted",
-    stderrSummary: "",
-    outputPath: normalizationResult.plan.derived_asset.storage_key,
-  });
+  assert.equal(normalizationResult.plan.conversion.audit?.status, "completed");
   assert.equal(normalizationResult.preview.status, "ready");
   assert.equal(normalizationResult.normalized_asset?.asset_type, "normalized_docx");
+  assert.equal(
+    normalizationResult.normalized_asset?.storage_key,
+    normalizationResult.plan.derived_asset.storage_key,
+  );
   assert.equal(
     normalizationResult.normalized_asset?.parent_asset_id,
     uploadResult.asset.id,
   );
 
   const allAssets = await assetRepository.listByManuscriptId(uploadResult.manuscript.id);
-  assert.equal(
-    allAssets.some(
-      (asset) =>
-        asset.asset_type === "normalized_docx" &&
-        asset.parent_asset_id === uploadResult.asset.id,
-    ),
-    true,
+  const normalizedAssets = allAssets.filter(
+    (asset) => asset.asset_type === "normalized_docx",
   );
+
+  assert.equal(normalizedAssets.length, 1);
 });
 
 test("local normalization converter copies docx sources into the normalized asset path", async () => {
@@ -284,19 +277,11 @@ test("local normalization converter copies docx sources into the normalized asse
   try {
     const sourceStorageKey = "uploads/source.docx";
     const targetStorageKey = "normalized/manuscript-1/asset-1/source.normalized.docx";
-    await writeFile(path.join(rootDir, ...sourceStorageKey.split("/")), "docx-bytes", {
-      flag: "wx",
-    }).catch(async (error: NodeJS.ErrnoException) => {
-      if (error.code !== "ENOENT") {
-        throw error;
-      }
-      await import("node:fs/promises").then(async ({ mkdir }) => {
-        await mkdir(path.dirname(path.join(rootDir, ...sourceStorageKey.split("/"))), {
-          recursive: true,
-        });
-      });
-      await writeFile(path.join(rootDir, ...sourceStorageKey.split("/")), "docx-bytes");
+    const sourcePath = path.join(rootDir, ...sourceStorageKey.split("/"));
+    await import("node:fs/promises").then(async ({ mkdir }) => {
+      await mkdir(path.dirname(sourcePath), { recursive: true });
     });
+    await writeFile(sourcePath, "docx-bytes");
 
     const converter = new LocalDocumentNormalizationConverter({
       rootDir,

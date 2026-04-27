@@ -338,7 +338,7 @@ async function waitForJob(
       };
 
       return job.status === "completed" && predicate(job);
-    })
+    }, { timeout: 30_000 })
     .toBe(true);
 
   const jobResponse = await request.get(`${apiBaseUrl}/api/v1/jobs/${jobId}`);

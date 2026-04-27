@@ -33,6 +33,22 @@ export interface DocumentPipelineToolingStatus {
   libreOfficeAvailable: boolean;
 }
 
+export type DocumentConversionResult =
+  | {
+      status: "converted";
+    }
+  | {
+      status: "failed" | "tool_unavailable";
+      error?: string;
+    };
+
+export interface DocumentToDocxConverter {
+  convertDocToDocx(input: {
+    sourceStorageKey: string;
+    targetStorageKey: string;
+  }): Promise<DocumentConversionResult>;
+}
+
 export interface DocumentNormalizationPlan {
   manuscript_id: string;
   source_asset_id: string;
@@ -242,8 +258,8 @@ export class DocumentNormalizationWorkflowService {
       this.toolingStatus,
     );
 
-    let normalizedAsset: DocumentAssetRecord | undefined;
-    normalizedAsset = await this.findExistingNormalizedAsset(input);
+    let normalizedAsset = await this.findExistingNormalizedAsset(input);
+    const warnings = [...plan.warnings];
 
     if (!normalizedAsset && plan.conversion.status === "not_required" && this.converter) {
       const conversionResult = await this.converter.convert({
@@ -267,7 +283,7 @@ export class DocumentNormalizationWorkflowService {
       normalizedAsset = await this.registerNormalizedAsset({
         manuscriptId: input.manuscriptId,
         sourceAssetId: input.sourceAssetId,
-        storageKey: plan.derived_asset.storage_key,
+        storageKey: input.storageKey,
         fileName: plan.derived_asset.file_name,
         mimeType: plan.derived_asset.mime_type,
         createdBy: input.createdBy,
@@ -275,26 +291,44 @@ export class DocumentNormalizationWorkflowService {
       });
     }
 
-    if (!normalizedAsset && plan.conversion.status === "queued" && this.converter) {
-      const conversionResult = await this.converter.convert({
-        sourceStorageKey: input.storageKey,
-        targetStorageKey: plan.derived_asset.storage_key,
-        sourceType: plan.source_type,
-      });
-      plan.conversion.audit = conversionResult.audit;
-
-      if (conversionResult.status === "completed") {
-        normalizedAsset = await this.registerNormalizedAsset({
-          manuscriptId: input.manuscriptId,
-          sourceAssetId: input.sourceAssetId,
-          storageKey: conversionResult.targetStorageKey,
-          fileName: plan.derived_asset.file_name,
-          mimeType: plan.derived_asset.mime_type,
-          createdBy: input.createdBy,
-          sourceJobId: input.sourceJobId,
-        });
-        plan.conversion.status = "completed";
-        plan.preview.status = "ready";
+    if (!normalizedAsset && plan.conversion.status === "queued") {
+      if (!this.converter) {
+        warnings.push(
+          "Document conversion was queued but no converter is configured.",
+        );
+      } else {
+        try {
+          const conversionResult = await this.converter.convert({
+            sourceStorageKey: input.storageKey,
+            targetStorageKey: plan.derived_asset.storage_key,
+            sourceType: plan.source_type,
+          });
+          plan.conversion.audit = conversionResult.audit;
+          normalizedAsset = await this.registerNormalizedAsset({
+            manuscriptId: input.manuscriptId,
+            sourceAssetId: input.sourceAssetId,
+            storageKey: conversionResult.targetStorageKey,
+            fileName: plan.derived_asset.file_name,
+            mimeType: plan.derived_asset.mime_type,
+            createdBy: input.createdBy,
+            sourceJobId: input.sourceJobId,
+          });
+          plan.conversion.status = "completed";
+          plan.preview.status = "ready";
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          warnings.push(
+            message ||
+              "DOC to DOCX conversion failed; normalization remains pending.",
+          );
+          plan.conversion.audit = {
+            backend: "libreoffice",
+            status: "failed",
+            sourceStorageKey: input.storageKey,
+            targetStorageKey: plan.derived_asset.storage_key,
+            failureMessage: message,
+          };
+        }
       }
     }
 
@@ -307,7 +341,7 @@ export class DocumentNormalizationWorkflowService {
         source_asset_type: "normalized_docx",
         source_asset_id: normalizedAsset?.id ?? input.sourceAssetId,
         mime_type: plan.preview.mime_type,
-        warnings: [...plan.warnings],
+        warnings,
       },
     };
   }
