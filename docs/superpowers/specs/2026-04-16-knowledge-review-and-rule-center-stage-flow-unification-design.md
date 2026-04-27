@@ -42,7 +42,7 @@ The accepted truthful runtime behavior is:
 - the queue admits `learning_candidate` only when `type = rule_candidate`
 - residual items routed to `knowledge_candidate` or `prompt_template_candidate` stay out of the rule-center queue
 - this station may run Harness validation for rule-routed residual issues, create the downstream learning candidate, review the resulting rule candidate, and then materialize the governed writeback target `editorial_rule_draft`
-- `杞垚瑙勫垯鑽夌` now means governed draft writeback, not only opening a temporary prefill handoff
+- `rule_center_governed_writeback` now means governed draft writeback, not only opening a temporary prefill handoff
 
 If later sections below imply that the rule-center queue contains only already-approved candidates, or that rule conversion ends at a wizard prefill instead of a governed draft writeback, follow this closure note instead.
 

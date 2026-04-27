@@ -22,7 +22,7 @@ This pass is specifically about closing the gap the user identified between the 
 
 During implementation review, one architectural distinction became important and is now explicit in the shipped design:
 
-- `瑙勫垯涓績` 里的 `medical_specialized content module` stores package-level governance summary, guidance, and examples
+- `rule_center_governance` 里的 `medical_specialized content module` stores package-level governance summary, guidance, and examples
 - `admin-governance` 里的 `medical_analyzer_package` stores the worker-facing structured analyzer manifest, including aliases, thresholds, toggles, and issue policy
 
 Because these are different models, the rule-center package detail page must not pretend it is rendering live analyzer-manifest state when it is only holding content-module data.

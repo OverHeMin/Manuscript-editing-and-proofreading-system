@@ -76,12 +76,12 @@ test("rule wizard confirm step uses structured manuscript-type and retrieval-ter
         draftRevisionId: "knowledge-1-revision-1",
       }}
       entryFormState={createRuleWizardEntryFormState({
-        title: "鏈缁熶竴瑙勫垯",
+        title: "Clinical rule title",
         moduleScope: "editing",
         manuscriptTypes: ["clinical_study", "review"],
         sourceType: "guideline",
         contributor: "editor.zh",
-        ruleBody: "缁熶竴鍖诲鏈鍜岀缉鍐欒В閲娿€?",
+        ruleBody: "Clinical rule body",
         positiveExample: "",
         negativeExample: "",
         imageEvidence: "",
@@ -102,7 +102,7 @@ test("rule wizard confirm step uses structured manuscript-type and retrieval-ter
   assert.match(markup, /data-rule-wizard-tag-list="confirm-retrieval-terms"/u);
   assert.match(markup, /data-rule-wizard-tag-action="add-confirm-retrieval-term"/u);
   assert.doesNotMatch(markup, /placeholder="clinical_study, review"/u);
-  assert.doesNotMatch(markup, /placeholder="鏈缁熶竴, 缂╁啓閲婁箟"/u);
+  assert.doesNotMatch(markup, /placeholder="clinical_study, review"/u);
 });
 
 test("rule wizard binding and publish steps explain package and release choices", () => {

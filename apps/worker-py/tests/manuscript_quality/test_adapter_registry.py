@@ -91,7 +91,7 @@ def test_run_quality_checks_keeps_external_adapter_findings_advisory_only():
 def test_run_quality_checks_script_executes_from_direct_path():
     result = subprocess.run(
         [sys.executable, str(SCRIPT_PATH)],
-        input='{"blocks":[{"text":"绀轰緥鏂囨湰銆?","style":"Normal"}]}',
+        input='{"blocks":[{"text":"Unit expression needs normalization","style":"Normal"}]}',
         text=True,
         capture_output=True,
         check=False,
