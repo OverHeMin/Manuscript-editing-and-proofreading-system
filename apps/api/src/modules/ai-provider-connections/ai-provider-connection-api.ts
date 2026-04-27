@@ -6,6 +6,11 @@ import {
   type TestAiProviderConnectionInput,
   type UpdateAiProviderConnectionInput,
 } from "./ai-provider-connection-service.ts";
+import {
+  AiProviderAutoConfigurationService,
+  type AiProviderAutoConfigurationInput,
+  type AiProviderAutoConfigurationResult,
+} from "./ai-provider-auto-configuration-service.ts";
 
 interface RouteResponse<T> {
   status: number;
@@ -14,12 +19,14 @@ interface RouteResponse<T> {
 
 export interface CreateAiProviderConnectionApiOptions {
   aiProviderConnectionService: AiProviderConnectionService;
+  aiProviderAutoConfigurationService?: AiProviderAutoConfigurationService;
 }
 
 export function createAiProviderConnectionApi(
   options: CreateAiProviderConnectionApiOptions,
 ) {
   const { aiProviderConnectionService } = options;
+  const { aiProviderAutoConfigurationService } = options;
 
   return {
     async listConnections(): Promise<RouteResponse<AiProviderConnectionRecord[]>> {
@@ -40,6 +47,25 @@ export function createAiProviderConnectionApi(
           actorId: input.actorId,
           actorRole: input.actorRole,
           connection: input.input,
+        }),
+      };
+    },
+
+    async autoConfigure(input: {
+      actorId: string;
+      actorRole: RoleKey;
+      input: Omit<AiProviderAutoConfigurationInput, "actorId" | "actorRole">;
+    }): Promise<RouteResponse<AiProviderAutoConfigurationResult>> {
+      if (!aiProviderAutoConfigurationService) {
+        throw new Error("AI provider auto configuration is unavailable.");
+      }
+
+      return {
+        status: 201,
+        body: await aiProviderAutoConfigurationService.configure({
+          ...input.input,
+          actorId: input.actorId,
+          actorRole: input.actorRole,
         }),
       };
     },

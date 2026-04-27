@@ -26,6 +26,7 @@ import {
 } from "../modules/agent-runtime/index.ts";
 import { AiGatewayService } from "../modules/ai-gateway/index.ts";
 import {
+  AiProviderAutoConfigurationService,
   type AiProviderConnectivityProbe,
   AiProviderCredentialCrypto,
   createAiProviderConnectionApi,
@@ -937,6 +938,12 @@ export function createPersistentGovernanceRuntime(
       options.aiProviderConnectivityProbe ??
       new OpenAiChatCompatibleConnectivityProbe(),
   });
+  const aiProviderAutoConfigurationService =
+    new AiProviderAutoConfigurationService({
+      aiProviderConnectionService,
+      modelRegistryService,
+      modelRoutingGovernanceService,
+    });
 
   return withRuntimeBootstrap(
     {
@@ -1090,6 +1097,7 @@ export function createPersistentGovernanceRuntime(
     }),
     aiProviderConnectionApi: createAiProviderConnectionApi({
       aiProviderConnectionService,
+      aiProviderAutoConfigurationService,
     }),
     permissionGuard,
     },

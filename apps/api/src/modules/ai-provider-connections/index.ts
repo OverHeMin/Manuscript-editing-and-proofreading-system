@@ -5,4 +5,5 @@ export * from "./postgres-ai-provider-connection-repository.ts";
 export * from "./ai-provider-credential-crypto.ts";
 export * from "./ai-provider-connection-service.ts";
 export * from "./ai-provider-connection-api.ts";
+export * from "./ai-provider-auto-configuration-service.ts";
 export * from "./openai-chat-compatible-connectivity-probe.ts";
