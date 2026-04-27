@@ -91,6 +91,7 @@ import {
 } from "../shared/write-transaction-manager.ts";
 import type {
   ProofreadingDeepPassKind,
+  ProofreadingPassRunContextEvidenceRecord,
   ProofreadingPassRunRecord,
 } from "./proofreading-pass-run-record.ts";
 import type { ProofreadingPassRunRepository } from "./proofreading-pass-run-repository.ts";
@@ -1055,6 +1056,13 @@ export class ProofreadingService {
               manualReviewItems: 0,
               qualityFindings: 0,
             },
+          contextEvidence:
+            existing.output?.contextEvidence ??
+            buildProofreadingPassRunContextEvidenceFromReplayInput({
+              input: replayInput,
+              passNo: existing.pass_no,
+              passKind: existing.pass_kind,
+            }),
         },
         finished_at: finishedAt,
         updated_at: finishedAt,
@@ -1694,6 +1702,14 @@ export class ProofreadingService {
         passNo: index + 1,
         passKind,
       });
+      const contextEvidence = buildProofreadingPassRunContextEvidence({
+        passNo: index + 1,
+        passKind,
+        sourceBlocks: input.sourceBlocks,
+        proofreadingFindings: input.proofreadingFindings,
+        proofreadingKnowledgeHits: input.proofreadingKnowledgeHits,
+        resolvedContext: input.resolvedContext,
+      });
       try {
         const passPlan = await this.proofreadingAiPlanService.createPlan({
           manuscriptId: input.manuscriptId,
@@ -1760,6 +1776,7 @@ export class ProofreadingService {
               `Pass ${index + 1} checked ${passPlan.issues.length} issue(s).`,
             issues: passPlan.issues.map((issue) => structuredClone(issue)),
             governedEvidenceCounts,
+            contextEvidence,
           },
         });
       } catch (error) {
@@ -3712,6 +3729,10 @@ function collectKnownRuleIds(
   ])];
 }
 
+function dedupeStringArray(values: readonly string[]): string[] {
+  return [...new Set(values.filter((value) => value.trim().length > 0))];
+}
+
 interface ProofreadingDeepPassRunPayloadRecord {
   pass_no: number;
   pass_kind: ProofreadingDeepPassKind;
@@ -3731,6 +3752,7 @@ interface ProofreadingDeepPassRunPayloadRecord {
       manualReviewItems: number;
       qualityFindings: number;
     };
+    contextEvidence?: ProofreadingPassRunContextEvidenceRecord;
   };
   error_message?: string;
 }
@@ -3806,6 +3828,118 @@ function buildProofreadingPassRunReplayContext(input: {
   };
 
   return serializeProofreadingPassRunReplayInput(replayInput);
+}
+
+function buildProofreadingPassRunContextEvidence(input: {
+  passNo: number;
+  passKind: ProofreadingDeepPassKind;
+  sourceBlocks?: EditorialTextBlock[];
+  proofreadingFindings?: ProofreadingInspectionResult;
+  proofreadingKnowledgeHits: CreateProofreadingAiPlanInput["knowledgeHits"];
+  resolvedContext: ResolvedProofreadingExecutionContext;
+}): ProofreadingPassRunContextEvidenceRecord {
+  const sectionLabels = collectProofreadingSectionLabels(input.sourceBlocks ?? []);
+  const ruleIds = dedupeStringArray([
+    ...(input.proofreadingFindings?.failedChecks ?? []).map((item) => item.ruleId),
+    ...(input.proofreadingFindings?.manualReviewItems ?? []).map(
+      (item) => item.ruleId,
+    ),
+    ...collectKnownRuleIds(input.resolvedContext),
+  ]).sort();
+  const knowledgeItemIds = dedupeStringArray([
+    ...(input.proofreadingKnowledgeHits ?? []).map(
+      (item) => item.knowledgeItemId,
+    ),
+    ...input.resolvedContext.knowledgeHits.map((hit) => hit.knowledgeItemId),
+  ]).sort();
+
+  return {
+    localBlockContext: {
+      blockCount: input.sourceBlocks?.length ?? 0,
+    },
+    neighborContext: {
+      windowCount: input.sourceBlocks?.length ?? 0,
+    },
+    sectionContext: {
+      sectionCount: sectionLabels.length,
+      sectionLabels,
+    },
+    globalConsistencyContext: {
+      passNo: input.passNo,
+      passKind: input.passKind,
+      wholeDocumentLayer: true,
+    },
+    ruleCitationContext: {
+      ruleIds,
+    },
+    knowledgeCitationContext: {
+      knowledgeItemIds,
+    },
+    residualAnalysisContext: {
+      passKind: input.passKind,
+      runsAfterGovernedCoverage: true,
+    },
+  };
+}
+
+function buildProofreadingPassRunContextEvidenceFromReplayInput(input: {
+  input: CreateProofreadingAiPlanInput;
+  passNo: number;
+  passKind: ProofreadingDeepPassKind;
+}): ProofreadingPassRunContextEvidenceRecord {
+  const sourceBlocks = input.input.sourceBlocks ?? [];
+  const sectionLabels = collectProofreadingSectionLabels(sourceBlocks);
+  const ruleIds = dedupeStringArray([
+    ...(input.input.governedFailedChecks ?? []).map((item) => item.ruleId),
+    ...(input.input.governedManualReviewItems ?? []).map((item) => item.ruleId),
+    ...(input.input.governanceContext?.resolvedRules ?? []).map(
+      (item) => item.ruleId,
+    ),
+  ]).sort();
+  const knowledgeItemIds = dedupeStringArray([
+    ...(input.input.knowledgeHits ?? []).map((item) => item.knowledgeItemId),
+    ...(input.input.governanceContext?.knowledgeHits ?? []).map(
+      (item) => item.knowledgeItemId,
+    ),
+  ]).sort();
+
+  return {
+    localBlockContext: {
+      blockCount: sourceBlocks.length,
+    },
+    neighborContext: {
+      windowCount: sourceBlocks.length,
+    },
+    sectionContext: {
+      sectionCount: sectionLabels.length,
+      sectionLabels,
+    },
+    globalConsistencyContext: {
+      passNo: input.passNo,
+      passKind: input.passKind,
+      wholeDocumentLayer: true,
+    },
+    ruleCitationContext: {
+      ruleIds,
+    },
+    knowledgeCitationContext: {
+      knowledgeItemIds,
+    },
+    residualAnalysisContext: {
+      passKind: input.passKind,
+      runsAfterGovernedCoverage: true,
+    },
+  };
+}
+
+function collectProofreadingSectionLabels(
+  sourceBlocks: readonly EditorialTextBlock[],
+): string[] {
+  return dedupeStringArray(
+    sourceBlocks
+      .map((block) => block.section)
+      .filter((section): section is string => Boolean(section?.trim())),
+  );
 }
 
 function serializeProofreadingPassRunReplayInput(

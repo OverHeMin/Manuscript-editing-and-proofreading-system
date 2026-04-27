@@ -277,6 +277,134 @@ test("proofreading AI planning forwards governance context without losing whole-
   );
 });
 
+test("proofreading AI planning sends explicit context, citation, and residual layers", async () => {
+  let recordedInput: ExecuteMainlineAiInput | undefined;
+  const service = new ProofreadingAiPlanService({
+    mainlineAiRuntimeExecutor: {
+      async executeJson<T>(input: ExecuteMainlineAiInput): Promise<T> {
+        recordedInput = structuredClone(input);
+        return {
+          role: "proofreader",
+          summary: "Context layers captured.",
+          issues: [],
+          manualReviewItems: [],
+        } as T;
+      },
+      async executeMarkdown(): Promise<string> {
+        throw new Error("Proofreading AI planning should request JSON.");
+      },
+    } satisfies MainlineAiRuntimeExecutor,
+  });
+
+  await service.createPlan({
+    manuscriptId: "manuscript-context-layers-1",
+    sourceBlocks: [
+      {
+        section: "methods",
+        block_kind: "paragraph",
+        text: "Methods state that 80 patients were enrolled.",
+      },
+      {
+        section: "results",
+        block_kind: "paragraph",
+        text: "Results state that 78 patients completed follow-up.",
+      },
+      {
+        section: "conclusion",
+        block_kind: "paragraph",
+        text: "Conclusion states that the treatment is proven effective.",
+      },
+    ],
+    governedFailedChecks: [
+      {
+        ruleId: "rule-sample-size-1",
+        severity: "error",
+        actual: "78 patients",
+        expected: "80 patients",
+        blockIndex: 1,
+      },
+    ],
+    knowledgeHits: [
+      {
+        knowledgeItemId: "knowledge-stat-1",
+        title: "Statistical expression rule",
+      },
+    ],
+    passFocus: {
+      passNo: 5,
+      passKind: "residual_synthesis",
+      instruction: "Free-play residual pass after deterministic checks.",
+    },
+  } as never);
+
+  const payload = recordedInput?.userPayload as
+    | {
+        proofreadingContextLayers?: {
+          localBlockContext?: { blockCount?: number };
+          neighborContext?: { windows?: Array<Record<string, unknown>> };
+          sectionContext?: { sections?: Array<Record<string, unknown>> };
+          globalConsistencyContext?: { sourceCharacterCount?: number };
+          ruleCitationContext?: { ruleIds?: string[] };
+          knowledgeCitationContext?: { knowledgeItemIds?: string[] };
+          residualAnalysisContext?: {
+            passKind?: string;
+            runsAfterGovernedCoverage?: boolean;
+          };
+        };
+      }
+    | undefined;
+
+  assert.equal(payload?.proofreadingContextLayers?.localBlockContext?.blockCount, 3);
+  assert.deepEqual(
+    payload?.proofreadingContextLayers?.neighborContext?.windows?.map((item) => ({
+      blockIndex: item.blockIndex,
+      previousBlockIndex: item.previousBlockIndex,
+      nextBlockIndex: item.nextBlockIndex,
+    })),
+    [
+      {
+        blockIndex: 0,
+        previousBlockIndex: undefined,
+        nextBlockIndex: 1,
+      },
+      {
+        blockIndex: 1,
+        previousBlockIndex: 0,
+        nextBlockIndex: 2,
+      },
+      {
+        blockIndex: 2,
+        previousBlockIndex: 1,
+        nextBlockIndex: undefined,
+      },
+    ],
+  );
+  assert.deepEqual(
+    payload?.proofreadingContextLayers?.sectionContext?.sections?.map((item) => item.sectionLabel),
+    ["methods", "results", "conclusion"],
+  );
+  assert.ok(
+    (payload?.proofreadingContextLayers?.globalConsistencyContext
+      ?.sourceCharacterCount ?? 0) > 0,
+  );
+  assert.deepEqual(payload?.proofreadingContextLayers?.ruleCitationContext?.ruleIds, [
+    "rule-sample-size-1",
+  ]);
+  assert.deepEqual(
+    payload?.proofreadingContextLayers?.knowledgeCitationContext?.knowledgeItemIds,
+    ["knowledge-stat-1"],
+  );
+  assert.equal(
+    payload?.proofreadingContextLayers?.residualAnalysisContext?.passKind,
+    "residual_synthesis",
+  );
+  assert.equal(
+    payload?.proofreadingContextLayers?.residualAnalysisContext
+      ?.runsAfterGovernedCoverage,
+    true,
+  );
+});
+
 test("proofreading AI planning removes governed duplicates before keeping residual issues", async () => {
   const service = new ProofreadingAiPlanService({
     mainlineAiRuntimeExecutor: {
