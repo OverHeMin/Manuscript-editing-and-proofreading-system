@@ -83,6 +83,8 @@ import {
   PostgresFeedbackGovernanceRepository,
 } from "../modules/feedback-governance/index.ts";
 import {
+  createHumanReviewApi,
+  HumanReviewService,
   PostgresHumanReviewRepository,
 } from "../modules/human-review/index.ts";
 import {
@@ -512,6 +514,14 @@ export function createPersistentGovernanceRuntime(
     assetService: documentAssetService,
     uploadRootDir,
     transactionManager: workbenchTransactionManager,
+  });
+  const humanReviewService = new HumanReviewService({
+    repository: humanReviewRepository,
+    manuscriptRepository,
+    assetRepository,
+    jobRepository,
+    documentAssetService,
+    editorialDocxTransformService,
   });
   const feedbackGovernanceService = new FeedbackGovernanceService({
     repository: feedbackGovernanceRepository,
@@ -1093,6 +1103,9 @@ export function createPersistentGovernanceRuntime(
       feedbackGovernanceService,
     }),
     humanReviewRepository,
+    humanReviewApi: createHumanReviewApi({
+      humanReviewService,
+    }),
     learningApi,
     residualLearningApi,
     reviewItemsApi,
