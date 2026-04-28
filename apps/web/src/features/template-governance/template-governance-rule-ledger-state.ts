@@ -94,6 +94,10 @@ export function filterTemplateGovernanceRuleLedgerRows(
       row.semantic_status,
       row.publish_status,
       row.contributor_label,
+      row.source_label ?? "",
+      row.ai_participation_label ?? "",
+      row.review_status_label ?? "",
+      row.similarity_resolution_label ?? "",
       row.updated_at ?? "",
     ].some((value) => value.toLowerCase().includes(query));
   });

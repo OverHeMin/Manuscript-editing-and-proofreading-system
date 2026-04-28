@@ -128,6 +128,12 @@ export class EditorialRulePackageService {
       });
     }
 
+    if (input.sourceKind === "manual_description") {
+      throw new Error(
+        "Manual-description rule package workspace loading is handled by rule AI intake.",
+      );
+    }
+
     if (!this.exampleSourceSessionService) {
       throw new Error(
         "Example-source session resolution is not configured in EditorialRulePackageService.",

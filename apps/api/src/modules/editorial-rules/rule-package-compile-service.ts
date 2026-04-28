@@ -1169,9 +1169,7 @@ function buildCompileTracePayload(
   source: RulePackageWorkspaceSourceInput,
 ): Record<string, unknown> {
   const sourceId =
-    source.sourceKind === "reviewed_case"
-      ? source.reviewedCaseSnapshotId
-      : source.exampleSourceSessionId;
+    resolveRulePackageWorkspaceSourceId(source);
   const evidenceExamples =
     packageDraft.semantic_draft?.evidence_examples ??
     packageDraft.cards.evidence.examples;
@@ -1415,9 +1413,7 @@ function buildCompiledKnowledgeMetadata(input: {
   });
   const reviewPrompt = buildReviewPrompt(semanticDraft.review_policy);
   const sourceId =
-    input.source.sourceKind === "reviewed_case"
-      ? input.source.reviewedCaseSnapshotId
-      : input.source.exampleSourceSessionId;
+    resolveRulePackageWorkspaceSourceId(input.source);
   const evidenceLevel = classifyEvidenceLevel({
     source: input.source,
     hasConfirmedEvidence: evidenceExamples.length > 0,
@@ -1493,6 +1489,19 @@ function classifyEvidenceLevel(input: {
   }
 
   return input.source.sourceKind === "reviewed_case" ? "medium" : "low";
+}
+
+function resolveRulePackageWorkspaceSourceId(
+  source: RulePackageWorkspaceSourceInput,
+): string {
+  switch (source.sourceKind) {
+    case "reviewed_case":
+      return source.reviewedCaseSnapshotId;
+    case "uploaded_example_pair":
+      return source.exampleSourceSessionId;
+    case "manual_description":
+      return source.description;
+  }
 }
 
 function uniqueStrings(values: string[]): string[] | undefined {

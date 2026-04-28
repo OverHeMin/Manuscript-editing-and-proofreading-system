@@ -7,6 +7,11 @@ import type {
 import type { RuleObjectKey } from "./editorial-rules.js";
 import type { ManuscriptType } from "./manuscript.js";
 import type { ModuleType } from "./templates.js";
+import type {
+  RuleAiDraft,
+  RuleAiSimilarityMatch,
+  RuleAiTemplateMatch,
+} from "./rule-ai-intake.js";
 
 export type RulePackageKind =
   | "front_matter"
@@ -131,6 +136,11 @@ export type RulePackageWorkspaceSourceInput =
       sourceKind: "uploaded_example_pair";
       exampleSourceSessionId: string;
       journalKey?: string;
+    }
+  | {
+      sourceKind: "manual_description";
+      description: string;
+      journalKey?: string;
     };
 
 export interface RuleEvidenceExample {
@@ -230,6 +240,14 @@ export interface RulePackageCandidate {
   preview: RulePackagePreview;
   semantic_draft?: AiRuleUnderstandingPayload;
   supporting_signals?: EditIntentSignal[];
+  ai_intake_metadata?: RuleAiDraft;
+  template_match?: RuleAiTemplateMatch;
+  similar_rule_matches?: RuleAiSimilarityMatch[];
+  ai_review_status?:
+    | "ai_draft"
+    | "awaiting_human_review"
+    | "human_confirmed"
+    | "rejected";
 }
 
 export type RulePackageDraft = Omit<RulePackageCandidate, "preview">;

@@ -10,6 +10,10 @@ const {
   TemplateGovernanceRuleWizard,
 } = await import("../src/features/template-governance/template-governance-rule-wizard.tsx");
 const {
+  TemplateGovernanceRuleWizardStepSemantic,
+} = await import("../src/features/template-governance/template-governance-rule-wizard-step-semantic.tsx");
+const {
+  createRuleWizardAiParsingInput,
   createRuleDraftInput,
   createRuleDraftContentBlocks,
   createRuleWizardBindingFormState,
@@ -17,8 +21,10 @@ const {
   createRuleWizardEntryFormStateFromDetail,
   createRuleWizardBindingInputs,
   createRuleWizardEvidenceGateSummary,
+  createRuleWizardSemanticViewModel,
   confirmSemanticLayerInput,
   loadRuleWizardBindingOptions,
+  parseRuleWizardManualRuleWithAi,
   saveRuleWizardEntryDraft,
 } = await import("../src/features/template-governance/template-governance-rule-wizard-api.ts");
 
@@ -681,6 +687,113 @@ test("rule wizard semantic step renders ai semantic result surfaces", () => {
   assert.match(markup, /\u91cd\u65b0\u8bc6\u522b/u);
 });
 
+test("rule wizard maps manual entry fields into rule AI parsing input", () => {
+  assert.deepEqual(
+    createRuleWizardAiParsingInput(
+      createRuleWizardEntryFormState({
+        title: "摘要缩写规范",
+        moduleScope: "proofreading",
+        manuscriptTypes: ["clinical_study"],
+        ruleBody: "摘要首次出现英文缩写时使用中文全称（英文缩写）。",
+        sourceBasis: "期刊投稿须知：摘要中首次出现缩写须释义。",
+        sections: ["abstract"],
+      }),
+    ),
+    {
+      rule_fields: {
+        title: "摘要缩写规范",
+        rule_body: "摘要首次出现英文缩写时使用中文全称（英文缩写）。",
+        module_scope: "proofreading",
+        manuscript_types: ["clinical_study"],
+        sections: ["abstract"],
+        evidence: [
+          {
+            kind: "user_description",
+            text: "期刊投稿须知：摘要中首次出现缩写须释义。",
+            authority: "review_required",
+          },
+        ],
+      },
+    },
+  );
+});
+
+test("rule wizard calls rule AI parsing endpoint with normalized manual fields", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const form = createRuleWizardEntryFormState({
+    title: "摘要缩写规范",
+    moduleScope: "proofreading",
+    manuscriptTypes: ["clinical_study"],
+    ruleBody: "摘要首次出现英文缩写时使用中文全称（英文缩写）。",
+    sections: ["abstract"],
+  });
+  const result = await parseRuleWizardManualRuleWithAi(
+    {
+      async request<TResponse>(input: {
+        method: "GET" | "POST";
+        url: string;
+        body?: unknown;
+      }) {
+        requests.push(input);
+        return {
+          status: 200,
+          body: {
+            ai_understanding_summary: "摘要英文缩写首次出现需要补全中文全称。",
+            consistency: "consistent",
+            findings: [],
+            requires_human_confirmation: false,
+            warnings: [],
+          } as TResponse,
+        };
+      },
+    },
+    form,
+  );
+
+  assert.deepEqual(requests, [
+    {
+      method: "POST",
+      url: "/api/v1/editorial-rules/ai-intake/parse-manual-rule",
+      body: createRuleWizardAiParsingInput(form),
+    },
+  ]);
+  assert.equal(result.consistency, "consistent");
+});
+
+test("rule wizard semantic step renders rule AI parsing consistency findings", () => {
+  const Step = TemplateGovernanceRuleWizardStepSemantic as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const semanticValue = createRuleWizardSemanticViewModel({
+    form: createRuleWizardEntryFormState({
+      title: "摘要缩写规范",
+      moduleScope: "proofreading",
+      manuscriptTypes: ["clinical_study"],
+      ruleBody: "摘要首次出现英文缩写时使用中文全称（英文缩写）。",
+      sections: ["abstract"],
+    }),
+    aiParsing: {
+      ai_understanding_summary: "摘要英文缩写首次出现需要补全中文全称。",
+      consistency: "consistent",
+      findings: [
+        {
+          field: "evidence",
+          severity: "warning",
+          message: "建议补充期刊原文证据。",
+        },
+      ],
+      requires_human_confirmation: false,
+      warnings: [],
+    },
+  });
+  const markup = renderToStaticMarkup(<Step value={semanticValue} />);
+
+  assert.match(markup, /AI 解析校验/u);
+  assert.match(markup, /一致/u);
+  assert.match(markup, /摘要英文缩写首次出现需要补全中文全称/u);
+  assert.match(markup, /建议补充期刊原文证据/u);
+});
+
 test("rule wizard confirm step renders human confirmation and change summary surfaces", () => {
   const Wizard = TemplateGovernanceRuleWizard as unknown as (
     props: Record<string, unknown>,
@@ -855,6 +968,34 @@ test("rule wizard binding and publish steps render package and release controls"
   assert.match(publishMarkup, /提交前检查/u);
   assert.match(publishMarkup, /提交发布/u);
   assert.match(publishMarkup, /\u5b8c\u6210\u5e76\u8fd4\u56de\u89c4\u5219\u4e2d\u5fc3/u);
+});
+
+test("rule wizard publish step blocks direct publish for AI candidate drafts", () => {
+  const Wizard = TemplateGovernanceRuleWizard as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    <Wizard
+      state={{
+        mode: "create",
+        step: "publish",
+        dirty: true,
+        draftRevisionId: "knowledge-ai-revision-1",
+      }}
+      entryFormState={createRuleWizardEntryFormState({
+        title: "AI 生成规则草稿",
+        ruleBody: "摘要首次出现英文缩写时使用中文全称（英文缩写）。",
+        candidateOnly: true,
+        riskTags: ["ai_generated_rule_draft"],
+      })}
+    />,
+  );
+
+  assert.match(markup, /AI 草稿必须先提交审核/u);
+  assert.match(
+    markup,
+    /<small>直接发布<\/small><input[^>]*name="rule-wizard-release-action"[^>]*disabled/u,
+  );
 });
 
 test("rule wizard publish step surfaces blocking high-fidelity evidence before submission", () => {

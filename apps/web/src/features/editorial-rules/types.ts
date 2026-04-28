@@ -1,6 +1,12 @@
 import type { AuthRole } from "../auth/roles.ts";
 import type { ManuscriptType } from "../manuscripts/types.ts";
 import type { TemplateModule } from "../templates/types.ts";
+import type {
+  RuleAiIntakeDraftRequest,
+  RuleAiIntakeDraftResponse,
+  RuleAiParsingRequest,
+  RuleAiParsingResponse,
+} from "@medical/contracts";
 
 export type EditorialRuleSetStatus =
   | "draft"
@@ -47,6 +53,11 @@ export type EditorialRuleActivationMetricKey =
   | "routed_prompt_candidate_count"
   | "writeback_created_count"
   | "writeback_applied_count";
+
+export type RuleAiIntakeDraftRequestViewModel = RuleAiIntakeDraftRequest;
+export type RuleAiIntakeDraftResponseViewModel = RuleAiIntakeDraftResponse;
+export type RuleAiParsingRequestViewModel = RuleAiParsingRequest;
+export type RuleAiParsingResponseViewModel = RuleAiParsingResponse;
 
 export interface EditorialRuleScope {
   manuscript_types?: string[];

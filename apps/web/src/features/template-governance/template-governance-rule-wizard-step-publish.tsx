@@ -41,6 +41,10 @@ export function TemplateGovernanceRuleWizardStepPublish({
         bindingTargetLabel: bindingState.selectedPackageLabel,
       })
     : "尚未选择规则包";
+  const directPublishBlocked = entryState.candidateOnly;
+  const submitReviewChecked =
+    value.releaseAction === "submit_review" ||
+    (directPublishBlocked && value.releaseAction === "publish_now");
 
   return (
     <article className="template-governance-card template-governance-ledger-section">
@@ -50,6 +54,11 @@ export function TemplateGovernanceRuleWizardStepPublish({
       </header>
 
       {errorMessage ? <p className="template-governance-error">{errorMessage}</p> : null}
+      {directPublishBlocked ? (
+        <p className="template-governance-status">
+          AI 草稿必须先提交审核，由人工确认后才能进入正式发布。
+        </p>
+      ) : null}
 
       <div className="template-governance-rule-hint-list">
         <div className="template-governance-rule-hint-card">
@@ -197,7 +206,7 @@ export function TemplateGovernanceRuleWizardStepPublish({
             <input
               type="radio"
               name="rule-wizard-release-action"
-              checked={value.releaseAction === "submit_review"}
+              checked={submitReviewChecked}
               disabled={isBusy}
               onChange={() => onChange({ ...value, releaseAction: "submit_review" })}
             />
@@ -207,9 +216,13 @@ export function TemplateGovernanceRuleWizardStepPublish({
             <input
               type="radio"
               name="rule-wizard-release-action"
-              checked={value.releaseAction === "publish_now"}
-              disabled={isBusy}
-              onChange={() => onChange({ ...value, releaseAction: "publish_now" })}
+              checked={!directPublishBlocked && value.releaseAction === "publish_now"}
+              disabled={isBusy || directPublishBlocked}
+              onChange={() => {
+                if (!directPublishBlocked) {
+                  onChange({ ...value, releaseAction: "publish_now" });
+                }
+              }}
             />
           </label>
         </div>

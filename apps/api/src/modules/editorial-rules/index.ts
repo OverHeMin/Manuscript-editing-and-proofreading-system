@@ -28,3 +28,7 @@ export * from "./extraction-task-service.ts";
 export * from "./example-source-session-service.ts";
 export * from "./reviewed-case-rule-package-source-service.ts";
 export * from "./rule-package-compile-service.ts";
+export * from "./rule-ai-intake-service.ts";
+export * from "./rule-ai-parsing-service.ts";
+export * from "./rule-template-matching-service.ts";
+export * from "./rule-similarity-service.ts";

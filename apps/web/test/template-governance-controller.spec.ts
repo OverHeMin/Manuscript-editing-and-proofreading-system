@@ -172,6 +172,86 @@ test("template governance controller loads template families, retrieval insights
   );
 });
 
+test("template governance controller exposes rule AI intake and manual parsing", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createTemplateGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/editorial-rules/ai-intake/drafts") {
+        return {
+          status: 200,
+          body: {
+            draft: {
+              source_kind: "manual_description",
+              ai_understanding_summary: "摘要缩写首次出现需要中文全称。",
+              recommended_governance_layer: "journal_template",
+              target_object: "abstract_abbreviation",
+              trigger: "first_abbreviation_occurrence",
+              action: "manual_review_or_replace",
+              scope: { module_scope: "proofreading", sections: ["abstract"] },
+              evidence: [{ kind: "user_description", text: "摘要缩写规范。" }],
+              confidence: { overall: 0.82 },
+              uncertainties: [],
+            },
+            template_match: { status: "matched", template_id: "abstract_rule_template" },
+            similar_rule_matches: [],
+            warnings: [],
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.url === "/api/v1/editorial-rules/ai-intake/parse-manual-rule"
+      ) {
+        return {
+          status: 200,
+          body: {
+            ai_understanding_summary: "摘要英文缩写首次出现需要补全中文全称。",
+            consistency: "consistent",
+            findings: [],
+            requires_human_confirmation: false,
+            warnings: [],
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const draftInput = {
+    source_kind: "manual_description" as const,
+    description: "摘要首次出现英文缩写时使用中文全称（英文缩写）。",
+    context: {
+      module_scope: "proofreading" as const,
+      manuscript_types: ["clinical_study" as const],
+      sections: ["abstract"],
+    },
+  };
+  const parsingInput = {
+    rule_fields: {
+      title: "摘要缩写规范",
+      rule_body: "摘要首次出现英文缩写时使用中文全称（英文缩写）。",
+      module_scope: "proofreading" as const,
+    },
+  };
+
+  const draft = await controller.createRuleAiIntakeDraft(draftInput);
+  const parsing = await controller.parseManualRuleWithAi(parsingInput);
+
+  assert.equal(draft.draft.target_object, "abstract_abbreviation");
+  assert.equal(parsing.consistency, "consistent");
+  assert.deepEqual(requests.map((request) => `${request.method} ${request.url}`), [
+    "POST /api/v1/editorial-rules/ai-intake/drafts",
+    "POST /api/v1/editorial-rules/ai-intake/parse-manual-rule",
+  ]);
+});
+
 test("template governance controller loads and updates journal target models through the selected journal template", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const journalTemplateProfile = {

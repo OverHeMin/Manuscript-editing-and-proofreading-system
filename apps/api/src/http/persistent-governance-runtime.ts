@@ -62,9 +62,14 @@ import {
   EditorialRuleService,
   ExtractionTaskService,
   ExampleSourceSessionService,
+  OpenAiRuleAiIntakeGenerator,
+  OpenAiRuleAiParsingGenerator,
   PostgresEditorialRuleActivationMetricsRepository,
   PostgresExtractionTaskRepository,
   ReviewedCaseRulePackageSourceService,
+  createRuleAiSimilarityLedgerResolver,
+  RuleAiIntakeService,
+  RuleAiParsingService,
   RulePackageCompileService,
   PostgresEditorialRuleRepository,
 } from "../modules/editorial-rules/index.ts";
@@ -701,6 +706,19 @@ export function createPersistentGovernanceRuntime(
     modelRoutingGovernanceService,
     auditService,
   });
+  const ruleAiIntakeService = new RuleAiIntakeService({
+    generator: new OpenAiRuleAiIntakeGenerator({
+      aiGatewayService,
+      aiProviderRuntimeService,
+    }),
+    existingRules: createRuleAiSimilarityLedgerResolver(editorialRuleRepository),
+  });
+  const ruleAiParsingService = new RuleAiParsingService({
+    generator: new OpenAiRuleAiParsingGenerator({
+      aiGatewayService,
+      aiProviderRuntimeService,
+    }),
+  });
   const promptSkillRegistryService = new PromptSkillRegistryService({
     repository: promptSkillRegistryRepository,
     learningCandidateRepository,
@@ -973,6 +991,8 @@ export function createPersistentGovernanceRuntime(
       editorialRulePackageService,
       extractionTaskService,
       rulePackageCompileService,
+      ruleAiIntakeService,
+      ruleAiParsingService,
     }),
     editingApi: createEditingApi({
       editingService,

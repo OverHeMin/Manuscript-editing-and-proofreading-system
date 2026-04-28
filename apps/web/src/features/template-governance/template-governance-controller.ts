@@ -57,6 +57,7 @@ import {
 import {
   compileRulePackagesToDraft as requestCompileRulePackagesToDraft,
   createExtractionTask as requestCreateExtractionTask,
+  createRuleAiIntakeDraft as requestCreateRuleAiIntakeDraft,
   createRulePackageExampleSourceSession as requestCreateRulePackageExampleSourceSession,
   createEditorialRule,
   createEditorialRuleSet,
@@ -65,6 +66,7 @@ import {
   listEditorialRuleSets,
   listExtractionTasks as requestExtractionTasks,
   loadRulePackageWorkspace as requestRulePackageWorkspace,
+  parseManualRuleWithAi as requestParseManualRuleWithAi,
   previewRulePackageCompile as requestRulePackageCompilePreview,
   previewRulePackageDraft as requestRulePackagePreview,
   publishEditorialRuleSet,
@@ -82,6 +84,10 @@ import {
   type ExtractionTaskDetailViewModel,
   type ExtractionTaskViewModel,
   type PreviewCompileRulePackagesInputViewModel,
+  type RuleAiIntakeDraftRequestViewModel,
+  type RuleAiIntakeDraftResponseViewModel,
+  type RuleAiParsingRequestViewModel,
+  type RuleAiParsingResponseViewModel,
   type RulePackageCandidateViewModel,
   type RulePackageCompilePreviewViewModel,
   type RulePackageCompileToDraftResultViewModel,
@@ -307,6 +313,12 @@ export interface TemplateGovernanceWorkbenchController {
   compileRulePackagesToDraft(
     input: CompileRulePackagesToDraftInputViewModel,
   ): Promise<RulePackageCompileToDraftResultViewModel>;
+  createRuleAiIntakeDraft(
+    input: RuleAiIntakeDraftRequestViewModel,
+  ): Promise<RuleAiIntakeDraftResponseViewModel>;
+  parseManualRuleWithAi(
+    input: RuleAiParsingRequestViewModel,
+  ): Promise<RuleAiParsingResponseViewModel>;
   createTemplateFamilyAndReload(input: CreateTemplateFamilyInput): Promise<{
     templateFamily: TemplateFamilyViewModel;
     overview: TemplateGovernanceWorkbenchOverview;
@@ -669,6 +681,12 @@ export function createTemplateGovernanceWorkbenchController(
     },
     async compileRulePackagesToDraft(input) {
       return (await requestCompileRulePackagesToDraft(client, input)).body;
+    },
+    async createRuleAiIntakeDraft(input) {
+      return (await requestCreateRuleAiIntakeDraft(client, input)).body;
+    },
+    async parseManualRuleWithAi(input) {
+      return (await requestParseManualRuleWithAi(client, input)).body;
     },
     async createTemplateFamilyAndReload(input) {
       const templateFamily = (await createTemplateFamily(client, input)).body;
@@ -1853,6 +1871,7 @@ function isNotFoundHttpError(error: unknown): boolean {
 function mapKnowledgeItemToRuleLedgerRow(
   item: KnowledgeItemViewModel,
 ): TemplateGovernanceRuleLedgerRow {
+  const aiMetadata = deriveRuleLedgerAiMetadata(item);
   return {
     id: item.id,
     asset_kind: "rule",
@@ -1867,7 +1886,41 @@ function mapKnowledgeItemToRuleLedgerRow(
         : "已确认",
     publish_status: formatTemplateGovernanceGovernedAssetStatusLabel(item.status),
     contributor_label: item.source_type ? "知识规则" : "规则中心",
+    ...aiMetadata,
     updated_at: item.effective_at,
+  };
+}
+
+function deriveRuleLedgerAiMetadata(
+  item: KnowledgeItemViewModel,
+): Pick<
+  TemplateGovernanceRuleLedgerRow,
+  | "source_label"
+  | "ai_participation_label"
+  | "review_status_label"
+  | "similarity_resolution_label"
+> {
+  const riskTags = item.routing.risk_tags ?? [];
+  const aiGenerated = riskTags.includes("ai_generated_rule_draft");
+  const aiSemanticParsed = riskTags.includes("ai_semantic_parsed");
+  const hasSimilarityReview = riskTags.includes("similarity_manual_review");
+
+  return {
+    source_label: aiGenerated ? "AI 草稿生成" : "人工/系统",
+    ai_participation_label: aiGenerated
+      ? "AI 生成草稿"
+      : aiSemanticParsed
+        ? "AI 语义解析"
+        : "无",
+    review_status_label:
+      item.status === "pending_review"
+        ? "待审核"
+        : item.status === "approved"
+          ? "审核通过"
+          : formatTemplateGovernanceGovernedAssetStatusLabel(item.status),
+    ...(hasSimilarityReview
+      ? { similarity_resolution_label: "相似规则需人工确认" }
+      : {}),
   };
 }
 

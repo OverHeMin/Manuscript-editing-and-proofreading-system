@@ -117,9 +117,43 @@ export function TemplateGovernanceRuleWizardStepSemantic({
         </div>
       ) : null}
 
+      <section className="template-governance-detail-grid" data-rule-wizard-ai-parsing="true">
+        <div className="template-governance-field template-governance-field-full">
+          <span>AI 解析校验</span>
+          {value.aiParsing ? (
+            <>
+              <p>
+                {formatAiParsingConsistencyLabel(value.aiParsing.consistency)}
+                {value.aiParsing.requires_human_confirmation ? "（需要人工确认）" : ""}
+              </p>
+              <p>{value.aiParsing.ai_understanding_summary}</p>
+              {value.aiParsing.findings.length > 0 ? (
+                <ul className="template-governance-list">
+                  {value.aiParsing.findings.map((finding) => (
+                    <li key={`${finding.field}-${finding.severity}-${finding.message}`}>
+                      <div className="template-governance-list-button">
+                        <span>
+                          {formatAiParsingFindingSeverityLabel(finding.severity)} ·{" "}
+                          {finding.field}
+                        </span>
+                        <small>{finding.message}</small>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>未发现阻断项。</p>
+              )}
+            </>
+          ) : (
+            <p>尚未运行 AI 解析校验。点击重新识别后会同步调用规则中心大模型解析。</p>
+          )}
+        </div>
+      </section>
+
       <div className="template-governance-actions">
         <button type="button" onClick={onRegenerate} disabled={isBusy}>
-          {isBusy ? "识别中..." : "重新识别"}
+          {isBusy ? "识别中..." : "重新识别 / 解析"}
         </button>
         <button type="button" onClick={onBackToEvidence} disabled={isBusy}>
           回到上一步补充证据
@@ -168,6 +202,38 @@ function formatSemanticStatusLabel(value: string | undefined): string {
     case "not_generated":
     default:
       return "未生成";
+  }
+}
+
+function formatAiParsingConsistencyLabel(
+  value: NonNullable<RuleWizardSemanticViewModel["aiParsing"]>["consistency"],
+): string {
+  switch (value) {
+    case "consistent":
+      return "一致";
+    case "partially_inconsistent":
+      return "部分不一致";
+    case "missing_evidence":
+      return "证据不足";
+    case "possibly_duplicate":
+      return "可能重复";
+    case "uncertain":
+    default:
+      return "不确定";
+  }
+}
+
+function formatAiParsingFindingSeverityLabel(
+  value: NonNullable<RuleWizardSemanticViewModel["aiParsing"]>["findings"][number]["severity"],
+): string {
+  switch (value) {
+    case "blocking":
+      return "阻断";
+    case "warning":
+      return "提醒";
+    case "info":
+    default:
+      return "信息";
   }
 }
 

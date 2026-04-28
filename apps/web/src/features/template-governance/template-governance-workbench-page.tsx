@@ -47,6 +47,7 @@ import type {
   EditorialRuleSetViewModel,
   ExtractionTaskCandidateViewModel,
   EditorialRuleType,
+  RuleAiIntakeDraftResponseViewModel,
   RulePackageDraftViewModel,
   RulePackageWorkspaceSourceInputViewModel,
 } from "../editorial-rules/index.ts";
@@ -2856,8 +2857,13 @@ function TemplateGovernanceRuleLedgerRoute({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeCommandPanel, setActiveCommandPanel] = useState<
-    "search" | "filter" | "bulk" | null
+    "search" | "filter" | "bulk" | "ai-intake" | null
   >(null);
+  const [aiIntakeDescription, setAiIntakeDescription] = useState("");
+  const [aiIntakeResult, setAiIntakeResult] =
+    useState<RuleAiIntakeDraftResponseViewModel | null>(null);
+  const [aiIntakeErrorMessage, setAiIntakeErrorMessage] = useState<string | null>(null);
+  const [isAiIntakeGenerating, setIsAiIntakeGenerating] = useState(false);
   const [clientFilterState, setClientFilterState] = useState({
     moduleValue: "all",
     publishStatusValue: "all",
@@ -3032,7 +3038,7 @@ function TemplateGovernanceRuleLedgerRoute({
     setLedger((current) => selectTemplateGovernanceRuleLedgerRow(current, rowId));
   }
 
-  function toggleCommandPanel(nextPanel: "search" | "filter" | "bulk") {
+  function toggleCommandPanel(nextPanel: "search" | "filter" | "bulk" | "ai-intake") {
     setActiveCommandPanel((current) => (current === nextPanel ? null : nextPanel));
     setStatusMessage(null);
   }
@@ -3052,6 +3058,46 @@ function TemplateGovernanceRuleLedgerRoute({
     setWizardCandidateHandoff(null);
     setWizardBindingDetail(null);
     setActiveCommandPanel(null);
+  }
+
+  async function handleGenerateRuleAiDraft(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const description = aiIntakeDescription.trim();
+    if (description.length === 0) {
+      setAiIntakeErrorMessage("请先输入规则描述。");
+      return;
+    }
+
+    setIsAiIntakeGenerating(true);
+    setAiIntakeErrorMessage(null);
+    setErrorMessage(null);
+
+    try {
+      const result = await controller.createRuleAiIntakeDraft({
+        source_kind: "manual_description",
+        description,
+      });
+      setAiIntakeResult(result);
+      setStatusMessage("AI 规则草稿已生成，请人工核对后应用到五步流。");
+    } catch (error) {
+      setAiIntakeErrorMessage(toErrorMessage(error, "AI 规则草稿生成失败"));
+    } finally {
+      setIsAiIntakeGenerating(false);
+    }
+  }
+
+  function handleApplyRuleAiDraft() {
+    if (!aiIntakeResult) {
+      return;
+    }
+
+    setWizardState(createRuleWizardState("create"));
+    setWizardTitle("AI 生成规则草稿");
+    setWizardEntryForm(createRuleWizardEntryFormStateFromAiDraft(aiIntakeResult));
+    setWizardCandidateHandoff(null);
+    setWizardBindingDetail(null);
+    setActiveCommandPanel(null);
+    setStatusMessage("AI 草稿已带入五步流，需人工确认后才能提交审核或发布。");
   }
 
   async function handleOpenSelectedItem(rowId: string) {
@@ -3342,6 +3388,24 @@ function TemplateGovernanceRuleLedgerRoute({
       }}
       onOpenBulkActions={() => {
         toggleCommandPanel("bulk");
+      }}
+      onOpenAiIntake={() => {
+        toggleCommandPanel("ai-intake");
+      }}
+      aiIntakeState={{
+        isOpen: activeCommandPanel === "ai-intake",
+        description: aiIntakeDescription,
+        isGenerating: isAiIntakeGenerating,
+        result: aiIntakeResult,
+        errorMessage: aiIntakeErrorMessage,
+        onDescriptionChange: setAiIntakeDescription,
+        onGenerate: (event) => {
+          void handleGenerateRuleAiDraft(event);
+        },
+        onApplyResult: handleApplyRuleAiDraft,
+        onClose: () => {
+          setActiveCommandPanel(null);
+        },
       }}
       onImport={() => {
         setActiveCommandPanel(null);
@@ -3799,6 +3863,58 @@ export function createRuleWizardEntryFormStateFromRuleLedgerRow(
   }
 
   return createRuleWizardEntryFormStateFromLearningCandidate(row.learning_candidate);
+}
+
+export function createRuleWizardEntryFormStateFromAiDraft(
+  response: RuleAiIntakeDraftResponseViewModel,
+): RuleWizardEntryFormState {
+  const draft = response.draft;
+  const sourceBasis = draft.evidence
+    .map((item) => item.text?.trim())
+    .filter((text): text is string => Boolean(text))
+    .join("\n");
+  const uncertaintyNotes = draft.uncertainties.map((item) => `不确定点：${item}`);
+  const similarityNotes = response.similar_rule_matches.map((match) =>
+    `相似规则：${match.title}（${match.kind}）${match.rationale}`,
+  );
+  const warningNotes = (response.warnings ?? []).map((warning) => `AI 提示：${warning}`);
+
+  return createRuleWizardEntryFormState({
+    title:
+      draft.new_template_candidate?.title?.trim() ||
+      draft.target_object.trim() ||
+      "AI 生成规则草稿",
+    moduleScope:
+      draft.scope.module_scope && draft.scope.module_scope !== "any"
+        ? draft.scope.module_scope
+        : "any",
+    manuscriptTypes: draft.scope.manuscript_types ?? "any",
+    sourceType: "other",
+    contributor: "AI 草稿生成",
+    ruleBody: [
+      draft.ai_understanding_summary,
+      `命中条件：${draft.trigger}`,
+      `执行动作：${draft.action}`,
+    ]
+      .filter((line) => line.trim().length > 0)
+      .join("\n"),
+    sourceBasis,
+    sections: draft.scope.sections ?? [],
+    riskTags: [
+      "ai_generated_rule_draft",
+      draft.recommended_governance_layer,
+      response.template_match.status,
+      ...(response.similar_rule_matches.length > 0
+        ? ["similarity_manual_review"]
+        : []),
+    ],
+    packageHints: [
+      draft.recommended_template_id,
+      response.template_match.template_id,
+    ].filter((value): value is string => Boolean(value?.trim())),
+    candidateOnly: true,
+    conflictNotes: [...uncertaintyNotes, ...similarityNotes, ...warningNotes].join("\n"),
+  });
 }
 
 function resolveInitialRuleWizardMode(

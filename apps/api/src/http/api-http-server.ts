@@ -187,6 +187,10 @@ import {
   EditorialRuleTemplateFamilyNotFoundError,
   InMemoryEditorialRuleActivationMetricsRepository,
   InMemoryEditorialRuleRepository,
+  createRuleAiSimilarityLedgerResolver,
+  RuleAiIntakeService,
+  RuleAiIntakeUnavailableError,
+  RuleAiParsingService,
 } from "../modules/editorial-rules/index.ts";
 import {
   createEditingApi,
@@ -1038,6 +1042,12 @@ type HttpRouteMatch =
     }
   | {
       route: "editorial-rules-generate-rule-package-candidates-from-reviewed-case";
+    }
+  | {
+      route: "editorial-rules-create-ai-intake-draft";
+    }
+  | {
+      route: "editorial-rules-parse-manual-rule-with-ai";
     }
   | {
       route: "manuscript-quality-package-create";
@@ -2042,6 +2052,60 @@ export function createInMemoryApiRuntime(input: {
       },
     },
   });
+  const ruleAiIntakeService = new RuleAiIntakeService({
+    generator: {
+      async createDraft(input) {
+        const isAbstractRule = input.description.includes("摘要");
+        return {
+          draft: {
+            source_kind: "manual_description",
+            ai_understanding_summary: isAbstractRule
+              ? "摘要相关规则需要按录入说明进行人工确认后入库。"
+              : "该规则需要按录入说明生成可审核草稿。",
+            recommended_governance_layer: "journal_template",
+            target_object: isAbstractRule ? "abstract_rule" : "manual_rule",
+            trigger: "manual_description_match",
+            action: "manual_review_or_replace",
+            scope: {
+              module_scope: input.context?.module_scope,
+              manuscript_types: input.context?.manuscript_types,
+              sections: input.context?.sections,
+              journal_key: input.context?.journal_key,
+              template_family_id: input.context?.template_family_id,
+              module_template_id: input.context?.module_template_id,
+              journal_template_id: input.context?.journal_template_id,
+            },
+            evidence: [
+              {
+                kind: "user_description",
+                text: input.description,
+                authority: "review_required",
+              },
+            ],
+            confidence: { overall: 0.65 },
+            uncertainties: ["本地演示运行时仅生成确定性 AI 草稿，需要人工审核。"],
+          },
+          template_match: { status: "no_match" },
+          similar_rule_matches: [],
+          warnings: ["Local demo runtime did not call an external model."],
+        };
+      },
+    },
+    existingRules: createRuleAiSimilarityLedgerResolver(editorialRuleRepository),
+  });
+  const ruleAiParsingService = new RuleAiParsingService({
+    generator: {
+      async parseRule(input) {
+        return {
+          ai_understanding_summary: `AI 理解：${input.rule_fields.rule_body}`,
+          consistency: "consistent",
+          findings: [],
+          requires_human_confirmation: false,
+          warnings: ["Local demo runtime did not call an external model."],
+        };
+      },
+    },
+  });
   const knowledgeUploadService = new KnowledgeUploadService({
     rootDir: input.uploadRootDir,
     createId: () => nextId("knowledge-upload"),
@@ -2203,6 +2267,8 @@ export function createInMemoryApiRuntime(input: {
       editorialRulePackageService,
       extractionTaskService,
       rulePackageCompileService,
+      ruleAiIntakeService,
+      ruleAiParsingService,
     }),
     editingApi: createEditingApi({
       editingService,
@@ -5834,6 +5900,22 @@ async function handleRoute(
         input: body.input,
       });
     }
+    case "editorial-rules-create-ai-intake-draft": {
+      await requirePermission(req, runtime, "template-governance.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.editorialRuleApi.createRuleAiIntakeDraft
+      >[0];
+
+      return runtime.editorialRuleApi.createRuleAiIntakeDraft(body);
+    }
+    case "editorial-rules-parse-manual-rule-with-ai": {
+      await requirePermission(req, runtime, "template-governance.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.editorialRuleApi.parseManualRuleWithAi
+      >[0];
+
+      return runtime.editorialRuleApi.parseManualRuleWithAi(body);
+    }
     case "prompt-skill-create-skill-package": {
       const session = await requirePermission(req, runtime, "permissions.manage");
       const body = (await readJsonBody(req)) as {
@@ -7550,6 +7632,20 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return {
       route: "editorial-rules-generate-rule-package-candidates-from-reviewed-case",
     };
+  }
+
+  if (
+    method === "POST" &&
+    path === "/api/v1/editorial-rules/ai-intake/drafts"
+  ) {
+    return { route: "editorial-rules-create-ai-intake-draft" };
+  }
+
+  if (
+    method === "POST" &&
+    path === "/api/v1/editorial-rules/ai-intake/parse-manual-rule"
+  ) {
+    return { route: "editorial-rules-parse-manual-rule-with-ai" };
   }
 
   if (method === "POST" && path === "/api/v1/prompt-skill-registry/skill-packages") {
@@ -9536,7 +9632,10 @@ export function mapErrorToHttpResponse(
     return [404, { error: "not_found", message: error.message }];
   }
 
-  if (error instanceof KnowledgeAiAssistUnavailableError) {
+  if (
+    error instanceof KnowledgeAiAssistUnavailableError ||
+    error instanceof RuleAiIntakeUnavailableError
+  ) {
     return [503, { error: "service_unavailable", message: error.message }];
   }
 
