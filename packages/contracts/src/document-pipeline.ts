@@ -184,7 +184,10 @@ export interface DocumentPreviewSession {
   save_back?: {
     module: Extract<ManuscriptModule, "editing" | "proofreading">;
     baseline_asset_id: DocumentAssetId;
-    output_asset_type: Extract<DocumentAssetType, "edited_docx" | "human_final_docx">;
+    output_asset_type: Extract<
+      DocumentAssetType,
+      "edited_docx" | "human_final_docx" | "human_review_working_docx"
+    >;
     callback_token: string;
   };
   warnings?: string[];

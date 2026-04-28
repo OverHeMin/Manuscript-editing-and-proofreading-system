@@ -9,6 +9,7 @@ export * from "./learning.js";
 export * from "./residual-learning.js";
 export * from "./review-items.js";
 export * from "./learning-governance.js";
+export * from "./human-review.js";
 export * from "./rule-ai-intake.js";
 export * from "./editorial-rules.js";
 export * from "./editorial-rule-packages.js";

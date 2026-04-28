@@ -35,6 +35,10 @@ export interface DocumentExportServiceOptions {
   manuscriptRepository: ManuscriptRepository;
 }
 
+const NON_EXPORTABLE_ASSET_TYPES: ReadonlySet<DocumentAssetType> = new Set([
+  "human_review_working_docx",
+]);
+
 export class DocumentExportAssetNotFoundError extends Error {
   constructor(manuscriptId: string, preferredAssetType?: DocumentAssetType) {
     super(
@@ -59,12 +63,13 @@ export class DocumentExportService {
     input: ExportCurrentDocumentAssetInput,
   ): Promise<DocumentExportResult> {
     const manuscript = await this.manuscriptRepository.findById(input.manuscriptId);
-    const candidates = input.preferredAssetType
+    const assets = input.preferredAssetType
       ? await this.assetRepository.listByManuscriptIdAndType(
           input.manuscriptId,
           input.preferredAssetType,
         )
       : await this.assetRepository.listByManuscriptId(input.manuscriptId);
+    const candidates = assets.filter(isExportableDocumentAsset);
     const matrix = resolveResultAssetMatrix({
       assets: candidates,
       pointers: {
@@ -139,4 +144,8 @@ export class DocumentExportService {
 
     return latestAsset;
   }
+}
+
+function isExportableDocumentAsset(asset: DocumentAssetRecord): boolean {
+  return !NON_EXPORTABLE_ASSET_TYPES.has(asset.asset_type);
 }
