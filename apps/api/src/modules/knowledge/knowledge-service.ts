@@ -92,6 +92,11 @@ export interface CreateKnowledgeDraftFromLearningCandidateInput
   sourceLearningCandidateId: string;
 }
 
+export interface CreateKnowledgeLibraryDraftFromLearningCandidateInput
+  extends CreateKnowledgeLibraryDraftInput {
+  sourceLearningCandidateId: string;
+}
+
 export interface UpdateKnowledgeDraftInput {
   title?: string;
   canonicalText?: string;
@@ -635,6 +640,18 @@ export class KnowledgeService {
       input.sourceLearningCandidateId,
     );
     return this.createDraft(input);
+  }
+
+  async createLibraryDraftFromLearningCandidate(
+    actorRole: RoleKey,
+    input: CreateKnowledgeLibraryDraftFromLearningCandidateInput,
+  ): Promise<KnowledgeAssetDetailRecord> {
+    this.permissionGuard.assert(actorRole, "knowledge.review");
+    await requireApprovedLearningCandidate(
+      this.learningCandidateRepository,
+      input.sourceLearningCandidateId,
+    );
+    return this.createLibraryDraft(input);
   }
 
   async createDraftRevisionFromApprovedAsset(

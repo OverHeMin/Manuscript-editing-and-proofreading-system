@@ -23,7 +23,7 @@ import type {
   LearningWritebackTarget,
 } from "./learning-governance-record.ts";
 import type {
-  CreateKnowledgeDraftFromLearningCandidateInput,
+  CreateKnowledgeLibraryDraftFromLearningCandidateInput,
   KnowledgeService,
 } from "../knowledge/knowledge-service.ts";
 import type {
@@ -60,7 +60,7 @@ interface ApplyLearningWritebackBaseInput {
 export interface ApplyKnowledgeWritebackInput
   extends ApplyLearningWritebackBaseInput,
     Omit<
-      CreateKnowledgeDraftFromLearningCandidateInput,
+      CreateKnowledgeLibraryDraftFromLearningCandidateInput,
       "sourceLearningCandidateId"
     > {
   targetType: "knowledge_item";
@@ -216,7 +216,7 @@ export class LearningGovernanceService {
     actorRole: RoleKey,
     input: CreateLearningWritebackInput,
   ): Promise<LearningWritebackRecord> {
-    this.permissionGuard.assert(actorRole, "permissions.manage");
+    this.assertWritebackPermission(actorRole, input.targetType);
     const candidate = await requireApprovedLearningCandidate(
       this.learningCandidateRepository,
       input.learningCandidateId,
@@ -257,7 +257,7 @@ export class LearningGovernanceService {
     actorRole: RoleKey,
     input: ApplyLearningWritebackInput,
   ): Promise<LearningWritebackRecord> {
-    this.permissionGuard.assert(actorRole, "permissions.manage");
+    this.assertWritebackPermission(actorRole, input.targetType);
 
     return this.transactionManager.withTransaction(async ({ repository }) => {
       const writeback = await repository.findById(input.writebackId);
@@ -323,7 +323,7 @@ export class LearningGovernanceService {
   ): Promise<string> {
     switch (input.targetType) {
       case "knowledge_item": {
-        const created = await this.knowledgeService.createDraftFromLearningCandidate(
+        const created = await this.knowledgeService.createLibraryDraftFromLearningCandidate(
           actorRole,
           {
             sourceLearningCandidateId: writeback.learning_candidate_id,
@@ -341,9 +341,12 @@ export class LearningGovernanceService {
             sourceLink: input.sourceLink,
             aliases: input.aliases,
             templateBindings: input.templateBindings,
+            effectiveAt: input.effectiveAt,
+            expiresAt: input.expiresAt,
+            bindings: input.bindings,
           },
         );
-        return created.id;
+        return created.asset.id;
       }
       case "module_template": {
         const created =
@@ -452,6 +455,23 @@ export class LearningGovernanceService {
         });
         return created.id;
       }
+    }
+  }
+
+  private assertWritebackPermission(
+    actorRole: RoleKey,
+    targetType: LearningWritebackTarget,
+  ): void {
+    switch (targetType) {
+      case "knowledge_item":
+        this.permissionGuard.assert(actorRole, "learning.review");
+        this.permissionGuard.assert(actorRole, "knowledge.review");
+        return;
+      case "editorial_rule_draft":
+        this.permissionGuard.assert(actorRole, "template-governance.manage");
+        return;
+      default:
+        this.permissionGuard.assert(actorRole, "permissions.manage");
     }
   }
 }

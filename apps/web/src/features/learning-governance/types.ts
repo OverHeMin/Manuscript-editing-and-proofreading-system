@@ -1,4 +1,5 @@
 import type { AuthRole } from "../auth/roles.ts";
+import type { KnowledgeRevisionBindingInput } from "../knowledge-library/types.ts";
 import type { ManuscriptType } from "../manuscripts/types.ts";
 import type { TemplateModule } from "../templates/types.ts";
 
@@ -54,6 +55,9 @@ export interface ApplyKnowledgeWritebackInput
   sourceLink?: string;
   aliases?: string[];
   templateBindings?: string[];
+  effectiveAt?: string;
+  expiresAt?: string;
+  bindings?: KnowledgeRevisionBindingInput[];
 }
 
 export interface ApplyModuleTemplateWritebackInput

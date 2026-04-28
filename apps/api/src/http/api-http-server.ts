@@ -7023,7 +7023,7 @@ async function handleRoute(
       });
     }
     case "learning-governance-create-writeback": {
-      const session = await requirePermission(req, runtime, "permissions.manage");
+      const session = await runtime.authRuntime.requireSession(req);
       const body = (await readJsonBody(req)) as {
         input: Omit<
           Parameters<typeof runtime.learningGovernanceApi.createWriteback>[0]["input"],
@@ -7040,7 +7040,7 @@ async function handleRoute(
       });
     }
     case "learning-governance-apply-writeback": {
-      const session = await requirePermission(req, runtime, "permissions.manage");
+      const session = await runtime.authRuntime.requireSession(req);
       const body = (await readJsonBody(req)) as {
         input: Omit<
           Parameters<typeof runtime.learningGovernanceApi.applyWriteback>[0]["input"],
@@ -7058,7 +7058,7 @@ async function handleRoute(
       });
     }
     case "learning-governance-list-writebacks":
-      await requirePermission(req, runtime, "permissions.manage");
+      await requirePermission(req, runtime, "learning.review");
       return runtime.learningGovernanceApi.listWritebacksByCandidate({
         learningCandidateId: routeMatch.candidateId,
       });
