@@ -15,6 +15,8 @@ import {
   type WriteTransactionManager,
 } from "../shared/write-transaction-manager.ts";
 import {
+  type OnlyOfficeSaveBackOutputAssetType,
+  type OnlyOfficeSaveBackPurpose,
   type SurfaceSessionAccessTokenClaims,
   verifySurfaceSessionAccessToken,
 } from "./onlyoffice-session-service.ts";
@@ -160,12 +162,12 @@ export class OnlyOfficeSaveBackService {
       const timestamp = this.now().toISOString();
       const jobId = this.createId();
       const outputAssetType = scope.outputAssetType;
-      const sourceModule = resolveOutputSourceModule(scope.module);
+      const sourceModule = resolveOutputSourceModule(scope);
       const job: JobRecord = {
         id: jobId,
         manuscript_id: scope.manuscriptId,
         module: scope.module,
-        job_type: resolveSaveBackJobType(scope.module),
+        job_type: resolveSaveBackJobType(scope),
         status: "completed",
         requested_by: `onlyoffice:${scope.actorRole}`,
         payload: {
@@ -174,7 +176,9 @@ export class OnlyOfficeSaveBackService {
           sessionId: scope.sessionId,
           documentKey: scope.documentKey,
           saveBackModule: scope.module,
+          saveBackPurpose: scope.purpose,
           baselineAssetId: scope.baselineAssetId,
+          outputAssetType,
           callbackStatus: callbackBody.status,
           humanReviewStage: "ai_output_human_review",
           storageKey,
@@ -182,10 +186,18 @@ export class OnlyOfficeSaveBackService {
           contentByteLength: bytes.byteLength,
           callbackReceivedAt: timestamp,
           learningSignal: {
-            kind: "human_final_merge",
-            status: "pending_semantic_diff",
+            kind:
+              scope.purpose === "human_review_working_state"
+                ? "human_review_working_state"
+                : "human_final_merge",
+            status:
+              scope.purpose === "human_review_working_state"
+                ? "pending_diff_extraction"
+                : "pending_semantic_diff",
             reason:
-              "OnlyOffice saved final DOCX; semantic diff extraction is deferred.",
+              scope.purpose === "human_review_working_state"
+                ? "OnlyOffice saved a human-review working DOCX for diff extraction."
+                : "OnlyOffice saved final DOCX; semantic diff extraction is deferred.",
           },
         },
         attempt_count: 1,
@@ -206,17 +218,27 @@ export class OnlyOfficeSaveBackService {
         storageKey,
         mimeType: DOCX_MIME_TYPE,
         createdBy: `onlyoffice:${scope.actorRole}`,
-        fileName: createSaveBackFileName(scope.module, baselineAsset),
+        fileName: createSaveBackFileName(scope, baselineAsset),
         parentAssetId: scope.baselineAssetId,
         sourceModule,
         sourceJobId: jobId,
       });
+      const storedOutputAsset =
+        scope.purpose === "human_review_working_state"
+          ? {
+              ...outputAsset,
+              is_current: false,
+            }
+          : outputAsset;
+      if (storedOutputAsset !== outputAsset) {
+        await context.assetRepository.save(storedOutputAsset);
+      }
 
       await (context.jobRepository ?? this.jobRepository).save({
         ...job,
         payload: {
           ...job.payload,
-          outputAssetId: outputAsset.id,
+          outputAssetId: storedOutputAsset.id,
         },
       });
     });
@@ -282,6 +304,7 @@ export class OnlyOfficeSaveBackService {
       module,
       baselineAssetId,
       documentKey: claims.document_key,
+      purpose: claims.save_back.purpose,
       outputAssetType: claims.save_back.output_asset_type,
     };
   }
@@ -332,7 +355,11 @@ interface VerifiedSaveBackScope {
   module: "editing" | "proofreading";
   baselineAssetId: string;
   documentKey: string;
-  outputAssetType: Extract<DocumentAssetType, "edited_docx" | "human_final_docx">;
+  purpose: OnlyOfficeSaveBackPurpose;
+  outputAssetType: Extract<
+    DocumentAssetType,
+    OnlyOfficeSaveBackOutputAssetType
+  >;
 }
 
 function parseCallbackBody(body: unknown): SaveBackCallbackBody {
@@ -509,24 +536,36 @@ function createSaveBackStorageKey(input: {
 }
 
 function createSaveBackFileName(
-  module: "editing" | "proofreading",
+  scope: VerifiedSaveBackScope,
   baselineAsset: DocumentAssetRecord,
 ): string {
-  const baseName = baselineAsset.file_name?.replace(/\.docx$/iu, "") || module;
-  const suffix = module === "editing" ? "人工复核编辑" : "人工终稿";
+  const baseName =
+    baselineAsset.file_name?.replace(/\.docx$/iu, "") || scope.module;
+  const suffix =
+    scope.purpose === "human_review_working_state"
+      ? "人工核验工作稿"
+      : scope.module === "editing"
+        ? "人工复核编辑"
+        : "人工终稿";
   return `${baseName}-${suffix}.docx`;
 }
 
-function resolveSaveBackJobType(module: "editing" | "proofreading"): string {
-  return module === "editing"
+function resolveSaveBackJobType(scope: VerifiedSaveBackScope): string {
+  if (scope.purpose === "human_review_working_state") {
+    return "onlyoffice_human_review_working_save_back";
+  }
+
+  return scope.module === "editing"
     ? "onlyoffice_editing_save_back"
     : "onlyoffice_proofreading_human_final_save_back";
 }
 
-function resolveOutputSourceModule(
-  module: "editing" | "proofreading",
-): ManuscriptModule {
-  return module === "editing" ? "editing" : "manual";
+function resolveOutputSourceModule(scope: VerifiedSaveBackScope): ManuscriptModule {
+  if (scope.purpose === "human_review_working_state") {
+    return "manual";
+  }
+
+  return scope.module === "editing" ? "editing" : "manual";
 }
 
 function isAllowedBaselineForModule(

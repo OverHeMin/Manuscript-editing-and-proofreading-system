@@ -14,7 +14,7 @@ import { DocumentPreviewService } from "../../src/modules/document-pipeline/docu
 import { OnlyOfficeSaveBackService } from "../../src/modules/document-pipeline/onlyoffice-save-back-service.ts";
 import { OnlyOfficeSessionService } from "../../src/modules/document-pipeline/onlyoffice-session-service.ts";
 
-test("OnlyOffice save-back stores proofreading edits as the current human final manuscript version", async () => {
+test("OnlyOffice save-back stores proofreading edits as an internal human review working asset", async () => {
   const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-saveback-proofreading-"));
   const manuscriptRepository = new InMemoryManuscriptRepository();
   const assetRepository = new InMemoryDocumentAssetRepository();
@@ -107,21 +107,24 @@ test("OnlyOffice save-back stores proofreading edits as the current human final 
 
     assert.deepEqual(response, { error: 0 });
     const assets = await assetRepository.listByManuscriptId(upload.manuscript.id);
-    const humanFinalAssets = assets.filter(
+    const workingAssets = assets.filter(
       (asset) =>
-        asset.asset_type === "human_final_docx" &&
+        asset.asset_type === "human_review_working_docx" &&
         asset.parent_asset_id === finalProofAsset.id,
     );
-    assert.equal(humanFinalAssets.length, 1);
-    assert.equal(humanFinalAssets[0]?.source_module, "manual");
-    assert.equal(humanFinalAssets[0]?.is_current, true);
+    assert.equal(workingAssets.length, 1);
+    assert.equal(workingAssets[0]?.source_module, "manual");
+    assert.equal(workingAssets[0]?.is_current, false);
     const manuscript = await manuscriptRepository.findById(upload.manuscript.id);
-    assert.equal(manuscript?.current_proofreading_asset_id, humanFinalAssets[0]?.id);
+    assert.equal(manuscript?.current_proofreading_asset_id, finalProofAsset.id);
+    assert.notEqual(manuscript?.current_proofreading_asset_id, workingAssets[0]?.id);
 
-    const job = await jobRepository.findById(humanFinalAssets[0]?.source_job_id ?? "");
-    assert.equal(job?.job_type, "onlyoffice_proofreading_human_final_save_back");
+    const job = await jobRepository.findById(workingAssets[0]?.source_job_id ?? "");
+    assert.equal(job?.job_type, "onlyoffice_human_review_working_save_back");
     assert.equal(job?.payload?.baselineAssetId, finalProofAsset.id);
     assert.equal(job?.payload?.saveBackModule, "proofreading");
+    assert.equal(job?.payload?.saveBackPurpose, "human_review_working_state");
+    assert.equal(job?.payload?.outputAssetType, "human_review_working_docx");
   } finally {
     callbackSourceServer.close();
     await once(callbackSourceServer, "close");

@@ -266,7 +266,7 @@ test("preview session for pending normalization stays read-only and signals wait
   assert.equal(response.body.source_asset_type, "original");
 });
 
-test("preview session enables signed save-back only for editing and proofreading document reviews", async () => {
+test("preview session enables signed human review working-state save-back only for editing and proofreading document reviews", async () => {
   const { manuscriptService, assetService, documentPipelineApi } =
     createPreviewHarness();
   const uploadResult = await manuscriptService.upload({
@@ -324,7 +324,8 @@ test("preview session enables signed save-back only for editing and proofreading
   assert.equal(response.body.save_back_enabled, true);
   assert.equal(response.body.save_back?.module, "editing");
   assert.equal(response.body.save_back?.baseline_asset_id, editedAsset.id);
-  assert.equal(response.body.save_back?.output_asset_type, "edited_docx");
+  assert.equal(response.body.save_back?.purpose, "human_review_working_state");
+  assert.equal(response.body.save_back?.output_asset_type, "human_review_working_docx");
   assert.match(response.body.save_back?.callback_token ?? "", /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u);
 
   await assert.rejects(

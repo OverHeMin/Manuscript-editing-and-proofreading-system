@@ -5,6 +5,7 @@ import {
   OnlyOfficeSessionService,
   type DocumentPreviewComment,
   type OnlyOfficeViewSession,
+  type OnlyOfficeSaveBackPurpose,
 } from "./onlyoffice-session-service.ts";
 
 export interface CreateDocumentPreviewSessionInput {
@@ -16,6 +17,7 @@ export interface CreateDocumentPreviewSessionInput {
     enabled: boolean;
     module: "editing" | "proofreading";
     baselineAssetId?: string;
+    purpose?: OnlyOfficeSaveBackPurpose;
   };
   comments?: DocumentPreviewComment[];
 }
@@ -76,6 +78,7 @@ export class DocumentPreviewService {
     asset: DocumentAssetRecord,
   ): CreateDocumentPreviewSessionInput["saveBack"] & {
     baselineAssetId: string;
+    purpose: OnlyOfficeSaveBackPurpose;
   } | undefined {
     if (input.saveBack?.enabled !== true) {
       return undefined;
@@ -123,6 +126,7 @@ export class DocumentPreviewService {
       enabled: true,
       module: input.saveBack.module,
       baselineAssetId,
+      purpose: input.saveBack.purpose ?? "human_review_working_state",
     };
   }
 

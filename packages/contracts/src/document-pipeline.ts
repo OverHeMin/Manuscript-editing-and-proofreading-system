@@ -50,6 +50,9 @@ export type DocumentPreviewSurfaceMode = "read_only_review" | "editable_review";
 export type DocumentPreviewSessionAuthorizationKind = "surface_session";
 export type DocumentPreviewSessionTokenScheme = "none" | "surface_session_jwt";
 export type DocumentPreviewEventBridgeTransport = "window_post_message";
+export type DocumentPreviewSaveBackPurpose =
+  | "human_review_working_state"
+  | "legacy_module_output";
 export type DocumentPreviewAnchorKind =
   | "block"
   | "paragraph"
@@ -182,6 +185,7 @@ export interface DocumentPreviewSession {
   comments?: DocumentCommentView[];
   save_back_enabled: boolean;
   save_back?: {
+    purpose: DocumentPreviewSaveBackPurpose;
     module: Extract<ManuscriptModule, "editing" | "proofreading">;
     baseline_asset_id: DocumentAssetId;
     output_asset_type: Extract<

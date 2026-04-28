@@ -1430,6 +1430,7 @@ export interface ApiServerRuntime {
         enabled: boolean;
         module: "editing" | "proofreading";
         baselineAssetId?: string;
+        purpose?: "human_review_working_state" | "legacy_module_output";
       };
       comments?: Array<{
         id: string;
