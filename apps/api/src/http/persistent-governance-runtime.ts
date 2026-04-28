@@ -959,6 +959,7 @@ export function createPersistentGovernanceRuntime(
     runtimeBindingReadinessService,
     aiProviderRuntimeService,
     aiProviderRuntimeCutoverEnabled,
+    knowledgeRetrievalService,
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,

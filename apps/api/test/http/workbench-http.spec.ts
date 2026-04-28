@@ -3213,10 +3213,18 @@ test("workbench http proofreading routes create a draft and then finalize agains
           proofreadingSourceBlocks?: Array<{
             text?: string;
           }>;
+          deepProofreading?: {
+            passRuns?: Array<{
+              passKind: string;
+              sliceId: string;
+              issueCount: number;
+              status: string;
+            }>;
+          };
           proofreadingDeepPassRuns?: Array<{
-            job_id: string;
-            pass_no: number;
-            pass_kind: string;
+            job_id?: string;
+            pass_no?: number;
+            pass_kind?: string;
             status: string;
             model_id?: string;
             output?: {
@@ -3248,9 +3256,9 @@ test("workbench http proofreading routes create a draft and then finalize agains
       "Proofreading target",
     );
     assert.deepEqual(
-      draft.job.payload?.proofreadingDeepPassRuns?.map((pass) => [
-        pass.pass_no,
-        pass.pass_kind,
+      draft.job.payload?.deepProofreading?.passRuns?.map((pass, index) => [
+        index + 1,
+        pass.passKind,
         pass.status,
       ]),
       [
@@ -3262,22 +3270,11 @@ test("workbench http proofreading routes create a draft and then finalize agains
       ],
     );
     assert.ok(
-      draft.job.payload?.proofreadingDeepPassRuns?.every(
-        (pass) => pass.output && Array.isArray(pass.output.issues),
+      draft.job.payload?.deepProofreading?.passRuns?.every(
+        (pass) => pass.sliceId && Number.isInteger(pass.issueCount),
       ),
     );
-    assert.deepEqual(
-      draft.job.payload?.proofreadingDeepPassRuns?.map(
-        (pass) => pass.output?.summary,
-      ),
-      [
-        "AI proofreading pass 1: medical_facts_and_terminology.",
-        "AI proofreading pass 2: structure_logic_and_consistency.",
-        "AI proofreading pass 3: data_statistics_units_and_tables.",
-        "AI proofreading pass 4: language_style_punctuation_and_format.",
-        "AI proofreading pass 5: residual_synthesis.",
-      ],
-    );
+    assert.equal(draft.job.payload?.proofreadingDeepPassRuns, undefined);
     assert.ok(
       draft.job.payload?.proofreadingPlan?.issues?.some(
         (issue) => issue.title === "Pass 5 issue",
@@ -3330,7 +3327,6 @@ test("workbench http proofreading routes create a draft and then finalize agains
       passCoverageItems.every(
         (item) =>
           item.source_id &&
-          item.source_id !== `${draft.job.payload?.proofreadingDeepPassRuns?.[0]?.job_id}:1` &&
           item.evidence?.pass_run_id === item.source_id &&
           item.evidence?.snapshot_id === draft.snapshot_id &&
           item.evidence?.prompt_template_id === "prompt-proofreading-1" &&

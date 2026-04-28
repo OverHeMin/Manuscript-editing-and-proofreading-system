@@ -796,11 +796,23 @@ function extractProofreadingDeepPassMatrixItems(
   job: JobRecord | undefined,
   persistedPassRuns: ProofreadingPassRunRecord[] = [],
 ): ManuscriptHarnessMatrixItemRecord[] {
+  const payloadDiagnosticItems = extractProofreadingDeepDiagnosticMatrixItems(job);
   if (persistedPassRuns.length > 0) {
-    return persistedPassRuns.map(mapProofreadingPassRunToMatrixItem);
+    return [
+      ...persistedPassRuns.map(mapProofreadingPassRunToMatrixItem),
+      ...payloadDiagnosticItems,
+    ];
   }
 
   const payload = asRecord(job?.payload);
+  const deepProofreading = asRecord(payload?.deepProofreading);
+  if (deepProofreading) {
+    return [
+      ...extractProofreadingDeepPayloadPassMatrixItems(job, deepProofreading),
+      ...payloadDiagnosticItems,
+    ];
+  }
+
   const passRuns = Array.isArray(payload?.proofreadingDeepPassRuns)
     ? payload.proofreadingDeepPassRuns
     : [];
@@ -845,6 +857,163 @@ function extractProofreadingDeepPassMatrixItems(
       },
     ];
   });
+}
+
+function extractProofreadingDeepPayloadPassMatrixItems(
+  job: JobRecord | undefined,
+  deepProofreading: Record<string, unknown>,
+): ManuscriptHarnessMatrixItemRecord[] {
+  const passRuns = Array.isArray(deepProofreading.passRuns)
+    ? deepProofreading.passRuns
+    : [];
+
+  return passRuns.flatMap((passRun, index): ManuscriptHarnessMatrixItemRecord[] => {
+    const pass = asRecord(passRun);
+    if (!pass) {
+      return [];
+    }
+    const passNo = index + 1;
+    const passKind = readString(pass.passKind);
+    const status = readString(pass.status);
+    if (!passKind) {
+      return [];
+    }
+
+    return [
+      {
+        key: `proofreading_pass.payload.${passNo}.${passKind}`,
+        label: `Proofreading pass ${passNo}`,
+        state:
+          status === "completed" ? "hit" : status === "failed" ? "failed" : "observed",
+        source_kind: "proofreading_deep_pass",
+        source_id: `${job?.id ?? "unknown"}:payload:${passNo}`,
+        title: passKind,
+        summary: `Deep proofreading payload pass ${passKind}.`,
+        evidence: {
+          job_id: job?.id,
+          pass_no: passNo,
+          pass_kind: passKind,
+          slice_id: readString(pass.sliceId),
+          status,
+          issue_count: readNumber(pass.issueCount),
+        },
+      },
+    ];
+  });
+}
+
+function extractProofreadingDeepDiagnosticMatrixItems(
+  job: JobRecord | undefined,
+): ManuscriptHarnessMatrixItemRecord[] {
+  const payload = asRecord(job?.payload);
+  const deepProofreading = asRecord(payload?.deepProofreading);
+  if (!deepProofreading) {
+    return [];
+  }
+
+  const factLedger = asRecord(deepProofreading.factLedgerSummary);
+  const tableFidelity = asRecord(deepProofreading.tableFidelityDiagnostics);
+  const selectedRules = asRecord(deepProofreading.selectedRuleDiagnostics);
+  const knowledgeBudget = asRecord(
+    deepProofreading.selectedKnowledgeBudgetDiagnostics,
+  );
+  const stageDiagnostics = Array.isArray(deepProofreading.stageDiagnostics)
+    ? deepProofreading.stageDiagnostics
+    : [];
+
+  return [
+    {
+      key: "proofreading_deep.fact_ledger",
+      label: "Deep proofreading fact ledger",
+      state: "observed",
+      source_kind: "observation",
+      source_id: job?.id,
+      title: "Fact ledger",
+      summary: "Read-only global fact ledger diagnostics.",
+      evidence: {
+        job_id: job?.id,
+        fact_count: readNumber(factLedger?.factCount),
+        conflict_count: readNumber(factLedger?.conflictCount),
+      },
+    },
+    {
+      key: "proofreading_deep.table_fidelity",
+      label: "Deep proofreading table fidelity",
+      state: "observed",
+      source_kind: "observation",
+      source_id: job?.id,
+      title: "Table fidelity",
+      summary: "Table extraction confidence and unsupported structure diagnostics.",
+      evidence: {
+        job_id: job?.id,
+        table_count: readNumber(tableFidelity?.tableCount),
+        unsupported_structure_count: readNumber(
+          tableFidelity?.unsupportedStructureCount,
+        ),
+        low_confidence_review_only:
+          tableFidelity?.lowConfidenceReviewOnly === true,
+      },
+    },
+    {
+      key: "proofreading_deep.rule_activation",
+      label: "Deep proofreading rule activation",
+      state: "observed",
+      source_kind: "observation",
+      source_id: job?.id,
+      title: "Rule activation",
+      summary: "Slice-scoped rule activation diagnostics.",
+      evidence: {
+        job_id: job?.id,
+        total_selected: readNumber(selectedRules?.totalSelected),
+      },
+    },
+    {
+      key: "proofreading_deep.knowledge_budget",
+      label: "Deep proofreading knowledge budget",
+      state: "observed",
+      source_kind: "observation",
+      source_id: job?.id,
+      title: "Knowledge budget",
+      summary: "Slice-scoped knowledge budget diagnostics.",
+      evidence: {
+        job_id: job?.id,
+        total_selected: readNumber(knowledgeBudget?.totalSelected),
+        total_excluded: readNumber(knowledgeBudget?.totalExcluded),
+        estimated_tokens: readNumber(knowledgeBudget?.estimatedTokens),
+      },
+    },
+    ...stageDiagnostics.flatMap((entry, index): ManuscriptHarnessMatrixItemRecord[] => {
+      const stage = asRecord(entry);
+      const passKind = readString(stage?.passKind);
+      if (!stage || !passKind) {
+        return [];
+      }
+      const status = readString(stage.status);
+      return [
+        {
+          key: `proofreading_deep.stage.${index + 1}.${passKind}`,
+          label: `Deep proofreading stage ${index + 1}`,
+          state:
+            status === "completed"
+              ? "hit"
+              : status === "failed"
+                ? "failed"
+                : "observed",
+          source_kind: "observation",
+          source_id: job?.id,
+          title: passKind,
+          summary: `Deep proofreading diagnostic stage ${passKind}.`,
+          evidence: {
+            job_id: job?.id,
+            pass_kind: passKind,
+            status,
+            issue_count: readNumber(stage.issueCount),
+            duration_ms: readNumber(stage.durationMs),
+          },
+        },
+      ];
+    }),
+  ];
 }
 
 function mapProofreadingPassRunToMatrixItem(
@@ -893,6 +1062,10 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 function readString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function readNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function deriveReviewItemMatrixState(

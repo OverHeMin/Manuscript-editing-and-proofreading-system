@@ -87,6 +87,11 @@ export interface CreateProofreadingAiPlanInput {
     passKind: ProofreadingDeepPassKind;
     instruction: string;
   };
+  sliceContext?: Record<string, unknown>;
+  factLedgerSummary?: Record<string, unknown>;
+  activatedRules?: Array<Record<string, unknown>>;
+  budgetedKnowledge?: Array<Record<string, unknown>>;
+  deepDiagnostics?: Record<string, unknown>;
 }
 
 export class ProofreadingAiPlanService {
@@ -113,7 +118,7 @@ export class ProofreadingAiPlanService {
     const payload =
       await this.mainlineAiRuntimeExecutor.executeJson<Record<string, unknown>>({
         module: "proofreading",
-        systemPrompt: buildProofreadingSystemPrompt(),
+        systemPrompt: buildProofreadingSystemPrompt(input),
         userPayload: buildProofreadingUserPayload({
           ...input,
           planningContext,
@@ -129,10 +134,15 @@ export class ProofreadingAiPlanService {
   }
 }
 
-function buildProofreadingSystemPrompt(): string {
+function buildProofreadingSystemPrompt(
+  input?: Pick<CreateProofreadingAiPlanInput, "sliceContext">,
+): string {
+  const scopeInstruction = input?.sliceContext
+    ? "这是一次分片深度校对调用，只审查 deepProofreading.sliceContext 指定的证据范围，并结合 factLedgerSummary 判断。"
+    : "这是一次整篇稿件单次校对，不允许按段分块改写后再拼接结论。";
   return [
     "你是“医学稿件终校审校员”。",
-    "这是一次整篇稿件单次校对，不允许按段分块改写后再拼接结论。",
+    scopeInstruction,
     "你的职责是基于整篇稿件上下文发现终校问题，而不是直接改写稿件。",
     "当 contextMode=full_text 时，先完整阅读 fullDocumentText，再回到 fullDocumentBlocks 给出可定位的问题。",
     "当 contextMode=document_map 时，要先完整理解 documentMap 提供的整篇结构、跨章节信号和关键术语，再结合 fullDocumentBlocks 的定位预览统一判断。",
@@ -202,6 +212,11 @@ function buildProofreadingUserPayload(input: {
   promptGuardrails?: CreateProofreadingAiPlanInput["promptGuardrails"];
   governanceContext?: AiGovernanceContext;
   passFocus?: CreateProofreadingAiPlanInput["passFocus"];
+  sliceContext?: CreateProofreadingAiPlanInput["sliceContext"];
+  factLedgerSummary?: CreateProofreadingAiPlanInput["factLedgerSummary"];
+  activatedRules?: CreateProofreadingAiPlanInput["activatedRules"];
+  budgetedKnowledge?: CreateProofreadingAiPlanInput["budgetedKnowledge"];
+  deepDiagnostics?: CreateProofreadingAiPlanInput["deepDiagnostics"];
 }) {
   const governance =
     input.governanceContext && !isAiGovernanceContextEmpty(input.governanceContext)
@@ -231,6 +246,27 @@ function buildProofreadingUserPayload(input: {
     ...(input.planningContext.documentMap
       ? {
           documentMap: input.planningContext.documentMap,
+        }
+      : {}),
+    ...(input.sliceContext ||
+    input.factLedgerSummary ||
+    input.activatedRules ||
+    input.budgetedKnowledge ||
+    input.deepDiagnostics
+      ? {
+          deepProofreading: {
+            ...(input.sliceContext ? { sliceContext: input.sliceContext } : {}),
+            ...(input.factLedgerSummary
+              ? { factLedgerSummary: input.factLedgerSummary }
+              : {}),
+            ...(input.activatedRules ? { activatedRules: input.activatedRules } : {}),
+            ...(input.budgetedKnowledge
+              ? { budgetedKnowledge: input.budgetedKnowledge }
+              : {}),
+            ...(input.deepDiagnostics
+              ? { diagnostics: input.deepDiagnostics }
+              : {}),
+          },
         }
       : {}),
     governedCoverage: {
@@ -1378,8 +1414,11 @@ function toSeverity(value: unknown): ProofreadingIssueSeverity | undefined {
 }
 
 function toSource(value: unknown): ProofreadingIssueSource | undefined {
-  return value === "governed_rule" ||
+  return value === "deterministic_check" ||
+    value === "governed_rule" ||
     value === "knowledge_base" ||
+    value === "quality_package" ||
+    value === "ai_pass" ||
     value === "quality_check" ||
     value === "residual_ai" ||
     value === "legacy_correction"

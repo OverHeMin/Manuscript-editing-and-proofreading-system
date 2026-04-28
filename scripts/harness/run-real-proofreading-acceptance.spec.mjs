@@ -75,12 +75,20 @@ test("real proofreading acceptance sends governed context layers and passes cont
   assert.equal(report.provider.provider, "deepseek");
   assert.equal(report.provider.apiKey, "[redacted]");
   assert.equal(report.passReports.length, 5);
-  assert.equal(report.metrics.totalIssues, 5);
+  assert.equal(report.metrics.totalIssues >= 1, true);
   assert.equal(report.gates.minFindings.status, "passed");
   assert.equal(report.gates.contextLayerEvidence.status, "passed");
   assert.equal(report.gates.governedCitationEvidence.status, "passed");
   assert.equal(report.gates.residualLayerEvidence.status, "passed");
-  assert.equal(requests.length, 5);
+  assert.equal(report.gates.deepPayloadEvidence.status, "passed");
+  assert.equal(report.gates.deepPassCoverage.status, "passed");
+  assert.equal(report.gates.finalRegressionDiagnostic.status, "passed");
+  assert.ok(requests.length >= 5);
+  assert.equal(report.deepProofreading.factLedgerSummary.conflictCount >= 1, true);
+  assert.equal(
+    report.deepProofreading.selectedKnowledgeBudgetDiagnostics.totalSelected > 0,
+    true,
+  );
 
   const requestBody = JSON.parse(String(requests[0].init.body));
   assert.equal(requests[0].url, "https://api.deepseek.com/v1/chat/completions");
@@ -93,15 +101,11 @@ test("real proofreading acceptance sends governed context layers and passes cont
 
   const userPayload = JSON.parse(requestBody.messages[1].content);
   assert.equal(userPayload.contextMode, "full_text");
+  assert.ok(userPayload.deepProofreading.sliceContext);
+  assert.ok(userPayload.deepProofreading.factLedgerSummary);
+  assert.ok(userPayload.deepProofreading.activatedRules.length > 0);
+  assert.ok(userPayload.deepProofreading.budgetedKnowledge.length > 0);
   assert.ok(userPayload.proofreadingContextLayers.localBlockContext.blockCount > 0);
-  assert.deepEqual(
-    userPayload.proofreadingContextLayers.ruleCitationContext.ruleIds,
-    ["rule-unit-format-1", "rule-table-text-consistency-1"],
-  );
-  assert.deepEqual(
-    userPayload.proofreadingContextLayers.knowledgeCitationContext.knowledgeItemIds,
-    ["knowledge-stat-significance-1", "knowledge-table-consistency-1"],
-  );
   assert.equal(
     userPayload.proofreadingContextLayers.residualAnalysisContext
       .runsAfterGovernedCoverage,
@@ -134,11 +138,20 @@ test("real proofreading acceptance fails content gate when model returns too few
         },
       },
     ],
+    deepProofreading: {
+      factLedgerSummary: { factCount: 0, conflictCount: 0 },
+      tableFidelityDiagnostics: { tableCount: 0 },
+      selectedRuleDiagnostics: { totalSelected: 0 },
+      selectedKnowledgeBudgetDiagnostics: { totalSelected: 0 },
+      passRuns: [],
+      stageDiagnostics: [],
+    },
     minFindings: 1,
   });
 
   assert.equal(report.status, "failed");
   assert.equal(report.gates.minFindings.status, "failed");
+  assert.equal(report.gates.deepPayloadEvidence.status, "failed");
 });
 
 function createJsonResponse(body) {

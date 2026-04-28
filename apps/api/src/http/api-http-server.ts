@@ -2282,6 +2282,7 @@ export function createInMemoryApiRuntime(input: {
     agentRuntimeService,
     runtimeBindingService,
     runtimeBindingReadinessService,
+    knowledgeRetrievalService,
     toolPermissionPolicyService,
     agentExecutionService,
     agentExecutionOrchestrationService,

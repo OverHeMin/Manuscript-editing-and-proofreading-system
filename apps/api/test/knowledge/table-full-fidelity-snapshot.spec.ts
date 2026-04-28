@@ -98,6 +98,20 @@ function buildSupportedMedicalTable(): DocumentStructureTableSnapshot {
       {
         id: "cell-1",
         text: "年龄",
+        display_text: "12.3  ±  1.4",
+        normalized_text: "12.3±1.4",
+        raw_xml_text:
+          '<w:tc><w:p><w:r><w:t xml:space="preserve">12.3  ±  1.4</w:t></w:r></w:p></w:tc>',
+        style_runs: [
+          {
+            text: "P",
+            kind: "text",
+            paragraph_index: 0,
+            fragment_index: 0,
+            italic: true,
+            script_position: "baseline",
+          },
+        ],
         row_index: 1,
         column_index: 0,
         row_span: 1,
@@ -177,6 +191,14 @@ test("document table snapshots normalize into V1 full-fidelity mandatory fact gr
     (snapshot.facts.identity as { caption_text?: string }).caption_text,
     "表 1 基线特征",
   );
+  const firstGridCell = (
+    snapshot.facts.structure as {
+      grid_cells: NonNullable<DocumentStructureTableSnapshot["grid_cells"]>;
+    }
+  ).grid_cells[0];
+  assert.equal(firstGridCell?.display_text, "12.3  ±  1.4");
+  assert.equal(firstGridCell?.normalized_text, "12.3±1.4");
+  assert.equal(firstGridCell?.style_runs?.[0]?.italic, true);
 });
 
 test("document table snapshots expose unavailable mandatory facts instead of guessing", () => {

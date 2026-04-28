@@ -159,6 +159,42 @@ export type ProofreadingSeverityFilter =
   | "low";
 
 export type ProofreadingStatusFilter = "all" | "pending" | "processed" | "blocking";
+
+export interface DeepProofreadingEvidenceViewModel {
+  schema?: string;
+  factLedgerSummary: {
+    factCount?: number;
+    conflictCount?: number;
+  };
+  tableFidelityDiagnostics: {
+    tableCount?: number;
+    highCount?: number;
+    mediumCount?: number;
+    lowCount?: number;
+    unsupportedStructureCount?: number;
+    lowConfidenceReviewOnly?: boolean;
+  };
+  selectedRuleDiagnostics: {
+    totalSelected?: number;
+  };
+  selectedKnowledgeBudgetDiagnostics: {
+    totalSelected?: number;
+    totalExcluded?: number;
+    estimatedTokens?: number;
+  };
+  passRuns: Array<{
+    passKind: string;
+    sliceId?: string;
+    status?: string;
+    issueCount?: number;
+  }>;
+  stageDiagnostics: Array<{
+    passKind: string;
+    status?: string;
+    issueCount?: number;
+  }>;
+}
+
 export interface EditingSlotManualSaveInput {
   slotKey: string;
   resolutionKind: EditingSlotManualResolutionKind;
@@ -188,6 +224,7 @@ export interface ManuscriptWorkbenchAssetDetailPageProps {
   knowledgeReferences?: Readonly<
     Record<string, ManuscriptWorkbenchKnowledgeReferenceViewModel>
   >;
+  deepProofreadingEvidence?: DeepProofreadingEvidenceViewModel | null;
   confirmationItems?: readonly ProofreadingConfirmationItemViewModel[];
   confirmationState?: Readonly<Record<string, ProofreadingConfirmationDraftState>>;
   humanReviewDiffItems?: readonly HumanReviewDiffItemViewModel[];
@@ -522,6 +559,94 @@ export function buildProofreadingDocumentBlocks(
     payloadKey: "proofreadingSourceBlocks",
     blockPrefix: "proofreading-block",
   });
+}
+
+export function buildDeepProofreadingEvidence(
+  job: Pick<JobViewModel, "payload"> | null | undefined,
+): DeepProofreadingEvidenceViewModel | null {
+  const payload = asRecord(job?.payload);
+  const deepProofreading = asRecord(payload?.deepProofreading);
+  if (!deepProofreading) {
+    return null;
+  }
+
+  const factLedgerSummary = asRecord(deepProofreading.factLedgerSummary);
+  const tableFidelityDiagnostics = asRecord(
+    deepProofreading.tableFidelityDiagnostics,
+  );
+  const confidenceCounts = asRecord(tableFidelityDiagnostics?.confidenceCounts);
+  const selectedRuleDiagnostics = asRecord(
+    deepProofreading.selectedRuleDiagnostics,
+  );
+  const selectedKnowledgeBudgetDiagnostics = asRecord(
+    deepProofreading.selectedKnowledgeBudgetDiagnostics,
+  );
+
+  return {
+    schema: readOptionalString(deepProofreading.schema),
+    factLedgerSummary: {
+      factCount: readOptionalNumber(factLedgerSummary?.factCount),
+      conflictCount: readOptionalNumber(factLedgerSummary?.conflictCount),
+    },
+    tableFidelityDiagnostics: {
+      tableCount: readOptionalNumber(tableFidelityDiagnostics?.tableCount),
+      highCount: readOptionalNumber(confidenceCounts?.high),
+      mediumCount: readOptionalNumber(confidenceCounts?.medium),
+      lowCount: readOptionalNumber(confidenceCounts?.low),
+      unsupportedStructureCount: readOptionalNumber(
+        tableFidelityDiagnostics?.unsupportedStructureCount,
+      ),
+      lowConfidenceReviewOnly:
+        tableFidelityDiagnostics?.lowConfidenceReviewOnly === true,
+    },
+    selectedRuleDiagnostics: {
+      totalSelected: readOptionalNumber(selectedRuleDiagnostics?.totalSelected),
+    },
+    selectedKnowledgeBudgetDiagnostics: {
+      totalSelected: readOptionalNumber(
+        selectedKnowledgeBudgetDiagnostics?.totalSelected,
+      ),
+      totalExcluded: readOptionalNumber(
+        selectedKnowledgeBudgetDiagnostics?.totalExcluded,
+      ),
+      estimatedTokens: readOptionalNumber(
+        selectedKnowledgeBudgetDiagnostics?.estimatedTokens,
+      ),
+    },
+    passRuns: Array.isArray(deepProofreading.passRuns)
+      ? deepProofreading.passRuns.flatMap((entry) => {
+          const passRun = asRecord(entry);
+          const passKind = readOptionalString(passRun?.passKind);
+          if (!passKind) {
+            return [];
+          }
+          return [
+            {
+              passKind,
+              sliceId: readOptionalString(passRun?.sliceId),
+              status: readOptionalString(passRun?.status),
+              issueCount: readOptionalNumber(passRun?.issueCount),
+            },
+          ];
+        })
+      : [],
+    stageDiagnostics: Array.isArray(deepProofreading.stageDiagnostics)
+      ? deepProofreading.stageDiagnostics.flatMap((entry) => {
+          const stage = asRecord(entry);
+          const passKind = readOptionalString(stage?.passKind);
+          if (!passKind) {
+            return [];
+          }
+          return [
+            {
+              passKind,
+              status: readOptionalString(stage?.status),
+              issueCount: readOptionalNumber(stage?.issueCount),
+            },
+          ];
+        })
+      : [],
+  };
 }
 
 export function buildScreeningDocumentBlocks(
@@ -1174,6 +1299,7 @@ export function ManuscriptWorkbenchAssetDetailPage({
   executionSnapshot = null,
   knowledgeHitLogs = [],
   knowledgeReferences,
+  deepProofreadingEvidence = null,
   confirmationItems = [],
   confirmationState = {},
   humanReviewDiffItems = [],
@@ -1981,6 +2107,10 @@ export function ManuscriptWorkbenchAssetDetailPage({
               </div>
             )}
 
+            {deepProofreadingEvidence
+              ? renderDeepProofreadingEvidenceCard(deepProofreadingEvidence)
+              : null}
+
             {showsHumanReviewDiffQueue ? null : (
               <div className="manuscript-workbench-button-row manuscript-workbench-button-row--sticky">
                 {onSaveDraft ? (
@@ -2478,6 +2608,101 @@ export function ManuscriptWorkbenchAssetDetailPage({
 
         {governanceEvidenceCard}
       </div>
+    </section>
+  );
+}
+
+function renderDeepProofreadingEvidenceCard(
+  evidence: DeepProofreadingEvidenceViewModel,
+): React.ReactElement {
+  return (
+    <section
+      className="manuscript-workbench-detail-card manuscript-workbench-proofreading-deep-evidence"
+      aria-label="深度校对证据"
+    >
+      <div className="manuscript-workbench-detail-card-header">
+        <div>
+          <h4>深度校对证据</h4>
+          <p>只读展示本次深度校对的事实账本、表格提取、规则激活与知识预算。</p>
+        </div>
+        <span className="manuscript-workbench-status-pill is-neutral">
+          {evidence.schema ?? "未记录"}
+        </span>
+      </div>
+      <dl className="manuscript-workbench-detail-metadata">
+        <div>
+          <dt>全局事实账本</dt>
+          <dd>
+            {`事实 ${formatOptionalNumber(evidence.factLedgerSummary.factCount)} · 冲突 ${formatOptionalNumber(
+              evidence.factLedgerSummary.conflictCount,
+            )}`}
+          </dd>
+        </div>
+        <div>
+          <dt>表格校对层</dt>
+          <dd>
+            {`表格 ${formatOptionalNumber(evidence.tableFidelityDiagnostics.tableCount)} · 高 ${formatOptionalNumber(
+              evidence.tableFidelityDiagnostics.highCount,
+            )} · 中 ${formatOptionalNumber(
+              evidence.tableFidelityDiagnostics.mediumCount,
+            )} · 低 ${formatOptionalNumber(evidence.tableFidelityDiagnostics.lowCount)}`}
+          </dd>
+        </div>
+        <div>
+          <dt>规则激活</dt>
+          <dd>{`规则 ${formatOptionalNumber(evidence.selectedRuleDiagnostics.totalSelected)}`}</dd>
+        </div>
+        <div>
+          <dt>知识预算</dt>
+          <dd>
+            {`知识 ${formatOptionalNumber(
+              evidence.selectedKnowledgeBudgetDiagnostics.totalSelected,
+            )} · 排除 ${formatOptionalNumber(
+              evidence.selectedKnowledgeBudgetDiagnostics.totalExcluded,
+            )} · 估算 ${formatOptionalNumber(
+              evidence.selectedKnowledgeBudgetDiagnostics.estimatedTokens,
+            )} tokens`}
+          </dd>
+        </div>
+      </dl>
+      {evidence.passRuns.length > 0 ? (
+        <div className="manuscript-workbench-proofreading-deep-list">
+          <strong>分片执行层</strong>
+          <ul>
+            {evidence.passRuns.map((passRun, index) => (
+              <li key={`${passRun.passKind}:${passRun.sliceId ?? index}`}>
+                <span>{passRun.passKind}</span>
+                <small>
+                  {[
+                    passRun.sliceId,
+                    passRun.status ?? "未记录",
+                    `问题 ${formatOptionalNumber(passRun.issueCount)}`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </small>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {evidence.stageDiagnostics.length > 0 ? (
+        <div className="manuscript-workbench-proofreading-deep-list">
+          <strong>诊断阶段</strong>
+          <ul>
+            {evidence.stageDiagnostics.map((stage, index) => (
+              <li key={`${stage.passKind}:${index}`}>
+                <span>{stage.passKind}</span>
+                <small>
+                  {[stage.status ?? "未记录", `问题 ${formatOptionalNumber(stage.issueCount)}`]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </small>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -3864,6 +4089,12 @@ function formatSeverityLabel(severity?: string): string {
   }
 }
 
+function formatOptionalNumber(value: number | undefined): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? String(value)
+    : "未记录";
+}
+
 function resolveSeverityClassName(severity?: string): string {
   return `manuscript-workbench-status-pill ${
     severity === "critical" || severity === "high"
@@ -4317,6 +4548,10 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 function readOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function readOptionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function readStringArray(value: unknown): string[] {

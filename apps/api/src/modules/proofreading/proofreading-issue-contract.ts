@@ -5,8 +5,11 @@ export type ProofreadingIssueSeverity =
   | "low";
 
 export type ProofreadingIssueSource =
+  | "deterministic_check"
   | "governed_rule"
   | "knowledge_base"
+  | "quality_package"
+  | "ai_pass"
   | "quality_check"
   | "residual_ai"
   | "legacy_correction";

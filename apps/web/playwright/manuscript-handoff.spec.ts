@@ -168,38 +168,21 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
     semanticTableReportTarget,
   );
   await navigateToProofreadingIssueWorkbench(page, manuscriptId, proofreadingDraftAsset.id);
-  const selectedIssue = page.locator(
-    ".manuscript-workbench-proofreading-issue.is-selected",
-  );
-  const issueDetail = selectedIssue.locator(
+  const seededIssue = page
+    .locator(".manuscript-workbench-proofreading-issue")
+    .filter({ hasText: "Seeded proofreading issue" })
+    .first();
+  await clickViaDom(seededIssue.getByRole("button").first());
+  const issueDetail = seededIssue.locator(
     ".manuscript-workbench-proofreading-issue-detail",
   );
+  await expect(issueDetail).toBeVisible();
   await clickViaDom(issueDetail.getByRole("button", { name: "转规则候选" }));
   await expect(
     issueDetail.getByRole("button", { name: "转规则候选" }),
   ).toHaveClass(/is-selected/);
 
-  const secondIssue = page.locator(".manuscript-workbench-proofreading-issue").nth(1);
-  await clickViaDom(secondIssue.getByRole("button").first());
-  const secondIssueDetail = secondIssue.locator(
-    ".manuscript-workbench-proofreading-issue-detail",
-  );
-  await expect(secondIssueDetail).toBeVisible();
-  await clickViaDom(secondIssueDetail.getByRole("button", { name: "驳回" }));
-  await expect(
-    secondIssueDetail.getByRole("button", { name: "驳回" }),
-  ).toHaveClass(/is-selected/);
-
-  const thirdIssue = page.locator(".manuscript-workbench-proofreading-issue").nth(2);
-  await clickViaDom(thirdIssue.getByRole("button").first());
-  const thirdIssueDetail = thirdIssue.locator(
-    ".manuscript-workbench-proofreading-issue-detail",
-  );
-  await expect(thirdIssueDetail).toBeVisible();
-  await clickViaDom(thirdIssueDetail.getByRole("button", { name: "仅人工处理" }));
-  await expect(
-    thirdIssueDetail.getByRole("button", { name: "仅人工处理" }),
-  ).toHaveClass(/is-selected/);
+  await resolveRemainingProofreadingIssues(page, 0);
 
   const publishHumanFinalButton = page.getByRole("button", { name: "发布人工终稿" });
   await expect(publishHumanFinalButton).toBeEnabled();
@@ -471,6 +454,34 @@ async function expandResultDetails(page: Page) {
   const summary = page.locator("summary").filter({ hasText: "展开完整处理详情" }).first();
   await expect(summary).toBeVisible();
   await clickViaDom(summary);
+}
+
+async function resolveRemainingProofreadingIssues(page: Page, startIndex: number) {
+  const issues = page.locator(".manuscript-workbench-proofreading-issue");
+  const issueCount = await issues.count();
+  for (let index = startIndex; index < issueCount; index += 1) {
+    const issue = issues.nth(index);
+    const issueButton = issue.getByRole("button").first();
+    const issueLabel = await issueButton.innerText();
+    if (
+      /转规则候选|转知识候选|驳回|采纳|仅人工处理|升级处理/u.test(issueLabel)
+    ) {
+      continue;
+    }
+
+    await clickViaDom(issueButton);
+    const detail = issue.locator(".manuscript-workbench-proofreading-issue-detail");
+    await expect(detail).toBeVisible();
+    const rejectButton = detail.getByRole("button", { name: "驳回" });
+    if ((await rejectButton.count()) > 0) {
+      await clickViaDom(rejectButton);
+      await expect(rejectButton).toHaveClass(/is-selected/);
+      continue;
+    }
+    const manualOnlyButton = detail.getByRole("button", { name: "仅人工处理" });
+    await clickViaDom(manualOnlyButton);
+    await expect(manualOnlyButton).toHaveClass(/is-selected/);
+  }
 }
 
 async function clickViaDom(locator: Locator) {

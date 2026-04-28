@@ -1,4 +1,5 @@
 import { pathToFileURL } from "node:url";
+import { DeepProofreadingOrchestrator } from "../../apps/api/src/modules/proofreading/deep-proofreading-orchestrator.ts";
 import { ProofreadingAiPlanService } from "../../apps/api/src/modules/proofreading/proofreading-ai-plan-service.ts";
 
 const REDACTED_SECRET = "[redacted]";
@@ -80,101 +81,50 @@ export async function runRealProofreadingAcceptance({
   });
 
   const sourceBlocks = buildAcceptanceSourceBlocks();
-  const passReports = [];
-
-  for (const passFocus of PASS_FOCI.slice(0, config.passLimit)) {
-    const plan = await service.createPlan({
-      manuscriptId: "real-acceptance-proofreading-fixture",
-      sourceFileName: "real-acceptance-proofreading-fixture.docx",
-      sourceBlocks,
-      governedFailedChecks: [
-        {
-          ruleId: "rule-unit-format-1",
-          severity: "error",
-          actual: "5 mg per dL",
-          expected: "5 mg/dL",
-          blockIndex: 2,
-        },
-      ],
-      governedManualReviewItems: [
-        {
-          ruleId: "rule-table-text-consistency-1",
-          reason: "Confirm table-text consistency before release.",
-          evidence_pack: {
-            excerpt: "Table 1 lists 120 cases while Results says 118.",
-          },
-        },
-      ],
-      qualityIssues: [
-        {
-          severity: "high",
-          issue_type: "evidence_alignment.overstated_conclusion",
-          explanation:
-            "The conclusion states proven efficacy even though the main endpoint is not statistically significant.",
-          action: "manual_review",
-          text_excerpt: "This therapy proves significant efficacy.",
-          suggested_replacement:
-            "This therapy may be associated with improved outcomes and requires confirmation.",
-        },
-      ],
-      knowledgeHits: [
-        {
-          knowledgeItemId: "knowledge-stat-significance-1",
-          title: "Statistical significance wording",
-          summary:
-            "Do not describe p values above 0.05 as statistically significant.",
-          canonicalText:
-            "When p is greater than or equal to 0.05, conclusions should avoid claiming statistical significance.",
-          matchReasons: ["statistical expression"],
-        },
-        {
-          knowledgeItemId: "knowledge-table-consistency-1",
-          title: "Table and text consistency",
-          summary:
-            "Sample sizes, adverse events, and key values must match between tables and body text.",
-          canonicalText:
-            "If table totals and body text values differ, route the item to manual verification.",
-          matchReasons: ["table consistency"],
-        },
-      ],
-      promptGuardrails: {
-        roleLabel: "Medical manuscript final proofreader",
-        systemInstructions:
-          "Inspect the whole manuscript after governed deterministic checks.",
-        taskFrame:
-          "Return residual findings only and do not rewrite the full manuscript.",
-        manualReviewPolicy:
-          "Escalate any medical meaning, data, or table consistency risk.",
-        forbiddenOperations: ["rewrite_full_manuscript", "invent_missing_evidence"],
-        outputContract: "Return JSON with residual issues and manual review notes.",
-      },
-      passFocus,
+  const orchestrator = new DeepProofreadingOrchestrator({
+    proofreadingAiPlanService: service,
+  });
+  const orchestratorResult = await orchestrator.run({
+    manuscriptId: "real-acceptance-proofreading-fixture",
+    manuscriptType: "clinical_study",
+    templateFamilyId: "acceptance-family",
+    sourceBlocks,
+    documentStructure: buildAcceptanceDocumentStructure(),
+    rules: buildAcceptanceRules(),
+    knowledge: buildAcceptanceKnowledge(),
+  });
+  const passReports = orchestratorResult.deepProofreading.passRuns
+    .slice(0, config.passLimit)
+    .map((passRun, index) => {
+      const issues = orchestratorResult.issueCards.filter(
+        (issue) =>
+          issue.passKind === passRun.passKind &&
+          (issue.sliceId === undefined || issue.sliceId === passRun.sliceId),
+      );
+      return {
+        passNo: index + 1,
+        passKind: passRun.passKind,
+        sliceId: passRun.sliceId,
+        issueCount: issues.length,
+        residualIssueCount: issues.filter((issue) => issue.source === "residual_ai")
+          .length,
+        summary: `Deep proofreading ${passRun.passKind} on ${passRun.sliceId}.`,
+        issues: issues.map((issue) => ({
+          itemId: issue.itemId,
+          title: issue.title,
+          severity: issue.severity,
+          source: issue.source,
+          issueType: issue.issueType,
+          blockIndex: issue.anchor.blockIndex,
+        })),
+        contextEvidence: contextEvidenceReports[index] ?? {},
+      };
     });
-
-    const contextEvidence = contextEvidenceReports.at(-1) ?? {};
-    passReports.push({
-      passNo: passFocus.passNo,
-      passKind: passFocus.passKind,
-      issueCount: plan.issues.length,
-      residualIssueCount: plan.issues.filter(
-        (issue) => issue.source === "residual_ai",
-      ).length,
-      summary: plan.summary,
-      issues: plan.issues.map((issue) => ({
-        itemId: issue.itemId,
-        title: issue.title,
-        severity: issue.severity,
-        source: issue.source,
-        issueType: issue.issueType,
-        blockIndex: issue.anchor.blockIndex,
-      })),
-      contextEvidence,
-    });
-  }
 
   return evaluateRealProofreadingAcceptanceReport({
     provider: config.reportable,
     passReports,
+    deepProofreading: orchestratorResult.deepProofreading,
     minFindings: config.minFindings,
   });
 }
@@ -211,8 +161,10 @@ export function evaluateRealProofreadingAcceptanceReport(input) {
     governedCitationEvidence: buildGate(
       input.passReports.some(
         (report) =>
-          (report.contextEvidence?.ruleIds?.length ?? 0) > 0 &&
-          (report.contextEvidence?.knowledgeItemIds?.length ?? 0) > 0,
+          ((report.contextEvidence?.ruleIds?.length ?? 0) > 0 &&
+            (report.contextEvidence?.knowledgeItemIds?.length ?? 0) > 0) ||
+          ((report.contextEvidence?.activatedRuleCount ?? 0) > 0 &&
+            (report.contextEvidence?.budgetedKnowledgeCount ?? 0) > 0),
       ),
       "At least one pass must cite governed rule and knowledge identifiers.",
     ),
@@ -222,6 +174,35 @@ export function evaluateRealProofreadingAcceptanceReport(input) {
           report.contextEvidence?.residualRunsAfterGovernedCoverage === true,
       ),
       "Every pass must prove residual analysis runs after governed coverage.",
+    ),
+    deepPayloadEvidence: buildGate(
+      Boolean(
+        input.deepProofreading?.factLedgerSummary &&
+          input.deepProofreading?.tableFidelityDiagnostics &&
+          input.deepProofreading?.selectedRuleDiagnostics &&
+          input.deepProofreading?.selectedKnowledgeBudgetDiagnostics &&
+          Array.isArray(input.deepProofreading?.passRuns),
+      ) &&
+        (input.deepProofreading?.factLedgerSummary?.conflictCount ?? 0) > 0 &&
+        (input.deepProofreading?.selectedRuleDiagnostics?.totalSelected ?? 0) > 0 &&
+        (input.deepProofreading?.selectedKnowledgeBudgetDiagnostics
+          ?.totalSelected ?? 0) > 0,
+      "Deep proofreading payload must include fact ledger, table fidelity, rule activation, knowledge budget, and pass diagnostics.",
+    ),
+    deepPassCoverage: buildGate(
+      new Set(
+        (input.deepProofreading?.passRuns ?? []).map((pass) => pass.passKind),
+      ).has("data_statistics_units_and_tables") &&
+        new Set(
+          (input.deepProofreading?.passRuns ?? []).map((pass) => pass.passKind),
+        ).has("residual_synthesis"),
+      "Deep proofreading pass coverage must include data/statistics/tables and residual synthesis.",
+    ),
+    finalRegressionDiagnostic: buildGate(
+      (input.deepProofreading?.stageDiagnostics ?? []).some(
+        (stage) => stage.passKind === "final_regression_preparation",
+      ),
+      "Final regression preparation must be exposed as a diagnostic stage.",
     ),
   };
   const status = Object.values(gates).every((gate) => gate.status === "passed")
@@ -238,6 +219,7 @@ export function evaluateRealProofreadingAcceptanceReport(input) {
       minFindings: input.minFindings,
     },
     gates,
+    deepProofreading: input.deepProofreading,
     passReports: input.passReports,
   };
 }
@@ -296,6 +278,7 @@ function createOpenAiCompatibleJsonExecutor({
 
 function readContextEvidence(userPayload) {
   const layers = userPayload?.proofreadingContextLayers ?? {};
+  const deepProofreading = userPayload?.deepProofreading ?? {};
   return {
     hasLocalBlockContext: Boolean(layers.localBlockContext),
     hasNeighborContext: Boolean(layers.neighborContext),
@@ -305,6 +288,10 @@ function readContextEvidence(userPayload) {
     knowledgeItemIds: layers.knowledgeCitationContext?.knowledgeItemIds ?? [],
     residualRunsAfterGovernedCoverage:
       layers.residualAnalysisContext?.runsAfterGovernedCoverage === true,
+    hasSliceContext: Boolean(deepProofreading.sliceContext),
+    hasFactLedgerSummary: Boolean(deepProofreading.factLedgerSummary),
+    activatedRuleCount: deepProofreading.activatedRules?.length ?? 0,
+    budgetedKnowledgeCount: deepProofreading.budgetedKnowledge?.length ?? 0,
   };
 }
 
@@ -326,7 +313,7 @@ function buildAcceptanceSourceBlocks() {
       section: "results",
       block_kind: "paragraph",
       text:
-        "Results: 118 patients completed follow-up. The primary endpoint p value was 0.06. Dosage was recorded as 5 mg per dL.",
+        "Results: 表1 reports 120 cases; 118 patients completed follow-up. The primary endpoint p value was 0.06. Dosage was recorded as 5 mg per dL.",
     },
     {
       section: "table",
@@ -339,6 +326,156 @@ function buildAcceptanceSourceBlocks() {
       block_kind: "paragraph",
       text:
         "Conclusion: This therapy proves the treatment is effective and no adverse reactions occurred.",
+    },
+  ];
+}
+
+function buildAcceptanceDocumentStructure() {
+  return {
+    manuscript_id: "real-acceptance-proofreading-fixture",
+    asset_id: "real-acceptance-asset",
+    file_name: "real-acceptance-proofreading-fixture.docx",
+    status: "ready",
+    parser: "python_docx",
+    sections: [],
+    metadata_candidates: [],
+    tables: [
+      {
+        table_id: "table-1",
+        row_count: 1,
+        column_count: 1,
+        profile: {
+          is_three_line_table: true,
+          header_depth: 1,
+          has_stub_column: true,
+          has_statistical_footnotes: false,
+          has_unit_markers: true,
+        },
+        caption_fields: {
+          text: "表1 研究对象完成情况",
+        },
+        header_cells: [],
+        data_cells: [],
+        footnote_items: [],
+        grid_cells: [
+          {
+            id: "cell-total-cases",
+            text: "120",
+            display_text: "120",
+            normalized_text: "120",
+            raw_xml_text: "120",
+            row_index: 0,
+            column_index: 0,
+            row_span: 1,
+            column_span: 1,
+            inferred_role: "data",
+            style_evidence: {},
+            paragraphs: [],
+          },
+        ],
+      },
+    ],
+    objects: [],
+    warnings: [],
+  };
+}
+
+function buildAcceptanceRules() {
+  return [
+    {
+      id: "rule-table-text-consistency-1",
+      rule_set_id: "rule-set-proofreading-acceptance",
+      order_no: 1,
+      priority: 1,
+      rule_object: "table",
+      rule_type: "content",
+      execution_mode: "inspect",
+      scope_layer: "journal",
+      scope: {
+        manuscript_types: ["clinical_study"],
+        object_granularity: ["table"],
+      },
+      selector: {},
+      trigger: {
+        kind: "table_text_consistency",
+      },
+      action: {
+        kind: "manual_review_required",
+      },
+      authoring_payload: {},
+      explanation_payload: {
+        rationale:
+          "Sample sizes, completion counts, and key table values must match body text.",
+      },
+      confidence_policy: "manual_only",
+      severity: "error",
+      enabled: true,
+    },
+    {
+      id: "rule-unit-format-1",
+      rule_set_id: "rule-set-proofreading-acceptance",
+      order_no: 2,
+      priority: 5,
+      rule_object: "generic",
+      rule_type: "format",
+      execution_mode: "inspect",
+      scope_layer: "general",
+      scope: {
+        manuscript_types: ["clinical_study"],
+      },
+      selector: {},
+      trigger: {
+        kind: "unit_format",
+      },
+      action: {
+        kind: "suggest_change",
+      },
+      authoring_payload: {},
+      explanation_payload: {
+        rationale: "Units should use compact medical journal expressions.",
+      },
+      confidence_policy: "manual_only",
+      severity: "warning",
+      enabled: true,
+    },
+  ];
+}
+
+function buildAcceptanceKnowledge() {
+  return [
+    {
+      id: "knowledge-stat-significance-1",
+      title: "Statistical significance wording",
+      canonical_text:
+        "When p is greater than or equal to 0.05, conclusions should avoid claiming statistical significance.",
+      summary:
+        "Do not describe p values above 0.05 as statistically significant.",
+      knowledge_kind: "prompt_snippet",
+      status: "approved",
+      routing: {
+        module_scope: "proofreading",
+        manuscript_types: ["clinical_study"],
+      },
+      binding_targets: {
+        template_family_ids: ["acceptance-family"],
+      },
+    },
+    {
+      id: "knowledge-table-consistency-1",
+      title: "Table and text consistency",
+      canonical_text:
+        "If table totals and body text values differ, route the item to manual verification.",
+      summary:
+        "Sample sizes, adverse events, and key values must match between tables and body text.",
+      knowledge_kind: "prompt_snippet",
+      status: "approved",
+      routing: {
+        module_scope: "proofreading",
+        manuscript_types: ["clinical_study"],
+      },
+      binding_targets: {
+        template_family_ids: ["acceptance-family"],
+      },
     },
   ];
 }
