@@ -53,6 +53,12 @@ test("rule ledger page renders unified categories and command bar actions", () =
             publish_status: "草稿",
             contributor_label: "editor.zh",
             updated_at: "2026-04-14T09:00:00.000Z",
+            effect_metrics: {
+              hit_count: 12,
+              accepted_change_count: 5,
+              writeback_applied_count: 2,
+              human_confirmation_count: 7,
+            },
           },
         ],
       }}
@@ -63,6 +69,14 @@ test("rule ledger page renders unified categories and command bar actions", () =
   assert.match(markup, /全部资产/u);
   assert.match(markup, /回流候选/u);
   assert.match(markup, /术语统一规则/u);
+  assert.match(markup, /命中/u);
+  assert.match(markup, /接受改动/u);
+  assert.match(markup, /写回应用/u);
+  assert.match(markup, /人工确认/u);
+  assert.match(markup, /12/u);
+  assert.match(markup, /5/u);
+  assert.match(markup, /2/u);
+  assert.match(markup, /7/u);
   assert.match(markup, /新建规则/u);
   assert.match(markup, /新建 AI 规则草稿/u);
   assert.match(markup, /搜索/u);

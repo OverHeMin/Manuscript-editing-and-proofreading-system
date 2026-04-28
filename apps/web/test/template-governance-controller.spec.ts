@@ -1758,6 +1758,158 @@ test("template governance controller updates a template family and keeps it sele
   );
 });
 
+test("template governance controller maps editorial activation metrics into rule ledger rows", async () => {
+  const controller = createTemplateGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      if (input.url === "/api/v1/knowledge") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "knowledge-rule-1",
+              title: "摘要缩写规则",
+              canonical_text: "摘要首次出现缩写时补全中文全称。",
+              knowledge_kind: "rule",
+              status: "approved",
+              routing: {
+                module_scope: "proofreading",
+                manuscript_types: ["clinical_study"],
+              },
+              projection_source: {
+                source_kind: "editorial_rule_projection",
+                rule_set_id: "rule-set-1",
+                rule_id: "rule-1",
+                projection_kind: "rule",
+              },
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/library") {
+        return {
+          status: 200,
+          body: {
+            query_mode: "keyword",
+            items: [],
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/editorial-rules/rule-sets") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "rule-set-1",
+              template_family_id: "family-1",
+              module: "proofreading",
+              version_no: 1,
+              status: "published",
+              metrics_summary: {
+                rule_set_id: "rule-set-1",
+                totals: {
+                  governed_hit_count: 30,
+                  false_positive_count: 1,
+                  human_confirmation_count: 8,
+                  accept_change_only_count: 15,
+                  evidence_only_archive_count: 0,
+                  routed_rule_candidate_count: 3,
+                  routed_knowledge_candidate_count: 2,
+                  routed_prompt_candidate_count: 0,
+                  writeback_created_count: 4,
+                  writeback_applied_count: 2,
+                },
+                rates: {
+                  false_positive_rate: 0.03,
+                  human_confirmation_rate: 0.26,
+                  evidence_only_archive_rate: 0,
+                  writeback_success_rate: 0.5,
+                },
+              },
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/editorial-rules/rule-sets/rule-set-1/rules") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "rule-1",
+              rule_set_id: "rule-set-1",
+              order_no: 1,
+              rule_object: "abstract_abbreviation",
+              rule_type: "format",
+              execution_mode: "auto_apply",
+              scope: {},
+              selector: {},
+              trigger: {},
+              action: {},
+              authoring_payload: {},
+              confidence_policy: "always_auto",
+              severity: "minor",
+              enabled: true,
+              metrics_summary: {
+                rule_id: "rule-1",
+                rule_set_id: "rule-set-1",
+                totals: {
+                  governed_hit_count: 12,
+                  false_positive_count: 0,
+                  human_confirmation_count: 7,
+                  accept_change_only_count: 5,
+                  evidence_only_archive_count: 0,
+                  routed_rule_candidate_count: 1,
+                  routed_knowledge_candidate_count: 0,
+                  routed_prompt_candidate_count: 0,
+                  writeback_created_count: 2,
+                  writeback_applied_count: 2,
+                },
+                rates: {
+                  false_positive_rate: 0,
+                  human_confirmation_rate: 0.58,
+                  evidence_only_archive_rate: 0,
+                  writeback_success_rate: 1,
+                },
+              },
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (
+        input.url === "/api/v1/templates/families" ||
+        input.url === "/api/v1/templates/template-compositions" ||
+        input.url === "/api/v1/templates/content-modules?moduleClass=general" ||
+        input.url === "/api/v1/templates/content-modules?moduleClass=medical_specialized" ||
+        input.url === "/api/v1/learning/candidates"
+      ) {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const ledger = await controller.loadRuleLedger();
+  const row = ledger.rows.find((entry) => entry.id === "knowledge-rule-1");
+
+  assert.deepEqual(row?.effect_metrics, {
+    hit_count: 12,
+    accepted_change_count: 5,
+    writeback_applied_count: 2,
+    human_confirmation_count: 7,
+  });
+});
+
 function createEmptyRuleAuthoringResponse<TResponse>(url: string) {
   if (
     url === "/api/v1/editorial-rules/rule-sets" ||
