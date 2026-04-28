@@ -60,6 +60,7 @@ export interface KnowledgeRevisionViewModel {
   source_type?: KnowledgeSourceType;
   source_link?: string;
   aliases?: string[];
+  source_learning_candidate_id?: string;
   effective_at?: string;
   expires_at?: string;
   based_on_revision_id?: string;
@@ -247,6 +248,7 @@ export interface CreateKnowledgeLibraryDraftInput {
   effectiveAt?: string;
   expiresAt?: string;
   bindings?: KnowledgeRevisionBindingInput[];
+  sourceLearningCandidateId?: string;
 }
 
 export interface UpdateKnowledgeLibraryDraftInput {
@@ -266,6 +268,7 @@ export interface UpdateKnowledgeLibraryDraftInput {
   effectiveAt?: string;
   expiresAt?: string;
   bindings?: KnowledgeRevisionBindingInput[];
+  sourceLearningCandidateId?: string;
 }
 
 export interface KnowledgeLibraryWorkbenchViewModel {

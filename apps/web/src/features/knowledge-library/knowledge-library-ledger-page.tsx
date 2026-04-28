@@ -30,8 +30,10 @@ import {
   buildCreateDraftInput,
   createLedgerComposerFromDraftPrefill,
   createEmptyLedgerComposer,
+  createLedgerComposerFromKnowledgeRevision,
   type KnowledgeLibraryLedgerComposer,
 } from "./knowledge-library-ledger-composer.ts";
+import { KnowledgeCandidateSourceStrip } from "./knowledge-candidate-source-strip.tsx";
 import {
   applyKnowledgeLibrarySemanticSuggestion,
   buildKnowledgeLibrarySemanticAnalysisNotes,
@@ -892,6 +894,9 @@ export function KnowledgeLibraryLedgerPage({
 
         {boardMode !== "closed" && composer ? (
           <aside className="knowledge-library-ledger-page__board">
+            {composer.sourceSummary ? (
+              <KnowledgeCandidateSourceStrip source={composer.sourceSummary} />
+            ) : null}
             <KnowledgeLibraryEntryForm
             mode={boardMode === "edit" ? "edit" : "create"}
             aiAssistMode={aiAssistMode}
@@ -2035,37 +2040,7 @@ function createComposerFromSelectedRevision(
   selectedRevision: KnowledgeRevisionViewModel,
   selectedAssetId: string | null,
 ): KnowledgeLibraryLedgerComposer {
-  return {
-    mode: "existing_revision",
-    persistedAssetId: selectedAssetId,
-    persistedRevisionId: selectedRevision.id,
-    aiIntakeSourceText: selectedRevision.canonical_text,
-    draft: {
-      title: selectedRevision.title,
-      canonicalText: selectedRevision.canonical_text,
-      summary: selectedRevision.summary,
-      knowledgeKind: selectedRevision.knowledge_kind,
-      moduleScope: selectedRevision.routing.module_scope,
-      manuscriptTypes: selectedRevision.routing.manuscript_types,
-      sections: selectedRevision.routing.sections,
-      riskTags: selectedRevision.routing.risk_tags,
-      disciplineTags: selectedRevision.routing.discipline_tags,
-      evidenceLevel: selectedRevision.evidence_level,
-      sourceType: selectedRevision.source_type,
-      sourceLink: selectedRevision.source_link,
-      aliases: selectedRevision.aliases,
-      effectiveAt: selectedRevision.effective_at,
-      expiresAt: selectedRevision.expires_at,
-      bindings: selectedRevision.bindings.map((binding) => ({
-        bindingKind: binding.binding_kind,
-        bindingTargetId: binding.binding_target_id,
-        bindingTargetLabel: binding.binding_target_label,
-      })),
-    },
-    contentBlocksDraft: [...selectedRevision.content_blocks],
-    semanticLayerDraft: selectedRevision.semantic_layer,
-    warnings: [],
-  };
+  return createLedgerComposerFromKnowledgeRevision(selectedRevision, selectedAssetId);
 }
 
 /*
