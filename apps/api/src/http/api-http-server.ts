@@ -106,6 +106,7 @@ import {
   AiProviderRuntimeConfigurationError,
 } from "../modules/ai-provider-runtime/index.ts";
 import {
+  AiProviderAutoConfigurationService,
   AiProviderCredentialCrypto,
   AiProviderConnectionNotFoundError,
   AiProviderConnectionValidationError,
@@ -540,6 +541,9 @@ type HttpRouteMatch =
     }
   | {
       route: "system-settings-ai-providers-create";
+    }
+  | {
+      route: "system-settings-ai-providers-auto-configure";
     }
   | {
       route: "system-settings-ai-providers-update";
@@ -1896,6 +1900,12 @@ export function createInMemoryApiRuntime(input: {
       AI_PROVIDER_MASTER_KEY: Buffer.alloc(32, 0x41).toString("base64"),
     }),
   });
+  const aiProviderAutoConfigurationService =
+    new AiProviderAutoConfigurationService({
+      aiProviderConnectionService,
+      modelRegistryService,
+      modelRoutingGovernanceService,
+    });
   const screeningExecutor: MainlineAiRuntimeExecutor = {
     async executeJson<T>(_input: ExecuteMainlineAiInput): Promise<T> {
       return {
@@ -2332,6 +2342,7 @@ export function createInMemoryApiRuntime(input: {
     }),
     aiProviderConnectionApi: createAiProviderConnectionApi({
       aiProviderConnectionService,
+      aiProviderAutoConfigurationService,
     }),
     permissionGuard,
   };
@@ -4420,6 +4431,23 @@ async function handleRoute(
       >[0]["input"];
 
       return aiProviderConnectionApi.createConnection({
+        actorId: session.user.id,
+        actorRole: session.user.role,
+        input: body,
+      });
+    }
+    case "system-settings-ai-providers-auto-configure": {
+      const aiProviderConnectionApi = runtime.aiProviderConnectionApi;
+      if (!aiProviderConnectionApi) {
+        return createUnavailableAiProviderConnectionsResponse();
+      }
+
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof aiProviderConnectionApi.autoConfigure
+      >[0]["input"];
+
+      return aiProviderConnectionApi.autoConfigure({
         actorId: session.user.id,
         actorRole: session.user.role,
         input: body,
@@ -7132,6 +7160,13 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
   if (method === "POST" && path === "/api/v1/system-settings/ai-providers") {
     return { route: "system-settings-ai-providers-create" };
+  }
+
+  if (
+    method === "POST" &&
+    path === "/api/v1/system-settings/ai-providers/auto-configure"
+  ) {
+    return { route: "system-settings-ai-providers-auto-configure" };
   }
 
   if (method === "GET" && path === "/api/v1/system-settings/models") {

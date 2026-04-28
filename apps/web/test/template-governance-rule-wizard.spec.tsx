@@ -98,7 +98,8 @@ test("rule wizard confirm step uses structured manuscript-type and retrieval-ter
 
   assert.match(markup, /data-rule-wizard-multi-select="confirm-manuscript-types"/u);
   assert.match(markup, /data-searchable-multi-select-input="confirm-manuscript-types"/u);
-  assert.match(markup, /placeholder="鎼滅储绋夸欢绫诲瀷"/u);
+  assert.match(markup, /placeholder="\u641c\u7d22\u7a3f\u4ef6\u7c7b\u578b"/u);
+  assert.doesNotMatch(markup, /\u93bc\u6ec5\u50a8\u7ecb\u5938\u6b22/u);
   assert.match(markup, /data-rule-wizard-tag-list="confirm-retrieval-terms"/u);
   assert.match(markup, /data-rule-wizard-tag-action="add-confirm-retrieval-term"/u);
   assert.doesNotMatch(markup, /placeholder="clinical_study, review"/u);

@@ -21,7 +21,9 @@ export class LocalDocToDocxConverter implements DocumentToDocxConverter {
 
   constructor(options: LocalDocToDocxConverterOptions) {
     this.rootDir = path.resolve(options.rootDir);
-    this.libreOfficeBinary = options.libreOfficeBinary?.trim() || "soffice";
+    this.libreOfficeBinary =
+      options.libreOfficeBinary?.trim() ||
+      resolveLibreOfficeBinaryFromEnv(process.env);
   }
 
   async convertDocToDocx(input: {
@@ -48,6 +50,16 @@ export class LocalDocToDocxConverter implements DocumentToDocxConverter {
       status: "converted",
     };
   }
+}
+
+export function resolveLibreOfficeBinaryFromEnv(
+  env: NodeJS.ProcessEnv,
+): string {
+  return (
+    env.MEDSYS_LIBREOFFICE_BINARY?.trim() ||
+    env.LIBREOFFICE_BINARY?.trim() ||
+    "soffice"
+  );
 }
 
 async function runLibreOfficeConversion(input: {

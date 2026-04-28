@@ -417,16 +417,51 @@ def apply_three_line_table_rebuild(context: TableRuntimeContext, patch: dict) ->
             "skipped_unsafe",
             "Controlled rebuild requires grid cell evidence and cannot fall back to approximation.",
         )
+    if snapshot_has_nested_tables_without_complete_fidelity(snapshot):
+        return build_patch_result(
+            patch,
+            "skipped_unsafe",
+            "Nested table rebuild requires complete fidelity metadata.",
+        )
 
     replacement = build_three_line_table_node(snapshot)
     replace_table_node(context, replacement)
     replace_caption_and_note_zone(context, snapshot)
     context.snapshot = snapshot
     context.expanded_rows = _expand_table_rows_with_nodes(context.table_node)
-    return build_patch_result(
+    result = build_patch_result(
         patch,
         "applied",
         "Controlled table rebuild applied.",
+    )
+    continuation = snapshot.get("continuation")
+    if isinstance(continuation, dict):
+        result["table_continuation"] = {
+            key: value
+            for key, value in continuation.items()
+            if isinstance(key, str)
+        }
+    return result
+
+
+def snapshot_has_nested_tables_without_complete_fidelity(snapshot: dict) -> bool:
+    grid_cells = snapshot.get("grid_cells")
+    if not isinstance(grid_cells, list):
+        return False
+
+    has_nested_tables = any(
+        isinstance(cell, dict)
+        and isinstance(cell.get("nested_tables"), list)
+        and len(cell.get("nested_tables") or []) > 0
+        for cell in grid_cells
+    )
+    if not has_nested_tables:
+        return False
+
+    fidelity_metadata = snapshot.get("fidelity_metadata")
+    return not (
+        isinstance(fidelity_metadata, dict)
+        and fidelity_metadata.get("nested_tables_complete") is True
     )
 
 

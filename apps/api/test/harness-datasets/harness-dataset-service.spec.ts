@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { AuthorizationError } from "../../src/auth/permission-guard.ts";
 import {
+  GoldSetAssertionRunner,
   createHarnessDatasetApi,
   InMemoryHarnessDatasetRepository,
   HarnessDatasetService,
@@ -286,4 +287,145 @@ test("harness dataset governance only publishes deidentified human-reviewed vers
       }),
     HarnessGoldSetVersionNotEditableError,
   );
+});
+
+test("gold-set content gates fail passed executions when recall, precision, citations, or manual review are weak", () => {
+  const runner = new GoldSetAssertionRunner();
+
+  const result = runner.evaluate({
+    mode: "internal_test",
+    executionStatus: "passed",
+    goldSetItems: [
+      {
+        itemId: "case-terminology",
+        manuscriptSnippet: "A terminology mismatch in the intervention name.",
+        expectedIssues: [
+          {
+            issueId: "expected-terminology",
+            category: "terminology",
+            expectedRuleHitIds: ["rule-term-001"],
+            expectedKnowledgeItemIds: ["knowledge-term-001"],
+            riskLevel: "high",
+          },
+        ],
+      },
+      {
+        itemId: "case-table",
+        manuscriptSnippet: "The text says n=80 while the table total is n=78.",
+        expectedIssues: [
+          {
+            issueId: "expected-table-text",
+            category: "table_text_consistency",
+            expectedRuleHitIds: ["rule-table-001"],
+            riskLevel: "high",
+          },
+        ],
+      },
+      {
+        itemId: "case-statistics",
+        manuscriptSnippet: "The P value is formatted as P =0.000.",
+        expectedIssues: [
+          {
+            issueId: "expected-statistics",
+            category: "statistical_expression",
+            expectedRuleHitIds: ["rule-stat-001"],
+            riskLevel: "medium",
+          },
+        ],
+      },
+    ],
+    findings: [
+      {
+        findingId: "finding-terminology",
+        itemId: "case-terminology",
+        matchedExpectedIssueId: "expected-terminology",
+        ruleHitIds: ["rule-term-001"],
+        knowledgeItemIds: [],
+        manualReview: {
+          required: true,
+          outcome: "rejected",
+        },
+      },
+      {
+        findingId: "finding-false-positive",
+        itemId: "case-table",
+        ruleHitIds: [],
+        knowledgeItemIds: [],
+      },
+    ],
+    thresholds: {
+      recall: 0.8,
+      precision: 0.6,
+      highRiskManualReviewPassRate: 0.9,
+    },
+  });
+
+  assert.equal(result.executionStatus, "passed");
+  assert.equal(result.contentGate.status, "failed");
+  assert.equal(result.metrics.expectedIssueCount, 3);
+  assert.equal(result.metrics.detectedExpectedIssueCount, 1);
+  assert.equal(result.metrics.falseNegativeCount, 2);
+  assert.equal(result.metrics.falsePositiveCount, 1);
+  assert.ok(result.failedGateIds.includes("recall_threshold"));
+  assert.ok(result.failedGateIds.includes("precision_threshold"));
+  assert.ok(result.failedGateIds.includes("expected_knowledge_citations"));
+  assert.ok(result.failedGateIds.includes("high_risk_manual_review_pass_rate"));
+  assert.deepEqual(
+    result.falseNegatives.map((item) => item.issueId),
+    ["expected-table-text", "expected-statistics"],
+  );
+});
+
+test("harness dataset service attaches content quality gates while preserving execution status", () => {
+  const service = new HarnessDatasetService({
+    repository: new InMemoryHarnessDatasetRepository(),
+  });
+
+  const result = service.evaluateContentQualityGate({
+    mode: "internal_test",
+    executionStatus: "passed",
+    goldSetItems: [
+      {
+        itemId: "case-terminology",
+        manuscriptSnippet: "Terminology fixture.",
+        expectedIssues: [
+          {
+            issueId: "expected-terminology",
+            category: "terminology",
+            expectedRuleHitIds: ["rule-term-001"],
+            riskLevel: "high",
+          },
+        ],
+      },
+      {
+        itemId: "case-table",
+        manuscriptSnippet: "Table fixture.",
+        expectedIssues: [
+          {
+            issueId: "expected-table-text",
+            category: "table_text_consistency",
+            expectedRuleHitIds: ["rule-table-001"],
+            riskLevel: "medium",
+          },
+        ],
+      },
+      {
+        itemId: "case-statistics",
+        manuscriptSnippet: "Statistics fixture.",
+        expectedIssues: [
+          {
+            issueId: "expected-statistics",
+            category: "statistical_expression",
+            expectedRuleHitIds: ["rule-stat-001"],
+            riskLevel: "medium",
+          },
+        ],
+      },
+    ],
+    findings: [],
+  });
+
+  assert.equal(result.executionStatus, "passed");
+  assert.equal(result.contentGate.status, "failed");
+  assert.ok(result.failedGateIds.includes("recall_threshold"));
 });

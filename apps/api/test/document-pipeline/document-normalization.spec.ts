@@ -6,6 +6,7 @@ import {
   DocumentNormalizationService,
   DocumentNormalizationWorkflowService,
 } from "../../src/modules/document-pipeline/document-normalization-service.ts";
+import { resolveLibreOfficeBinaryFromEnv } from "../../src/modules/document-pipeline/local-doc-to-docx-converter.ts";
 import { InMemoryJobRepository } from "../../src/modules/jobs/in-memory-job-repository.ts";
 import { ManuscriptLifecycleService } from "../../src/modules/manuscripts/manuscript-lifecycle-service.ts";
 import { InMemoryManuscriptRepository } from "../../src/modules/manuscripts/in-memory-manuscript-repository.ts";
@@ -297,4 +298,21 @@ test("normalization plans generate unique storage keys per source asset even whe
     firstPlan.derived_asset.storage_key,
     secondPlan.derived_asset.storage_key,
   );
+});
+
+test("local doc converter binary can be configured from environment for Windows and CI", () => {
+  assert.equal(
+    resolveLibreOfficeBinaryFromEnv({
+      MEDSYS_LIBREOFFICE_BINARY:
+        "C:\\Program Files\\LibreOffice\\program\\soffice.exe",
+    } as NodeJS.ProcessEnv),
+    "C:\\Program Files\\LibreOffice\\program\\soffice.exe",
+  );
+  assert.equal(
+    resolveLibreOfficeBinaryFromEnv({
+      LIBREOFFICE_BINARY: "/usr/bin/libreoffice",
+    } as NodeJS.ProcessEnv),
+    "/usr/bin/libreoffice",
+  );
+  assert.equal(resolveLibreOfficeBinaryFromEnv({} as NodeJS.ProcessEnv), "soffice");
 });

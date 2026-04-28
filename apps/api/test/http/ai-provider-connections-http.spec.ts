@@ -103,6 +103,66 @@ test("POST /api/v1/system-settings/ai-providers lets admins create connections",
   });
 });
 
+test("POST /api/v1/system-settings/ai-providers/auto-configure creates connection and routes without echoing the key", async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const migration = runMigrateProcess(databaseUrl);
+    assert.equal(
+      migration.status,
+      0,
+      `Expected migrate to succeed for ai provider http tests.\n${migration.stdout}\n${migration.stderr}`,
+    );
+
+    const seedPool = new Pool({ connectionString: databaseUrl });
+    try {
+      await seedPersistentSystemSettingsUsers(seedPool);
+
+      const serverHandle = await startPersistentSystemSettingsServer(databaseUrl);
+      try {
+        const adminCookie = await loginAsPersistentAdmin(serverHandle.baseUrl);
+        const apiKey = "sk-deepseek-http-auto-config-test-key";
+        const response = await fetch(
+          `${serverHandle.baseUrl}/api/v1/system-settings/ai-providers/auto-configure`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: adminCookie,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              provider: "deepseek",
+              baseUrl: "https://api.deepseek.com/v1",
+              apiKey,
+              defaultModel: "deepseek-chat",
+              moduleRoutes: {
+                proofreading: "deepseek-chat",
+              },
+              discoverModels: false,
+            }),
+          },
+        );
+
+        const body = await readJson<{
+          connection: { provider_kind: string; base_url: string };
+          models: Array<{ model_name: string; allowed_modules: string[] }>;
+          discovery: { status: string };
+        }>(response);
+        const rawBody = JSON.stringify(body);
+        assert.equal(response.status, 201);
+        assert.equal(body.connection.provider_kind, "deepseek");
+        assert.equal(body.connection.base_url, "https://api.deepseek.com");
+        assert.equal(body.models[0]?.model_name, "deepseek-chat");
+        assert.deepEqual(body.models[0]?.allowed_modules, ["proofreading"]);
+        assert.equal(body.discovery.status, "disabled");
+        assert.equal(rawBody.includes(apiKey), false);
+      } finally {
+        await stopServer(serverHandle.server);
+      }
+    } finally {
+      await seedPool.end();
+    }
+  });
+});
+
 test("POST /api/v1/system-settings/ai-providers/:id updates an existing connection", async () => {
   await withTemporaryDatabase(async (databaseUrl) => {
     const migration = runMigrateProcess(databaseUrl);

@@ -98,7 +98,7 @@ export function RuleAuthoringTableSemanticFields({
         className="template-governance-field"
         data-table-auto-apply-grade="field"
       >
-        <span>鑷姩搴旂敤绛夌骇</span>
+        <span>{"\u81ea\u52a8\u5e94\u7528\u7b49\u7ea7"}</span>
         <select
           value={payload.grade}
           onChange={(event) =>
@@ -117,7 +117,7 @@ export function RuleAuthoringTableSemanticFields({
         className="template-governance-field template-governance-field-full"
         data-table-auto-apply-patch-type="field"
       >
-        <span>PATCH 类型</span>
+        <span>{"PATCH \u7c7b\u578b"}</span>
         <select
           value={payload.patchType}
           onChange={(event) =>
@@ -137,7 +137,7 @@ export function RuleAuthoringTableSemanticFields({
         className="template-governance-field"
         data-table-auto-apply-scope="field"
       >
-        <span>搴旂敤鑼冨洿</span>
+        <span>{"\u5e94\u7528\u8303\u56f4"}</span>
         <select
           value={payload.applyScope}
           onChange={(event) =>
@@ -155,7 +155,7 @@ export function RuleAuthoringTableSemanticFields({
         className="template-governance-field template-governance-field-full"
         data-table-auto-apply-capabilities="field"
       >
-        <span>蹇呴渶 snapshot 鑳藉姏</span>
+        <span>{"\u5fc5\u9700 snapshot \u80fd\u529b"}</span>
         <small>
           {payload.requiredSnapshotCapabilities.length > 0
             ? payload.requiredSnapshotCapabilities.join(", ")

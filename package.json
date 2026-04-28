@@ -19,7 +19,8 @@
     "typecheck:portable": "node ./scripts/workspace-typecheck.mjs",
     "typecheck": "pnpm --parallel typecheck",
     "test": "pnpm --parallel test",
-    "scan:mojibake": "node ./scripts/quality/scan-mojibake.mjs"
+    "scan:mojibake": "node ./scripts/quality/scan-mojibake.mjs",
+    "verify:real-proofreading": "node --import ./apps/api/node_modules/tsx/dist/loader.mjs ./scripts/harness/run-real-proofreading-acceptance.mjs"
   },
   "workspaces": [
     "apps/*",

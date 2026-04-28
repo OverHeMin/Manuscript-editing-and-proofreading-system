@@ -242,6 +242,7 @@ function buildProofreadingUserPayload(input: {
       knowledgeHits: buildGovernedKnowledgeHitPayload(input.knowledgeHits),
       promptGuardrails: buildPromptGuardrailPayload(input.promptGuardrails),
     },
+    proofreadingContextLayers: buildProofreadingContextLayers(input),
     qualityControlChecklist: buildProofreadingQualityControlChecklist(),
     ...(governance
       ? {
@@ -341,6 +342,122 @@ function buildProofreadingQualityControlChecklist() {
       },
     ],
   };
+}
+
+function buildProofreadingContextLayers(input: {
+  planningContext: ProofreadingPlanningContext;
+  governedFailedChecks?: CreateProofreadingAiPlanInput["governedFailedChecks"];
+  governedManualReviewItems?: CreateProofreadingAiPlanInput["governedManualReviewItems"];
+  knowledgeHits?: CreateProofreadingAiPlanInput["knowledgeHits"];
+  governanceContext?: AiGovernanceContext;
+  passFocus?: CreateProofreadingAiPlanInput["passFocus"];
+}) {
+  const blocks = input.planningContext.fullDocumentBlocks;
+  const ruleIds = dedupeStringArray([
+    ...(input.governedFailedChecks ?? []).map((item) => item.ruleId),
+    ...(input.governedManualReviewItems ?? []).map((item) => item.ruleId),
+    ...(input.governanceContext?.resolvedRules ?? []).map((item) => item.ruleId),
+  ]);
+  const knowledgeItemIds = dedupeStringArray([
+    ...(input.knowledgeHits ?? []).map((item) => item.knowledgeItemId),
+    ...(input.governanceContext?.knowledgeHits ?? []).map(
+      (item) => item.knowledgeItemId,
+    ),
+  ]);
+
+  return {
+    localBlockContext: {
+      blockCount: blocks.length,
+      blocks: blocks.map((block) => ({
+        blockIndex: block.blockIndex,
+        text: block.text,
+        ...(block.sectionLabel ? { sectionLabel: block.sectionLabel } : {}),
+        ...(block.blockKind ? { blockKind: block.blockKind } : {}),
+        charCount: block.charCount,
+      })),
+    },
+    neighborContext: {
+      windows: blocks.map((block, index) => ({
+        blockIndex: block.blockIndex,
+        ...(blocks[index - 1]
+          ? {
+              previousBlockIndex: blocks[index - 1]?.blockIndex,
+              previousTextPreview: blocks[index - 1]?.text,
+            }
+          : {}),
+        ...(blocks[index + 1]
+          ? {
+              nextBlockIndex: blocks[index + 1]?.blockIndex,
+              nextTextPreview: blocks[index + 1]?.text,
+            }
+          : {}),
+      })),
+    },
+    sectionContext: {
+      sections: buildContextLayerSections(blocks),
+    },
+    globalConsistencyContext: {
+      contextMode: input.planningContext.contextMode,
+      sourceCharacterCount: input.planningContext.sourceCharacterCount,
+      fullDocumentAvailable: Boolean(input.planningContext.fullDocumentText),
+      crossSectionSignals:
+        input.planningContext.documentMap?.crossSectionSignals ?? [],
+    },
+    ruleCitationContext: {
+      ruleIds,
+      failedCheckCount: input.governedFailedChecks?.length ?? 0,
+      manualReviewRuleIds: dedupeStringArray(
+        (input.governedManualReviewItems ?? []).map((item) => item.ruleId),
+      ),
+    },
+    knowledgeCitationContext: {
+      knowledgeItemIds,
+      hitCount: knowledgeItemIds.length,
+    },
+    residualAnalysisContext: {
+      passNo: input.passFocus?.passNo,
+      passKind: input.passFocus?.passKind,
+      instruction: input.passFocus?.instruction,
+      runsAfterGovernedCoverage: true,
+      governedCoveragePolicy: "governed_coverage_is_already_handled",
+      residualInstruction:
+        "Find remaining high-confidence issues after deterministic rules and knowledge-backed checks.",
+    },
+  };
+}
+
+function buildContextLayerSections(
+  blocks: ProofreadingPlanningBlockPreview[],
+): Array<{
+  sectionLabel: string;
+  blockStartIndex: number;
+  blockEndIndex: number;
+  blockCount: number;
+}> {
+  const sections: Array<{
+    sectionLabel: string;
+    blockStartIndex: number;
+    blockEndIndex: number;
+    blockCount: number;
+  }> = [];
+
+  for (const block of blocks) {
+    const sectionLabel = block.sectionLabel ?? "unlabeled";
+    const existing = sections.at(-1);
+    if (existing && existing.sectionLabel === sectionLabel) {
+      existing.blockEndIndex = block.blockIndex;
+      existing.blockCount += 1;
+      continue;
+    }
+    sections.push({
+      sectionLabel,
+      blockStartIndex: block.blockIndex,
+      blockEndIndex: block.blockIndex,
+      blockCount: 1,
+    });
+  }
+
+  return sections;
 }
 
 interface ProofreadingPlanningBlockPreview {
