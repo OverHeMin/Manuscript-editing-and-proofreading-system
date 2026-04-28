@@ -212,6 +212,9 @@ import {
   ModuleExecutionSnapshotNotFoundError,
   type LearningCandidateSourceLinkRecord,
 } from "../modules/feedback-governance/index.ts";
+import type {
+  HumanReviewRepository,
+} from "../modules/human-review/index.ts";
 import {
   createKnowledgeApi,
   type KnowledgeAiIntakeSuggestionInput,
@@ -1476,6 +1479,7 @@ export interface ApiServerRuntime {
   harnessIntegrationApi: ReturnType<typeof createHarnessIntegrationApi>;
   knowledgeApi: ReturnType<typeof createKnowledgeApi>;
   feedbackGovernanceApi: ReturnType<typeof createFeedbackGovernanceApi>;
+  humanReviewRepository?: HumanReviewRepository;
   learningApi: ReturnType<typeof createLearningApi>;
   residualLearningApi: ReturnType<typeof createResidualLearningApi>;
   reviewItemsApi: ReturnType<typeof createReviewItemsApi>;

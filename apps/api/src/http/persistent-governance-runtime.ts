@@ -83,6 +83,9 @@ import {
   PostgresFeedbackGovernanceRepository,
 } from "../modules/feedback-governance/index.ts";
 import {
+  PostgresHumanReviewRepository,
+} from "../modules/human-review/index.ts";
+import {
   createExecutionGovernanceApi,
   ExecutionGovernanceService,
   PostgresExecutionGovernanceRepository,
@@ -293,6 +296,9 @@ export function createPersistentGovernanceRuntime(
     client: options.client,
   });
   const feedbackGovernanceRepository = new PostgresFeedbackGovernanceRepository({
+    client: options.client,
+  });
+  const humanReviewRepository = new PostgresHumanReviewRepository({
     client: options.client,
   });
 
@@ -1086,6 +1092,7 @@ export function createPersistentGovernanceRuntime(
     feedbackGovernanceApi: createFeedbackGovernanceApi({
       feedbackGovernanceService,
     }),
+    humanReviewRepository,
     learningApi,
     residualLearningApi,
     reviewItemsApi,
