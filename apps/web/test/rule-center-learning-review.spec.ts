@@ -97,13 +97,15 @@ test("rule center learning mode renders a recovery workspace inside the rule cen
 
   assert.match(markup, /\u56de\u6d41\u5019\u9009\u8f6c\u89c4\u5219/u);
   assert.match(markup, /\u8f6c\u89c4\u5219\u7ad9/u);
-  assert.match(
-    markup,
-    /\u53ea\u5904\u7406\u53ef\u6c89\u6dc0\u4e3a\u89c4\u5219\u8349\u7a3f\u7684\u590d\u6838\u9879\u3002\u5148\u5b8c\u6210\u590d\u6838\u7ed3\u8bba\uff0c\u518d\u8f6c\u6210\u89c4\u5219\u8349\u7a3f\u3002/u,
-  );
+  assert.match(markup, /\u7edf\u4e00\u590d\u6838\u4e2d\u5fc3/u);
+  assert.match(markup, /\u5f85\u5904\u7406 0/u);
   assert.match(markup, /data-mode="rule-center-recovery"/);
   assert.match(markup, /manuscript-42/);
   assert.match(markup, /snapshot-42/);
+  assert.doesNotMatch(
+    markup,
+    /\u53ea\u5904\u7406\u53ef\u6c89\u6dc0\u4e3a\u89c4\u5219\u8349\u7a3f\u7684\u590d\u6838\u9879\u3002\u5148\u5b8c\u6210\u590d\u6838\u7ed3\u8bba\uff0c\u518d\u8f6c\u6210\u89c4\u5219\u8349\u7a3f\u3002/u,
+  );
   assert.doesNotMatch(markup, /\u89c4\u5219\u53f0\u8d26/u);
   assert.doesNotMatch(markup, /\u56de\u6d41\u5de5\u4f5c\u533a/u);
   assert.doesNotMatch(markup, /\u89c4\u5219\u5f55\u5165/u);
@@ -213,10 +215,7 @@ test("rule center recovery workspace shows evidence, destination context, and go
   assert.match(markup, /\u5ba1\u6838\u901a\u8fc7/u);
   assert.match(markup, /\u8f6c\u6210\u89c4\u5219\u8349\u7a3f/u);
   assert.match(markup, /\u9a73\u56de\u5019\u9009/u);
-  assert.match(
-    markup,
-    /\u53ea\u4fdd\u7559\u53ef\u6c89\u6dc0\u4e3a\u89c4\u5219\u8349\u7a3f\u7684\u590d\u6838\u9879/u,
-  );
+  assert.match(markup, /\u7edf\u4e00\u590d\u6838\u961f\u5217/u);
   assert.match(markup, /Human-reviewed abstract heading normalization\./);
   assert.match(markup, /Abstract heading normalization/);
   assert.match(markup, /\u7f16\u8f91/u);
@@ -779,10 +778,7 @@ test("rule center recovery workspace excludes non-rule residual issues and non-r
     }),
   );
 
-  assert.match(
-    markup,
-    /\u53ea\u4fdd\u7559\u53ef\u6c89\u6dc0\u4e3a\u89c4\u5219\u8349\u7a3f\u7684\u590d\u6838\u9879/u,
-  );
+  assert.match(markup, /\u7edf\u4e00\u590d\u6838\u961f\u5217/u);
   assert.match(
     markup,
     /\u5f53\u524d\u6ca1\u6709\u5f85\u5904\u7406\u7684\u89c4\u5219\u6cbb\u7406\u590d\u6838\u9879/u,

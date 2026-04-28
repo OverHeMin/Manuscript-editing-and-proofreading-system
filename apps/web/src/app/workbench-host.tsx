@@ -182,7 +182,6 @@ export function WorkbenchHost({
     activeWorkbenchId === "harness-datasets"
       ? activeWorkbenchLabel
       : activeNavigationItem?.label ?? activeWorkbenchLabel;
-  const activeWorkbenchDescription = describeWorkbenchFocus(activeWorkbenchId);
   const activeWorkbenchGroupLabel = activeNavigationGroup?.label ?? "当前工作区";
   const activeRenderKind = resolveWorkbenchRenderKind(activeWorkbenchId);
 
@@ -192,7 +191,6 @@ export function WorkbenchHost({
         <WorkbenchShellHeader
           session={session}
           activeWorkbenchLabel={headerWorkbenchLabel}
-          activeWorkbenchDescription={activeWorkbenchDescription}
           activeWorkbenchGroupLabel={activeWorkbenchGroupLabel}
           isCompactNavigation={isCompactNavigation}
           isNavigationOpen={isNavigationOpen}
@@ -449,36 +447,6 @@ function resolveFallbackNavigationItem(
   }
 
   return groups[0]?.items[0] ?? null;
-}
-
-function describeWorkbenchFocus(workbenchId: WorkbenchId): string {
-  switch (workbenchId) {
-    case "screening":
-      return "聚焦来稿接收、初筛判断与编辑移交。";
-    case "editing":
-      return "面向正文修订、模板落位与校对前准备。";
-    case "proofreading":
-      return "汇总终稿核验与发布前收口动作。";
-    case "knowledge-library":
-      return "管理知识资产录入、修订与结构化治理。";
-    case "knowledge-review":
-      return "处理待审知识条目的审核队列与审批动作。";
-    case "learning-review":
-      return "承接学习回收与质量复核工作。";
-    case "admin-console":
-      return "提供管理侧总览与治理入口。";
-    case "template-governance":
-      return "集中管理模板、规则与提示词。";
-    case "evaluation-workbench":
-      return "观察评测差异与评测执行状态。";
-    case "harness-datasets":
-      return "管理金标准数据集与版本导出。";
-    case "system-settings":
-      return "配置系统级参数、账号与访问控制。";
-    case "submission":
-    default:
-      return "进入个人稿件与后续处理流程。";
-  }
 }
 
 function resolveInitialWorkbenchId(

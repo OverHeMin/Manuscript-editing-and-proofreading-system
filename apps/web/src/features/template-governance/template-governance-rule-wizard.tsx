@@ -496,7 +496,6 @@ export function TemplateGovernanceRuleWizard({
         <div className="template-governance-ledger-toolbar-copy">
           <p className="template-governance-eyebrow">规则草稿向导</p>
           <h1>{resolveWizardTitle(state.mode, title)}</h1>
-          <p>先带入候选并整理规则草稿，确认规则意图与适用范围后再提交发布。</p>
         </div>
         <div className="template-governance-ledger-toolbar-actions template-governance-ledger-toolbar-actions--comfortable">
           <button type="button" onClick={onBack}>
@@ -508,7 +507,6 @@ export function TemplateGovernanceRuleWizard({
       <article className="template-governance-card template-governance-ledger-section">
         <header className="template-governance-ledger-section-header">
           <h2>五步流</h2>
-          <p>当前步骤聚焦一个治理决定，低频高级项后续放入抽屉，不占壳层顶部。</p>
         </header>
         <ol className="template-governance-list">
           {getRuleWizardStepLabels().map((label) => (

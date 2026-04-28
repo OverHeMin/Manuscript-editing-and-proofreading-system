@@ -140,9 +140,6 @@ export function TemplateGovernanceExtractionLedgerPage({
       />
       {statusMessage ? <p className="template-governance-status">{statusMessage}</p> : null}
       {errorMessage ? <p className="template-governance-error">{errorMessage}</p> : null}
-      <p className="template-governance-context-note">
-        提取台账里的候选语义摘要来自文本与表格差异提取；DOCX 图片、图表和截图不会在这里被 AI 理解。
-      </p>
 
       <div className="template-governance-ledger-kpi-strip">
         <article className="template-governance-ledger-kpi">
@@ -163,7 +160,6 @@ export function TemplateGovernanceExtractionLedgerPage({
         <article className="template-governance-card template-governance-ledger-section">
           <header className="template-governance-ledger-section-header">
             <h2>提取任务</h2>
-            <p>按任务追踪每次原稿/编辑稿对比提取。</p>
           </header>
           <div className="template-governance-ledger-table-shell">
             <table className="template-governance-ledger-table">
@@ -221,7 +217,6 @@ export function TemplateGovernanceExtractionLedgerPage({
         <article className="template-governance-card template-governance-ledger-section">
           <header className="template-governance-ledger-section-header">
             <h2>候选台账</h2>
-            <p>每个候选都要先做语义复核，再决定是否真实入库。</p>
           </header>
           <div className="template-governance-ledger-table-shell">
             <table className="template-governance-ledger-table">

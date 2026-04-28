@@ -4,7 +4,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { TemplateGovernanceContentModuleLedgerPage } from "../src/features/template-governance/index.ts";
 
-test("selected package explains how to add or supplement default rules", () => {
+test("selected package keeps default-rule supplement actions", () => {
   const markup = renderToStaticMarkup(
     <TemplateGovernanceContentModuleLedgerPage
       ledgerKind="general"
@@ -50,14 +50,15 @@ test("selected package explains how to add or supplement default rules", () => {
     />,
   );
 
-  assert.match(markup, /给这个包补规则的常用路径/u);
+  assert.match(markup, /补规则/u);
   assert.match(markup, /去新建规则/u);
   assert.match(markup, /去规则台账找已有规则/u);
   assert.match(markup, /templateGovernanceView=authoring/u);
   assert.match(markup, /templateGovernanceView=rule-ledger/u);
+  assert.doesNotMatch(markup, /给这个包补规则的常用路径/u);
 });
 
-test("medical specialized package guidance explains governed statistical capabilities", () => {
+test("medical specialized package renders declared governance points", () => {
   const markup = renderToStaticMarkup(
     <TemplateGovernanceContentModuleLedgerPage
       ledgerKind="medical_specialized"
@@ -118,11 +119,13 @@ test("medical specialized package guidance explains governed statistical capabil
   assert.match(markup, /当前包已声明的统计治理要点/u);
   assert.match(markup, /当前包重点治理 AUC、sensitivity、specificity/u);
   assert.match(markup, /当前包要求 beta、SE、95% CI 与 P 保持一致/u);
-  assert.match(markup, /平台当前支持的医学统计校验能力/u);
+  assert.match(markup, /证据\/风险/u);
+  assert.match(markup, /high \/ high/u);
+  assert.match(markup, /状态/u);
+  assert.match(markup, /已发布/u);
   assert.match(markup, /AUC、sensitivity、specificity/u);
   assert.match(markup, /beta、SE、95% CI/u);
-  assert.match(markup, /chi-square、t、F、P/u);
-  assert.match(markup, /均值±标准差/u);
-  assert.match(markup, /重算/u);
-  assert.match(markup, /策略/u);
+  assert.doesNotMatch(markup, /平台当前支持的医学统计校验能力/u);
+  assert.doesNotMatch(markup, /chi-square、t、F、P/u);
+  assert.doesNotMatch(markup, /均值±标准差/u);
 });

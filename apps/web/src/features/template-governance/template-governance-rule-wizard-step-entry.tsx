@@ -52,7 +52,6 @@ export function TemplateGovernanceRuleWizardStepEntry({
     <article className="template-governance-card template-governance-ledger-section">
       <header className="template-governance-ledger-section-header">
         <h2>基础录入与证据补充</h2>
-        <p>先把规则正文、示例、图表证据和来源依据补齐，再进入 AI 语义理解。</p>
       </header>
 
       <div className="template-governance-rule-entry-layout">
@@ -60,7 +59,6 @@ export function TemplateGovernanceRuleWizardStepEntry({
           <header className="template-governance-rule-section-heading">
             <div>
               <h3>录入画布</h3>
-              <p>围绕一条规则完成正文、证据和来源录入，保证后续 AI 识别有足够上下文。</p>
             </div>
           </header>
 
@@ -167,12 +165,12 @@ export function TemplateGovernanceRuleWizardStepEntry({
           <section className="template-governance-card template-governance-ledger-section">
             <header className="template-governance-ledger-section-header">
               <h2>图片 / 图表 / 截图</h2>
-              <p>这里支持上传真实图片、录入表格，或补充额外文本块作为证据材料。</p>
             </header>
             <KnowledgeLibraryRichContentEditor
               blocks={value.supplementalBlocks ?? []}
               onChange={(supplementalBlocks) => onChange({ ...value, supplementalBlocks })}
               onUploadImage={onUploadImage}
+              compact
             />
           </section>
 
@@ -299,48 +297,6 @@ export function TemplateGovernanceRuleWizardStepEntry({
             </div>
           ) : null}
         </section>
-
-        <aside className="template-governance-card template-governance-rule-entry-rail">
-          <header className="template-governance-rule-section-heading">
-            <div>
-              <h3>AI 辅助提示</h3>
-              <p>这一侧只给录入建议，不在这里提前做最终决策。</p>
-            </div>
-          </header>
-
-          <div className="template-governance-rule-hint-list">
-            <div className="template-governance-rule-hint-card">
-              <strong>优先补齐高价值证据</strong>
-              <p>至少补充正文、一个示例和来源依据，AI 识别的可信度会明显更高。</p>
-            </div>
-            <div className="template-governance-rule-hint-card">
-              <strong>图片和表格直接上传或录入</strong>
-              <p>不要再把图表写成备注，直接添加图片块或表格块，后续查看和编辑会更清晰。</p>
-            </div>
-            <div className="template-governance-rule-hint-card">
-              <strong>复杂标签放到高级区</strong>
-              <p>先完成主画布录入，再展开高级标签补章节、风险和规则包提示，避免首屏过载。</p>
-            </div>
-          </div>
-          <div className="template-governance-rule-hint-list">
-            <div className="template-governance-rule-hint-card">
-              <strong>这版向导只开放高频治理参数</strong>
-              <p>先把规则正文、证据、适用范围和发布动作做对，避免首次录入时被低频参数打断。</p>
-            </div>
-            <div className="template-governance-rule-hint-card">
-              <strong>低频高级项也在当前规则中心完成</strong>
-              <p>复杂绑定、发布动作和后续治理信息都继续留在这套向导与规则台账，不再分散到旧入口。</p>
-            </div>
-            <div className="template-governance-rule-hint-card">
-              <strong>适用模块决定规则在哪个执行环节被调用</strong>
-              <p>如果一条规则只对编辑或校对生效，尽量在这里提前收窄，不要全部都挂到“全模块”。</p>
-            </div>
-            <div className="template-governance-rule-hint-card">
-              <strong>章节标签和风险标签放到高级标签里补充</strong>
-              <p>先完成主画布录入，再补章节、风险、规则包提示和冲突边界，首屏会更清晰。</p>
-            </div>
-          </div>
-        </aside>
       </div>
     </article>
   );
@@ -359,7 +315,7 @@ function RuleWizardMultiSelectField(props: {
     <SearchableMultiSelectField
       label={props.label}
       helpText={
-        props.includeAnyOption ? "\u652f\u6301\u201c\u5168\u90e8/\u4efb\u610f\u201d\u548c\u591a\u9009\u5207\u6362\u3002" : "\u652f\u6301\u7ed3\u6784\u5316\u591a\u9009\u3002"
+        ""
       }
       value={props.value}
       options={props.options}
@@ -397,7 +353,6 @@ function RuleWizardTagListField(props: {
     >
       <div className="knowledge-library-structured-field-header">
         <span>{props.label}</span>
-        <small>一行一个标签，可逐条补充和删除。</small>
       </div>
       <div className="knowledge-library-tag-editor-list">
         {props.values.length > 0 ? (

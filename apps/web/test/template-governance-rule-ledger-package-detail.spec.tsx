@@ -62,8 +62,9 @@ test("rule ledger page shows bound default rules when a package row is selected"
     />,
   );
 
-  assert.match(markup, /已绑定 2 条默认规则/u);
-  assert.match(markup, /点击规则名切到规则本体/u);
+  assert.match(markup, /包内默认规则/u);
+  assert.doesNotMatch(markup, /已绑定 2 条默认规则/u);
+  assert.doesNotMatch(markup, /点击规则名切到规则本体/u);
   assert.match(markup, /参考文献著录顺序/u);
   assert.match(markup, /参考文献标点格式/u);
 });

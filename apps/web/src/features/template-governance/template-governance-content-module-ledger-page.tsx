@@ -46,7 +46,6 @@ export interface TemplateGovernanceContentModuleLedgerPageProps {
   onFormCancel?: () => void;
   onFormSubmit?: () => void;
 }
-
 export function TemplateGovernanceContentModuleLedgerPage({
   ledgerKind,
   viewModel,
@@ -148,29 +147,7 @@ export function TemplateGovernanceContentModuleLedgerPage({
 
       <article className="template-governance-card template-governance-ledger-section">
         <header className="template-governance-ledger-section-header">
-          <h2>规则包使用说明</h2>
-          <p>规则包负责沉淀可复用的治理组合，默认规则才是包里真正会被查看、编辑和挂载的具体规则。</p>
-        </header>
-        <div className="template-governance-rule-hint-list">
-          <article className="template-governance-rule-hint-card">
-            <strong>规则包是复用容器</strong>
-            <p>它负责把同一类规则归在一起，方便后续统一挂到大模板或不同稿件族场景里复用。</p>
-          </article>
-          <article className="template-governance-rule-hint-card">
-            <strong>默认规则是包里的具体规则</strong>
-            <p>查看、校对、修改正文、图表证据和绑定范围时，真正编辑的是默认规则，而不是规则包标题本身。</p>
-          </article>
-          <article className="template-governance-rule-hint-card">
-            <strong>先选规则包，再看默认规则，再决定是否编辑</strong>
-            <p>这样能先确认当前包的复用范围，再避免把规则内容和包级摘要、适用边界混在一起修改。</p>
-          </article>
-        </div>
-      </article>
-
-      <article className="template-governance-card template-governance-ledger-section">
-        <header className="template-governance-ledger-section-header">
           <h2>{pageTitle}</h2>
-          <p>表格优先展示所有录入的规则包，再决定是否进入编辑表单。</p>
         </header>
         <div className="template-governance-ledger-table-shell">
           <table className="template-governance-ledger-table">
@@ -246,7 +223,6 @@ export function TemplateGovernanceContentModuleLedgerPage({
         <article className="template-governance-card template-governance-ledger-section">
           <header className="template-governance-ledger-section-header">
             <h2>当前规则包</h2>
-            <p>选中后查看摘要、边界与复用情况，再决定是否加入大模板。</p>
           </header>
           <div className="template-governance-detail-grid">
             <div>
@@ -274,37 +250,13 @@ export function TemplateGovernanceContentModuleLedgerPage({
                     ? "当前包已声明的统计治理要点"
                     : "当前包已声明的治理要点"}
                 </h2>
-                <p>这里优先展示当前规则包自己录入的摘要与 guidance，避免把平台通用能力误当成当前包已经启用的配置。</p>
               </header>
-              <div className="template-governance-rule-hint-list">
+              <div className="template-governance-detail-grid">
                 {buildDeclaredModuleCards(selectedModule).map((card) => (
-                  <article
-                    key={card.title}
-                    className="template-governance-rule-hint-card"
-                  >
-                    <strong>{card.title}</strong>
+                  <div key={card.title} className="template-governance-field-full">
+                    <span>{card.title}</span>
                     <p>{card.description}</p>
-                  </article>
-                ))}
-              </div>
-            </section>
-          ) : null}
-          {ledgerKind === "medical_specialized" &&
-          isMedicalStatisticsModule(selectedModule) ? (
-            <section className="template-governance-card template-governance-ledger-section">
-              <header className="template-governance-ledger-section-header">
-                <h2>平台当前支持的医学统计校验能力</h2>
-                <p>这部分说明系统运行层已支持的医学统计校验边界，用来帮助判断当前包后续还能接入哪些治理能力。</p>
-              </header>
-              <div className="template-governance-rule-hint-list">
-                {buildMedicalStatisticCapabilityCards().map((card) => (
-                  <article
-                    key={card.title}
-                    className="template-governance-rule-hint-card"
-                  >
-                    <strong>{card.title}</strong>
-                    <p>{card.description}</p>
-                  </article>
+                  </div>
                 ))}
               </div>
             </section>
@@ -320,28 +272,8 @@ export function TemplateGovernanceContentModuleLedgerPage({
 
           <section className="template-governance-card template-governance-ledger-section">
             <header className="template-governance-ledger-section-header">
-              <h2>给这个包补规则的常用路径</h2>
-              <p>
-                规则包本身不直接录正文。新增、补齐或修改规则时，都从新建规则或规则台账进入，
-                再在绑定步骤里把规则挂到当前包。
-              </p>
+              <h2>补规则</h2>
             </header>
-            <div className="template-governance-rule-hint-list">
-              <article className="template-governance-rule-hint-card">
-                <strong>路径 1：去新建规则</strong>
-                <p>
-                  适合补全一条新规则。进入五步向导后，在“绑定与发布”步骤选择当前规则包，
-                  再决定是否一起挂到模板族。
-                </p>
-              </article>
-              <article className="template-governance-rule-hint-card">
-                <strong>路径 2：去规则台账找已有规则</strong>
-                <p>
-                  适合已有规则只差绑定或正文补齐的情况。先在规则台账找到对应规则，再补正文、
-                  表格、图片证据或包绑定。
-                </p>
-              </article>
-            </div>
             <div className="template-governance-actions">
               <a className="template-governance-link-button" href={authoringCreateHref}>
                 去新建规则
@@ -354,11 +286,7 @@ export function TemplateGovernanceContentModuleLedgerPage({
 
           <section className="template-governance-card template-governance-ledger-section">
             <header className="template-governance-ledger-section-header">
-              <h2>默认规则</h2>
-              <p>
-                这里展示当前规则包已绑定的默认规则，当前共绑定 {selectedModuleRuleCount} 条，
-                先把包内规则看清楚，再决定是否进入规则台账继续补齐或修改。
-              </p>
+              <h2>默认规则（{selectedModuleRuleCount}）</h2>
             </header>
 
             {viewModel.selectedModuleRules.length ? (
@@ -400,7 +328,6 @@ export function TemplateGovernanceContentModuleLedgerPage({
                   <article className="template-governance-card">
                     <header className="template-governance-ledger-section-header">
                       <h2>规则详情</h2>
-                      <p>查看默认规则正文、证据块与绑定范围，确认后再进入编辑。</p>
                     </header>
                     <div className="template-governance-detail-grid">
                       <div>
@@ -660,32 +587,4 @@ function isMedicalStatisticsModule(
     "回归",
     "统计",
   ].some((keyword) => haystack.includes(keyword.toLowerCase()));
-}
-
-function buildMedicalStatisticCapabilityCards(): Array<{
-  title: string;
-  description: string;
-}> {
-  return [
-    {
-      title: "诊断学指标",
-      description:
-        "支持 AUC、sensitivity、specificity，并可结合 TP、FP、FN、TN 做一致性重算。",
-    },
-    {
-      title: "回归统计",
-      description:
-        "支持 beta、SE、95% CI、P，可检查系数、标准误与区间之间是否冲突。",
-    },
-    {
-      title: "推断统计",
-      description:
-        "支持 chi-square、t、F、P，并可对统计量与显著性描述做一致性校验。",
-    },
-    {
-      title: "重算与策略",
-      description:
-        "支持从均值±标准差、样本量、列联表计数等证据重算；发现冲突后可按包内策略配置严重级别与处理动作。",
-    },
-  ];
 }

@@ -20,7 +20,6 @@ export function TemplateGovernanceRuleWizardStepSemantic({
     <article className="template-governance-card template-governance-ledger-section">
       <header className="template-governance-ledger-section-header">
         <h2>AI 语义层结果</h2>
-        <p>先看 AI 如何理解这条规则，再决定是否补证据或进入人工确认。</p>
       </header>
 
       {errorMessage ? <p className="template-governance-error">{errorMessage}</p> : null}

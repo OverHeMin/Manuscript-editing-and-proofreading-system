@@ -21,7 +21,6 @@ export function RulePackagePreviewPanel({
       <div className="template-governance-panel-header">
         <div>
           <h3>命中预览</h3>
-          <p>预先查看规则包会命中哪里、为什么不命中，以及是否需要人工复核。</p>
         </div>
         {onRefreshPreview ? (
           <div className="template-governance-actions">

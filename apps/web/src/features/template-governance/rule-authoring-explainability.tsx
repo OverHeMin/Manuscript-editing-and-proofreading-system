@@ -17,7 +17,6 @@ export function RuleAuthoringExplainability({
       <div className="template-governance-panel-header">
         <div>
           <h3>规则解释性</h3>
-          <p>说明当前规则面向什么对象、为什么适合自动执行或仅检查，以及人工复核时会看到什么示例。</p>
         </div>
       </div>
 

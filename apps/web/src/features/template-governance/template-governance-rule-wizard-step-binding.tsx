@@ -100,25 +100,9 @@ export function TemplateGovernanceRuleWizardStepBinding({
     <article className="template-governance-card template-governance-ledger-section">
       <header className="template-governance-ledger-section-header">
         <h2>放入模板 / 规则包</h2>
-        <p>用业务语言决定这条规则进入哪个规则包和模板族。</p>
       </header>
 
       {errorMessage ? <p className="template-governance-error">{errorMessage}</p> : null}
-
-      <div className="template-governance-rule-hint-list">
-        <div className="template-governance-rule-hint-card">
-          <strong>规则包决定这条规则先落到哪个复用容器</strong>
-          <p>先选通用包还是医学专用包，再决定挂到具体包版本，还是按包类型激活，后续模板复用都会沿着这个容器走。</p>
-        </div>
-        <div className="template-governance-rule-hint-card">
-          <strong>模板族决定哪些稿件默认看见这条规则</strong>
-          <p>规则包解决“放哪里复用”，模板族解决“哪类稿件默认拿到这条规则”，两者不要混成同一层。</p>
-        </div>
-        <div className="template-governance-rule-hint-card">
-          <strong>复用策略只处理挂到现有包还是新建绑定</strong>
-          <p>它不是创建新规则，而是决定这条已经确认好的规则，优先复用现有容器还是单独挂载。</p>
-        </div>
-      </div>
 
       <div className="template-governance-detail-grid">
         <label className="template-governance-field">
@@ -226,7 +210,7 @@ export function TemplateGovernanceRuleWizardStepBinding({
           <div data-rule-wizard-journal-templates="list">
             <SearchableMultiSelectField
               label="直绑期刊模板"
-              helpText="这里展示已激活的真实期刊模板。选中后，规则会额外挂到具体期刊层，不再只停留在模板族基线。"
+              helpText=""
               value={selectedJournalTemplateIds}
               options={journalTemplateOptions}
               dataKey="rule-wizard-journal-templates"
@@ -275,9 +259,7 @@ export function TemplateGovernanceRuleWizardStepBinding({
           <div data-rule-wizard-linked-knowledge="list">
             <SearchableMultiSelectField
               label={"\u5173\u8054\u77e5\u8bc6\u6761\u76ee"}
-              helpText={
-                "\u5173\u8054\u77e5\u8bc6\u53ea\u5c55\u793a\u5df2\u6279\u51c6\u4e14\u975e\u201c\u89c4\u5219\u6295\u5f71\u201d\u7684\u6761\u76ee\uff0c\u7528\u6765\u628a\u89c4\u5219\u4f9d\u8d56\u7684\u4f9d\u636e\u3001\u51c6\u5219\u6216\u89e3\u91ca\u6027\u77e5\u8bc6\u663e\u5f0f\u6302\u5230\u8fd9\u6761\u89c4\u5219\u4e0a\u3002"
-              }
+              helpText=""
               value={selectedKnowledgeIds}
               options={knowledgeItemOptions}
               dataKey="rule-wizard-linked-knowledge"
@@ -328,7 +310,6 @@ export function TemplateGovernanceRuleWizardStepBinding({
           <header className="template-governance-rule-section-heading">
             <div>
               <h3>业务调用模块</h3>
-              <p>把规则的业务落点说清楚，方便后续规则包和模板族复用。</p>
             </div>
           </header>
           <div className="template-governance-rule-impact-list">
@@ -347,7 +328,6 @@ export function TemplateGovernanceRuleWizardStepBinding({
           <header className="template-governance-rule-section-heading">
             <div>
               <h3>推荐复用</h3>
-              <p>先判断这条规则是挂到现有规则包，还是新开绑定关系。</p>
             </div>
           </header>
           <label className="template-governance-field">
@@ -372,7 +352,6 @@ export function TemplateGovernanceRuleWizardStepBinding({
           <header className="template-governance-rule-section-heading">
             <div>
               <h3>影响预览</h3>
-              <p>在发布前提前看到这条规则会落到哪些业务对象。</p>
             </div>
           </header>
           <div className="template-governance-rule-impact-list">

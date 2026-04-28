@@ -16,7 +16,6 @@ export interface TemplateGovernanceLedgerToolbarProps {
 
 export function TemplateGovernanceLedgerToolbar({
   title,
-  subtitle,
   searchValue = "",
   searchPlaceholder = "搜索当前台账",
   density = "comfortable",
@@ -30,7 +29,6 @@ export function TemplateGovernanceLedgerToolbar({
       <div className="template-governance-ledger-toolbar-copy">
         <p className="template-governance-eyebrow">规则中心台账</p>
         <h1>{title}</h1>
-        {subtitle ? <p>{subtitle}</p> : null}
       </div>
       {navigationItems?.length ? (
         <nav className="template-governance-ledger-nav" aria-label="规则中心切换">

@@ -77,7 +77,6 @@ export function RuleLearningActions({
       <div className="template-governance-panel-header">
         <div>
           <h3>回流动作</h3>
-          <p>先完成复核结论，再决定是否把结果沉淀为规则草稿。</p>
         </div>
       </div>
 

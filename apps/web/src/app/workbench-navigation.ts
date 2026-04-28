@@ -25,7 +25,6 @@ export interface WorkbenchNavigationItem {
   key: string;
   id: WorkbenchId;
   label: string;
-  description: string;
   emphasis: WorkbenchNavigationItemEmphasis;
   entry: WorkbenchEntry;
   target: WorkbenchNavigationTarget;
@@ -37,7 +36,6 @@ export type WorkbenchNavigationProminence = "primary" | "supporting" | "secondar
 export interface WorkbenchNavigationGroup {
   id: WorkbenchNavigationGroupId;
   label: string;
-  description: string;
   prominence: WorkbenchNavigationProminence;
   items: WorkbenchNavigationItem[];
 }
@@ -46,28 +44,23 @@ const GROUP_META: Record<
   WorkbenchNavigationGroupId,
   {
     label: string;
-    description: string;
     prominence: WorkbenchNavigationProminence;
   }
 > = {
   general: {
     label: "首页",
-    description: "个人工作入口与稿件处理进度",
     prominence: "supporting",
   },
   "core-workbench": {
     label: "核心流程",
-    description: "初筛、编辑、校对与按角色开放的核心工作区",
     prominence: "primary",
   },
   "supporting-workbench": {
     label: "协作与回收区",
-    description: "知识审核与规则中心协作入口",
     prominence: "supporting",
   },
   governance: {
     label: "管理区",
-    description: "面向管理侧的总览、接入与控制入口",
     prominence: "secondary",
   },
 };
@@ -117,7 +110,6 @@ export function buildWorkbenchNavigationGroups(
       groups.push({
         id: groupId,
         label: GROUP_META[groupId].label,
-        description: GROUP_META[groupId].description,
         prominence: GROUP_META[groupId].prominence,
         items,
       });
@@ -167,7 +159,6 @@ function buildNavigationItem(
     key: target.key,
     id: target.workbenchId,
     label: target.label,
-    description: target.description,
     emphasis,
     entry,
     target: navigationTarget,

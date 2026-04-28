@@ -28,7 +28,7 @@ const {
   saveRuleWizardEntryDraft,
 } = await import("../src/features/template-governance/template-governance-rule-wizard-api.ts");
 
-test("rule wizard entry step explains high-frequency parameters and advanced tags", () => {
+test("rule wizard entry step keeps entry controls without teaching copy", () => {
   const Wizard = TemplateGovernanceRuleWizard as unknown as (
     props: Record<string, unknown>,
   ) => React.ReactElement;
@@ -42,14 +42,21 @@ test("rule wizard entry step explains high-frequency parameters and advanced tag
     />,
   );
 
-  assert.match(markup, /这版向导只开放高频治理参数/u);
-  assert.match(markup, /低频高级项也在当前规则中心完成/u);
-  assert.match(markup, /适用模块决定规则在哪个执行环节被调用/u);
-  assert.match(markup, /章节标签和风险标签放到高级标签里补充/u);
+  assert.match(markup, /基础录入与证据补充/u);
+  assert.match(markup, /规则名称/u);
+  assert.match(markup, /规则正文/u);
+  assert.match(markup, /正例示例/u);
+  assert.match(markup, /来源依据/u);
+  assert.match(markup, /图片 \/ 图表 \/ 截图/u);
+  assert.match(markup, /展开高级标签/u);
+  assert.doesNotMatch(markup, /这版向导只开放高频治理参数/u);
+  assert.doesNotMatch(markup, /低频高级项也在当前规则中心完成/u);
+  assert.doesNotMatch(markup, /适用模块决定规则在哪个执行环节被调用/u);
+  assert.doesNotMatch(markup, /章节标签和风险标签放到高级标签里补充/u);
   assert.doesNotMatch(markup, /打开旧版高级工作台/u);
 });
 
-test("rule wizard confirm step explains semantic confirmation parameters", () => {
+test("rule wizard confirm step keeps semantic confirmation controls", () => {
   const Wizard = TemplateGovernanceRuleWizard as unknown as (
     props: Record<string, unknown>,
   ) => React.ReactElement;
@@ -64,9 +71,17 @@ test("rule wizard confirm step explains semantic confirmation parameters", () =>
     />,
   );
 
-  assert.match(markup, /规则类型决定这条规则按什么治理判断复用/u);
-  assert.match(markup, /风险等级决定后续审核和发布要多谨慎/u);
-  assert.match(markup, /稿件类型填写这条规则默认命中的稿件范围/u);
+  assert.match(markup, /人工确认 AI 结果/u);
+  assert.match(markup, /一键采纳高置信结果/u);
+  assert.match(markup, /规则类型判断/u);
+  assert.match(markup, /风险等级判断/u);
+  assert.match(markup, /业务适用范围/u);
+  assert.match(markup, /人工确认/u);
+  assert.match(markup, /语义摘要/u);
+  assert.match(markup, /检索词/u);
+  assert.doesNotMatch(markup, /规则类型决定这条规则按什么治理判断复用/u);
+  assert.doesNotMatch(markup, /风险等级决定后续审核和发布要多谨慎/u);
+  assert.doesNotMatch(markup, /稿件类型填写这条规则默认命中的稿件范围/u);
 });
 
 test("rule wizard confirm step uses structured manuscript-type and retrieval-term controls", () => {
@@ -112,7 +127,7 @@ test("rule wizard confirm step uses structured manuscript-type and retrieval-ter
   assert.doesNotMatch(markup, /placeholder="clinical_study, review"/u);
 });
 
-test("rule wizard binding and publish steps explain package and release choices", () => {
+test("rule wizard binding and publish steps keep package and release controls", () => {
   const Wizard = TemplateGovernanceRuleWizard as unknown as (
     props: Record<string, unknown>,
   ) => React.ReactElement;
@@ -137,13 +152,24 @@ test("rule wizard binding and publish steps explain package and release choices"
     />,
   );
 
-  assert.match(bindingMarkup, /规则包决定这条规则先落到哪个复用容器/u);
-  assert.match(bindingMarkup, /按包类型激活/u);
-  assert.match(bindingMarkup, /模板族决定哪些稿件默认看见这条规则/u);
-  assert.match(bindingMarkup, /复用策略只处理挂到现有包还是新建绑定/u);
-  assert.match(publishMarkup, /保存草稿适合先留给当前编辑人继续补充/u);
-  assert.match(publishMarkup, /提交审核会进入规则治理审核队列/u);
-  assert.match(publishMarkup, /直接发布只适合已经确认无误的场景/u);
+  assert.match(bindingMarkup, /放入模板 \/ 规则包/u);
+  assert.match(bindingMarkup, /进入哪个规则包/u);
+  assert.match(bindingMarkup, /规则包条目/u);
+  assert.match(bindingMarkup, /关联模板族/u);
+  assert.match(bindingMarkup, /直绑期刊模板/u);
+  assert.match(bindingMarkup, /关联知识条目/u);
+  assert.match(publishMarkup, /保存与发布/u);
+  assert.match(publishMarkup, /当前规则包/u);
+  assert.match(publishMarkup, /发布方式/u);
+  assert.match(publishMarkup, /保存草稿/u);
+  assert.match(publishMarkup, /提交审核/u);
+  assert.match(publishMarkup, /直接发布/u);
+  assert.doesNotMatch(bindingMarkup, /规则包决定这条规则先落到哪个复用容器/u);
+  assert.doesNotMatch(bindingMarkup, /模板族决定哪些稿件默认看见这条规则/u);
+  assert.doesNotMatch(bindingMarkup, /复用策略只处理挂到现有包还是新建绑定/u);
+  assert.doesNotMatch(publishMarkup, /保存草稿适合先留给当前编辑人继续补充/u);
+  assert.doesNotMatch(publishMarkup, /提交审核会进入规则治理审核队列/u);
+  assert.doesNotMatch(publishMarkup, /直接发布只适合已经确认无误的场景/u);
 });
 
 test("rule wizard shell renders shared step navigation and closeout actions", () => {
@@ -167,16 +193,26 @@ test("rule wizard shell renders shared step navigation and closeout actions", ()
   assert.match(markup, /绑定适用范围/u);
   assert.match(markup, /提交发布/u);
   assert.match(markup, /下一步：整理草稿/u);
+  assert.match(markup, /返回规则台账/u);
   assert.match(markup, /保存草稿/u);
   assert.match(markup, /完成并返回规则中心/u);
   assert.match(markup, /录入画布/u);
-  assert.match(markup, /AI 辅助提示/u);
   assert.match(markup, /规则正文/u);
   assert.match(markup, /正例示例/u);
   assert.match(markup, /反例示例/u);
   assert.match(markup, /图片 \/ 图表 \/ 截图/u);
   assert.match(markup, /来源依据/u);
   assert.match(markup, /展开高级标签/u);
+  assert.match(markup, /添加补充文字/u);
+  assert.match(markup, /添加表格/u);
+  assert.match(markup, /添加图片或截图/u);
+  assert.doesNotMatch(markup, /先带入候选并整理规则草稿/u);
+  assert.doesNotMatch(markup, /当前步骤聚焦/u);
+  assert.doesNotMatch(markup, /AI 辅助提示/u);
+  assert.doesNotMatch(markup, /按块组织正文/u);
+  assert.doesNotMatch(markup, /表格支持直接粘贴 Excel/u);
+  assert.doesNotMatch(markup, /如果只想补充图注/u);
+  assert.doesNotMatch(markup, /还没有证据材料，可以先添加/u);
 });
 
 test("rule wizard entry form state normalizes advanced tags into structured selections", () => {
@@ -1171,16 +1207,18 @@ test("rule wizard binding step renders explicit journal-template and linked-know
   assert.match(markup, /data-searchable-multi-select-input="rule-wizard-journal-templates"/u);
   assert.match(markup, /placeholder="搜索期刊模板"/u);
   assert.match(markup, /Journal Alpha/u);
-  assert.match(markup, /这里展示已激活的真实期刊模板/u);
+  assert.match(markup, /直绑期刊模板/u);
   assert.match(markup, /Clinical Family（1）/u);
   assert.match(markup, /Clinical Family \/ journal-alpha/u);
   assert.match(markup, /data-rule-wizard-linked-knowledge="list"/u);
   assert.match(markup, /data-searchable-multi-select-input="rule-wizard-linked-knowledge"/u);
   assert.match(markup, /placeholder="搜索关联知识条目"/u);
   assert.match(markup, /Table checklist/u);
-  assert.match(markup, /关联知识只展示已批准且非“规则投影”的条目/u);
+  assert.match(markup, /关联知识条目/u);
   assert.match(markup, /参考资料（1）/u);
   assert.match(markup, /参考资料 \/ 已通过 \/ 校对/u);
+  assert.doesNotMatch(markup, /这里展示已激活的真实期刊模板/u);
+  assert.doesNotMatch(markup, /关联知识只展示已批准且非“规则投影”的条目/u);
   assert.doesNotMatch(markup, /reference \/ approved/u);
 });
 

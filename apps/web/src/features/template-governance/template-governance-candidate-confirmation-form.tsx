@@ -66,9 +66,6 @@ export function TemplateGovernanceCandidateConfirmationForm({
         </header>
         {statusMessage ? <p className="template-governance-status">{statusMessage}</p> : null}
         {errorMessage ? <p className="template-governance-error">{errorMessage}</p> : null}
-        <p className="template-governance-context-note template-governance-context-note--compact">
-          这里复核的是提取候选语义，不是规则向导里的多模态 AI 识别结果。
-        </p>
         {intakeRecord ? (
           <p className="template-governance-status">
             已关联

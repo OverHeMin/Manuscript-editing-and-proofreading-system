@@ -9,7 +9,6 @@ import {
   formatRulePackageSemanticFieldLabel,
   formatRulePackageTargetLabel,
   formatRulePackageTargetModeLabel,
-  formatTemplateGovernanceModuleLabel,
 } from "./template-governance-display.ts";
 
 export interface RulePackageCompilePanelProps {
@@ -28,7 +27,6 @@ export interface RulePackageCompilePanelProps {
 }
 
 export function RulePackageCompilePanel({
-  targetModule,
   compilePreview,
   compileResult,
   canPreview,
@@ -48,11 +46,6 @@ export function RulePackageCompilePanel({
       <div className="template-governance-panel-header">
         <div>
           <h3>编译预览</h3>
-          <p>
-            先确认规则包会怎样映射到
-            {formatTemplateGovernanceModuleLabel(targetModule)}
-            模块草稿，再决定是否生成规则草稿。
-          </p>
         </div>
         <div className="template-governance-actions">
           <button type="button" disabled={!canPreview || isPreviewBusy} onClick={onPreview}>
@@ -100,9 +93,7 @@ export function RulePackageCompilePanel({
           ))}
         </ul>
       ) : (
-        <p className="template-governance-empty">
-          先运行编译预览，确认可编译状态、降级策略和目标规则对象，再生成规则草稿。
-        </p>
+        <p className="template-governance-empty">当前还没有编译预览。</p>
       )}
 
       {compileResult ? (

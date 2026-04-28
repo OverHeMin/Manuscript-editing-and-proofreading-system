@@ -161,27 +161,6 @@ export function TemplateGovernanceRuleLedgerPage({
       <TemplateGovernanceLedgerSearchPage searchState={searchState} />
       <RuleAiIntakePanel state={aiIntakeState} />
 
-      <article className="template-governance-card template-governance-ledger-section">
-        <header className="template-governance-ledger-section-header">
-          <h2>规则中心操作说明</h2>
-          <p>先分清规则本体、规则包和模板族各自负责什么，再进入具体台账或规则向导。</p>
-        </header>
-        <div className="template-governance-rule-hint-list">
-          <article className="template-governance-rule-hint-card">
-            <strong>建立规则</strong>
-            <p>从“新建规则”进入五步向导，先录正文和证据，再确认语义、绑定规则包与模板族，最后提交发布。</p>
-          </article>
-          <article className="template-governance-rule-hint-card">
-            <strong>修改规则</strong>
-            <p>从规则台账或规则包里的默认规则进入编辑。已批准规则会先派生修订草稿，不直接覆盖当前已发布版本。</p>
-          </article>
-          <article className="template-governance-rule-hint-card">
-            <strong>管理规则</strong>
-            <p>规则台账管理规则本体，规则包负责复用组合，模板族决定默认适用稿件范围，三者配合完成治理。</p>
-          </article>
-        </div>
-      </article>
-
       {filterState.isOpen ? (
         <article className="template-governance-card template-governance-ledger-section">
           <header className="template-governance-ledger-section-header">
@@ -243,7 +222,6 @@ export function TemplateGovernanceRuleLedgerPage({
         <article className="template-governance-card template-governance-ledger-section">
           <header className="template-governance-ledger-section-header">
             <h2>批量操作面板</h2>
-            <p>进入多选模式后，可以先圈定当前结果，再决定是否仅查看已选项。</p>
           </header>
           <div className="template-governance-actions">
             <button type="button" onClick={bulkState.onSelectVisibleRows}>
@@ -284,7 +262,6 @@ export function TemplateGovernanceRuleLedgerPage({
       <article className="template-governance-card template-governance-ledger-section">
         <header className="template-governance-ledger-section-header">
           <h2>分类视图</h2>
-          <p>用同一张表切换规则、模板、规则包和回流候选，不再跳进多个旧工作台。</p>
         </header>
         <div className="template-governance-ledger-nav" aria-label="规则台账分类">
           {templateGovernanceRuleLedgerCategoryOrder.map((category) => (
@@ -305,7 +282,6 @@ export function TemplateGovernanceRuleLedgerPage({
       <article className="template-governance-card template-governance-ledger-section">
         <header className="template-governance-ledger-section-header">
           <h2>统一规则资产表</h2>
-          <p>集中查看适用模块、稿件类型、语义状态和发布状态，选择后在下方看紧凑详情。</p>
         </header>
         <div className="template-governance-ledger-table-shell">
           <table className="template-governance-ledger-table">
@@ -388,7 +364,6 @@ export function TemplateGovernanceRuleLedgerPage({
         <article className="template-governance-card template-governance-ledger-section">
           <header className="template-governance-ledger-section-header">
             <h2>当前选中项</h2>
-            <p>保持详情面板紧凑，只展示高频判断信息。</p>
           </header>
           <div className="template-governance-detail-grid">
             <div>
@@ -462,10 +437,6 @@ export function TemplateGovernanceRuleLedgerPage({
             <section className="template-governance-card template-governance-ledger-section">
               <header className="template-governance-ledger-section-header">
                 <h2>包内默认规则</h2>
-                <p>
-                  已绑定 {viewModel.selectedRow.default_rule_count ?? selectedPackageRules.length} 条默认规则。
-                  点击规则名切到规则本体，再继续编辑或审核。
-                </p>
               </header>
               {selectedPackageRules.length ? (
                 <ul className="template-governance-list">
@@ -526,9 +497,6 @@ function RuleAiIntakePanel({
     <article className="template-governance-card template-governance-ledger-section">
       <header className="template-governance-ledger-section-header">
         <h2>规则 AI 草稿生成</h2>
-        <p>
-          输入自然语言规则描述，AI 只生成待审核草稿；应用后仍进入五步流和审核流程。
-        </p>
       </header>
       <form className="template-governance-form-grid" onSubmit={state.onGenerate}>
         <label className="template-governance-field template-governance-field-full">
