@@ -6,6 +6,7 @@ import type {
   DocumentPreviewViewModel,
   DocumentPreviewSessionViewModel,
   DocumentPreviewSaveBackModule,
+  DocumentPreviewSaveBackPurpose,
 } from "./types.ts";
 
 export interface DocumentPreviewHttpClient {
@@ -49,6 +50,7 @@ export function createPreviewSession(
       enabled: boolean;
       module: DocumentPreviewSaveBackModule;
       baselineAssetId?: string;
+      purpose?: DocumentPreviewSaveBackPurpose;
     };
     comments?: Array<{
       id: string;

@@ -576,7 +576,7 @@ function formatSurfaceFlowCopy(
   previewSession: DocumentPreviewSessionViewModel,
 ): string {
   if (previewSession.save_back_enabled && previewSession.save_back) {
-    return "当前可在文档中完成人工复核编辑，保存后合并为当前稿件版本。";
+    return "当前可在文档中完成人工复核编辑；保存只记录工作态并提取差异，最终稿需在右侧确认后生成。";
   }
 
   return "当前以只读模式挂载当前稿件版本，右侧仍然是人工确认主工作面。";

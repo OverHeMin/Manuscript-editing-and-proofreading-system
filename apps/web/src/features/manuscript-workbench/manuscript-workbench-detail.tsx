@@ -22,6 +22,14 @@ import type {
   DocumentAssetViewModel,
   JobViewModel,
 } from "../manuscripts/index.ts";
+import {
+  HumanReviewQueue,
+  type HumanReviewDiffItemViewModel,
+  type HumanReviewPublishModule,
+  type HumanReviewPublishPreflightResultViewModel,
+  type HumanReviewQueueBatchDecisionChangeInput,
+  type HumanReviewQueueDecisionChangeInput,
+} from "../human-review/index.ts";
 import type { ProofreadingConfirmationDecisionAction } from "../proofreading/types.ts";
 import {
   buildWorkbenchAssetDisplayName,
@@ -182,6 +190,9 @@ export interface ManuscriptWorkbenchAssetDetailPageProps {
   >;
   confirmationItems?: readonly ProofreadingConfirmationItemViewModel[];
   confirmationState?: Readonly<Record<string, ProofreadingConfirmationDraftState>>;
+  humanReviewDiffItems?: readonly HumanReviewDiffItemViewModel[];
+  humanReviewPreflight?: HumanReviewPublishPreflightResultViewModel | null;
+  humanReviewModule?: HumanReviewPublishModule | null;
   screeningDocumentBlocks?: readonly ProofreadingDocumentBlockViewModel[];
   screeningWorkspaceFocusItems?: readonly ScreeningWorkspaceFocusItemViewModel[];
   editingDocumentBlocks?: readonly ProofreadingDocumentBlockViewModel[];
@@ -190,6 +201,7 @@ export interface ManuscriptWorkbenchAssetDetailPageProps {
   activeProofreadingLocateTarget?: DocumentPreviewLocateTargetViewModel | null;
   isFinalizeEnabled?: boolean;
   isFinalizing?: boolean;
+  isHumanReviewUpdating?: boolean;
   savingEditingSlotKey?: string | null;
   onProofreadingIssueSelect?(itemId: string): void;
   onConfirmationActionChange?(
@@ -201,6 +213,13 @@ export interface ManuscriptWorkbenchAssetDetailPageProps {
   onSaveDraft?(): void;
   draftSaveLabel?: string;
   isDraftSaving?: boolean;
+  onHumanReviewDecisionChange?(input: HumanReviewQueueDecisionChangeInput): void;
+  onHumanReviewBatchDecisionChange?(
+    input: HumanReviewQueueBatchDecisionChangeInput,
+  ): void;
+  onHumanReviewPreflight?(): void;
+  onHumanReviewPublish?(): void;
+  onHumanReviewRetryBackflow?(diffItemId: string): void;
   onEditingSlotSave?(input: EditingSlotManualSaveInput): void;
   onFinalize?(): void;
 }
@@ -1157,6 +1176,9 @@ export function ManuscriptWorkbenchAssetDetailPage({
   knowledgeReferences,
   confirmationItems = [],
   confirmationState = {},
+  humanReviewDiffItems = [],
+  humanReviewPreflight = null,
+  humanReviewModule = null,
   screeningDocumentBlocks = [],
   screeningWorkspaceFocusItems = [],
   editingDocumentBlocks = [],
@@ -1165,6 +1187,7 @@ export function ManuscriptWorkbenchAssetDetailPage({
   activeProofreadingLocateTarget = null,
   isFinalizeEnabled = false,
   isFinalizing = false,
+  isHumanReviewUpdating = false,
   savingEditingSlotKey = null,
   onProofreadingIssueSelect,
   onConfirmationActionChange,
@@ -1173,6 +1196,11 @@ export function ManuscriptWorkbenchAssetDetailPage({
   onSaveDraft,
   draftSaveLabel,
   isDraftSaving = false,
+  onHumanReviewDecisionChange,
+  onHumanReviewBatchDecisionChange,
+  onHumanReviewPreflight,
+  onHumanReviewPublish,
+  onHumanReviewRetryBackflow,
   onEditingSlotSave,
   onFinalize,
 }: ManuscriptWorkbenchAssetDetailPageProps) {
@@ -1595,6 +1623,10 @@ export function ManuscriptWorkbenchAssetDetailPage({
       manuscriptPreviewAsset.asset_type,
     );
     const manuscriptPreviewHref = previewDownloadHref ?? downloadHref;
+    const showsHumanReviewDiffQueue = humanReviewDiffItems.length > 0;
+    const resolvedHumanReviewModule =
+      humanReviewModule ??
+      (mode === "proofreading" ? "proofreading" : null);
 
     React.useEffect(() => {
       if (showsOnlyOfficeSurface || !fallbackFocusTarget || typeof document === "undefined") {
@@ -1754,14 +1786,20 @@ export function ManuscriptWorkbenchAssetDetailPage({
           <article className="manuscript-workbench-proofreading-issue-pane">
             <div className="manuscript-workbench-detail-card-header">
               <div>
-                <h4>问题队列</h4>
-                <p>点击问题可定位到对应稿件位置，并在右侧展开人工确认。</p>
+                <h4>{showsHumanReviewDiffQueue ? "差异队列" : "问题队列"}</h4>
+                <p>
+                  {showsHumanReviewDiffQueue
+                    ? "确认每一处差异是否进入最终稿，并选择是否回流规则或知识候选。"
+                    : "点击问题可定位到对应稿件位置，并在右侧展开人工确认。"}
+                </p>
               </div>
-              <div className="manuscript-workbench-proofreading-issue-summary">
-                <strong>{`共发现 ${issueSummary.totalCount} 项问题`}</strong>
-                <span>{`高 ${issueSummary.highCount} · 中 ${issueSummary.mediumCount} · 低 ${issueSummary.lowCount}`}</span>
-                <small>{`当前显示 ${issueSummary.filteredCount} / 共 ${issueSummary.totalCount}`}</small>
-              </div>
+              {showsHumanReviewDiffQueue ? null : (
+                <div className="manuscript-workbench-proofreading-issue-summary">
+                  <strong>{`共发现 ${issueSummary.totalCount} 项问题`}</strong>
+                  <span>{`高 ${issueSummary.highCount} · 中 ${issueSummary.mediumCount} · 低 ${issueSummary.lowCount}`}</span>
+                  <small>{`当前显示 ${issueSummary.filteredCount} / 共 ${issueSummary.totalCount}`}</small>
+                </div>
+              )}
               {previewOperationalState || activeLocateTarget ? (
                 <dl className="manuscript-workbench-detail-metadata">
                   {previewOperationalState ? (
@@ -1779,7 +1817,20 @@ export function ManuscriptWorkbenchAssetDetailPage({
                 </dl>
               ) : null}
             </div>
-            {confirmationItems.length > 0 ? (
+            {showsHumanReviewDiffQueue && resolvedHumanReviewModule ? (
+              <HumanReviewQueue
+                module={resolvedHumanReviewModule}
+                items={humanReviewDiffItems}
+                preflight={humanReviewPreflight}
+                isUpdating={isHumanReviewUpdating}
+                isPublishing={isFinalizing}
+                onDecisionChange={onHumanReviewDecisionChange}
+                onBatchDecisionChange={onHumanReviewBatchDecisionChange}
+                onPreflightPublish={onHumanReviewPreflight}
+                onPublishFinal={onHumanReviewPublish}
+                onRetryBackflow={onHumanReviewRetryBackflow}
+              />
+            ) : confirmationItems.length > 0 ? (
               <div className="manuscript-workbench-proofreading-issue-list">
                 <div className="manuscript-workbench-proofreading-issue-filters">
                   <label className="manuscript-workbench-field">
@@ -1930,26 +1981,28 @@ export function ManuscriptWorkbenchAssetDetailPage({
               </div>
             )}
 
-            <div className="manuscript-workbench-button-row manuscript-workbench-button-row--sticky">
-              {onSaveDraft ? (
+            {showsHumanReviewDiffQueue ? null : (
+              <div className="manuscript-workbench-button-row manuscript-workbench-button-row--sticky">
+                {onSaveDraft ? (
+                  <button
+                    type="button"
+                    className="manuscript-workbench-button-secondary"
+                    disabled={isDraftSaving}
+                    onClick={() => onSaveDraft?.()}
+                  >
+                    {isDraftSaving ? "保存中..." : "保存进度"}
+                  </button>
+                ) : null}
                 <button
                   type="button"
-                  className="manuscript-workbench-button-secondary"
-                  disabled={isDraftSaving}
-                  onClick={() => onSaveDraft?.()}
+                  disabled={!isFinalizeEnabled || isFinalizing}
+                  onClick={() => onFinalize?.()}
                 >
-                  {isDraftSaving ? "保存中..." : "保存进度"}
+                  {isFinalizing ? "发布中..." : "发布人工终稿"}
                 </button>
-              ) : null}
-              <button
-                type="button"
-                disabled={!isFinalizeEnabled || isFinalizing}
-                onClick={() => onFinalize?.()}
-              >
-                {isFinalizing ? "发布中..." : "发布人工终稿"}
-              </button>
-            </div>
-            {draftSaveLabel ? (
+              </div>
+            )}
+            {!showsHumanReviewDiffQueue && draftSaveLabel ? (
               <p className="manuscript-workbench-proofreading-draft-status">
                 {draftSaveLabel}
               </p>
@@ -2038,6 +2091,21 @@ export function ManuscriptWorkbenchAssetDetailPage({
           </article>
 
           <aside className="manuscript-workbench-editing-onlyoffice-review">
+            {humanReviewDiffItems.length > 0 && humanReviewModule ? (
+              <HumanReviewQueue
+                module={humanReviewModule}
+                items={humanReviewDiffItems}
+                preflight={humanReviewPreflight}
+                isUpdating={isHumanReviewUpdating}
+                isPublishing={isFinalizing}
+                onDecisionChange={onHumanReviewDecisionChange}
+                onBatchDecisionChange={onHumanReviewBatchDecisionChange}
+                onPreflightPublish={onHumanReviewPreflight}
+                onPublishFinal={onHumanReviewPublish}
+                onRetryBackflow={onHumanReviewRetryBackflow}
+              />
+            ) : null}
+
             <section className="manuscript-workbench-detail-ledger-card">
               <div className="manuscript-workbench-detail-card-header">
                 <div>

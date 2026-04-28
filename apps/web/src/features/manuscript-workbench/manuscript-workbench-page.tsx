@@ -64,6 +64,13 @@ import {
   type WorkbenchActionResultDetail,
 } from "./manuscript-workbench-summary.tsx";
 import type { ManualFeedbackCategory } from "../feedback-governance/index.ts";
+import type {
+  HumanReviewDiffItemViewModel,
+  HumanReviewPublishModule,
+  HumanReviewPublishPreflightResultViewModel,
+  HumanReviewQueueBatchDecisionChangeInput,
+  HumanReviewQueueDecisionChangeInput,
+} from "../human-review/index.ts";
 import {
   buildHighRiskReviewItemsFromJob,
   type ManuscriptWorkbenchHighRiskReviewItemViewModel,
@@ -1130,6 +1137,7 @@ export function buildDetailPreviewSessionInput(input: {
         enabled: boolean;
         module: "editing" | "proofreading";
         baselineAssetId: string;
+        purpose: "human_review_working_state";
       };
       comments: Array<{
         id: string;
@@ -1174,6 +1182,7 @@ function resolveDetailPreviewSaveBack(input: {
         enabled: true;
         module: "editing" | "proofreading";
         baselineAssetId: string;
+        purpose: "human_review_working_state";
       };
     }
   | undefined {
@@ -1183,6 +1192,7 @@ function resolveDetailPreviewSaveBack(input: {
         enabled: true,
         module: "editing",
         baselineAssetId: input.previewAsset.id,
+        purpose: "human_review_working_state",
       },
     };
   }
@@ -1198,6 +1208,7 @@ function resolveDetailPreviewSaveBack(input: {
         enabled: true,
         module: "proofreading",
         baselineAssetId: input.previewAsset.id,
+        purpose: "human_review_working_state",
       },
     };
   }
@@ -1327,6 +1338,12 @@ export function ManuscriptWorkbenchPage({
   const [confirmationState, setConfirmationState] = useState<
     Record<string, ProofreadingConfirmationDraftState>
   >({});
+  const [humanReviewDiffItems, setHumanReviewDiffItems] = useState<
+    HumanReviewDiffItemViewModel[]
+  >([]);
+  const [humanReviewPreflight, setHumanReviewPreflight] =
+    useState<HumanReviewPublishPreflightResultViewModel | null>(null);
+  const [isHumanReviewUpdating, setIsHumanReviewUpdating] = useState(false);
   const [savedConfirmationDraftSignature, setSavedConfirmationDraftSignature] =
     useState("");
   const [savedConfirmationDraftLabel, setSavedConfirmationDraftLabel] =
@@ -1513,6 +1530,9 @@ export function ManuscriptWorkbenchPage({
     setConfirmationState({});
     setSavedConfirmationDraftSignature("");
     setSavedConfirmationDraftLabel("");
+    setHumanReviewDiffItems([]);
+    setHumanReviewPreflight(null);
+    setIsHumanReviewUpdating(false);
     setIsConfirmationDraftSaving(false);
   }, [normalizedPrefilledAssetId]);
 
@@ -1536,6 +1556,9 @@ export function ManuscriptWorkbenchPage({
       setConfirmationState({});
       setSavedConfirmationDraftSignature("");
       setSavedConfirmationDraftLabel("");
+      setHumanReviewDiffItems([]);
+      setHumanReviewPreflight(null);
+      setIsHumanReviewUpdating(false);
       setIsConfirmationDraftSaving(false);
       return;
     }
@@ -1551,6 +1574,9 @@ export function ManuscriptWorkbenchPage({
       setConfirmationState({});
       setSavedConfirmationDraftSignature("");
       setSavedConfirmationDraftLabel("");
+      setHumanReviewDiffItems([]);
+      setHumanReviewPreflight(null);
+      setIsHumanReviewUpdating(false);
       setIsConfirmationDraftSaving(false);
       setActiveProofreadingIssueId("");
       return;
@@ -1621,6 +1647,42 @@ export function ManuscriptWorkbenchPage({
           requestedItemId: current,
         }).issueId,
       );
+
+      const humanReviewModule = resolveDetailHumanReviewModule({
+        mode,
+        selectedAsset,
+        detailKind,
+      });
+      if (humanReviewModule) {
+        try {
+          const [nextHumanReviewItems, nextHumanReviewPreflight] =
+            await Promise.all([
+              controller.loadHumanReviewDiffItems({
+                manuscriptId: workspace.manuscript.id,
+                module: humanReviewModule,
+              }),
+              controller.preflightHumanReviewPublish({
+                manuscriptId: workspace.manuscript.id,
+                module: humanReviewModule,
+              }),
+            ]);
+          if (cancelled) {
+            return;
+          }
+          setHumanReviewDiffItems(nextHumanReviewItems);
+          setHumanReviewPreflight(nextHumanReviewPreflight);
+        } catch (humanReviewError) {
+          if (cancelled) {
+            return;
+          }
+          setHumanReviewDiffItems([]);
+          setHumanReviewPreflight(null);
+          setDetailError(formatWorkbenchRequestError(humanReviewError));
+        }
+      } else {
+        setHumanReviewDiffItems([]);
+        setHumanReviewPreflight(null);
+      }
 
       const previewRequest = buildDetailPreviewSessionInput({
         workspace,
@@ -1945,6 +2007,228 @@ export function ManuscriptWorkbenchPage({
       setLatestActionResult({
         tone: "error",
         actionLabel: "Publish Human Final",
+        message,
+        details: [],
+      });
+    } finally {
+      setIsHumanFinalPublishing(false);
+    }
+  }
+
+  async function refreshHumanReviewPreflight(input: {
+    workspace: ManuscriptWorkbenchWorkspace;
+    module: HumanReviewPublishModule;
+  }) {
+    const nextPreflight = await controller.preflightHumanReviewPublish({
+      manuscriptId: input.workspace.manuscript.id,
+      module: input.module,
+    });
+    setHumanReviewPreflight(nextPreflight);
+    return nextPreflight;
+  }
+
+  async function refreshHumanReviewPreflightFromQueue(input: {
+    workspace: ManuscriptWorkbenchWorkspace;
+    module: HumanReviewPublishModule;
+  }) {
+    setError("");
+
+    try {
+      await refreshHumanReviewPreflight(input);
+    } catch (nextError) {
+      const message = formatError(nextError);
+      setError(message);
+      setLatestActionResult({
+        tone: "error",
+        actionLabel: "Refresh Human Review Preflight",
+        message,
+        details: [],
+      });
+    }
+  }
+
+  async function updateHumanReviewDiffDecision(
+    input: HumanReviewQueueDecisionChangeInput,
+  ) {
+    if (!workspace) {
+      return;
+    }
+
+    const module = resolveWorkbenchHumanReviewModule(mode);
+    if (!module) {
+      return;
+    }
+
+    setIsHumanReviewUpdating(true);
+    setError("");
+
+    try {
+      const updated = await controller.updateHumanReviewDiffDecision({
+        diffItemId: input.diffItemId,
+        contentDecision: input.contentDecision,
+        ...(input.governanceIntents
+          ? { governanceIntents: input.governanceIntents }
+          : {}),
+        ...(input.note !== undefined ? { note: input.note } : {}),
+      });
+      setHumanReviewDiffItems((current) =>
+        replaceHumanReviewDiffItems(current, [updated]),
+      );
+      await refreshHumanReviewPreflight({ workspace, module });
+    } catch (nextError) {
+      const message = formatError(nextError);
+      setError(message);
+      setLatestActionResult({
+        tone: "error",
+        actionLabel: "Update Human Review Decision",
+        message,
+        details: [],
+      });
+    } finally {
+      setIsHumanReviewUpdating(false);
+    }
+  }
+
+  async function batchUpdateHumanReviewDiffDecision(
+    input: HumanReviewQueueBatchDecisionChangeInput,
+  ) {
+    if (!workspace || input.diffItemIds.length === 0) {
+      return;
+    }
+
+    const module = resolveWorkbenchHumanReviewModule(mode);
+    if (!module) {
+      return;
+    }
+
+    setIsHumanReviewUpdating(true);
+    setError("");
+
+    try {
+      const updated = await controller.batchUpdateHumanReviewDiffDecisions({
+        updates: input.diffItemIds.map((diffItemId) => ({
+          diffItemId,
+          contentDecision: input.contentDecision,
+        })),
+      });
+      setHumanReviewDiffItems((current) =>
+        replaceHumanReviewDiffItems(current, updated),
+      );
+      await refreshHumanReviewPreflight({ workspace, module });
+    } catch (nextError) {
+      const message = formatError(nextError);
+      setError(message);
+      setLatestActionResult({
+        tone: "error",
+        actionLabel: "Batch Update Human Review Decisions",
+        message,
+        details: [],
+      });
+    } finally {
+      setIsHumanReviewUpdating(false);
+    }
+  }
+
+  async function retryHumanReviewBackflow(diffItemId: string) {
+    if (!workspace) {
+      return;
+    }
+
+    const module = resolveWorkbenchHumanReviewModule(mode);
+    if (!module) {
+      return;
+    }
+
+    setIsHumanReviewUpdating(true);
+    setError("");
+
+    try {
+      await controller.retryHumanReviewBackflow(diffItemId);
+      const nextItems = await controller.loadHumanReviewDiffItems({
+        manuscriptId: workspace.manuscript.id,
+        module,
+      });
+      setHumanReviewDiffItems(nextItems);
+      await refreshHumanReviewPreflight({ workspace, module });
+    } catch (nextError) {
+      const message = formatError(nextError);
+      setError(message);
+      setLatestActionResult({
+        tone: "error",
+        actionLabel: "Retry Human Review Backflow",
+        message,
+        details: [],
+      });
+    } finally {
+      setIsHumanReviewUpdating(false);
+    }
+  }
+
+  async function publishHumanReviewFinal(input: {
+    workspace: ManuscriptWorkbenchWorkspace;
+    module: HumanReviewPublishModule;
+  }) {
+    setIsHumanFinalPublishing(true);
+    setError("");
+
+    try {
+      const result = await controller.publishHumanReviewFinalAndLoad({
+        manuscriptId: input.workspace.manuscript.id,
+        module: input.module,
+        actorRole,
+        outputStorageKey: `runs/${input.workspace.manuscript.id}/${input.module}/human-final`,
+        outputFileName: resolveWorkbenchHumanFinalFileName(
+          input.workspace.manuscript.title,
+        ),
+      });
+      const nextWorkspace = await syncWorkspaceConcurrencySnapshot(result.workspace);
+      setWorkspace(nextWorkspace);
+      setLatestJob(result.runResult.job);
+      setLatestExport(null);
+      setHumanReviewDiffItems([]);
+      setHumanReviewPreflight(null);
+      if (input.module === "proofreading") {
+        await syncProofreadingGovernanceHandoff(nextWorkspace);
+      }
+
+      const publishedAsset =
+        nextWorkspace.assets.find((asset) => asset.id === result.runResult.asset.id) ??
+        nextWorkspace.currentAsset ??
+        result.runResult.asset;
+      const collectionHref = buildWorkbenchAssetCollectionHref({
+        mode,
+        manuscriptId: nextWorkspace.manuscript.id,
+        reviewedCaseSnapshotId:
+          normalizedPrefilledReviewedCaseSnapshotId.length > 0
+            ? normalizedPrefilledReviewedCaseSnapshotId
+            : undefined,
+        sampleSetItemId:
+          normalizedPrefilledSampleSetItemId.length > 0
+            ? normalizedPrefilledSampleSetItemId
+            : undefined,
+      });
+      setSelectedAssetId("");
+
+      const message = `Published human-final asset ${publishedAsset.id}`;
+      setStatus(message);
+      setLatestActionResult(
+        buildPublishedHumanFinalActionResult({
+          publishedAsset,
+          job: result.runResult.job,
+          overview: nextWorkspace.manuscript.module_execution_overview,
+        }),
+      );
+
+      if (typeof window !== "undefined") {
+        window.location.hash = collectionHref;
+      }
+    } catch (nextError) {
+      const message = formatError(nextError);
+      setStatus("");
+      setError(message);
+      setLatestActionResult({
+        tone: "error",
+        actionLabel: "Publish Human Review Final",
         message,
         details: [],
       });
@@ -2993,6 +3277,16 @@ function buildTemplateContextActionResult(
         assetType: selectedAsset.asset_type,
       })
     : null;
+  const humanReviewModule =
+    selectedAsset && detailKind
+      ? resolveDetailHumanReviewModule({
+          mode,
+          selectedAsset,
+          detailKind,
+        })
+      : null;
+  const showsHumanReviewDiffQueue =
+    Boolean(humanReviewModule) && humanReviewDiffItems.length > 0;
   const isDedicatedProofreadingDetail =
     detailKind === "proofreading_workspace" ||
     detailKind === "proofreading_confirmation";
@@ -3251,7 +3545,7 @@ function buildTemplateContextActionResult(
   const canSaveConfirmationDraft = canSaveProofreadingConfirmationDraft({
     detailKind,
     assetType: selectedAsset?.asset_type,
-  });
+  }) && !showsHumanReviewDiffQueue;
 
   useEffect(() => {
     if (
@@ -3358,6 +3652,9 @@ function buildTemplateContextActionResult(
             knowledgeReferences={workspace.knowledgeReferences}
             confirmationItems={confirmationItems}
             confirmationState={confirmationState}
+            humanReviewDiffItems={humanReviewDiffItems}
+            humanReviewPreflight={humanReviewPreflight}
+            humanReviewModule={humanReviewModule}
             screeningDocumentBlocks={screeningDocumentBlocks}
             screeningWorkspaceFocusItems={screeningWorkspaceFocusItems}
             editingDocumentBlocks={editingDocumentBlocks}
@@ -3379,6 +3676,7 @@ function buildTemplateContextActionResult(
             draftSaveLabel={canSaveConfirmationDraft ? confirmationDraftStatusLabel : ""}
             isDraftSaving={isConfirmationDraftSaving}
             isFinalizing={isHumanFinalPublishing}
+            isHumanReviewUpdating={isHumanReviewUpdating}
             savingEditingSlotKey={savingEditingSlotKey}
             onProofreadingIssueSelect={(itemId) => {
               const nextSelection = resolveProofreadingIssueSelection({
@@ -3419,6 +3717,35 @@ function buildTemplateContextActionResult(
                   note: value,
                 },
               }));
+            }}
+            onHumanReviewDecisionChange={(input) => {
+              void updateHumanReviewDiffDecision(input);
+            }}
+            onHumanReviewBatchDecisionChange={(input) => {
+              void batchUpdateHumanReviewDiffDecision(input);
+            }}
+            onHumanReviewPreflight={() => {
+              if (!workspace || !humanReviewModule) {
+                return;
+              }
+
+              void refreshHumanReviewPreflightFromQueue({
+                workspace,
+                module: humanReviewModule,
+              });
+            }}
+            onHumanReviewPublish={() => {
+              if (!workspace || !humanReviewModule) {
+                return;
+              }
+
+              void publishHumanReviewFinal({
+                workspace,
+                module: humanReviewModule,
+              });
+            }}
+            onHumanReviewRetryBackflow={(diffItemId) => {
+              void retryHumanReviewBackflow(diffItemId);
             }}
             onEditingSlotSave={(input) => {
               if (!workspace) {
@@ -5766,6 +6093,43 @@ function resolveWorkbenchDetailPresentation(
   }
 
   return undefined;
+}
+
+function resolveWorkbenchHumanReviewModule(
+  mode: ManuscriptWorkbenchMode,
+): HumanReviewPublishModule | null {
+  return mode === "editing" || mode === "proofreading" ? mode : null;
+}
+
+function resolveDetailHumanReviewModule(input: {
+  mode: ManuscriptWorkbenchMode;
+  selectedAsset: DocumentAssetViewModel;
+  detailKind: ManuscriptAssetDetailKind;
+}): HumanReviewPublishModule | null {
+  if (
+    input.mode === "proofreading" &&
+    input.detailKind === "proofreading_confirmation"
+  ) {
+    return "proofreading";
+  }
+
+  if (
+    input.mode === "editing" &&
+    input.detailKind === "document_preview" &&
+    input.selectedAsset.asset_type === "edited_docx"
+  ) {
+    return "editing";
+  }
+
+  return null;
+}
+
+function replaceHumanReviewDiffItems(
+  current: readonly HumanReviewDiffItemViewModel[],
+  updated: readonly HumanReviewDiffItemViewModel[],
+): HumanReviewDiffItemViewModel[] {
+  const updatedById = new Map(updated.map((item) => [item.id, item]));
+  return current.map((item) => updatedById.get(item.id) ?? item);
 }
 
 function renderCurrentResultDownloadLabel(

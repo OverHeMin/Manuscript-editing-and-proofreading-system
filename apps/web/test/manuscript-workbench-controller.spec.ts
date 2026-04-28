@@ -1497,6 +1497,299 @@ test("manuscript workbench controller forwards OnlyOffice save-back intent", asy
   ]);
 });
 
+test("manuscript workbench controller uses human review diff APIs for decisions and final publish", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const diffItem = {
+    id: "diff-1",
+    module: "proofreading",
+    manuscript_id: "manuscript-1",
+    baseline_asset_id: "asset-proof-final-1",
+    working_asset_id: "asset-working-1",
+    source: "human_added",
+    content_decision: "unconfirmed",
+    governance_intents: {
+      rule_candidate: false,
+      knowledge_candidate: false,
+    },
+    apply_capability: "auto_apply_revert",
+    status: "pending",
+    before_text: "ALT",
+    after_text: "Serum ALT",
+    created_at: "2026-04-28T09:00:00.000Z",
+    updated_at: "2026-04-28T09:00:00.000Z",
+  } as const;
+  const publishedJob = {
+    id: "job-human-review-final-1",
+    manuscript_id: "manuscript-1",
+    module: "proofreading",
+    job_type: "publish_human_review_final",
+    status: "completed",
+    requested_by: "web-workbench",
+    attempt_count: 1,
+    created_at: "2026-04-28T09:10:00.000Z",
+    updated_at: "2026-04-28T09:11:00.000Z",
+  };
+  const publishedAsset = {
+    id: "asset-human-final-1",
+    manuscript_id: "manuscript-1",
+    asset_type: "human_final_docx",
+    status: "active",
+    storage_key: "runs/manuscript-1/proofreading/human-final.docx",
+    mime_type:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    parent_asset_id: "asset-proof-final-1",
+    source_module: "proofreading",
+    created_by: "web-workbench",
+    version_no: 4,
+    is_current: true,
+    file_name: "human-final.docx",
+    created_at: "2026-04-28T09:11:00.000Z",
+    updated_at: "2026-04-28T09:11:00.000Z",
+  };
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.method === "GET" &&
+        input.url ===
+          "/api/v1/human-review/diff-items?manuscriptId=manuscript-1&module=proofreading"
+      ) {
+        return {
+          status: 200,
+          body: [diffItem] as TResponse,
+        };
+      }
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/human-review/diff-items/diff-1/decision"
+      ) {
+        return {
+          status: 200,
+          body: {
+            ...diffItem,
+            content_decision: "keep",
+            governance_intents: {
+              rule_candidate: true,
+              knowledge_candidate: false,
+            },
+            status: "confirmed",
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/human-review/diff-items/batch-decisions"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              ...diffItem,
+              content_decision: "reject",
+              status: "confirmed",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/human-review/preflight-publish"
+      ) {
+        return {
+          status: 200,
+          body: {
+            can_publish: true,
+            blocking_reasons: [],
+            summary: {
+              total_count: 1,
+              unconfirmed_count: 0,
+              deferred_count: 0,
+              unsafe_count: 0,
+              kept_count: 1,
+              rejected_count: 0,
+            },
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/human-review/publish-final"
+      ) {
+        return {
+          status: 201,
+          body: {
+            job: publishedJob,
+            asset: publishedAsset,
+            preflight: {
+              can_publish: true,
+              blocking_reasons: [],
+              summary: {
+                total_count: 1,
+                unconfirmed_count: 0,
+                deferred_count: 0,
+                unsafe_count: 0,
+                kept_count: 1,
+                rejected_count: 0,
+              },
+            },
+            backflow: {
+              attempts: [],
+              summary: {
+                attempted_count: 0,
+                succeeded_count: 0,
+                failed_count: 0,
+              },
+            },
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/human-review/diff-items/diff-1/retry-backflow"
+      ) {
+        return {
+          status: 200,
+          body: {
+            attempts: [],
+            summary: {
+              attempted_count: 1,
+              succeeded_count: 1,
+              failed_count: 0,
+            },
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/jobs/job-human-review-final-1"
+      ) {
+        return {
+          status: 200,
+          body: publishedJob as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/manuscripts/manuscript-1") {
+        return {
+          status: 200,
+          body: {
+            id: "manuscript-1",
+            title: "Human review manuscript",
+            manuscript_type: "clinical_study",
+            status: "processing",
+            created_by: "proofreader-1",
+            current_proofreading_asset_id: "asset-human-final-1",
+            created_at: "2026-04-28T09:00:00.000Z",
+            updated_at: "2026-04-28T09:11:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.method === "GET" &&
+        input.url === "/api/v1/manuscripts/manuscript-1/assets"
+      ) {
+        return {
+          status: 200,
+          body: [publishedAsset] as TResponse,
+        };
+      }
+
+      if (input.method === "GET" && input.url === "/api/v1/templates/families") {
+        return {
+          status: 200,
+          body: [] as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const listed = await controller.loadHumanReviewDiffItems({
+    manuscriptId: "manuscript-1",
+    module: "proofreading",
+  });
+  const updated = await controller.updateHumanReviewDiffDecision({
+    diffItemId: "diff-1",
+    contentDecision: "keep",
+    governanceIntents: {
+      rule_candidate: true,
+      knowledge_candidate: false,
+    },
+  });
+  const batchUpdated = await controller.batchUpdateHumanReviewDiffDecisions({
+    updates: [
+      {
+        diffItemId: "diff-1",
+        contentDecision: "reject",
+        governanceIntents: {
+          rule_candidate: false,
+          knowledge_candidate: false,
+        },
+      },
+    ],
+  });
+  const preflight = await controller.preflightHumanReviewPublish({
+    manuscriptId: "manuscript-1",
+    module: "proofreading",
+  });
+  const published = await controller.publishHumanReviewFinalAndLoad({
+    manuscriptId: "manuscript-1",
+    module: "proofreading",
+    actorRole: "proofreader",
+    outputStorageKey: "runs/manuscript-1/proofreading/human-final.docx",
+    outputFileName: "human-final.docx",
+  });
+  const retry = await controller.retryHumanReviewBackflow("diff-1");
+
+  assert.equal(listed[0]?.id, "diff-1");
+  assert.equal(updated.content_decision, "keep");
+  assert.equal(batchUpdated[0]?.content_decision, "reject");
+  assert.equal(preflight.can_publish, true);
+  assert.equal(published.runResult.asset.id, "asset-human-final-1");
+  assert.equal(published.workspace.currentAsset?.id, "asset-human-final-1");
+  assert.equal(retry.summary.succeeded_count, 1);
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "GET /api/v1/human-review/diff-items?manuscriptId=manuscript-1&module=proofreading",
+      "POST /api/v1/human-review/diff-items/diff-1/decision",
+      "POST /api/v1/human-review/diff-items/batch-decisions",
+      "POST /api/v1/human-review/preflight-publish",
+      "POST /api/v1/human-review/publish-final",
+      "GET /api/v1/jobs/job-human-review-final-1",
+      "GET /api/v1/manuscripts/manuscript-1",
+      "GET /api/v1/manuscripts/manuscript-1/assets",
+      "POST /api/v1/human-review/diff-items/diff-1/retry-backflow",
+    ],
+  );
+  assert.deepEqual(requests[1]?.body, {
+    contentDecision: "keep",
+    governanceIntents: {
+      rule_candidate: true,
+      knowledge_candidate: false,
+    },
+  });
+  assert.deepEqual(requests[4]?.body, {
+    manuscriptId: "manuscript-1",
+    module: "proofreading",
+    outputStorageKey: "runs/manuscript-1/proofreading/human-final.docx",
+    outputFileName: "human-final.docx",
+  });
+});
+
 test("manuscript workbench controller publishes a proofreading human-final asset and reloads the workspace", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const hydratedPublishJob = {
