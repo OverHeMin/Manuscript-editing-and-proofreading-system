@@ -50,7 +50,6 @@ export function TemplateGovernanceRuleWizardStepPublish({
     <article className="template-governance-card template-governance-ledger-section">
       <header className="template-governance-ledger-section-header">
         <h2>保存与发布</h2>
-        <p>确认绑定去向和发布方式，再返回规则中心。</p>
       </header>
 
       {errorMessage ? <p className="template-governance-error">{errorMessage}</p> : null}
@@ -59,21 +58,6 @@ export function TemplateGovernanceRuleWizardStepPublish({
           AI 草稿必须先提交审核，由人工确认后才能进入正式发布。
         </p>
       ) : null}
-
-      <div className="template-governance-rule-hint-list">
-        <div className="template-governance-rule-hint-card">
-          <strong>保存草稿适合先留给当前编辑人继续补充</strong>
-          <p>当正文、语义或绑定还没完全稳定时，先留在草稿状态，后面可以回到向导继续完善。</p>
-        </div>
-        <div className="template-governance-rule-hint-card">
-          <strong>提交审核会进入规则治理审核队列</strong>
-          <p>适合内容已经基本确认，但还需要治理负责人或管理员再看一眼的场景。</p>
-        </div>
-        <div className="template-governance-rule-hint-card">
-          <strong>直接发布只适合已经确认无误的场景</strong>
-          <p>只有在规则正文、包绑定和模板族覆盖都确认清楚后，才建议直接走发布闭环。</p>
-        </div>
-      </div>
 
       <div className="template-governance-detail-grid">
         <div>
@@ -103,7 +87,6 @@ export function TemplateGovernanceRuleWizardStepPublish({
           <header className="template-governance-rule-section-heading">
             <div>
               <h3>最终摘要</h3>
-              <p>把规则内容、语义结论和绑定去向压成最终确认页，避免提交前来回切步骤。</p>
             </div>
           </header>
           <div className="template-governance-rule-impact-list">
@@ -142,7 +125,6 @@ export function TemplateGovernanceRuleWizardStepPublish({
           <header className="template-governance-rule-section-heading">
             <div>
               <h3>高精度证据预检</h3>
-              <p>正式提交前先看表格 exact-capture 和视觉符号快照会不会卡住当前发布方式。</p>
             </div>
           </header>
           {evidenceGateSummary.itemCount === 0 ? (
@@ -172,7 +154,6 @@ export function TemplateGovernanceRuleWizardStepPublish({
           <header className="template-governance-rule-section-heading">
             <div>
               <h3>提交前检查</h3>
-              <p>用最小检查单确认录入、语义和绑定都已经闭环。</p>
             </div>
           </header>
           <ul className="template-governance-list">

@@ -8,7 +8,7 @@ import {
 } from "../src/features/template-governance/index.ts";
 import type { TemplateGovernanceLedgerSearchState } from "../src/features/template-governance/template-governance-ledger-types.ts";
 
-test("package ledger explains the relationship between packages and default rules", () => {
+test("package ledger keeps controls without package instruction copy", () => {
   const markup = renderToStaticMarkup(
     <TemplateGovernanceContentModuleLedgerPage
       ledgerKind="general"
@@ -26,10 +26,15 @@ test("package ledger explains the relationship between packages and default rule
     />,
   );
 
-  assert.match(markup, /规则包使用说明/u);
-  assert.match(markup, /规则包是复用容器/u);
-  assert.match(markup, /默认规则是包里的具体规则/u);
-  assert.match(markup, /先选规则包，再看默认规则，再决定是否编辑/u);
+  assert.match(markup, /通用包台账/u);
+  assert.match(markup, /新增通用包/u);
+  assert.match(markup, /加入大模板/u);
+  assert.match(markup, /包名称/u);
+  assert.match(markup, /默认规则数/u);
+  assert.match(markup, /当前还没有规则包记录。/u);
+  assert.doesNotMatch(markup, /规则包使用说明/u);
+  assert.doesNotMatch(markup, /规则包是复用容器/u);
+  assert.doesNotMatch(markup, /默认规则是包里的具体规则/u);
   assert.doesNotMatch(markup, /打开旧版高级工作台/u);
 });
 

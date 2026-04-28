@@ -36,7 +36,6 @@ export function RuleLearningDiffCard({
         <div className="template-governance-panel-header">
           <div>
             <h3>回流项详情</h3>
-            <p>核对证据、差异和建议去向后，再决定如何沉淀或回写。</p>
           </div>
         </div>
 
@@ -158,7 +157,6 @@ export function RuleLearningDiffCard({
         <div className="template-governance-panel-header">
           <div>
             <h3>回流项详情</h3>
-            <p>核对证据、差异和建议去向后，再决定如何沉淀或回写。</p>
           </div>
         </div>
 
@@ -238,7 +236,6 @@ export function RuleLearningDiffCard({
         <div className="template-governance-panel-header">
           <div>
             <h3>回流项详情</h3>
-            <p>核对证据、差异和建议去向后，再决定如何沉淀或回写。</p>
           </div>
         </div>
 
@@ -312,7 +309,6 @@ export function RuleLearningDiffCard({
       <div className="template-governance-panel-header">
         <div>
           <h3>回流项详情</h3>
-          <p>核对证据、差异和建议去向后，再决定如何沉淀或回写。</p>
         </div>
       </div>
       <p className="template-governance-empty">

@@ -135,7 +135,6 @@ export function TemplateGovernanceJournalTemplateLedgerPage({
       <article className="template-governance-card template-governance-ledger-section">
         <header className="template-governance-ledger-section-header">
           <h2>大模板范围</h2>
-          <p>先锁定所属大模板，再查看或维护该范围下的期刊模板。</p>
         </header>
         <div className="template-governance-actions">
           {viewModel.templateFamilies.map((family) => (
@@ -156,7 +155,6 @@ export function TemplateGovernanceJournalTemplateLedgerPage({
       <article className="template-governance-card template-governance-ledger-section">
         <header className="template-governance-ledger-section-header">
           <h2>期刊模板列表</h2>
-          <p>表格集中呈现所属大模板、期刊键和当前状态，便于快速维护。</p>
         </header>
         <div className="template-governance-ledger-table-shell">
           <table className="template-governance-ledger-table">
@@ -223,7 +221,6 @@ export function TemplateGovernanceJournalTemplateLedgerPage({
         <article className="template-governance-card template-governance-ledger-section">
           <header className="template-governance-ledger-section-header">
             <h2>当前期刊模板</h2>
-            <p>确认期刊差异后，可继续启用、编辑或归档。</p>
           </header>
           <div className="template-governance-detail-grid">
             <div>
@@ -266,7 +263,6 @@ export function TemplateGovernanceJournalTemplateLedgerPage({
             <div className="template-governance-ledger-section">
               <header className="template-governance-ledger-section-header">
                 <h3>格式目标模型</h3>
-                <p>固定骨架由系统治理，目标块用于表达期刊差异与完成门禁。</p>
               </header>
               <div className="template-governance-actions">
                 {viewModel.selectedJournalTemplate.journal_format_target_model.skeleton.map(

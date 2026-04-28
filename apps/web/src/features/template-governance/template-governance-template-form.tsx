@@ -52,7 +52,6 @@ export function TemplateGovernanceTemplateForm({
       <article className="template-governance-card template-governance-template-form">
         <header className="template-governance-form-header">
           <h2>{mode === "edit" ? "编辑大模板" : "新建大模板"}</h2>
-          <p>大模板只负责稿件族级组合治理，不在这里直接编辑包内细项。</p>
         </header>
         {statusMessage ? <p className="template-governance-status">{statusMessage}</p> : null}
         {errorMessage ? <p className="template-governance-error">{errorMessage}</p> : null}

@@ -11,12 +11,14 @@ export interface KnowledgeLibraryRichContentEditorProps {
   blocks: readonly KnowledgeContentBlockViewModel[];
   onChange: (blocks: KnowledgeContentBlockViewModel[]) => void;
   onUploadImage?: (input: KnowledgeUploadInput) => Promise<KnowledgeUploadViewModel | void>;
+  compact?: boolean;
 }
 
 export function KnowledgeLibraryRichContentEditor({
   blocks,
   onChange,
   onUploadImage,
+  compact = false,
 }: KnowledgeLibraryRichContentEditorProps) {
   return (
     <section
@@ -26,15 +28,19 @@ export function KnowledgeLibraryRichContentEditor({
       <header className="knowledge-library-rich-content-editor__header">
         <div>
           <h3>内容材料</h3>
-          <p>按块组织正文、表格与图片，先选块类型再录入，避免把图表挤进正文里。</p>
+          {compact ? null : (
+            <p>按块组织正文、表格与图片，先选块类型再录入，避免把图表挤进正文里。</p>
+          )}
         </div>
       </header>
 
-      <div className="knowledge-library-rich-content-editor__guidance">
-        <p>表格支持直接粘贴 Excel / WPS，每一行会自动拆分为多列。</p>
-        <p>图片块可以上传截图、图表或扫描件，上传后再补充图片说明。</p>
-        <p>如果只想补充图注、表注或规则备注，用“添加补充文字”就可以。</p>
-      </div>
+      {compact ? null : (
+        <div className="knowledge-library-rich-content-editor__guidance">
+          <p>表格支持直接粘贴 Excel / WPS，每一行会自动拆分为多列。</p>
+          <p>图片块可以上传截图、图表或扫描件，上传后再补充图片说明。</p>
+          <p>如果只想补充图注、表注或规则备注，用“添加补充文字”就可以。</p>
+        </div>
+      )}
 
       <div className="knowledge-library-rich-content-editor__actions">
         <button
@@ -63,7 +69,7 @@ export function KnowledgeLibraryRichContentEditor({
       <div className="knowledge-library-rich-content-editor__list">
         {blocks.length === 0 ? (
           <p className="knowledge-library-rich-content-editor__empty">
-            还没有证据材料，可以先添加表格、图片或补充文字。
+            {compact ? "暂无证据材料。" : "还没有证据材料，可以先添加表格、图片或补充文字。"}
           </p>
         ) : null}
 

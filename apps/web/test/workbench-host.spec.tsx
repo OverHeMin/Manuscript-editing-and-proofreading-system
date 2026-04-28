@@ -216,7 +216,8 @@ test("workbench host describes knowledge review with neutral pending-item wordin
   const markup = await renderWorkbenchHostAtHash("#knowledge-review");
 
   assert.match(markup, /知识审核/u);
-  assert.match(markup, /处理待审知识条目的审核队列与审批动作。/u);
+  assert.match(markup, /workbench-header-focus-card[\s\S]*?知识审核/u);
+  assert.match(markup, /待审条目队列/u);
   assert.doesNotMatch(markup, /知识修订版本/u);
 });
 
@@ -609,7 +610,6 @@ test("workbench shell header renders fully Chinese top copy and active desk summ
     <headerModule.WorkbenchShellHeader
       session={buildSession("admin")}
       activeWorkbenchLabel="\u7f16\u8f91"
-      activeWorkbenchDescription="聚焦编辑任务总览"
       activeWorkbenchGroupLabel="\u6838\u5fc3\u6d41\u7a0b"
       isCompactNavigation={false}
       isNavigationOpen
@@ -622,8 +622,43 @@ test("workbench shell header renders fully Chinese top copy and active desk summ
   assert.match(html, /医学编辑中控台/u);
   assert.match(html, /医学稿件处理系统/u);
   assert.match(html, /workbench-header-focus-card/);
+  assert.doesNotMatch(html, /保持左侧导航/u);
+  assert.doesNotMatch(html, /聚焦编辑任务总览/u);
   assert.doesNotMatch(html, /workbench-shell-pillar-list/);
   assert.match(html, /button/);
+});
+
+test("navigation menu keeps labels and counts without explanatory descriptions", async () => {
+  const navigationModule = await import("../src/app/workbench-navigation.ts").catch(
+    () => null,
+  );
+  const menuModule = await import("../src/app/workbench-navigation-menu.tsx").catch(
+    () => null,
+  );
+
+  assert.ok(navigationModule, "expected workbench-navigation module to exist");
+  assert.ok(menuModule, "expected workbench-navigation-menu module to exist");
+
+  const html = renderToStaticMarkup(
+    <menuModule.WorkbenchNavigationMenu
+      groups={navigationModule.buildWorkbenchNavigationGroups(
+        buildSession("admin").availableWorkbenchEntries,
+      )}
+      activeTargetKey={navigationModule.getWorkbenchNavigationTargetKey({
+        workbenchId: "template-governance",
+      })}
+      onNavigate={() => undefined}
+    />,
+  );
+
+  assert.match(html, /核心流程/u);
+  assert.match(html, /协作与回收区/u);
+  assert.match(html, /管理区/u);
+  assert.match(html, /规则中心/u);
+  assert.match(html, /\d+ 项/u);
+  assert.doesNotMatch(html, /初筛、编辑、校对/u);
+  assert.doesNotMatch(html, /规则台账、回流候选/u);
+  assert.doesNotMatch(html, /面向管理侧/u);
 });
 
 test("workbench shell header exposes a compact navigation toggle state", async () => {
@@ -637,7 +672,6 @@ test("workbench shell header exposes a compact navigation toggle state", async (
     <headerModule.WorkbenchShellHeader
       session={buildSession("editor")}
       activeWorkbenchLabel="\u7f16\u8f91"
-      activeWorkbenchDescription="聚焦编辑任务总览"
       activeWorkbenchGroupLabel="\u6838\u5fc3\u6d41\u7a0b"
       isCompactNavigation
       isNavigationOpen={false}

@@ -26,7 +26,6 @@ export function WorkbenchNavigationMenu({
             <h3>{group.label}</h3>
             <span className="workbench-nav-group-count">{`${group.items.length} 项`}</span>
           </div>
-          <p className="workbench-nav-group-description">{group.description}</p>
           <ul className="workbench-nav-list">
             {group.items.map((item) => {
               const isActive = item.targetKey === activeTargetKey;
@@ -41,7 +40,6 @@ export function WorkbenchNavigationMenu({
                     onClick={() => onNavigate(item.target)}
                   >
                     <span className="workbench-nav-button-label">{item.label}</span>
-                    <small>{item.description}</small>
                   </button>
                 </li>
               );

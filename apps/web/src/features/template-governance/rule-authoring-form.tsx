@@ -49,9 +49,6 @@ export function RuleAuthoringForm({
       <div className="template-governance-panel-header">
         <div>
           <h3>高级规则编辑器</h3>
-          <p>
-            用对象化表单录入规则，不再手写底层选择器 JSON。
-          </p>
         </div>
       </div>
 
@@ -172,8 +169,6 @@ export function RuleAuthoringForm({
               onDraftChange={onDraftChange}
             />
 
-            <RuleAuthoringParameterGuide />
-
             <RuleAuthoringLinkedKnowledgeField
               draft={draft}
               knowledgeItems={knowledgeItems}
@@ -195,29 +190,6 @@ export function RuleAuthoringForm({
         </p>
       )}
     </article>
-  );
-}
-
-function RuleAuthoringParameterGuide() {
-  return (
-    <section
-      className="template-governance-card template-governance-field-full"
-      data-rule-parameter-guide="field"
-    >
-      <strong>参数说明</strong>
-      <p>规则中心负责可执行判断，知识条目只放证据、依据、范例或解释。</p>
-      <div className="template-governance-chip-row">
-        <span className="template-governance-chip">
-          执行方式决定是自动改写还是只检查
-        </span>
-        <span className="template-governance-chip">
-          置信策略决定何时允许自动执行
-        </span>
-        <span className="template-governance-chip">
-          关联知识条目只挂支撑证据，不承载执行逻辑
-        </span>
-      </div>
-    </section>
   );
 }
 
@@ -370,9 +342,7 @@ function RuleAuthoringLinkedKnowledgeField({
     >
       <SearchableMultiSelectField
         label={"\u5173\u8054\u77e5\u8bc6\u6761\u76ee"}
-        helpText={
-          "\u628a\u89c4\u5219\u4f9d\u8d56\u7684\u8bc1\u636e\u6216\u53c2\u8003\u6761\u76ee\u663e\u5f0f\u6302\u4e0a\uff0c\u907f\u514d\u89c4\u5219\u548c\u77e5\u8bc6\u6df7\u5728\u4e00\u4e2a\u5165\u53e3\u91cc\u3002"
-        }
+        helpText=""
         value={selectedIds}
         options={knowledgeOptions}
         dataKey="rule-authoring-linked-knowledge"

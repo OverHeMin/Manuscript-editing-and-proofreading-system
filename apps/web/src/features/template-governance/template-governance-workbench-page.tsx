@@ -1818,7 +1818,6 @@ export function TemplateGovernanceWorkbenchPage({
       <div className="template-governance-panel-header">
         <div>
           <h4>高级规则编辑器</h4>
-          <p>当需要检查或修补底层规则细节时，仍可打开这块低层编辑工作台。</p>
         </div>
       </div>
       <div className="template-governance-rule-layout">
@@ -1881,9 +1880,6 @@ export function TemplateGovernanceWorkbenchPage({
         <div className="template-governance-hero-copy">
           <p className="template-governance-eyebrow">规则中心</p>
           <h2>规则中心</h2>
-          <p>
-            把规则创建、模板套用、校对策略和回流工作区放进同一块可解释的治理工作台，但把高频入口做得更清楚、更好上手。
-          </p>
           <WorkbenchCoreStrip variant="secondary" />
         </div>
         {statusMessage ? (
@@ -1981,44 +1977,11 @@ export function TemplateGovernanceWorkbenchPage({
         </article>
       </section>
 
-      <section className="template-governance-capability-grid">
-        <article className="template-governance-card">
-          <strong>规则创建</strong>
-          <p>从示例、规则包或高级编辑器进入规则录入，先把高频动作沉淀清楚。</p>
-        </article>
-        <article className="template-governance-card">
-          <strong>模板套用</strong>
-          <p>模块模板承接不同稿件族的执行框架，减少前台重复配置。</p>
-        </article>
-        <article className="template-governance-card">
-          <strong>校对策略</strong>
-          <p>把通用校对与医学专业校对分开说明，避免前台误解成单纯套模板。</p>
-        </article>
-        <article className="template-governance-card">
-          <strong>AI 指令模板</strong>
-          <p>把系统提示、任务框架和人工复核边界拆开管理，便于不同模块复用。</p>
-        </article>
-        <article className="template-governance-card">
-          <strong>知识库</strong>
-          <p>知识录入在独立页面完成，这里只保留绑定关系与回流入口。</p>
-        </article>
-        <article className="template-governance-card">
-          <strong>打开知识库</strong>
-          <p>需要补充知识说明、修订草稿或查看语义资产时，直接跳转独立知识库。</p>
-          <div className="template-governance-actions">
-            <a className="template-governance-link-button" href={knowledgeLibraryHash}>
-              打开知识库
-            </a>
-          </div>
-        </article>
-      </section>
-
       <div className="template-governance-grid">
         <article className="template-governance-panel">
           <div className="template-governance-panel-header">
             <div>
               <h3>模板族</h3>
-              <p>先选定稿件族，再承接模块模板、规则包和知识绑定，避免后台参数散落在不同位置。</p>
             </div>
           </div>
 
@@ -2153,11 +2116,6 @@ export function TemplateGovernanceWorkbenchPage({
           <div className="template-governance-panel-header">
             <div>
               <h3>规则创建</h3>
-              <p>
-                {shouldUseRulePackageWorkbench
-                  ? "先从示例驱动的规则包进入，再确认 AI 可读语义；只有需要深修时再打开高级规则编辑器。"
-                  : "在同一块治理工作台内维护结构化规则，并保留期刊层与稿件族层的差异。"}
-              </p>
             </div>
           </div>
 
@@ -2263,9 +2221,6 @@ export function TemplateGovernanceWorkbenchPage({
           <div className="template-governance-panel-header">
             <div>
               <h3>模板套用</h3>
-              <p>
-                先在当前稿件族中创建模块模板草稿，再发布已经准备好的版本，不把模板细节堆到业务页面。
-              </p>
             </div>
           </div>
 
@@ -2436,9 +2391,6 @@ export function TemplateGovernanceWorkbenchPage({
           <div className="template-governance-panel-header">
             <div>
               <h3>检索质量</h3>
-              <p>
-                在不改变发布流程的前提下，查看当前稿件族最近一次检索质量证据与观察信号。
-              </p>
             </div>
           </div>
 
@@ -2543,18 +2495,12 @@ export function TemplateGovernanceWorkbenchPage({
           <div className="template-governance-panel-header">
             <div>
               <h3>知识库</h3>
-              <p>
-                知识录入已经迁移到独立知识库页面，规则中心这里只保留摘要、绑定关系与跳转入口。
-              </p>
             </div>
           </div>
 
           <div className="template-governance-toolbar">
             <article className="template-governance-card">
               <strong>打开知识库</strong>
-              <p>
-                需要新增资产、派生修订草稿、管理绑定或提交送审时，直接进入独立知识库页面。
-              </p>
               <div className="template-governance-actions">
                 <a className="template-governance-link-button" href={knowledgeLibraryHash}>
                   打开知识库
@@ -2568,9 +2514,6 @@ export function TemplateGovernanceWorkbenchPage({
               <h4>Coverage Summary</h4>
               <article className="template-governance-card">
                 <strong>知识录入已迁移到独立知识库。</strong>
-                <p>
-                  在知识库中完成新增或修订后，再回到规则中心查看稿件族绑定关系与下游规则覆盖情况。
-                </p>
                 <div className="template-governance-detail-grid">
                   <div>
                     <span>当前稿件族</span>
@@ -2761,7 +2704,6 @@ function TemplateGovernanceLearningRecoveryRoute({
         <div className="template-governance-ledger-toolbar-copy">
           <p className="template-governance-eyebrow">规则中心 · 统一复核中心</p>
           <h1>回流候选转规则</h1>
-          <p>只处理可沉淀为规则草稿的复核项。先完成复核结论，再转成规则草稿。</p>
         </div>
 
         <div className="template-governance-chip-row">
@@ -6492,9 +6434,6 @@ function TemplateGovernanceRulesPanel({
       <div className="template-governance-panel-header">
         <div>
           <h3>规则集</h3>
-          <p>
-            这里维护真正执行的规则来源，确保编辑与校对都围绕同一套受控规则运行。
-          </p>
         </div>
       </div>
 
@@ -6572,9 +6511,6 @@ function TemplateGovernanceRulesPanel({
                 <small>
                   {formatTemplateGovernanceGovernedAssetStatusLabel(selectedRuleSet.status)}
                 </small>
-                <p>
-                  规则在这里保持结构化管理，知识投影只是便于阅读和复用的副本，不是唯一事实来源。
-                </p>
                 {selectedRuleSet.status === "draft" ? (
                   <div className="template-governance-actions">
                     <button
@@ -6897,9 +6833,6 @@ function TemplateGovernanceInstructionPanel({
       <div className="template-governance-panel-header">
         <div>
           <h3>AI 指令模板</h3>
-          <p>
-            把系统提示、任务框架和人工复核边界拆开维护，避免只剩下一段不可控的大提示词。
-          </p>
         </div>
       </div>
 

@@ -119,19 +119,24 @@ function buildExtractionLedgerFixture() {
   };
 }
 
-test("extraction ledger renders task table with honest semantic disclosure", () => {
+test("extraction ledger renders task table without page disclosure copy", () => {
   const markup = renderToStaticMarkup(
     <TemplateGovernanceExtractionLedgerPage viewModel={buildExtractionLedgerFixture()} />,
   );
 
   assert.match(markup, /template-governance-extraction-ledger-page/u);
   assert.match(markup, /template-governance-ledger-kpi-strip/u);
+  assert.match(markup, /原稿\/编辑稿提取台账/u);
   assert.match(markup, /新建提取任务/u);
+  assert.match(markup, /搜索任务/u);
+  assert.match(markup, /批量处理/u);
+  assert.match(markup, /提取任务/u);
+  assert.match(markup, /候选台账/u);
   assert.match(markup, /待确认数/u);
   assert.match(markup, /任务名称/u);
   assert.match(markup, /候选名称/u);
   assert.match(markup, /候选语义摘要/u);
-  assert.match(
+  assert.doesNotMatch(
     markup,
     /提取台账里的候选语义摘要来自文本与表格差异提取；DOCX 图片、图表和截图不会在这里被 AI 理解。/u,
   );
@@ -148,7 +153,7 @@ test("candidate confirmation opens candidate semantic review before intake", () 
   assert.match(markup, /template-governance-candidate-confirmation-form/u);
   assert.match(markup, /候选语义复核/u);
   assert.match(markup, /确认入库/u);
-  assert.match(
+  assert.doesNotMatch(
     markup,
     /这里复核的是提取候选语义，不是规则向导里的多模态 AI 识别结果。/u,
   );

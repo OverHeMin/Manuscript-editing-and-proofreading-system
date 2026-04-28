@@ -41,7 +41,6 @@ export interface WorkbenchShellTargetDescriptor {
   key: string;
   workbenchId: WorkbenchId;
   label: string;
-  description: string;
   group: WorkbenchShellGroupId;
   settingsSection?: WorkbenchSettingsSection;
   harnessSection?: WorkbenchHarnessSection;
@@ -172,63 +171,54 @@ export const WORKBENCH_SHELL_TARGETS: readonly WorkbenchShellTargetDescriptor[] 
     key: "home-submission",
     workbenchId: "submission",
     label: "我的稿件",
-    description: "稿件上传、进度与个人任务入口",
     group: "home",
   },
   {
     key: "core-screening",
     workbenchId: "screening",
     label: "初筛",
-    description: "来稿接收与质控判断",
     group: "core-process",
   },
   {
     key: "core-editing",
     workbenchId: "editing",
     label: "编辑",
-    description: "正文修订与模板落位",
     group: "core-process",
   },
   {
     key: "core-proofreading",
     workbenchId: "proofreading",
     label: "校对",
-    description: "终稿核验与发布前收口",
     group: "core-process",
   },
   {
     key: "core-knowledge-library",
     workbenchId: "knowledge-library",
     label: "知识库",
-    description: "知识资产录入、修订与治理",
     group: "core-process",
   },
   {
     key: "support-knowledge-review",
     workbenchId: "knowledge-review",
     label: "知识审核",
-    description: "知识审核队列与审批动作",
     group: "collaboration-recovery",
   },
   {
     key: "support-rule-center",
     workbenchId: "template-governance",
     label: "规则中心",
-    description: "规则台账、回流候选与规则包协作入口",
     group: "collaboration-recovery",
   },
   {
     key: "management-overview",
     workbenchId: "admin-console",
     label: "管理总览",
-    description: "运营概览与全局治理",
     group: "management",
   },
   {
     key: "management-ai-access",
     workbenchId: "system-settings",
     label: "AI 接入",
-    description: "模型、密钥与接入策略",
     group: "management",
     settingsSection: "ai-access",
   },
@@ -236,7 +226,6 @@ export const WORKBENCH_SHELL_TARGETS: readonly WorkbenchShellTargetDescriptor[] 
     key: "management-accounts",
     workbenchId: "system-settings",
     label: "账号与权限",
-    description: "账号、角色与访问策略",
     group: "management",
     settingsSection: "accounts",
   },
@@ -244,7 +233,6 @@ export const WORKBENCH_SHELL_TARGETS: readonly WorkbenchShellTargetDescriptor[] 
     key: "management-harness",
     workbenchId: "evaluation-workbench",
     label: "Harness 控制",
-    description: "Harness 概览与执行控制",
     group: "management",
     harnessSection: "overview",
   },

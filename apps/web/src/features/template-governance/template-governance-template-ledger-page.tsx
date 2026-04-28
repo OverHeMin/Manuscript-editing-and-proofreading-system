@@ -115,7 +115,6 @@ export function TemplateGovernanceTemplateLedgerPage({
       <article className="template-governance-card template-governance-ledger-section">
         <header className="template-governance-ledger-section-header">
           <h2>大模板列表</h2>
-          <p>表格优先展示稿件类型、适用模块以及通用包与医学专用包的组合情况。</p>
         </header>
         <div className="template-governance-ledger-table-shell">
           <table className="template-governance-ledger-table">
@@ -185,7 +184,6 @@ export function TemplateGovernanceTemplateLedgerPage({
         <article className="template-governance-card template-governance-ledger-section">
           <header className="template-governance-ledger-section-header">
             <h2>当前大模板</h2>
-            <p>选中后先核对包组合与适用边界，再决定是否继续套用到期刊模板或稿件。</p>
           </header>
           <div className="template-governance-detail-grid">
             <div>

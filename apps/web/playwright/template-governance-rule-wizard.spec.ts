@@ -60,7 +60,7 @@ test("template governance rule wizard exposes exact package versions and package
   await page.getByRole("button", { name: "下一步：绑定适用范围" }).click();
   await expect(page.getByRole("heading", { name: "放入模板 / 规则包" })).toBeVisible();
   await expect(page.locator(".template-governance-rule-wizard")).toContainText(
-    "按包类型激活",
+    "按通用包类型激活（不锁版本）",
   );
 
   const packageOptions = page

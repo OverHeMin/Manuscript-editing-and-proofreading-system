@@ -36,7 +36,6 @@ export function RuleAuthoringTableSemanticFields({
       >
         <div className="template-governance-linked-knowledge-header">
           <span>表格校对专项模板</span>
-          <small>先选最接近的专项模板，再继续补充语义定位和人工复核说明。</small>
         </div>
         <div className="template-governance-linked-knowledge-list">
           {TABLE_PROOFREADING_SCENARIOS.map((scenario) => (
@@ -54,7 +53,6 @@ export function RuleAuthoringTableSemanticFields({
               }
             >
               <strong>{scenario.title}</strong>
-              <small>{scenario.description}</small>
             </button>
           ))}
         </div>

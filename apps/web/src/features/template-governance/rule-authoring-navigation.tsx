@@ -60,9 +60,6 @@ export function RuleAuthoringNavigation({
         <div className="template-governance-panel-header">
           <div>
             <h3>规则导航</h3>
-            <p>
-              先选规则范围、模块和规则对象，再进入结构化规则编辑。
-            </p>
           </div>
         </div>
 
@@ -140,9 +137,6 @@ export function RuleAuthoringNavigation({
         <div className="template-governance-panel-header">
           <div>
             <h4>期刊模板画像</h4>
-            <p>
-              管理期刊层加层规则，用于细化模板族基础要求。
-            </p>
           </div>
         </div>
         {overview?.selectedTemplateFamily ? (
@@ -212,9 +206,6 @@ export function RuleAuthoringNavigation({
         <div className="template-governance-panel-header">
           <div>
             <h4>规则集</h4>
-            <p>
-              只在当前模板范围和模块对应的规则集版本上工作，避免串改别的治理范围。
-            </p>
           </div>
         </div>
         {overview?.ruleSets.length ? (

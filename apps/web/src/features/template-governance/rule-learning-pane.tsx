@@ -428,7 +428,6 @@ export function RuleLearningPane({
           <div className="template-governance-panel-header">
             <div>
               <h3>统一复核队列</h3>
-              <p>只保留可沉淀为规则草稿的复核项，在这里统一完成复核、候选审核与规则草稿写回。</p>
             </div>
 
             <div className="template-governance-chip-row">

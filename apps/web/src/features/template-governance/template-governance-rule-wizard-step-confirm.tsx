@@ -36,7 +36,6 @@ export function TemplateGovernanceRuleWizardStepConfirm({
     <article className="template-governance-card template-governance-ledger-section">
       <header className="template-governance-ledger-section-header">
         <h2>人工确认 AI 结果</h2>
-        <p>只修正高频语义结论，不回到原始证据大表单。</p>
       </header>
 
       {errorMessage ? <p className="template-governance-error">{errorMessage}</p> : null}
@@ -47,27 +46,11 @@ export function TemplateGovernanceRuleWizardStepConfirm({
         </button>
       </div>
 
-      <div className="template-governance-rule-hint-list">
-        <div className="template-governance-rule-hint-card">
-          <strong>规则类型决定这条规则按什么治理判断复用</strong>
-          <p>它决定这条规则更像术语统一、格式规范还是内容要求，后面绑定到哪个规则包也会受影响。</p>
-        </div>
-        <div className="template-governance-rule-hint-card">
-          <strong>风险等级决定后续审核和发布要多谨慎</strong>
-          <p>越高风险越不适合跳过审核，尤其是涉及医学含义、引文合规和强约束内容时。</p>
-        </div>
-        <div className="template-governance-rule-hint-card">
-          <strong>稿件类型填写这条规则默认命中的稿件范围</strong>
-          <p>这里写的是默认适用稿件，不是所有可能出现的边缘情况；不确定时可以先写最常见的稿件族。</p>
-        </div>
-      </div>
-
       <div className="template-governance-rule-decision-grid">
         <section className="template-governance-card template-governance-rule-decision-card">
           <header className="template-governance-rule-section-heading">
             <div>
               <h3>规则类型判断</h3>
-              <p>先确认这条规则到底属于哪一种治理判断。</p>
             </div>
           </header>
           <div className="template-governance-rule-decision-meta">
@@ -98,7 +81,6 @@ export function TemplateGovernanceRuleWizardStepConfirm({
           <header className="template-governance-rule-section-heading">
             <div>
               <h3>风险等级判断</h3>
-              <p>风险越高，后续发布和审核路径越要谨慎。</p>
             </div>
           </header>
           <div className="template-governance-rule-decision-meta">
@@ -127,7 +109,6 @@ export function TemplateGovernanceRuleWizardStepConfirm({
           <header className="template-governance-rule-section-heading">
             <div>
               <h3>业务适用范围</h3>
-              <p>这里决定规则会在哪个业务模块和稿件类型里被调用。</p>
             </div>
           </header>
           <div className="template-governance-rule-decision-meta">
@@ -346,7 +327,7 @@ function RuleWizardMultiSelectField(props: {
     <SearchableMultiSelectField
       label={props.label}
       helpText={
-        props.includeAnyOption ? "支持“全部/任意”和多选切换。" : "支持结构化多选。"
+        ""
       }
       value={props.value}
       options={props.options}
@@ -390,7 +371,6 @@ function RuleWizardTagListField(props: {
     >
       <div className="knowledge-library-structured-field-header">
         <span>{props.label}</span>
-        <small>一行一个检索词，可逐条补充和删除。</small>
       </div>
       <div className="knowledge-library-tag-editor-list">
         {props.values.length > 0 ? (

@@ -3,7 +3,6 @@ import type { AuthSessionViewModel } from "../features/auth/index.ts";
 export interface WorkbenchShellHeaderProps {
   session: AuthSessionViewModel;
   activeWorkbenchLabel: string;
-  activeWorkbenchDescription: string;
   activeWorkbenchGroupLabel: string;
   isCompactNavigation: boolean;
   isNavigationOpen: boolean;
@@ -33,7 +32,6 @@ function getRoleLabel(role: AuthSessionViewModel["role"]): string {
 export function WorkbenchShellHeader({
   session,
   activeWorkbenchLabel,
-  activeWorkbenchDescription,
   activeWorkbenchGroupLabel,
   isCompactNavigation,
   isNavigationOpen,
@@ -48,9 +46,6 @@ export function WorkbenchShellHeader({
           <p className="workbench-shell-brand-eyebrow">医学编辑中控台</p>
           <div className="workbench-shell-brand-copy">
             <h1>医学稿件处理系统</h1>
-            <p className="workbench-shell-brand-summary">
-              保持左侧导航、当前工作台焦点与会话状态统一收口，让页面主体回到实际处理任务。
-            </p>
           </div>
           <p className="workbench-shell-session">
             当前账号 <strong>{session.displayName}</strong>
@@ -92,7 +87,6 @@ export function WorkbenchShellHeader({
           <strong>{activeWorkbenchLabel}</strong>
           <small>{activeWorkbenchGroupLabel}</small>
         </article>
-        <p>{activeWorkbenchDescription}</p>
       </div>
     </header>
   );

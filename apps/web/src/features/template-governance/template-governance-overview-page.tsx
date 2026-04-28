@@ -24,7 +24,6 @@ export interface TemplateGovernanceOverviewMetrics {
   rolledBackRuleSetCount?: number;
   blockedReleaseCount?: number;
 }
-
 export interface TemplateGovernanceOverviewPendingItem {
   id: string;
   title: string;
@@ -98,9 +97,6 @@ export function TemplateGovernanceOverviewPage({
           <div className="template-governance-overview-hero-copy">
             <p className="template-governance-eyebrow">规则中心运营驾驶舱</p>
             <h1>规则中心总览</h1>
-            <p>
-              在同一个入口里查看规则、模板、知识、回流候选和发布轨道，先看风险，再决定去哪里处理。
-            </p>
           </div>
 
           <div className="template-governance-overview-metrics">
@@ -148,7 +144,6 @@ export function TemplateGovernanceOverviewPage({
           <article className="template-governance-card template-governance-overview-entry template-governance-overview-primary">
             <header className="template-governance-ledger-section-header">
               <h2>规则台账</h2>
-              <p>从这里进入规则、模板与包台账，处理写回、发布和审核运营工作。</p>
             </header>
             <div className="template-governance-actions template-governance-overview-primary-actions">
               <button
@@ -174,10 +169,6 @@ export function TemplateGovernanceOverviewPage({
             <article className="template-governance-card template-governance-overview-entry">
               <header className="template-governance-ledger-section-header">
                 <h2>检索治理证据</h2>
-                <p>
-                  这些指标用于判断受治理检索是否稳定支撑规则与知识沉淀，不代表通用 AI
-                  准确率。
-                </p>
               </header>
               {hasRetrievalGovernanceEvidence ? (
                 <div className="template-governance-chip-row">
@@ -211,16 +202,11 @@ export function TemplateGovernanceOverviewPage({
                   当前还没有可汇总的检索治理指标。
                 </p>
               )}
-              <p className="template-governance-context-note template-governance-context-note--compact">
-                稿件工作台里的规则命中、知识引用和检索异常，会在这里继续进入统一复核与
-                Harness 验证。{formatTemplateGovernanceOverviewHarnessSummary(metrics)}
-              </p>
             </article>
 
             <article className="template-governance-card template-governance-overview-entry">
               <header className="template-governance-ledger-section-header">
                 <h2>待处理事项</h2>
-                <p>先处理统一复核、Harness 验证和规则写回，再进入资产沉淀。</p>
               </header>
               {pendingItems.length ? (
                 <ul className="template-governance-list">
@@ -248,7 +234,6 @@ export function TemplateGovernanceOverviewPage({
             <article className="template-governance-card template-governance-overview-entry">
               <header className="template-governance-ledger-section-header">
                 <h2>最近包 / 模板更新</h2>
-                <p>快速进入最常用的几个治理台账，继续推进最近的改动。</p>
               </header>
               {recentUpdates.length ? (
                 <ul className="template-governance-list">
@@ -460,12 +445,4 @@ function hasTemplateGovernanceReleasePostureMetrics(
 
 function formatTemplateGovernanceOverviewRetrievalMetric(value: number): string {
   return value.toFixed(2);
-}
-
-function formatTemplateGovernanceOverviewHarnessSummary(
-  metrics: TemplateGovernanceOverviewMetrics,
-): string {
-  return `Harness 待验证 ${metrics.harnessQueuedCount ?? 0} 条，已通过 ${
-    metrics.harnessPassedCount ?? 0
-  } 条，未通过 ${metrics.harnessFailedCount ?? 0} 条。`;
 }

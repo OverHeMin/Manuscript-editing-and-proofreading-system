@@ -526,8 +526,7 @@ test("template governance workbench page renders the package-first rule center w
   assert.match(markup, /\u547d\u4e2d\u9a8c\u8bc1\u5173\u6ce8\u70b9/u);
   assert.match(markup, /data-table-proofreading-knowledge-templates="field"/u);
   assert.match(markup, /data-table-proofreading-hit-validation="field"/u);
-  assert.match(markup, /\u89c4\u5219\u4e2d\u5fc3\u5b58\u68c0\u67e5\u52a8\u4f5c\uff0c\u77e5\u8bc6\u5e93\u5b58\u4f9d\u636e\u4e0e\u793a\u4f8b/u);
-  assert.match(markup, /\u5f53\u524d\u5df2\u8986\u76d6 1 \u6761\u8868\u683c\u89c4\u5219\u4e0e 1 \u6761\u8868\u683c\u77e5\u8bc6/u);
+  assert.match(markup, /\u8868\u683c\u89c4\u5219 1 \u6761 \/ \u8868\u683c\u77e5\u8bc6 1 \u6761/u);
   assert.match(markup, /\u671f\u520a\u8868\u683c\u6837\u5f0f\u4f9d\u636e/u);
   assert.match(markup, /\u7edf\u8ba1\u6ce8\u91ca\u4e0e\u7b26\u53f7\u4f9d\u636e/u);
   assert.match(markup, /\u5355\u4f4d\u4e0e\u6570\u503c\u62a5\u544a\u4f9d\u636e/u);
@@ -540,9 +539,10 @@ test("template governance workbench page renders the package-first rule center w
   assert.match(markup, /knowledgePrefillTemplateId=statistical_annotation_basis/u);
   assert.match(markup, /knowledgePrefillTemplateId=unit_reporting_basis/u);
   assert.match(markup, /knowledgePrefillTemplateId=table_exception_examples/u);
-  assert.match(markup, /\u68c0\u7d22\u5148\u547d\u4e2d\u8868\u9898\u3001\u8868\u6ce8\u3001\u5355\u4f4d\u6216\u7edf\u8ba1\u5173\u952e\u8bcd/u);
-  assert.match(markup, /\u89c4\u5219\u547d\u4e2d\u540e\u9700\u80fd\u89e3\u91ca\u662f\u54ea\u4e2a\u8868\u683c\u5757\u3001\u54ea\u6761\u8868\u5934\u6216\u811a\u6ce8\u89e6\u53d1/u);
-  assert.match(markup, /\u672a\u547d\u4e2d\u8868\u683c\u5757\u4f46\u89e6\u53d1\u8868\u683c\u89c4\u5219\u65f6\u8f6c\u4eba\u5de5\u590d\u6838/u);
+  assert.match(markup, /\u68c0\u7d22\u8bcd\u547d\u4e2d/u);
+  assert.match(markup, /\u89c4\u5219\u547d\u4e2d\u53ef\u89e3\u91ca/u);
+  assert.match(markup, /\u4eba\u5de5\u590d\u6838\u95f8\u53e3/u);
+  assert.doesNotMatch(markup, /\u89c4\u5219\u4e2d\u5fc3\u5b58\u68c0\u67e5\u52a8\u4f5c\uff0c\u77e5\u8bc6\u5e93\u5b58\u4f9d\u636e\u4e0e\u793a\u4f8b/u);
   assert.match(markup, /\u8868\u9898\u7f6e\u4e8e\u8868\u4e0a/u);
   assert.match(markup, /\u8868\u6ce8\u7f6e\u4e8e\u8868\u4e0b/u);
   assert.match(markup, /\u4e09\u7ebf\u8868\u4e0e\u7981\u7528\u7ad6\u7ebf/u);

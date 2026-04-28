@@ -24,7 +24,6 @@ export function RulePackageSemanticCards({
         <div className="template-governance-panel-header">
           <div>
             <h3>语义卡片</h3>
-            <p>先选择一个规则包，再查看 AI 可读的理解层和适用边界。</p>
           </div>
         </div>
         <p className="template-governance-empty">当前还没有选中规则包。</p>
@@ -59,7 +58,6 @@ export function RulePackageSemanticCards({
         <div className="template-governance-panel-header">
           <div>
             <h3>规则是什么</h3>
-            <p>先确认规则包名称、作用对象和发布层级，保证录入足够简洁可复核。</p>
           </div>
         </div>
         <div className="rule-package-definition-grid">
@@ -82,7 +80,6 @@ export function RulePackageSemanticCards({
         <div className="template-governance-panel-header">
           <div>
             <h3>AI 怎么理解它</h3>
-            <p>把句子级摘要说清楚，让 AI 知道这个规则包在什么情况下应该生效。</p>
           </div>
         </div>
         <div className="rule-package-definition-grid">
@@ -117,7 +114,6 @@ export function RulePackageSemanticCards({
         <div className="template-governance-panel-header">
           <div>
             <h3>适用于哪里</h3>
-            <p>按稿件类型、模块和章节语义来定义范围，不把底层选择器直接暴露给操作员。</p>
           </div>
         </div>
         <div className="rule-package-definition-grid">
@@ -161,7 +157,6 @@ export function RulePackageSemanticCards({
         <div className="template-governance-panel-header">
           <div>
             <h3>前后示例</h3>
-            <p>至少保留一组前后对照，让操作员知道这个规则包到底在修什么。</p>
           </div>
         </div>
         {evidenceExamples.length ? (
@@ -220,7 +215,6 @@ export function RulePackageSemanticCards({
         <div className="template-governance-panel-header">
           <div>
             <h3>什么时候不要用</h3>
-            <p>把不适用边界和人工复核条件说清楚，确保规则包可以安全失效。</p>
           </div>
         </div>
         <div className="rule-package-definition-grid">
