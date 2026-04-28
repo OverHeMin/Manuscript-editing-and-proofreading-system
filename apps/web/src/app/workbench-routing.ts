@@ -18,7 +18,7 @@ export type WorkbenchRenderKind =
   | "system-settings"
   | "placeholder";
 
-export type RuleCenterMode = "authoring" | "learning";
+export type RuleCenterMode = "authoring" | "learning" | "ai-intake";
 export type SettingsSection = WorkbenchSettingsSection;
 export type HarnessSection = WorkbenchHarnessSection;
 export type KnowledgeLibraryView = "classic" | "ledger";
@@ -312,7 +312,7 @@ export function isManuscriptWorkbenchId(
 }
 
 function normalizeRuleCenterMode(value: string | null): RuleCenterMode | undefined {
-  if (value === "authoring" || value === "learning") {
+  if (value === "authoring" || value === "learning" || value === "ai-intake") {
     return value;
   }
 

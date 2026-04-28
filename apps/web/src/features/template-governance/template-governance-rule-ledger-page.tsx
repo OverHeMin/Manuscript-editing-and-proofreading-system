@@ -138,7 +138,7 @@ export function TemplateGovernanceRuleLedgerPage({
               新建规则
             </button>
             <button type="button" onClick={onOpenAiIntake}>
-              AI 生成规则草稿
+              新建 AI 规则草稿
             </button>
             <button type="button" onClick={onOpenSearch}>
               搜索

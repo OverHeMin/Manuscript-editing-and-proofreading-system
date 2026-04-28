@@ -33,6 +33,20 @@ test("formatWorkbenchHash preserves rule-ledger view", () => {
   assert.equal(route.templateGovernanceView, "rule-ledger");
 });
 
+test("formatWorkbenchHash preserves AI intake mode for rule-ledger handoffs", () => {
+  const hash = formatWorkbenchHash("template-governance", {
+    templateGovernanceView: "rule-ledger" as never,
+    ruleCenterMode: "ai-intake" as never,
+  });
+  const route = resolveWorkbenchLocation(hash);
+
+  assert.match(hash, /templateGovernanceView=rule-ledger/u);
+  assert.match(hash, /ruleCenterMode=ai-intake/u);
+  assert.equal(route.workbenchId, "template-governance");
+  assert.equal(route.templateGovernanceView, "rule-ledger");
+  assert.equal(route.ruleCenterMode, "ai-intake");
+});
+
 test("formatWorkbenchHash can preserve classic rule-center view when explicitly requested", () => {
   const hash = formatWorkbenchHash("template-governance", {
     templateGovernanceView: "classic",

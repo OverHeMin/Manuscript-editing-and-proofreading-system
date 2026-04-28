@@ -64,7 +64,7 @@ test("rule ledger page renders unified categories and command bar actions", () =
   assert.match(markup, /回流候选/u);
   assert.match(markup, /术语统一规则/u);
   assert.match(markup, /新建规则/u);
-  assert.match(markup, /AI 生成规则草稿/u);
+  assert.match(markup, /新建 AI 规则草稿/u);
   assert.match(markup, /搜索/u);
   assert.match(markup, /筛选/u);
   assert.match(markup, /批量操作/u);

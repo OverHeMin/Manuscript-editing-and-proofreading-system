@@ -397,6 +397,7 @@ export function TemplateGovernanceWorkbenchPage({
               )
             : null
         }
+        initialCommandPanel={initialMode === "ai-intake" ? "ai-intake" : null}
       />
     );
   }
@@ -2818,6 +2819,7 @@ function TemplateGovernanceRuleLedgerRoute({
   initialReviewItems = [],
   initialSelectedReviewItemId,
   initialWizardMode = null,
+  initialCommandPanel = null,
 }: {
   controller: TemplateGovernanceWorkbenchController;
   actorRole: AuthRole;
@@ -2831,6 +2833,7 @@ function TemplateGovernanceRuleLedgerRoute({
   initialReviewItems?: readonly ReviewItemViewModel[];
   initialSelectedReviewItemId?: string;
   initialWizardMode?: RuleWizardState["mode"] | null;
+  initialCommandPanel?: "search" | "filter" | "bulk" | "ai-intake" | null;
 }) {
   const initialSelectedLearningCandidate =
     initialSelectedLearningCandidateId == null
@@ -2858,7 +2861,7 @@ function TemplateGovernanceRuleLedgerRoute({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeCommandPanel, setActiveCommandPanel] = useState<
     "search" | "filter" | "bulk" | "ai-intake" | null
-  >(null);
+  >(initialCommandPanel);
   const [aiIntakeDescription, setAiIntakeDescription] = useState("");
   const [aiIntakeResult, setAiIntakeResult] =
     useState<RuleAiIntakeDraftResponseViewModel | null>(null);

@@ -158,6 +158,9 @@ export function TemplateGovernanceOverviewPage({
               >
                 新建规则
               </button>
+              <button type="button" onClick={() => onOpenView?.("rule-ledger", "ai-intake")}>
+                新建 AI 规则草稿
+              </button>
               <button type="button" onClick={() => onOpenView?.("rule-ledger")}>
                 进入规则台账
               </button>

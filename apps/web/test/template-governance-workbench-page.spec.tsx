@@ -950,8 +950,30 @@ test("template governance overview keeps rule ledger as the daily-driver entry",
 
   assert.match(markup, /\u89c4\u5219\u53f0\u8d26/u);
   assert.match(markup, /\u65b0\u5efa\u89c4\u5219/u);
+  assert.match(markup, /\u65b0\u5efa AI \u89c4\u5219\u8349\u7a3f/u);
   assert.match(markup, /\u8fdb\u5165\u89c4\u5219\u53f0\u8d26/u);
   assert.match(markup, /\u67e5\u770b\u5f85\u5ba1\u6838/u);
+});
+
+test("template governance rule ledger can open directly with the AI draft panel", () => {
+  const Page = TemplateGovernanceWorkbenchPage as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    <Page
+      controller={{
+        loadRuleLedger: async () => ({
+          category: "all",
+          rows: [],
+        }),
+      }}
+      initialView="rule-ledger"
+      initialMode="ai-intake"
+    />,
+  );
+
+  assert.match(markup, /\u89c4\u5219 AI \u8349\u7a3f\u751f\u6210/u);
+  assert.match(markup, /\u81ea\u7136\u8bed\u8a00\u63cf\u8ff0/u);
 });
 
 test("template governance overview surfaces unified review, Harness, and writeback operations", () => {
