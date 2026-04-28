@@ -214,6 +214,7 @@ import {
 } from "../modules/feedback-governance/index.ts";
 import {
   createHumanReviewApi,
+  HumanReviewDiffService,
   HumanReviewDiffItemNotFoundError,
   HumanReviewPublishGateError,
   HumanReviewService,
@@ -1904,6 +1905,9 @@ export function createInMemoryApiRuntime(input: {
     jobRepository,
     assetService: documentAssetService,
     uploadRootDir: input.uploadRootDir,
+    humanReviewRepository,
+    humanReviewDiffService: new HumanReviewDiffService(),
+    sourceBlockResolver: docxSourceBlockResolver,
   });
   const modelRoutingGovernanceService = new ModelRoutingGovernanceService({
     repository: modelRoutingGovernanceRepository,

@@ -117,6 +117,23 @@ export class InMemoryHumanReviewRepository implements HumanReviewRepository {
   async saveBackflowAttempt(
     record: HumanReviewBackflowAttemptRecord,
   ): Promise<void> {
+    const existing = [...this.backflowAttempts.values()].find(
+      (attempt) =>
+        attempt.diff_item_id === record.diff_item_id &&
+        attempt.target === record.target,
+    );
+    if (existing) {
+      this.backflowAttempts.delete(existing.id);
+      this.backflowAttempts.set(
+        record.id,
+        cloneBackflowAttempt({
+          ...record,
+          created_at: existing.created_at,
+        }),
+      );
+      return;
+    }
+
     this.backflowAttempts.set(record.id, cloneBackflowAttempt(record));
   }
 

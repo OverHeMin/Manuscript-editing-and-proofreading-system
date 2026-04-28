@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { InMemoryHumanReviewRepository } from "../../src/modules/human-review/in-memory-human-review-repository.ts";
+import { PostgresHumanReviewRepository } from "../../src/modules/human-review/postgres-human-review-repository.ts";
 import type { HumanReviewDiffRecord } from "../../src/modules/human-review/human-review-record.ts";
 
 test("human review repository stores and updates diff decisions", async () => {
@@ -119,4 +120,29 @@ test("human review repository stores candidate backflow attempts", async () => {
   assert.equal(retriedAttempts[0]?.status, "succeeded");
   assert.equal(retriedAttempts[0]?.learning_candidate_id, "candidate-1");
   assert.equal(retriedAttempts[0]?.error_message, undefined);
+});
+
+test("postgres human review repository upserts backflow attempts by diff item and target", async () => {
+  const queries: Array<{ sql: string; params?: unknown[] }> = [];
+  const repository = new PostgresHumanReviewRepository({
+    client: {
+      async query(sql, params) {
+        queries.push({ sql, params });
+        return { rows: [], rowCount: 1 };
+      },
+    },
+  });
+
+  await repository.saveBackflowAttempt({
+    id: "attempt-retry-1",
+    diff_item_id: "diff-1",
+    target: "knowledge_candidate",
+    status: "failed",
+    error_message: "knowledge service unavailable",
+    created_at: "2026-04-28T00:00:00.000Z",
+    updated_at: "2026-04-28T00:00:00.000Z",
+  });
+
+  assert.match(queries[0]?.sql ?? "", /on conflict \(diff_item_id, target\) do update/u);
+  assert.match(queries[0]?.sql ?? "", /created_at = human_review_backflow_attempts\.created_at/u);
 });

@@ -172,6 +172,49 @@ test("human review publish blocks unsafe unresolved differences", async () => {
   );
 });
 
+test("human review publish blocks kept diffs that V1 cannot safely materialize", async () => {
+  const { manuscriptRepository, assetRepository, humanReviewRepository, service } =
+    createHarness();
+  await seedManuscriptAndAssets({ manuscriptRepository, assetRepository });
+  await humanReviewRepository.saveDiffItems([
+    createDiff({
+      id: "diff-added",
+      source: "human_added",
+      content_decision: "keep",
+      status: "confirmed",
+      before_text: "",
+      after_text: "新增人工补充段落。",
+    }),
+    createDiff({
+      id: "diff-no-safe-revert",
+      content_decision: "keep",
+      status: "confirmed",
+      apply_capability: "keep_only_no_safe_revert",
+      before_text: "Baseline text.",
+      after_text: "Working text.",
+    }),
+  ]);
+
+  const preflight = await service.preflightPublish({
+    manuscriptId: "manuscript-1",
+    module: "proofreading",
+  });
+
+  assert.equal(preflight.can_publish, false);
+  assert.match(
+    preflight.blocking_reasons.join("; "),
+    /cannot be safely written to the final manuscript/u,
+  );
+  await assert.rejects(
+    () =>
+      service.publishConfirmedFinal({
+        manuscriptId: "manuscript-1",
+        module: "proofreading",
+      }),
+    /cannot be safely written to the final manuscript/u,
+  );
+});
+
 test("human review publish applies kept text diffs and excludes rejected diffs", async () => {
   const {
     manuscriptRepository,

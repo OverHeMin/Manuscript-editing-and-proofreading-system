@@ -16,6 +16,15 @@ V1 supports automatic application/reversion for paragraph text replacement/add/d
 
 Do not implement prompt candidates or evidence-only actions in this workflow. Do not expose OnlyOffice working-state assets as final/exportable manuscript assets.
 
+## Final Review Corrections Before Execution
+
+The implementation review found four blocking gaps that must be closed before the front-end queue is treated as complete:
+
+- OnlyOffice human-review save-back must extract baseline-vs-working diff items and persist them to the human-review ledger. A working DOCX without ledger rows does not satisfy the right-rail confirmation workflow.
+- Publish preflight must block any kept item that cannot be safely materialized into the final DOCX. V1 must not silently drop kept insert/delete/no-safe-revert items.
+- Candidate backflow retry must be idempotent in PostgreSQL under the `(diff_item_id, target)` uniqueness rule.
+- The new web workflow must call `/api/v1/human-review/preflight-publish` and `/api/v1/human-review/publish-final`; the legacy proofreading publish path is only for legacy confirmation data.
+
 ## File Structure
 
 Create:
@@ -542,6 +551,73 @@ git commit -m "feat: backfill rule and knowledge candidates after publish"
 
 ---
 
+### Task 6A: Save-Back Extraction And Publish Safety Fixes
+
+**Files:**
+- Modify: `apps/api/src/modules/document-pipeline/onlyoffice-save-back-service.ts`
+- Modify: `apps/api/src/modules/human-review/human-review-service.ts`
+- Modify: `apps/api/src/modules/human-review/postgres-human-review-repository.ts`
+- Modify: `apps/api/src/http/api-http-server.ts`
+- Modify: `apps/api/src/http/persistent-governance-runtime.ts`
+- Test: `apps/api/test/document-pipeline/onlyoffice-save-back-service.spec.ts`
+- Test: `apps/api/test/human-review/human-review-publish.spec.ts`
+- Test: `apps/api/test/human-review/human-review-contract.spec.ts`
+
+- [ ] **Step 1: Add failing save-back extraction test**
+
+Extend the OnlyOffice save-back test harness with a fake source-block resolver and human-review repository. After a `human_review_working_state` save-back, assert that one diff item is persisted with:
+
+```ts
+assert.equal(diffItems.length, 1);
+assert.equal(diffItems[0]?.baseline_asset_id, finalProofAsset.id);
+assert.equal(diffItems[0]?.working_asset_id, workingAssets[0]?.id);
+assert.equal(diffItems[0]?.content_decision, "unconfirmed");
+```
+
+Run: `pnpm --dir apps/api exec node --import tsx --test test/document-pipeline/onlyoffice-save-back-service.spec.ts`
+
+Expected: FAIL until save-back triggers extraction.
+
+- [ ] **Step 2: Extract and persist human-review diffs after working save-back**
+
+Inject `HumanReviewDiffService`, `HumanReviewRepository`, and the existing DOCX source-block resolver into `OnlyOfficeSaveBackService`. For `scope.purpose === "human_review_working_state"`, resolve blocks for `scope.baselineAssetId` and the newly created working asset id, map them to `HumanReviewComparableBlock`, run `extractDiffItems`, and `saveDiffItems`. Update the job payload with `humanReviewDiffItemIds` and `learningSignal.status: "diff_extracted"` when extraction succeeds.
+
+- [ ] **Step 3: Block unsafe kept materialization**
+
+In `buildPublishPreflight`, add a blocking reason for any item where `content_decision === "keep"` and either:
+
+```ts
+item.apply_capability !== "auto_apply_revert" ||
+!item.before_text ||
+!item.after_text
+```
+
+This keeps V1 honest until paragraph insert/delete materialization is implemented. Rejected insert/delete items remain safe because they are excluded from the baseline-to-final transform.
+
+- [ ] **Step 4: Make backflow retry idempotent in PostgreSQL**
+
+Change `PostgresHumanReviewRepository.saveBackflowAttempt` to upsert on `(diff_item_id, target)`, preserving `created_at` from the existing row and updating status, candidate id, error, and `updated_at`.
+
+- [ ] **Step 5: Run focused backend tests**
+
+Run:
+
+```powershell
+pnpm --dir apps/api exec node --import tsx --test test/document-pipeline/onlyoffice-save-back-service.spec.ts test/human-review/human-review-publish.spec.ts test/human-review/human-review-contract.spec.ts
+pnpm --dir apps/api run typecheck
+```
+
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```powershell
+git add apps/api/src/modules/document-pipeline/onlyoffice-save-back-service.ts apps/api/src/modules/human-review/human-review-service.ts apps/api/src/modules/human-review/postgres-human-review-repository.ts apps/api/src/http/api-http-server.ts apps/api/src/http/persistent-governance-runtime.ts apps/api/test/document-pipeline/onlyoffice-save-back-service.spec.ts apps/api/test/human-review/human-review-publish.spec.ts apps/api/test/human-review/human-review-contract.spec.ts docs/superpowers/plans/2026-04-28-onlyoffice-human-review-governance.md
+git commit -m "feat: close human review save-back loop"
+```
+
+---
+
 ### Task 7: Front-End API And Queue State
 
 **Files:**
@@ -549,6 +625,7 @@ git commit -m "feat: backfill rule and knowledge candidates after publish"
 - Create: `apps/web/src/features/human-review/human-review-api.ts`
 - Create: `apps/web/src/features/human-review/human-review-state.ts`
 - Create: `apps/web/src/features/human-review/index.ts`
+- Modify: `apps/web/src/features/document-preview/types.ts`
 - Test: `apps/web/test/human-review-state.spec.ts`
 
 - [ ] **Step 1: Write front-end state tests**
@@ -565,6 +642,8 @@ assert.equal(updated[0]?.content_decision, "keep");
 - [ ] **Step 2: Add types and API client**
 
 Mirror contract view models. Implement client calls for list, update, batch update, preflight, publish, retry backflow.
+
+Also align `DocumentPreviewSessionViewModel.save_back` with backend working-state metadata: `output_asset_type` must allow `human_review_working_docx`, and `purpose` must allow `human_review_working_state`.
 
 - [ ] **Step 3: Add state helpers**
 
@@ -631,7 +710,7 @@ Change save wording to make clear that saving records a work state and extracts 
 
 - [ ] **Step 5: Wire校对 detail page**
 
-Use the shared queue for校对 human-review workflow. Keep old confirmation UI available only for legacy data if needed.
+Use the shared queue for校对 human-review workflow. New OnlyOffice human-review pages must call the human-review preflight/publish API; keep old confirmation UI available only for legacy data if needed.
 
 - [ ] **Step 6: Run tests**
 

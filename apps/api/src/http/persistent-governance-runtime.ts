@@ -84,6 +84,7 @@ import {
 } from "../modules/feedback-governance/index.ts";
 import {
   createHumanReviewApi,
+  HumanReviewDiffService,
   HumanReviewService,
   PostgresHumanReviewRepository,
 } from "../modules/human-review/index.ts";
@@ -514,6 +515,9 @@ export function createPersistentGovernanceRuntime(
     assetService: documentAssetService,
     uploadRootDir,
     transactionManager: workbenchTransactionManager,
+    humanReviewRepository,
+    humanReviewDiffService: new HumanReviewDiffService(),
+    sourceBlockResolver: docxSourceBlockResolver,
   });
   const feedbackGovernanceService = new FeedbackGovernanceService({
     repository: feedbackGovernanceRepository,

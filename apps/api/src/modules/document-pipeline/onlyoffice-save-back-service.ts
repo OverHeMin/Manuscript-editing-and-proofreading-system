@@ -7,6 +7,16 @@ import type {
   DocumentAssetType,
 } from "../assets/document-asset-record.ts";
 import type { DocumentAssetRepository } from "../assets/document-asset-repository.ts";
+import type {
+  EditorialSourceBlockResolver,
+  EditorialTextBlock,
+} from "../editorial-execution/types.ts";
+import {
+  HumanReviewDiffService,
+  type HumanReviewComparableBlock,
+  type HumanReviewComparableBlockKind,
+} from "../human-review/human-review-diff-service.ts";
+import type { HumanReviewRepository } from "../human-review/human-review-repository.ts";
 import type { JobRecord, ManuscriptModule } from "../jobs/job-record.ts";
 import type { JobRepository } from "../jobs/job-repository.ts";
 import type { ManuscriptRepository } from "../manuscripts/manuscript-repository.ts";
@@ -47,6 +57,9 @@ export interface OnlyOfficeSaveBackServiceOptions {
   uploadRootDir: string;
   surfaceSessionSecret?: string;
   transactionManager?: WriteTransactionManager;
+  humanReviewRepository?: Pick<HumanReviewRepository, "saveDiffItems">;
+  humanReviewDiffService?: Pick<HumanReviewDiffService, "extractDiffItems">;
+  sourceBlockResolver?: Pick<EditorialSourceBlockResolver, "resolveBlocks">;
   createId?: () => string;
   now?: () => Date;
   fetchDocument?: (url: string) => Promise<Buffer>;
@@ -85,6 +98,9 @@ export class OnlyOfficeSaveBackService {
   private readonly assetRepository: DocumentAssetRepository;
   private readonly jobRepository: JobRepository;
   private readonly assetService: DocumentAssetService;
+  private readonly humanReviewRepository?: Pick<HumanReviewRepository, "saveDiffItems">;
+  private readonly humanReviewDiffService?: Pick<HumanReviewDiffService, "extractDiffItems">;
+  private readonly sourceBlockResolver?: Pick<EditorialSourceBlockResolver, "resolveBlocks">;
   private readonly uploadRootDir: string;
   private readonly surfaceSessionSecret: string;
   private readonly transactionManager: WriteTransactionManager;
@@ -97,6 +113,9 @@ export class OnlyOfficeSaveBackService {
     this.assetRepository = options.assetRepository;
     this.jobRepository = options.jobRepository;
     this.assetService = options.assetService;
+    this.humanReviewRepository = options.humanReviewRepository;
+    this.humanReviewDiffService = options.humanReviewDiffService;
+    this.sourceBlockResolver = options.sourceBlockResolver;
     this.uploadRootDir = path.resolve(options.uploadRootDir);
     this.surfaceSessionSecret =
       options.surfaceSessionSecret?.trim() ??
@@ -148,6 +167,14 @@ export class OnlyOfficeSaveBackService {
       storageKey,
       bytes,
     });
+
+    let savedWorkingState:
+      | {
+          scope: VerifiedSaveBackScope;
+          outputAsset: DocumentAssetRecord;
+          job: JobRecord;
+        }
+      | undefined;
 
     await this.transactionManager.withTransaction(async (context) => {
       const repeatedJob = await findExistingSaveBackJob(
@@ -234,16 +261,77 @@ export class OnlyOfficeSaveBackService {
         await context.assetRepository.save(storedOutputAsset);
       }
 
-      await (context.jobRepository ?? this.jobRepository).save({
+      const savedJob = {
         ...job,
         payload: {
           ...job.payload,
           outputAssetId: storedOutputAsset.id,
         },
-      });
+      };
+      await (context.jobRepository ?? this.jobRepository).save(savedJob);
+
+      if (scope.purpose === "human_review_working_state") {
+        savedWorkingState = {
+          scope,
+          outputAsset: storedOutputAsset,
+          job: savedJob,
+        };
+      }
     });
 
+    if (savedWorkingState) {
+      await this.extractAndPersistHumanReviewDiffs(savedWorkingState);
+    }
+
     return { error: 0 };
+  }
+
+  private async extractAndPersistHumanReviewDiffs(input: {
+    scope: VerifiedSaveBackScope;
+    outputAsset: DocumentAssetRecord;
+    job: JobRecord;
+  }): Promise<void> {
+    if (
+      !this.humanReviewRepository ||
+      !this.humanReviewDiffService ||
+      !this.sourceBlockResolver
+    ) {
+      return;
+    }
+
+    const [baselineBlocks, workingBlocks] = await Promise.all([
+      this.sourceBlockResolver.resolveBlocks({
+        manuscriptId: input.scope.manuscriptId,
+        assetId: input.scope.baselineAssetId,
+      }),
+      this.sourceBlockResolver.resolveBlocks({
+        manuscriptId: input.scope.manuscriptId,
+        assetId: input.outputAsset.id,
+      }),
+    ]);
+    const result = this.humanReviewDiffService.extractDiffItems({
+      manuscriptId: input.scope.manuscriptId,
+      module: input.scope.module,
+      baselineAssetId: input.scope.baselineAssetId,
+      workingAssetId: input.outputAsset.id,
+      baselineBlocks: mapHumanReviewComparableBlocks(baselineBlocks),
+      workingBlocks: mapHumanReviewComparableBlocks(workingBlocks),
+    });
+    await this.humanReviewRepository.saveDiffItems(result.items);
+
+    await this.jobRepository.save({
+      ...input.job,
+      payload: {
+        ...input.job.payload,
+        humanReviewDiffItemIds: result.items.map((item) => item.id),
+        humanReviewDiffItemCount: result.items.length,
+        learningSignal: {
+          ...asRecord(input.job.payload?.learningSignal),
+          status: result.items.length > 0 ? "diff_extracted" : "no_diff_detected",
+        },
+      },
+      updated_at: this.now().toISOString(),
+    });
   }
 
   private verifySaveBackScope(
@@ -581,6 +669,44 @@ function isAllowedBaselineForModule(
     assetType === "final_proof_annotated_docx" ||
     assetType === "human_final_docx"
   );
+}
+
+function mapHumanReviewComparableBlocks(
+  blocks: readonly EditorialTextBlock[],
+): HumanReviewComparableBlock[] {
+  return blocks.map((block, index) => {
+    const kind = normalizeHumanReviewBlockKind(block.block_kind);
+
+    return {
+      key: block.source_locator ?? `${kind}:${index}`,
+      kind,
+      text: block.text,
+      block_index: index,
+      ...(block.section ? { section_label: block.section } : {}),
+    };
+  });
+}
+
+function normalizeHumanReviewBlockKind(
+  value: string | undefined,
+): HumanReviewComparableBlockKind {
+  switch (value) {
+    case "heading":
+    case "table_cell":
+    case "table":
+    case "image":
+    case "caption":
+    case "reference_entry":
+      return value;
+    default:
+      return "paragraph";
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function sanitizeStorageSegment(value: string): string {

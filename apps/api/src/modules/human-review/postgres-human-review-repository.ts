@@ -257,14 +257,13 @@ export class PostgresHumanReviewRepository implements HumanReviewRepository {
           updated_at
         )
         values ($1, $2, $3, $4, $5, $6, $7, $8)
-        on conflict (id) do update
+        on conflict (diff_item_id, target) do update
         set
-          diff_item_id = excluded.diff_item_id,
-          target = excluded.target,
+          id = excluded.id,
           status = excluded.status,
           learning_candidate_id = excluded.learning_candidate_id,
           error_message = excluded.error_message,
-          created_at = excluded.created_at,
+          created_at = human_review_backflow_attempts.created_at,
           updated_at = excluded.updated_at
       `,
       [

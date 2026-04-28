@@ -519,6 +519,11 @@ function buildPublishPreflight(
       item.apply_capability === "unsafe_needs_manual_review" ||
       item.status === "blocks_publish",
   ).length;
+  const unsafeMaterializationCount = items.filter(
+    (item) =>
+      item.content_decision === "keep" &&
+      !canV1MaterializeKeptDiffItem(item),
+  ).length;
   const blockingReasons: string[] = [];
 
   if (unconfirmedCount > 0 || deferredCount > 0) {
@@ -526,6 +531,11 @@ function buildPublishPreflight(
   }
   if (unsafeCount > 0) {
     blockingReasons.push("unsafe human review differences require manual review");
+  }
+  if (unsafeMaterializationCount > 0) {
+    blockingReasons.push(
+      "kept human review differences cannot be safely written to the final manuscript",
+    );
   }
   if (!shareSameAssetLineage(items)) {
     blockingReasons.push("human review differences must share one baseline and working asset");
@@ -544,6 +554,14 @@ function buildPublishPreflight(
         .length,
     },
   };
+}
+
+function canV1MaterializeKeptDiffItem(item: HumanReviewDiffRecord): boolean {
+  return (
+    item.apply_capability === "auto_apply_revert" &&
+    Boolean(item.before_text?.trim()) &&
+    Boolean(item.after_text?.trim())
+  );
 }
 
 function assertPublishable(preflight: HumanReviewPublishPreflightResult): void {
