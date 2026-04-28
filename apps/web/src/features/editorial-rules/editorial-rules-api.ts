@@ -10,6 +10,10 @@ import type {
   EditorialRuleSetViewModel,
   EditorialRuleViewModel,
   PreviewCompileRulePackagesInputViewModel,
+  RuleAiIntakeDraftRequestViewModel,
+  RuleAiIntakeDraftResponseViewModel,
+  RuleAiParsingRequestViewModel,
+  RuleAiParsingResponseViewModel,
   RulePackageCandidateViewModel,
   RulePackageCompilePreviewViewModel,
   RulePackageCompileToDraftResultViewModel,
@@ -211,5 +215,27 @@ export function compileRulePackagesToDraft(
     method: "POST",
     url: "/api/v1/editorial-rules/rule-packages/compile-to-draft",
     body: { input },
+  });
+}
+
+export function createRuleAiIntakeDraft(
+  client: EditorialRulesHttpClient,
+  input: RuleAiIntakeDraftRequestViewModel,
+) {
+  return client.request<RuleAiIntakeDraftResponseViewModel>({
+    method: "POST",
+    url: "/api/v1/editorial-rules/ai-intake/drafts",
+    body: input,
+  });
+}
+
+export function parseManualRuleWithAi(
+  client: EditorialRulesHttpClient,
+  input: RuleAiParsingRequestViewModel,
+) {
+  return client.request<RuleAiParsingResponseViewModel>({
+    method: "POST",
+    url: "/api/v1/editorial-rules/ai-intake/parse-manual-rule",
+    body: input,
   });
 }

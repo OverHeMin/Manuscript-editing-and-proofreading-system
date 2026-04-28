@@ -11,6 +11,7 @@ import {
   createRuleWizardSemanticViewModel,
   confirmRuleWizardSemanticLayer,
   loadRuleWizardBindingOptions,
+  parseRuleWizardManualRuleWithAi,
   publishRuleWizardRevision,
   regenerateRuleWizardSemanticLayer,
   saveRuleWizardBindingDraft,
@@ -94,6 +95,9 @@ export function TemplateGovernanceRuleWizard({
   const [semanticSuggestion, setSemanticSuggestion] = useState<
     Parameters<typeof createRuleWizardSemanticViewModel>[0]["suggestion"]
   >();
+  const [aiParsingResult, setAiParsingResult] = useState<
+    Parameters<typeof createRuleWizardSemanticViewModel>[0]["aiParsing"]
+  >();
   const [isSemanticBusy, setIsSemanticBusy] = useState(false);
   const [semanticErrorMessage, setSemanticErrorMessage] = useState<string | null>(null);
   const [awaitingSemanticDraft, setAwaitingSemanticDraft] = useState(false);
@@ -125,6 +129,7 @@ export function TemplateGovernanceRuleWizard({
     form: entryFormState,
     revision: semanticRevision,
     suggestion: semanticSuggestion,
+    aiParsing: aiParsingResult,
   });
   const evidenceGateSummary = createRuleWizardEvidenceGateSummary({
     blocks: entryFormState.supplementalBlocks ?? [],
@@ -134,6 +139,7 @@ export function TemplateGovernanceRuleWizard({
   useEffect(() => {
     setSemanticRevision(undefined);
     setSemanticSuggestion(undefined);
+    setAiParsingResult(undefined);
     setSemanticErrorMessage(null);
     setAwaitingSemanticDraft(false);
     setConfirmDirty(false);
@@ -281,13 +287,17 @@ export function TemplateGovernanceRuleWizard({
     setSemanticErrorMessage(null);
 
     try {
-      const result = await regenerateRuleWizardSemanticLayer(
-        defaultRuleWizardClient,
-        state.draftRevisionId,
-        entryFormState,
-      );
+      const [result, aiParsing] = await Promise.all([
+        regenerateRuleWizardSemanticLayer(
+          defaultRuleWizardClient,
+          state.draftRevisionId,
+          entryFormState,
+        ),
+        parseRuleWizardManualRuleWithAi(defaultRuleWizardClient, entryFormState),
+      ]);
       setSemanticRevision(result.revision);
       setSemanticSuggestion(result.suggestion);
+      setAiParsingResult(aiParsing);
       setConfirmDirty(false);
       setConfirmFormState(
         createRuleWizardConfirmFormState({
@@ -437,6 +447,11 @@ export function TemplateGovernanceRuleWizard({
   async function handleCompleteClick() {
     if (state.step !== "publish") {
       onComplete?.({ releaseAction: publishFormState.releaseAction });
+      return;
+    }
+
+    if (entryFormState.candidateOnly && publishFormState.releaseAction === "publish_now") {
+      setBindingErrorMessage("AI 草稿必须先提交审核，由人工确认后才能进入正式发布。");
       return;
     }
 

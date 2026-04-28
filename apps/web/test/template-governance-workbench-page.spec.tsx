@@ -18,6 +18,7 @@ const {
   TemplateGovernanceWorkbenchPage,
   createKnowledgeDraftFormState,
   createKnowledgeDraftInput,
+  createRuleWizardEntryFormStateFromAiDraft,
   createRuleWizardEntryFormStateFromRuleLedgerRow,
   executeExtractionCandidateAction,
   resolveRuleLedgerCategoryAfterWizardCompletion,
@@ -1400,6 +1401,52 @@ test("template governance workbench page opens the shared rule wizard when autho
   assert.match(markup, /\u89c4\u5219\u8349\u7a3f\u5411\u5bfc/u);
   assert.match(markup, /\u57fa\u7840\u5f55\u5165\u4e0e\u8bc1\u636e\u8865\u5145/u);
   assert.match(markup, /\u4e0b\u4e00\u6b65\uff1a\u6574\u7406\u8349\u7a3f/u);
+});
+
+test("AI rule draft response can prefill the shared rule wizard as a review-only draft", () => {
+  const form = createRuleWizardEntryFormStateFromAiDraft({
+    draft: {
+      source_kind: "manual_description",
+      ai_understanding_summary: "摘要缩写首次出现需要中文全称。",
+      recommended_governance_layer: "journal_template",
+      target_object: "abstract_abbreviation",
+      trigger: "first_abbreviation_occurrence",
+      action: "manual_review_or_replace",
+      scope: {
+        module_scope: "proofreading",
+        manuscript_types: ["clinical_study"],
+        sections: ["abstract"],
+      },
+      evidence: [{ kind: "user_description", text: "摘要缩写规范。" }],
+      confidence: { overall: 0.82 },
+      uncertainties: ["需人工确认期刊原文。"],
+    },
+    template_match: {
+      status: "matched",
+      template_id: "abstract_rule_template",
+    },
+    similar_rule_matches: [
+      {
+        kind: "similar",
+        rule_id: "rule-1",
+        title: "摘要英文缩写规则",
+        rationale: "命中对象相似。",
+        suggested_resolution: "manual_review",
+      },
+    ],
+    warnings: [],
+  });
+
+  assert.equal(form.title, "abstract_abbreviation");
+  assert.equal(form.moduleScope, "proofreading");
+  assert.deepEqual(form.manuscriptTypes, ["clinical_study"]);
+  assert.deepEqual(form.sections, ["abstract"]);
+  assert.equal(form.candidateOnly, true);
+  assert.match(form.ruleBody, /摘要缩写首次出现需要中文全称/u);
+  assert.match(form.ruleBody, /first_abbreviation_occurrence/u);
+  assert.match(form.sourceBasis, /摘要缩写规范/u);
+  assert.match(form.conflictNotes, /需人工确认期刊原文/u);
+  assert.match(form.conflictNotes, /摘要英文缩写规则/u);
 });
 
 test("template governance hidden knowledge draft seed defaults to reference", () => {

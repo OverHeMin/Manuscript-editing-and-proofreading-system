@@ -35,11 +35,20 @@ import type {
   RulePackageExampleSourceSession,
   RulePackagePreview,
   RulePackageWorkspace,
+  RuleAiIntakeDraftRequest,
+  RuleAiIntakeDraftResponse,
+  RuleAiParsingRequest,
+  RuleAiParsingResponse,
 } from "@medical/contracts";
 import type {
   EditorialRuleRecord,
   EditorialRuleSetRecord,
 } from "./editorial-rule-record.ts";
+import {
+  RuleAiIntakeService,
+  RuleAiIntakeUnavailableError,
+} from "./rule-ai-intake-service.ts";
+import type { RuleAiParsingService } from "./rule-ai-parsing-service.ts";
 
 interface RouteResponse<T> {
   status: number;
@@ -78,6 +87,8 @@ export interface CreateEditorialRuleApiOptions {
     RulePackageCompileService,
     "previewCompile" | "compileToDraft"
   >;
+  ruleAiIntakeService?: Pick<RuleAiIntakeService, "createDraft">;
+  ruleAiParsingService?: Pick<RuleAiParsingService, "parseRule">;
 }
 
 export function createEditorialRuleApi(options: CreateEditorialRuleApiOptions) {
@@ -88,6 +99,8 @@ export function createEditorialRuleApi(options: CreateEditorialRuleApiOptions) {
     editorialRulePackageService,
     extractionTaskService,
     rulePackageCompileService,
+    ruleAiIntakeService,
+    ruleAiParsingService,
   } = options;
 
   return {
@@ -333,6 +346,32 @@ export function createEditorialRuleApi(options: CreateEditorialRuleApiOptions) {
         body: await editorialRulePackageService!.generateCandidatesFromReviewedCase(
           input,
         ),
+      };
+    },
+
+    async createRuleAiIntakeDraft(
+      input: RuleAiIntakeDraftRequest,
+    ): Promise<RouteResponse<RuleAiIntakeDraftResponse>> {
+      if (!ruleAiIntakeService) {
+        throw new RuleAiIntakeUnavailableError();
+      }
+
+      return {
+        status: 200,
+        body: await ruleAiIntakeService.createDraft(input),
+      };
+    },
+
+    async parseManualRuleWithAi(
+      input: RuleAiParsingRequest,
+    ): Promise<RouteResponse<RuleAiParsingResponse>> {
+      if (!ruleAiParsingService) {
+        throw new RuleAiIntakeUnavailableError("Rule AI parsing is unavailable.");
+      }
+
+      return {
+        status: 200,
+        body: await ruleAiParsingService.parseRule(input),
       };
     },
   };

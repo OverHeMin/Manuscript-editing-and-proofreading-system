@@ -30,6 +30,10 @@ export interface TemplateGovernanceRuleLedgerRow {
   semantic_status: string;
   publish_status: string;
   contributor_label: string;
+  source_label?: string;
+  ai_participation_label?: string;
+  review_status_label?: string;
+  similarity_resolution_label?: string;
   updated_at?: string;
   default_rule_count?: number;
   related_rules?: TemplateGovernanceRuleLedgerRelatedRule[];

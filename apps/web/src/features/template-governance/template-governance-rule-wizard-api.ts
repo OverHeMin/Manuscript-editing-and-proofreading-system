@@ -32,6 +32,12 @@ import {
   formatEditorialManuscriptTypeLabel,
 } from "../shared/editorial-taxonomy.ts";
 import {
+  parseManualRuleWithAi,
+  type EditorialRulesHttpClient,
+  type RuleAiParsingRequestViewModel,
+  type RuleAiParsingResponseViewModel,
+} from "../editorial-rules/index.ts";
+import {
   listManuscriptQualityPackages,
 } from "../manuscript-quality-packages/manuscript-quality-packages-api.ts";
 import type {
@@ -113,6 +119,7 @@ export type RuleWizardSemanticRiskLevel = "low" | "medium" | "high";
 
 export interface RuleWizardSemanticViewModel {
   semanticLayer?: KnowledgeSemanticLayerViewModel;
+  aiParsing?: RuleAiParsingResponseViewModel;
   ruleType: RuleWizardSemanticRuleType;
   riskLevel: RuleWizardSemanticRiskLevel;
   moduleScope: ManuscriptModule | "any";
@@ -294,6 +301,7 @@ export function createRuleWizardSemanticViewModel(input: {
   form: RuleWizardEntryFormState | RuleWizardEntryFormStateInput;
   revision?: KnowledgeRevisionViewModel;
   suggestion?: KnowledgeLibrarySemanticAssistSuggestionViewModel;
+  aiParsing?: RuleAiParsingResponseViewModel;
 }): RuleWizardSemanticViewModel {
   const normalizedForm = createRuleWizardEntryFormState(input.form);
   const semanticLayer = resolveRuleWizardSemanticLayer(input);
@@ -324,6 +332,7 @@ export function createRuleWizardSemanticViewModel(input: {
 
   return {
     semanticLayer,
+    aiParsing: input.aiParsing,
     ruleType,
     riskLevel,
     moduleScope,
@@ -346,6 +355,55 @@ export function createRuleWizardSemanticViewModel(input: {
     confidenceLabel: formatRuleWizardConfidenceLabel(confidenceScore),
     warnings: input.suggestion?.warnings ?? [],
   };
+}
+
+export function createRuleWizardAiParsingInput(
+  form: RuleWizardEntryFormState | RuleWizardEntryFormStateInput,
+): RuleAiParsingRequestViewModel {
+  const normalizedForm = createRuleWizardEntryFormState(form);
+  const evidence =
+    normalizedForm.sourceBasis.trim().length > 0
+      ? [
+          {
+            kind: "user_description" as const,
+            text: normalizedForm.sourceBasis.trim(),
+            authority: "review_required" as const,
+          },
+        ]
+      : undefined;
+
+  return {
+    rule_fields: {
+      title: normalizedForm.title.trim(),
+      rule_body: normalizedForm.ruleBody.trim(),
+      module_scope: toRuleAiParsingModuleScope(normalizedForm.moduleScope),
+      manuscript_types: normalizedForm.manuscriptTypes,
+      sections: normalizedForm.sections,
+      ...(evidence ? { evidence } : {}),
+    },
+  };
+}
+
+export async function parseRuleWizardManualRuleWithAi(
+  client: EditorialRulesHttpClient,
+  form: RuleWizardEntryFormState | RuleWizardEntryFormStateInput,
+): Promise<RuleAiParsingResponseViewModel> {
+  return (await parseManualRuleWithAi(client, createRuleWizardAiParsingInput(form)))
+    .body;
+}
+
+function toRuleAiParsingModuleScope(
+  value: RuleWizardEntryFormState["moduleScope"],
+): RuleAiParsingRequestViewModel["rule_fields"]["module_scope"] {
+  switch (value) {
+    case "screening":
+    case "editing":
+    case "proofreading":
+    case "any":
+      return value;
+    default:
+      return "any";
+  }
 }
 
 export function createRuleWizardConfirmFormState(input: {

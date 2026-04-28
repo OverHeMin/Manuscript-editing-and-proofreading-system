@@ -2,6 +2,9 @@ import type { FormEvent } from "react";
 import { TemplateGovernanceLedgerSearchPage } from "./template-governance-ledger-search-page.tsx";
 import { TemplateGovernanceLedgerToolbar } from "./template-governance-ledger-toolbar.tsx";
 import type {
+  RuleAiIntakeDraftResponseViewModel,
+} from "../editorial-rules/index.ts";
+import type {
   TemplateGovernanceLedgerSearchState,
   TemplateGovernanceRuleLedgerCategory,
   TemplateGovernanceRuleLedgerRow,
@@ -40,6 +43,18 @@ export interface TemplateGovernanceRuleLedgerBulkState {
   onToggleShowSelectedOnly?: () => void;
 }
 
+export interface TemplateGovernanceRuleAiIntakeState {
+  isOpen: boolean;
+  description: string;
+  isGenerating: boolean;
+  result?: RuleAiIntakeDraftResponseViewModel | null;
+  errorMessage?: string | null;
+  onDescriptionChange?: (value: string) => void;
+  onGenerate?: (event: FormEvent<HTMLFormElement>) => void;
+  onApplyResult?: () => void;
+  onClose?: () => void;
+}
+
 export interface TemplateGovernanceRuleLedgerClientFilterInput {
   moduleValue: string;
   publishStatusValue: string;
@@ -66,7 +81,9 @@ export interface TemplateGovernanceRuleLedgerPageProps {
   onOpenSearch?: () => void;
   onOpenFilter?: () => void;
   onOpenBulkActions?: () => void;
+  onOpenAiIntake?: () => void;
   onImport?: () => void;
+  aiIntakeState?: TemplateGovernanceRuleAiIntakeState;
 }
 
 export function TemplateGovernanceRuleLedgerPage({
@@ -89,7 +106,9 @@ export function TemplateGovernanceRuleLedgerPage({
   onOpenSearch,
   onOpenFilter,
   onOpenBulkActions,
+  onOpenAiIntake,
   onImport,
+  aiIntakeState,
 }: TemplateGovernanceRuleLedgerPageProps) {
   const viewModel = createTemplateGovernanceRuleLedgerViewModel({
     rows: initialViewModel.rows,
@@ -118,6 +137,9 @@ export function TemplateGovernanceRuleLedgerPage({
             <button type="button" onClick={onOpenCreateRule}>
               新建规则
             </button>
+            <button type="button" onClick={onOpenAiIntake}>
+              AI 生成规则草稿
+            </button>
             <button type="button" onClick={onOpenSearch}>
               搜索
             </button>
@@ -137,6 +159,7 @@ export function TemplateGovernanceRuleLedgerPage({
       {statusMessage ? <p className="template-governance-status">{statusMessage}</p> : null}
       {errorMessage ? <p className="template-governance-error">{errorMessage}</p> : null}
       <TemplateGovernanceLedgerSearchPage searchState={searchState} />
+      <RuleAiIntakePanel state={aiIntakeState} />
 
       <article className="template-governance-card template-governance-ledger-section">
         <header className="template-governance-ledger-section-header">
@@ -295,6 +318,9 @@ export function TemplateGovernanceRuleLedgerPage({
                 <th>稿件类型</th>
                 <th>语义状态</th>
                 <th>发布状态</th>
+                <th>来源</th>
+                <th>AI 参与</th>
+                <th>审核状态</th>
                 <th>贡献者</th>
                 <th>更新时间</th>
               </tr>
@@ -333,13 +359,16 @@ export function TemplateGovernanceRuleLedgerPage({
                     <td>{row.manuscript_type_label}</td>
                     <td>{row.semantic_status}</td>
                     <td>{row.publish_status}</td>
+                    <td>{row.source_label ?? "人工/系统"}</td>
+                    <td>{row.ai_participation_label ?? "无"}</td>
+                    <td>{row.review_status_label ?? row.publish_status}</td>
                     <td>{row.contributor_label}</td>
                     <td>{formatRuleLedgerTimestamp(row.updated_at)}</td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={bulkState.isOpen ? 9 : 8}>当前分类下还没有规则资产。</td>
+                  <td colSpan={bulkState.isOpen ? 12 : 11}>当前分类下还没有规则资产。</td>
                 </tr>
               )}
             </tbody>
@@ -378,6 +407,24 @@ export function TemplateGovernanceRuleLedgerPage({
               <span>发布状态</span>
               <p>{viewModel.selectedRow.publish_status}</p>
             </div>
+            <div>
+              <span>来源</span>
+              <p>{viewModel.selectedRow.source_label ?? "人工/系统"}</p>
+            </div>
+            <div>
+              <span>AI 参与</span>
+              <p>{viewModel.selectedRow.ai_participation_label ?? "无"}</p>
+            </div>
+            <div>
+              <span>审核状态</span>
+              <p>{viewModel.selectedRow.review_status_label ?? viewModel.selectedRow.publish_status}</p>
+            </div>
+            {viewModel.selectedRow.similarity_resolution_label ? (
+              <div>
+                <span>相似处理</span>
+                <p>{viewModel.selectedRow.similarity_resolution_label}</p>
+              </div>
+            ) : null}
             <div>
               <span>贡献者</span>
               <p>{viewModel.selectedRow.contributor_label}</p>
@@ -440,6 +487,96 @@ export function TemplateGovernanceRuleLedgerPage({
   );
 }
 
+function RuleAiIntakePanel({
+  state,
+}: {
+  state?: TemplateGovernanceRuleAiIntakeState;
+}) {
+  if (!state?.isOpen) {
+    return null;
+  }
+
+  const result = state.result ?? null;
+
+  return (
+    <article className="template-governance-card template-governance-ledger-section">
+      <header className="template-governance-ledger-section-header">
+        <h2>规则 AI 草稿生成</h2>
+        <p>
+          输入自然语言规则描述，AI 只生成待审核草稿；应用后仍进入五步流和审核流程。
+        </p>
+      </header>
+      <form className="template-governance-form-grid" onSubmit={state.onGenerate}>
+        <label className="template-governance-field template-governance-field-full">
+          <span>自然语言描述</span>
+          <textarea
+            value={state.description}
+            onChange={(event) => state.onDescriptionChange?.(event.target.value)}
+            placeholder="例如：摘要首次出现英文缩写时使用中文全称（英文缩写）。"
+          />
+        </label>
+        <div className="template-governance-actions">
+          <button type="submit" disabled={state.isGenerating || state.description.trim().length === 0}>
+            {state.isGenerating ? "生成中..." : "生成 AI 草稿"}
+          </button>
+          <button type="button" onClick={state.onClose}>
+            关闭
+          </button>
+        </div>
+      </form>
+      {state.errorMessage ? (
+        <p className="template-governance-error">{state.errorMessage}</p>
+      ) : null}
+      {result ? (
+        <section className="template-governance-detail-grid">
+          <div>
+            <span>AI 理解</span>
+            <p>{result.draft.ai_understanding_summary}</p>
+          </div>
+          <div>
+            <span>推荐层级</span>
+            <p>{result.draft.recommended_governance_layer}</p>
+          </div>
+          <div>
+            <span>命中对象</span>
+            <p>{result.draft.target_object}</p>
+          </div>
+          <div>
+            <span>模板匹配</span>
+            <p>
+              {result.template_match.template_id ??
+                result.template_match.new_template_candidate?.title ??
+                result.template_match.status}
+            </p>
+          </div>
+          <div className="template-governance-field template-governance-field-full">
+            <span>相似/冲突提示</span>
+            {result.similar_rule_matches.length > 0 ? (
+              <ul className="template-governance-list">
+                {result.similar_rule_matches.map((match) => (
+                  <li key={`${match.kind}-${match.rule_id ?? match.title}`}>
+                    <div className="template-governance-list-button">
+                      <span>{match.title}</span>
+                      <small>{match.rationale}</small>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>暂未发现相似规则。</p>
+            )}
+          </div>
+          <div className="template-governance-actions template-governance-field-full">
+            <button type="button" onClick={state.onApplyResult}>
+              应用到五步流
+            </button>
+          </div>
+        </section>
+      ) : null}
+    </article>
+  );
+}
+
 export function applyTemplateGovernanceRuleLedgerClientFilters(
   rows: readonly TemplateGovernanceRuleLedgerRow[],
   filters: TemplateGovernanceRuleLedgerClientFilterInput,
@@ -473,6 +610,10 @@ export function buildTemplateGovernanceRuleLedgerSearchState(
             row.semantic_status,
             row.publish_status,
             row.contributor_label,
+            row.source_label ?? "",
+            row.ai_participation_label ?? "",
+            row.review_status_label ?? "",
+            row.similarity_resolution_label ?? "",
           ].some((value) => value.toLowerCase().includes(normalizedQuery)),
         );
 
