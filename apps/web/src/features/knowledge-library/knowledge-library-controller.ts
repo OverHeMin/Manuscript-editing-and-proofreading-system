@@ -499,6 +499,7 @@ function mapKnowledgeLibraryListItem(
     selected_revision_id: item.selected_revision_id,
     semantic_status: item.semantic_status,
     content_block_count: item.content_block_count,
+    usage_metrics: item.usage_metrics,
     contributor_label: item.contributor_label,
     archived_at: item.archived_at,
     archived_by_role: item.archived_by_role,

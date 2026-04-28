@@ -67,6 +67,7 @@ export interface KnowledgeLibraryListItemResponseBody {
   archived_at?: string;
   archived_by_role?: string;
   updated_at?: string;
+  usage_metrics?: KnowledgeLibrarySummaryViewModel["usage_metrics"];
 }
 
 export interface KnowledgeLibraryListResponseBody {

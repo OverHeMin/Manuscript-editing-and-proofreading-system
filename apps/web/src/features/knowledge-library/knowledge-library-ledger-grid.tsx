@@ -16,6 +16,10 @@ export type KnowledgeLibraryLedgerColumnKey =
   | "aliases"
   | "scenarios"
   | "riskTags"
+  | "retrievalCount"
+  | "recentRetrievalCount"
+  | "lastUsedAt"
+  | "revisionCount"
   | "contributor"
   | "revisionId"
   | "archivedAt"
@@ -38,6 +42,10 @@ export interface KnowledgeLibraryLedgerRow {
   aliases: string;
   scenarios: string;
   riskTags: string;
+  retrievalCount: string;
+  recentRetrievalCount: string;
+  lastUsedAt: string;
+  revisionCount: string;
   contributor: string;
   revisionId: string;
   archivedAt: string;
@@ -77,6 +85,10 @@ export const KNOWLEDGE_LIBRARY_LEDGER_COLUMNS: readonly KnowledgeLibraryLedgerCo
     { key: "aliases", label: "别名", minWidth: 180 },
     { key: "scenarios", label: "适用场景", minWidth: 220 },
     { key: "riskTags", label: "风险标签", minWidth: 180 },
+    { key: "retrievalCount", label: "总命中", minWidth: 120 },
+    { key: "recentRetrievalCount", label: "30天命中", minWidth: 120 },
+    { key: "lastUsedAt", label: "最近命中", minWidth: 140 },
+    { key: "revisionCount", label: "版本数", minWidth: 110 },
     { key: "contributor", label: "贡献人", minWidth: 160 },
     { key: "revisionId", label: "版本号", minWidth: 180 },
     { key: "archivedAt", label: "回收时间", minWidth: 160 },

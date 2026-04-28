@@ -148,6 +148,14 @@ export interface KnowledgeLibrarySummaryViewModel {
   archived_at?: string;
   archived_by_role?: string;
   updated_at?: string;
+  usage_metrics?: KnowledgeLibraryUsageMetricsViewModel;
+}
+
+export interface KnowledgeLibraryUsageMetricsViewModel {
+  retrieval_count: number;
+  retrieval_count_30d: number;
+  last_used_at?: string;
+  revision_count: number;
 }
 
 export interface KnowledgeLibraryFilterState {

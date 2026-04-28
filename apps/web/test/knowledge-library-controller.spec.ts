@@ -123,6 +123,12 @@ test("knowledge library controller loads the ledger list with search mode and se
                 selected_revision_id: "knowledge-1-revision-2",
                 semantic_status: "confirmed",
                 content_block_count: 3,
+                usage_metrics: {
+                  retrieval_count: 7,
+                  retrieval_count_30d: 2,
+                  last_used_at: "2026-04-27T08:00:00.000Z",
+                  revision_count: 2,
+                },
                 updated_at: "2026-04-08T08:30:00.000Z",
               },
             ],
@@ -238,6 +244,12 @@ test("knowledge library controller loads the ledger list with search mode and se
   assert.equal(result.selectedSummary?.title, "Primary endpoint rule");
   assert.equal(result.selectedSummary?.semantic_status, "confirmed");
   assert.equal(result.selectedSummary?.content_block_count, 3);
+  assert.deepEqual(result.selectedSummary?.usage_metrics, {
+    retrieval_count: 7,
+    retrieval_count_30d: 2,
+    last_used_at: "2026-04-27T08:00:00.000Z",
+    revision_count: 2,
+  });
   assert.equal(result.detail?.selected_revision.id, "knowledge-1-revision-2");
   assert.equal(result.detail?.selected_revision.content_blocks.length, 1);
   assert.equal(result.detail?.selected_revision.semantic_layer?.status, "confirmed");

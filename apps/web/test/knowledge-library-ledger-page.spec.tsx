@@ -32,6 +32,12 @@ function buildLedgerViewModel() {
         selected_revision_id: "knowledge-1-revision-2",
         semantic_status: "pending_confirmation",
         content_block_count: 2,
+        usage_metrics: {
+          retrieval_count: 7,
+          retrieval_count_30d: 2,
+          last_used_at: "2026-04-27T08:00:00.000Z",
+          revision_count: 2,
+        },
         contributor_label: "editor.zh",
         updated_at: "2026-04-08T08:30:00.000Z",
       },
@@ -48,6 +54,12 @@ function buildLedgerViewModel() {
         selected_revision_id: "knowledge-1-revision-2",
         semantic_status: "pending_confirmation",
         content_block_count: 2,
+        usage_metrics: {
+          retrieval_count: 7,
+          retrieval_count_30d: 2,
+          last_used_at: "2026-04-27T08:00:00.000Z",
+          revision_count: 2,
+        },
         contributor_label: "editor.zh",
         updated_at: "2026-04-08T08:30:00.000Z",
       },
@@ -69,6 +81,12 @@ function buildLedgerViewModel() {
       selected_revision_id: "knowledge-1-revision-2",
       semantic_status: "pending_confirmation",
       content_block_count: 2,
+      usage_metrics: {
+        retrieval_count: 7,
+        retrieval_count_30d: 2,
+        last_used_at: "2026-04-27T08:00:00.000Z",
+        revision_count: 2,
+      },
       contributor_label: "editor.zh",
       updated_at: "2026-04-08T08:30:00.000Z",
     },
@@ -258,6 +276,12 @@ test("knowledge library ledger page renders the approved toolbar and default col
   assert.match(markup, /data-column="aliases"/u);
   assert.match(markup, /data-column="scenarios"/u);
   assert.match(markup, /data-column="riskTags"/u);
+  assert.match(markup, /data-column="retrievalCount"/u);
+  assert.match(markup, /data-column="recentRetrievalCount"/u);
+  assert.match(markup, /data-column="lastUsedAt"/u);
+  assert.match(markup, /data-column="revisionCount"/u);
+  assert.match(markup, /7/u);
+  assert.match(markup, /2026-04-27/u);
   assert.match(markup, /data-column="contributor"/u);
   assert.match(markup, /data-column="revisionId"/u);
   assert.match(markup, /data-column="archivedAt"/u);

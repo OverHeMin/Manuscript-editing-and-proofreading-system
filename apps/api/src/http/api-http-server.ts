@@ -238,6 +238,7 @@ import {
   KnowledgeRevisionReviewGateError,
   KnowledgeService,
   KnowledgeStatusTransitionError,
+  KnowledgeUsageMetricsService,
   KnowledgeUploadNotFoundError,
   KnowledgeUploadService,
   KnowledgeRetrievalSnapshotNotFoundError,
@@ -2407,6 +2408,9 @@ export function createInMemoryApiRuntime(input: {
       semanticLayerService: knowledgeSemanticLayerService,
       uploadService: knowledgeUploadService,
       harnessDatasetService,
+      usageMetricsService: new KnowledgeUsageMetricsService({
+        executionTrackingRepository,
+      }),
     }),
     feedbackGovernanceApi: createFeedbackGovernanceApi({
       feedbackGovernanceService,
