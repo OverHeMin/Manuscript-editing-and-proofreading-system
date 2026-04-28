@@ -38,8 +38,25 @@ import {
 } from "../manuscripts/index.ts";
 import {
   createPreviewSession,
+  type DocumentPreviewSaveBackPurpose,
   type DocumentPreviewSessionViewModel,
 } from "../document-preview/index.ts";
+import {
+  batchUpdateHumanReviewDiffDecisions,
+  listHumanReviewDiffItems,
+  preflightHumanReviewPublish,
+  publishHumanReviewFinal,
+  retryHumanReviewBackflow,
+  updateHumanReviewDiffDecision,
+  type BatchUpdateHumanReviewDiffDecisionsInput,
+  type HumanReviewBackflowResultViewModel,
+  type HumanReviewDiffItemViewModel,
+  type HumanReviewPublishFinalResultViewModel,
+  type HumanReviewPublishModule,
+  type HumanReviewPublishPreflightResultViewModel,
+  type ListHumanReviewDiffItemsInput,
+  type UpdateHumanReviewDiffDecisionInput,
+} from "../human-review/index.ts";
 import {
   listJournalTemplateProfilesByTemplateFamilyId,
   listTemplateFamilies,
@@ -230,6 +247,19 @@ export interface PublishHumanFinalAndLoadResult {
   workspace: ManuscriptWorkbenchWorkspace;
 }
 
+export interface PublishHumanReviewFinalAndLoadInput {
+  manuscriptId: string;
+  module: HumanReviewPublishModule;
+  actorRole: AuthRole;
+  outputStorageKey?: string;
+  outputFileName?: string;
+}
+
+export interface PublishHumanReviewFinalAndLoadResult {
+  runResult: HumanReviewPublishFinalResultViewModel;
+  workspace: ManuscriptWorkbenchWorkspace;
+}
+
 export interface SaveProofreadingConfirmationDraftInput {
   manuscriptId: string;
   confirmationAssetId: string;
@@ -299,6 +329,25 @@ export interface ManuscriptWorkbenchController {
   publishHumanFinalAndLoad(
     input: PublishHumanFinalAndLoadInput,
   ): Promise<PublishHumanFinalAndLoadResult>;
+  loadHumanReviewDiffItems(
+    input: ListHumanReviewDiffItemsInput,
+  ): Promise<HumanReviewDiffItemViewModel[]>;
+  updateHumanReviewDiffDecision(
+    input: UpdateHumanReviewDiffDecisionInput,
+  ): Promise<HumanReviewDiffItemViewModel>;
+  batchUpdateHumanReviewDiffDecisions(
+    input: BatchUpdateHumanReviewDiffDecisionsInput,
+  ): Promise<HumanReviewDiffItemViewModel[]>;
+  preflightHumanReviewPublish(input: {
+    manuscriptId: string;
+    module: HumanReviewPublishModule;
+  }): Promise<HumanReviewPublishPreflightResultViewModel>;
+  publishHumanReviewFinalAndLoad(
+    input: PublishHumanReviewFinalAndLoadInput,
+  ): Promise<PublishHumanReviewFinalAndLoadResult>;
+  retryHumanReviewBackflow(
+    diffItemId: string,
+  ): Promise<HumanReviewBackflowResultViewModel>;
   saveProofreadingConfirmationDraft(
     input: SaveProofreadingConfirmationDraftInput,
   ): Promise<ProofreadingConfirmationDraftSaveResultViewModel>;
@@ -321,6 +370,7 @@ export interface ManuscriptWorkbenchController {
       enabled: boolean;
       module: "editing" | "proofreading";
       baselineAssetId?: string;
+      purpose?: DocumentPreviewSaveBackPurpose;
     };
     comments?: Array<{
       id: string;
@@ -495,6 +545,49 @@ export function createManuscriptWorkbenchController(
         },
         workspace,
       };
+    },
+    async loadHumanReviewDiffItems(input) {
+      const response = await listHumanReviewDiffItems(client, input);
+      return response.body;
+    },
+    async updateHumanReviewDiffDecision(input) {
+      const response = await updateHumanReviewDiffDecision(client, input);
+      return response.body;
+    },
+    async batchUpdateHumanReviewDiffDecisions(input) {
+      const response = await batchUpdateHumanReviewDiffDecisions(client, input);
+      return response.body;
+    },
+    async preflightHumanReviewPublish(input) {
+      const response = await preflightHumanReviewPublish(client, input);
+      return response.body;
+    },
+    async publishHumanReviewFinalAndLoad(input) {
+      const response = await publishHumanReviewFinal(client, {
+        manuscriptId: input.manuscriptId,
+        module: input.module,
+        outputStorageKey: input.outputStorageKey,
+        outputFileName: input.outputFileName,
+      });
+      const [job, workspace] = await Promise.all([
+        hydrateWorkbenchActionJob(client, response.body.job),
+        loadWorkspaceWithKnowledge(input.manuscriptId, {
+          actorRole: input.actorRole,
+          mode: input.module,
+        }),
+      ]);
+
+      return {
+        runResult: {
+          ...response.body,
+          job,
+        },
+        workspace,
+      };
+    },
+    async retryHumanReviewBackflow(diffItemId) {
+      const response = await retryHumanReviewBackflow(client, diffItemId);
+      return response.body;
     },
     async saveProofreadingConfirmationDraft(input) {
       const response = await saveProofreadingConfirmationDraft(client, {

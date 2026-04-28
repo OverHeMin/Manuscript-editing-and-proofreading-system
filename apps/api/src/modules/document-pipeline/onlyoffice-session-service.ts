@@ -21,8 +21,18 @@ export interface CreateOnlyOfficeViewSessionInput {
     enabled: boolean;
     module: "editing" | "proofreading";
     baselineAssetId: string;
+    purpose?: OnlyOfficeSaveBackPurpose;
   };
 }
+
+export type OnlyOfficeSaveBackPurpose =
+  | "human_review_working_state"
+  | "legacy_module_output";
+
+export type OnlyOfficeSaveBackOutputAssetType =
+  | "edited_docx"
+  | "human_final_docx"
+  | "human_review_working_docx";
 
 export type OnlyOfficePreviewSourceAssetType =
   | "original"
@@ -99,9 +109,10 @@ export interface OnlyOfficeViewSession {
   comments: DocumentPreviewComment[];
   save_back_enabled: boolean;
   save_back?: {
+    purpose: OnlyOfficeSaveBackPurpose;
     module: "editing" | "proofreading";
     baseline_asset_id: string;
-    output_asset_type: "edited_docx" | "human_final_docx";
+    output_asset_type: OnlyOfficeSaveBackOutputAssetType;
     callback_token: string;
   };
   warnings: string[];
@@ -121,9 +132,10 @@ export interface SurfaceSessionAccessTokenClaims {
   preview_status: "ready" | "pending_normalization";
   document_key?: string;
   save_back?: {
+    purpose: OnlyOfficeSaveBackPurpose;
     module: "editing" | "proofreading";
     baseline_asset_id: string;
-    output_asset_type: "edited_docx" | "human_final_docx";
+    output_asset_type: OnlyOfficeSaveBackOutputAssetType;
   };
 }
 
@@ -154,8 +166,18 @@ export class OnlyOfficeSessionService {
     const signedDocumentKey = createOnlyOfficeDocumentKey(input.asset.id, sessionId);
     const saveBack = input.saveBack?.enabled === true ? input.saveBack : undefined;
     const editable = Boolean(saveBack);
-    const outputAssetType = saveBack
-      ? resolveSaveBackOutputAssetType(saveBack.module)
+    const saveBackScope = saveBack
+      ? {
+          purpose: resolveSaveBackPurpose(saveBack.purpose),
+          module: saveBack.module,
+          baselineAssetId: saveBack.baselineAssetId,
+        }
+      : undefined;
+    const outputAssetType = saveBackScope
+      ? resolveSaveBackOutputAssetType(
+          saveBackScope.module,
+          saveBackScope.purpose,
+        )
       : undefined;
     const accessToken = this.surfaceSessionSecret
       ? createSurfaceSessionAccessToken({
@@ -166,11 +188,12 @@ export class OnlyOfficeSessionService {
           actorRole: input.actorRole,
           previewStatus: input.previewStatus,
           documentKey: signedDocumentKey,
-          ...(saveBack && outputAssetType
+          ...(saveBackScope && outputAssetType
             ? {
                 saveBack: {
-                  module: saveBack.module,
-                  baselineAssetId: saveBack.baselineAssetId,
+                  purpose: saveBackScope.purpose,
+                  module: saveBackScope.module,
+                  baselineAssetId: saveBackScope.baselineAssetId,
                   outputAssetType,
                 },
               }
@@ -252,11 +275,12 @@ export class OnlyOfficeSessionService {
       },
       comments: [...(input.comments ?? [])],
       save_back_enabled: editable,
-      ...(saveBack && outputAssetType && accessToken
+      ...(saveBackScope && outputAssetType && accessToken
         ? {
             save_back: {
-              module: saveBack.module,
-              baseline_asset_id: saveBack.baselineAssetId,
+              purpose: saveBackScope.purpose,
+              module: saveBackScope.module,
+              baseline_asset_id: saveBackScope.baselineAssetId,
               output_asset_type: outputAssetType,
               callback_token: accessToken,
             },
@@ -273,8 +297,19 @@ function createOnlyOfficeDocumentKey(assetId: string, sessionId: string): string
 
 function resolveSaveBackOutputAssetType(
   module: "editing" | "proofreading",
-): "edited_docx" | "human_final_docx" {
+  purpose: OnlyOfficeSaveBackPurpose | undefined,
+): OnlyOfficeSaveBackOutputAssetType {
+  if (purpose === "human_review_working_state") {
+    return "human_review_working_docx";
+  }
+
   return module === "editing" ? "edited_docx" : "human_final_docx";
+}
+
+function resolveSaveBackPurpose(
+  purpose: OnlyOfficeSaveBackPurpose | undefined,
+): OnlyOfficeSaveBackPurpose {
+  return purpose ?? "human_review_working_state";
 }
 
 function resolvePreviewSourceAssetType(
@@ -333,9 +368,10 @@ function createSurfaceSessionAccessToken(input: {
   previewStatus: "ready" | "pending_normalization";
   documentKey?: string;
   saveBack?: {
+    purpose: OnlyOfficeSaveBackPurpose;
     module: "editing" | "proofreading";
     baselineAssetId: string;
-    outputAssetType: "edited_docx" | "human_final_docx";
+    outputAssetType: OnlyOfficeSaveBackOutputAssetType;
   };
 }): string {
   const encodedHeader = Buffer.from(
@@ -356,6 +392,7 @@ function createSurfaceSessionAccessToken(input: {
       ...(input.saveBack
         ? {
             save_back: {
+              purpose: input.saveBack.purpose,
               module: input.saveBack.module,
               baseline_asset_id: input.saveBack.baselineAssetId,
               output_asset_type: input.saveBack.outputAssetType,
@@ -440,17 +477,31 @@ function parseSaveBackClaims(value: unknown): SurfaceSessionAccessTokenClaims["s
 
   const record = value as Record<string, unknown>;
   const module = record.module;
+  const purpose = record.purpose;
   const baselineAssetId = record.baseline_asset_id;
   const outputAssetType = record.output_asset_type;
   if (
+    (purpose !== "human_review_working_state" &&
+      purpose !== "legacy_module_output") ||
     (module !== "editing" && module !== "proofreading") ||
     typeof baselineAssetId !== "string" ||
-    (outputAssetType !== "edited_docx" && outputAssetType !== "human_final_docx")
+    (outputAssetType !== "edited_docx" &&
+      outputAssetType !== "human_final_docx" &&
+      outputAssetType !== "human_review_working_docx")
+  ) {
+    return undefined;
+  }
+  if (
+    (purpose === "human_review_working_state" &&
+      outputAssetType !== "human_review_working_docx") ||
+    (purpose === "legacy_module_output" &&
+      outputAssetType === "human_review_working_docx")
   ) {
     return undefined;
   }
 
   return {
+    purpose,
     module,
     baseline_asset_id: baselineAssetId,
     output_asset_type: outputAssetType,

@@ -163,7 +163,7 @@ test("onlyoffice preview config enables editable save-back sessions with scoped 
   );
 });
 
-test("onlyoffice preview surface copy explains editable sessions as the current manuscript flow", () => {
+test("onlyoffice preview surface copy explains editable sessions as a working-state save", () => {
   const markup = renderToStaticMarkup(
     React.createElement(OnlyOfficePreviewSurface, {
       previewSession: {
@@ -180,7 +180,9 @@ test("onlyoffice preview surface copy explains editable sessions as the current 
     }),
   );
 
-  assert.match(markup, /保存后合并为当前稿件版本/u);
+  assert.match(markup, /保存只记录工作态并提取差异/u);
+  assert.match(markup, /最终稿需在右侧确认后生成/u);
+  assert.doesNotMatch(markup, /保存后合并为当前稿件版本/u);
   assert.doesNotMatch(markup, /新的资产/u);
 });
 

@@ -16,6 +16,7 @@ export type DocumentAssetType =
   | "final_proof_annotated_docx"
   | "pdf_consistency_report"
   | "human_final_docx"
+  | "human_review_working_docx"
   | "learning_snapshot_attachment";
 
 export interface DocumentAssetRecord {

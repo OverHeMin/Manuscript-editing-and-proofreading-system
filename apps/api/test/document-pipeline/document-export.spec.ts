@@ -292,3 +292,38 @@ test("export exposes the current release output matrix and prefers the furthest 
   );
   assert.equal(response.body.matrix.final_proof_output?.id, humanFinalAsset.id);
 });
+
+test("export ignores human review working-state assets", async () => {
+  const { manuscriptService, assetService, documentPipelineApi } =
+    createDocumentExportHarness();
+  const uploadResult = await manuscriptService.upload({
+    title: "Human Review Working Asset",
+    manuscriptType: "review",
+    createdBy: "editor-1",
+    fileName: "human-review-working.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    storageKey: "uploads/human-review-working.docx",
+  });
+
+  const workingAsset = await assetService.createAsset({
+    manuscriptId: uploadResult.manuscript.id,
+    assetType: "human_review_working_docx",
+    storageKey: "runs/human-review-working/proofreading/working.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "proofreader-1",
+    fileName: "human-review-working.docx",
+    parentAssetId: uploadResult.asset.id,
+    sourceModule: "manual",
+    sourceJobId: "job-human-review-working-1",
+  });
+
+  const response = await documentPipelineApi.exportCurrentAsset({
+    manuscriptId: uploadResult.manuscript.id,
+  });
+
+  assert.equal(response.status, 200);
+  assert.notEqual(response.body.asset.id, workingAsset.id);
+  assert.equal(response.body.asset.id, uploadResult.asset.id);
+  assert.equal(response.body.asset.asset_type, "original");
+  assert.equal(response.body.matrix.final_proof_output, undefined);
+});

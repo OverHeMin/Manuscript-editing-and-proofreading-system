@@ -13,12 +13,16 @@ import { ManuscriptLifecycleService } from "../../src/modules/manuscripts/manusc
 import { DocumentPreviewService } from "../../src/modules/document-pipeline/document-preview-service.ts";
 import { OnlyOfficeSaveBackService } from "../../src/modules/document-pipeline/onlyoffice-save-back-service.ts";
 import { OnlyOfficeSessionService } from "../../src/modules/document-pipeline/onlyoffice-session-service.ts";
+import { HumanReviewDiffService } from "../../src/modules/human-review/human-review-diff-service.ts";
+import { InMemoryHumanReviewRepository } from "../../src/modules/human-review/in-memory-human-review-repository.ts";
 
-test("OnlyOffice save-back stores proofreading edits as the current human final manuscript version", async () => {
+test("OnlyOffice save-back stores proofreading edits as an internal human review working asset", async () => {
   const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-saveback-proofreading-"));
   const manuscriptRepository = new InMemoryManuscriptRepository();
   const assetRepository = new InMemoryDocumentAssetRepository();
   const jobRepository = new InMemoryJobRepository();
+  const humanReviewRepository = new InMemoryHumanReviewRepository();
+  let finalProofAssetId = "";
   const manuscriptService = new ManuscriptLifecycleService({
     manuscriptRepository,
     assetRepository,
@@ -47,6 +51,34 @@ test("OnlyOffice save-back stores proofreading edits as the current human final 
     assetService,
     uploadRootDir,
     surfaceSessionSecret: "proofreading-saveback-secret",
+    humanReviewRepository,
+    humanReviewDiffService: new HumanReviewDiffService({
+      createId: () => "diff-proofreading-saveback-1",
+      now: () => new Date("2026-04-28T08:03:00.000Z"),
+    }),
+    sourceBlockResolver: {
+      async resolveBlocks(input) {
+        if (input.assetId === finalProofAssetId) {
+          return [
+            {
+              text: "ALT remained stable.",
+              section: "results",
+              block_kind: "paragraph",
+              source_locator: "body:p:1",
+            },
+          ];
+        }
+
+        return [
+          {
+            text: "Serum ALT remained stable.",
+            section: "results",
+            block_kind: "paragraph",
+            source_locator: "body:p:1",
+          },
+        ];
+      },
+    },
     createId: () => "job-proofreading-saveback-1",
     now: () => new Date("2026-04-28T08:02:00.000Z"),
   });
@@ -82,6 +114,7 @@ test("OnlyOffice save-back stores proofreading edits as the current human final 
       sourceModule: "proofreading",
       sourceJobId: upload.job.id,
     });
+    finalProofAssetId = finalProofAsset.id;
     const preview = await previewService.createPreviewSession({
       manuscriptId: upload.manuscript.id,
       assetId: finalProofAsset.id,
@@ -107,21 +140,44 @@ test("OnlyOffice save-back stores proofreading edits as the current human final 
 
     assert.deepEqual(response, { error: 0 });
     const assets = await assetRepository.listByManuscriptId(upload.manuscript.id);
-    const humanFinalAssets = assets.filter(
+    const workingAssets = assets.filter(
       (asset) =>
-        asset.asset_type === "human_final_docx" &&
+        asset.asset_type === "human_review_working_docx" &&
         asset.parent_asset_id === finalProofAsset.id,
     );
-    assert.equal(humanFinalAssets.length, 1);
-    assert.equal(humanFinalAssets[0]?.source_module, "manual");
-    assert.equal(humanFinalAssets[0]?.is_current, true);
+    assert.equal(workingAssets.length, 1);
+    assert.equal(workingAssets[0]?.source_module, "manual");
+    assert.equal(workingAssets[0]?.is_current, false);
     const manuscript = await manuscriptRepository.findById(upload.manuscript.id);
-    assert.equal(manuscript?.current_proofreading_asset_id, humanFinalAssets[0]?.id);
+    assert.equal(manuscript?.current_proofreading_asset_id, finalProofAsset.id);
+    assert.notEqual(manuscript?.current_proofreading_asset_id, workingAssets[0]?.id);
 
-    const job = await jobRepository.findById(humanFinalAssets[0]?.source_job_id ?? "");
-    assert.equal(job?.job_type, "onlyoffice_proofreading_human_final_save_back");
+    const job = await jobRepository.findById(workingAssets[0]?.source_job_id ?? "");
+    assert.equal(job?.job_type, "onlyoffice_human_review_working_save_back");
     assert.equal(job?.payload?.baselineAssetId, finalProofAsset.id);
     assert.equal(job?.payload?.saveBackModule, "proofreading");
+    assert.equal(job?.payload?.saveBackPurpose, "human_review_working_state");
+    assert.equal(job?.payload?.outputAssetType, "human_review_working_docx");
+    assert.deepEqual(job?.payload?.humanReviewDiffItemIds, [
+      "diff-proofreading-saveback-1",
+    ]);
+    const learningSignal = job?.payload?.learningSignal as
+      | { status?: string }
+      | undefined;
+    assert.equal(learningSignal?.status, "diff_extracted");
+
+    const diffItems = await humanReviewRepository.listDiffItems({
+      manuscriptId: upload.manuscript.id,
+      module: "proofreading",
+    });
+    assert.equal(diffItems.length, 1);
+    assert.equal(diffItems[0]?.id, "diff-proofreading-saveback-1");
+    assert.equal(diffItems[0]?.baseline_asset_id, finalProofAsset.id);
+    assert.equal(diffItems[0]?.working_asset_id, workingAssets[0]?.id);
+    assert.equal(diffItems[0]?.source, "human_overrode_ai");
+    assert.equal(diffItems[0]?.content_decision, "unconfirmed");
+    assert.equal(diffItems[0]?.before_text, "ALT remained stable.");
+    assert.equal(diffItems[0]?.after_text, "Serum ALT remained stable.");
   } finally {
     callbackSourceServer.close();
     await once(callbackSourceServer, "close");

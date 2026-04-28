@@ -1588,6 +1588,7 @@ test("proofreading workspace preview session input targets the manuscript asset 
     enabled: true,
     module: "proofreading",
     baselineAssetId: "asset-edited-1",
+    purpose: "human_review_working_state",
   });
 });
 
@@ -1637,6 +1638,7 @@ test("editing detail preview session input enables save-back for the edited manu
     enabled: true,
     module: "editing",
     baselineAssetId: "asset-edited-docx-1",
+    purpose: "human_review_working_state",
   });
 });
 

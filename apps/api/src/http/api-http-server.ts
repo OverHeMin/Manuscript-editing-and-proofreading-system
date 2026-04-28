@@ -213,6 +213,15 @@ import {
   type LearningCandidateSourceLinkRecord,
 } from "../modules/feedback-governance/index.ts";
 import {
+  createHumanReviewApi,
+  HumanReviewDiffService,
+  HumanReviewDiffItemNotFoundError,
+  HumanReviewPublishGateError,
+  HumanReviewService,
+  InMemoryHumanReviewRepository,
+  type HumanReviewRepository,
+} from "../modules/human-review/index.ts";
+import {
   createKnowledgeApi,
   type KnowledgeAiIntakeSuggestionInput,
   KnowledgeAiAssistService,
@@ -1268,6 +1277,26 @@ type HttpRouteMatch =
       id: string;
     }
   | {
+      route: "human-review-list-diff-items";
+    }
+  | {
+      route: "human-review-update-diff-decision";
+      diffItemId: string;
+    }
+  | {
+      route: "human-review-batch-update-diff-decisions";
+    }
+  | {
+      route: "human-review-preflight-publish";
+    }
+  | {
+      route: "human-review-publish-final";
+    }
+  | {
+      route: "human-review-retry-backflow";
+      diffItemId: string;
+    }
+  | {
       route: "learning-governance-create-writeback";
     }
   | {
@@ -1427,6 +1456,7 @@ export interface ApiServerRuntime {
         enabled: boolean;
         module: "editing" | "proofreading";
         baselineAssetId?: string;
+        purpose?: "human_review_working_state" | "legacy_module_output";
       };
       comments?: Array<{
         id: string;
@@ -1476,6 +1506,8 @@ export interface ApiServerRuntime {
   harnessIntegrationApi: ReturnType<typeof createHarnessIntegrationApi>;
   knowledgeApi: ReturnType<typeof createKnowledgeApi>;
   feedbackGovernanceApi: ReturnType<typeof createFeedbackGovernanceApi>;
+  humanReviewRepository?: HumanReviewRepository;
+  humanReviewApi: ReturnType<typeof createHumanReviewApi>;
   learningApi: ReturnType<typeof createLearningApi>;
   residualLearningApi: ReturnType<typeof createResidualLearningApi>;
   reviewItemsApi: ReturnType<typeof createReviewItemsApi>;
@@ -1588,6 +1620,7 @@ export function createInMemoryApiRuntime(input: {
   const knowledgeReviewActionRepository =
     new InMemoryKnowledgeReviewActionRepository();
   const feedbackGovernanceRepository = new InMemoryFeedbackGovernanceRepository();
+  const humanReviewRepository = new InMemoryHumanReviewRepository();
   const reviewItemsRepository = new InMemoryReviewItemsRepository();
   const agentExecutionRepository = new InMemoryAgentExecutionRepository();
   const agentProfileRepository = new InMemoryAgentProfileRepository();
@@ -1703,6 +1736,15 @@ export function createInMemoryApiRuntime(input: {
     },
   });
   const reviewItemsApi = createReviewItemsApi({
+    reviewItemsService,
+  });
+  const humanReviewService = new HumanReviewService({
+    repository: humanReviewRepository,
+    manuscriptRepository,
+    assetRepository,
+    jobRepository,
+    documentAssetService,
+    editorialDocxTransformService,
     reviewItemsService,
   });
   const harnessDatasetService = new HarnessDatasetService({
@@ -1863,6 +1905,9 @@ export function createInMemoryApiRuntime(input: {
     jobRepository,
     assetService: documentAssetService,
     uploadRootDir: input.uploadRootDir,
+    humanReviewRepository,
+    humanReviewDiffService: new HumanReviewDiffService(),
+    sourceBlockResolver: docxSourceBlockResolver,
   });
   const modelRoutingGovernanceService = new ModelRoutingGovernanceService({
     repository: modelRoutingGovernanceRepository,
@@ -2364,6 +2409,10 @@ export function createInMemoryApiRuntime(input: {
     }),
     feedbackGovernanceApi: createFeedbackGovernanceApi({
       feedbackGovernanceService,
+    }),
+    humanReviewRepository,
+    humanReviewApi: createHumanReviewApi({
+      humanReviewService,
     }),
     learningApi,
     residualLearningApi,
@@ -6892,6 +6941,84 @@ async function handleRoute(
         action,
       );
     }
+    case "human-review-list-diff-items": {
+      await requireManuscriptSurfaceSession(req, runtime, "human review");
+      const requestUrl = readRequestUrl(req);
+      return runtime.humanReviewApi.listDiffItems({
+        manuscriptId: requestUrl.searchParams.get("manuscriptId")?.trim() ?? "",
+        module: normalizeHumanReviewModule(
+          requestUrl.searchParams.get("module") ?? undefined,
+        ),
+      });
+    }
+    case "human-review-update-diff-decision": {
+      await requireManuscriptSurfaceSession(req, runtime, "human review");
+      const body = (await readJsonBody(req)) as {
+        contentDecision: Parameters<
+          typeof runtime.humanReviewApi.updateDiffDecision
+        >[0]["contentDecision"];
+        governanceIntents?: Parameters<
+          typeof runtime.humanReviewApi.updateDiffDecision
+        >[0]["governanceIntents"];
+        note?: string;
+      };
+
+      return runtime.humanReviewApi.updateDiffDecision({
+        diffItemId: routeMatch.diffItemId,
+        contentDecision: body.contentDecision,
+        governanceIntents: body.governanceIntents,
+        note: body.note,
+      });
+    }
+    case "human-review-batch-update-diff-decisions": {
+      await requireManuscriptSurfaceSession(req, runtime, "human review");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.humanReviewApi.batchUpdateDiffDecisions
+      >[0];
+      return runtime.humanReviewApi.batchUpdateDiffDecisions(body);
+    }
+    case "human-review-preflight-publish": {
+      await requireManuscriptSurfaceSession(req, runtime, "human review");
+      const body = (await readJsonBody(req)) as Omit<
+        Parameters<typeof runtime.humanReviewApi.preflightPublish>[0],
+        never
+      >;
+      return runtime.humanReviewApi.preflightPublish({
+        manuscriptId: body.manuscriptId,
+        module: normalizeHumanReviewModule(body.module),
+      });
+    }
+    case "human-review-publish-final": {
+      const session = await requireManuscriptSurfaceSession(
+        req,
+        runtime,
+        "human review",
+      );
+      const body = (await readJsonBody(req)) as Omit<
+        Parameters<typeof runtime.humanReviewApi.publishConfirmedFinal>[0],
+        "requestedBy" | "module"
+      > & {
+        module?: string;
+      };
+      return runtime.humanReviewApi.publishConfirmedFinal({
+        ...body,
+        module: normalizeHumanReviewModule(body.module),
+        requestedBy: session.user.id,
+        actorRole: session.user.role,
+      });
+    }
+    case "human-review-retry-backflow": {
+      const session = await requireManuscriptSurfaceSession(
+        req,
+        runtime,
+        "human review",
+      );
+      return runtime.humanReviewApi.retryBackflow({
+        diffItemId: routeMatch.diffItemId,
+        requestedBy: session.user.id,
+        actorRole: session.user.role,
+      });
+    }
     case "learning-governance-create-writeback": {
       const session = await requirePermission(req, runtime, "permissions.manage");
       const body = (await readJsonBody(req)) as {
@@ -8793,6 +8920,45 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     };
   }
 
+  if (method === "GET" && path === "/api/v1/human-review/diff-items") {
+    return { route: "human-review-list-diff-items" };
+  }
+
+  const humanReviewDiffDecisionMatch = path.match(
+    /^\/api\/v1\/human-review\/diff-items\/([^/]+)\/decision$/,
+  );
+  if (method === "POST" && humanReviewDiffDecisionMatch) {
+    return {
+      route: "human-review-update-diff-decision",
+      diffItemId: humanReviewDiffDecisionMatch[1],
+    };
+  }
+
+  if (
+    method === "POST" &&
+    path === "/api/v1/human-review/diff-items/batch-decisions"
+  ) {
+    return { route: "human-review-batch-update-diff-decisions" };
+  }
+
+  if (method === "POST" && path === "/api/v1/human-review/preflight-publish") {
+    return { route: "human-review-preflight-publish" };
+  }
+
+  if (method === "POST" && path === "/api/v1/human-review/publish-final") {
+    return { route: "human-review-publish-final" };
+  }
+
+  const humanReviewRetryBackflowMatch = path.match(
+    /^\/api\/v1\/human-review\/diff-items\/([^/]+)\/retry-backflow$/,
+  );
+  if (method === "POST" && humanReviewRetryBackflowMatch) {
+    return {
+      route: "human-review-retry-backflow",
+      diffItemId: humanReviewRetryBackflowMatch[1],
+    };
+  }
+
   if (method === "POST" && path === "/api/v1/learning-governance/writebacks") {
     return { route: "learning-governance-create-writeback" };
   }
@@ -9124,6 +9290,12 @@ function normalizeReviewItemModule(
   return value === "screening" || value === "editing" || value === "proofreading"
     ? value
     : undefined;
+}
+
+function normalizeHumanReviewModule(
+  value: string | undefined,
+): "proofreading" | "editing" {
+  return value === "editing" ? "editing" : "proofreading";
 }
 
 function normalizeReviewItemRiskLevel(
@@ -9627,6 +9799,7 @@ export function mapErrorToHttpResponse(
     error instanceof EvaluationSampleSetSourceSnapshotNotFoundError ||
     error instanceof KnowledgeRetrievalSnapshotNotFoundError ||
     error instanceof ResidualIssueNotFoundError ||
+    error instanceof HumanReviewDiffItemNotFoundError ||
     error instanceof ReviewItemNotFoundError
   ) {
     return [404, { error: "not_found", message: error.message }];
@@ -9728,6 +9901,7 @@ export function mapErrorToHttpResponse(
     error instanceof DuplicateUsernameError ||
     error instanceof LastActiveAdminDisableError ||
     error instanceof LastActiveAdminDemotionError ||
+    error instanceof HumanReviewPublishGateError ||
     error instanceof EditingSlotGovernanceUnavailableError ||
     error instanceof EditingSlotNotFoundError
   ) {

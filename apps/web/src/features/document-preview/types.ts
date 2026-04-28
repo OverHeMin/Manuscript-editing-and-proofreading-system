@@ -3,6 +3,9 @@ export type DocumentPreviewSurfaceMode = "read_only_review" | "editable_review";
 export type DocumentPreviewMode = "view" | "edit";
 export type DocumentPreviewSessionTokenScheme = "none" | "surface_session_jwt";
 export type DocumentPreviewSaveBackModule = "editing" | "proofreading";
+export type DocumentPreviewSaveBackPurpose =
+  | "human_review_working_state"
+  | "legacy_final_asset";
 export type ProofreadingDocumentAnchorKind =
   | "block"
   | "paragraph"
@@ -147,8 +150,12 @@ export interface DocumentPreviewSessionViewModel {
   save_back_enabled: boolean;
   save_back?: {
     module: DocumentPreviewSaveBackModule;
+    purpose?: DocumentPreviewSaveBackPurpose;
     baseline_asset_id: string;
-    output_asset_type: "edited_docx" | "human_final_docx";
+    output_asset_type:
+      | "edited_docx"
+      | "human_final_docx"
+      | "human_review_working_docx";
     callback_token: string;
   };
   warnings: string[];

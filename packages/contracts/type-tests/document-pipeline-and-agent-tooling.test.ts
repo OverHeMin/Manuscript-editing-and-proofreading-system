@@ -11,6 +11,7 @@ export const previewModeCheck: DocumentPreviewSession["mode"] = "edit";
 export const previewSourceAssetTypeCheck: DocumentPreviewSession["source_asset_type"] =
   "edited_docx";
 export const previewSaveBackCheck: DocumentPreviewSession["save_back"] = {
+  purpose: "legacy_module_output",
   module: "editing",
   baseline_asset_id: "asset-edited-1",
   output_asset_type: "edited_docx",

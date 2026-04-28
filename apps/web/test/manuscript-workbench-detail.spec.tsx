@@ -386,6 +386,85 @@ test("editing edited docx detail uses the onlyoffice review layout even with gov
   assert.doesNotMatch(markup, /编辑共享审阅工作台/u);
 });
 
+test("proofreading detail renders the human review diff queue without prompt or evidence-only actions", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchAssetDetailPage
+      mode="proofreading"
+      manuscriptTitle="人工核验稿件"
+      asset={{
+        id: "asset-proof-final-1",
+        manuscript_id: "manuscript-proof-1",
+        asset_type: "final_proof_annotated_docx",
+        status: "active",
+        storage_key: "runs/proofreading/final.docx",
+        mime_type:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        source_module: "proofreading",
+        created_by: "proofreader-1",
+        version_no: 2,
+        is_current: true,
+        file_name: "proofreading-final.docx",
+        created_at: "2026-04-28T09:00:00.000Z",
+        updated_at: "2026-04-28T09:05:00.000Z",
+      }}
+      detailKind="proofreading_confirmation"
+      backHref="#proofreading?manuscriptId=manuscript-proof-1"
+      downloadHref="http://localhost/api/v1/document-assets/asset-proof-final-1/download"
+      humanReviewDiffItems={[
+        {
+          id: "diff-1",
+          module: "proofreading",
+          manuscript_id: "manuscript-proof-1",
+          baseline_asset_id: "asset-proof-final-1",
+          working_asset_id: "asset-proof-working-1",
+          source: "human_added",
+          content_decision: "unconfirmed",
+          governance_intents: {
+            rule_candidate: false,
+            knowledge_candidate: true,
+          },
+          apply_capability: "auto_apply_revert",
+          status: "pending",
+          before_text: "ALT remained stable.",
+          after_text: "Serum ALT remained stable.",
+          summary: "补充医学指标全称",
+          location: {
+            anchor_kind: "paragraph",
+            block_index: 3,
+            section_label: "结果",
+          },
+          created_at: "2026-04-28T09:00:00.000Z",
+          updated_at: "2026-04-28T09:00:00.000Z",
+        },
+      ]}
+      humanReviewPreflight={{
+        can_publish: false,
+        blocking_reasons: ["还有 1 项差异未确认。"],
+        summary: {
+          total_count: 1,
+          unconfirmed_count: 1,
+          deferred_count: 0,
+          unsafe_count: 0,
+          kept_count: 0,
+          rejected_count: 0,
+        },
+      }}
+    />,
+  );
+
+  assert.match(markup, /人工差异核验/u);
+  assert.match(markup, /发布门禁/u);
+  assert.match(markup, /待确认 1/u);
+  assert.match(markup, /保留到最终稿/u);
+  assert.match(markup, /驳回/u);
+  assert.match(markup, /暂不发布/u);
+  assert.match(markup, /转规则候选/u);
+  assert.match(markup, /转知识候选/u);
+  assert.match(markup, /补充医学指标全称/u);
+  assert.doesNotMatch(markup, /提示词候选/u);
+  assert.doesNotMatch(markup, /仅留证据/u);
+});
+
 test("asset detail kind routes proofreading draft reports into the dedicated issue workbench", () => {
   assert.equal(
     resolveManuscriptAssetDetailKind({

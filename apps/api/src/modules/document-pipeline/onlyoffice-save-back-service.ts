@@ -7,6 +7,16 @@ import type {
   DocumentAssetType,
 } from "../assets/document-asset-record.ts";
 import type { DocumentAssetRepository } from "../assets/document-asset-repository.ts";
+import type {
+  EditorialSourceBlockResolver,
+  EditorialTextBlock,
+} from "../editorial-execution/types.ts";
+import {
+  HumanReviewDiffService,
+  type HumanReviewComparableBlock,
+  type HumanReviewComparableBlockKind,
+} from "../human-review/human-review-diff-service.ts";
+import type { HumanReviewRepository } from "../human-review/human-review-repository.ts";
 import type { JobRecord, ManuscriptModule } from "../jobs/job-record.ts";
 import type { JobRepository } from "../jobs/job-repository.ts";
 import type { ManuscriptRepository } from "../manuscripts/manuscript-repository.ts";
@@ -15,6 +25,8 @@ import {
   type WriteTransactionManager,
 } from "../shared/write-transaction-manager.ts";
 import {
+  type OnlyOfficeSaveBackOutputAssetType,
+  type OnlyOfficeSaveBackPurpose,
   type SurfaceSessionAccessTokenClaims,
   verifySurfaceSessionAccessToken,
 } from "./onlyoffice-session-service.ts";
@@ -45,6 +57,9 @@ export interface OnlyOfficeSaveBackServiceOptions {
   uploadRootDir: string;
   surfaceSessionSecret?: string;
   transactionManager?: WriteTransactionManager;
+  humanReviewRepository?: Pick<HumanReviewRepository, "saveDiffItems">;
+  humanReviewDiffService?: Pick<HumanReviewDiffService, "extractDiffItems">;
+  sourceBlockResolver?: Pick<EditorialSourceBlockResolver, "resolveBlocks">;
   createId?: () => string;
   now?: () => Date;
   fetchDocument?: (url: string) => Promise<Buffer>;
@@ -83,6 +98,9 @@ export class OnlyOfficeSaveBackService {
   private readonly assetRepository: DocumentAssetRepository;
   private readonly jobRepository: JobRepository;
   private readonly assetService: DocumentAssetService;
+  private readonly humanReviewRepository?: Pick<HumanReviewRepository, "saveDiffItems">;
+  private readonly humanReviewDiffService?: Pick<HumanReviewDiffService, "extractDiffItems">;
+  private readonly sourceBlockResolver?: Pick<EditorialSourceBlockResolver, "resolveBlocks">;
   private readonly uploadRootDir: string;
   private readonly surfaceSessionSecret: string;
   private readonly transactionManager: WriteTransactionManager;
@@ -95,6 +113,9 @@ export class OnlyOfficeSaveBackService {
     this.assetRepository = options.assetRepository;
     this.jobRepository = options.jobRepository;
     this.assetService = options.assetService;
+    this.humanReviewRepository = options.humanReviewRepository;
+    this.humanReviewDiffService = options.humanReviewDiffService;
+    this.sourceBlockResolver = options.sourceBlockResolver;
     this.uploadRootDir = path.resolve(options.uploadRootDir);
     this.surfaceSessionSecret =
       options.surfaceSessionSecret?.trim() ??
@@ -147,6 +168,14 @@ export class OnlyOfficeSaveBackService {
       bytes,
     });
 
+    let savedWorkingState:
+      | {
+          scope: VerifiedSaveBackScope;
+          outputAsset: DocumentAssetRecord;
+          job: JobRecord;
+        }
+      | undefined;
+
     await this.transactionManager.withTransaction(async (context) => {
       const repeatedJob = await findExistingSaveBackJob(
         context.jobRepository ?? this.jobRepository,
@@ -160,12 +189,12 @@ export class OnlyOfficeSaveBackService {
       const timestamp = this.now().toISOString();
       const jobId = this.createId();
       const outputAssetType = scope.outputAssetType;
-      const sourceModule = resolveOutputSourceModule(scope.module);
+      const sourceModule = resolveOutputSourceModule(scope);
       const job: JobRecord = {
         id: jobId,
         manuscript_id: scope.manuscriptId,
         module: scope.module,
-        job_type: resolveSaveBackJobType(scope.module),
+        job_type: resolveSaveBackJobType(scope),
         status: "completed",
         requested_by: `onlyoffice:${scope.actorRole}`,
         payload: {
@@ -174,7 +203,9 @@ export class OnlyOfficeSaveBackService {
           sessionId: scope.sessionId,
           documentKey: scope.documentKey,
           saveBackModule: scope.module,
+          saveBackPurpose: scope.purpose,
           baselineAssetId: scope.baselineAssetId,
+          outputAssetType,
           callbackStatus: callbackBody.status,
           humanReviewStage: "ai_output_human_review",
           storageKey,
@@ -182,10 +213,18 @@ export class OnlyOfficeSaveBackService {
           contentByteLength: bytes.byteLength,
           callbackReceivedAt: timestamp,
           learningSignal: {
-            kind: "human_final_merge",
-            status: "pending_semantic_diff",
+            kind:
+              scope.purpose === "human_review_working_state"
+                ? "human_review_working_state"
+                : "human_final_merge",
+            status:
+              scope.purpose === "human_review_working_state"
+                ? "pending_diff_extraction"
+                : "pending_semantic_diff",
             reason:
-              "OnlyOffice saved final DOCX; semantic diff extraction is deferred.",
+              scope.purpose === "human_review_working_state"
+                ? "OnlyOffice saved a human-review working DOCX for diff extraction."
+                : "OnlyOffice saved final DOCX; semantic diff extraction is deferred.",
           },
         },
         attempt_count: 1,
@@ -206,22 +245,93 @@ export class OnlyOfficeSaveBackService {
         storageKey,
         mimeType: DOCX_MIME_TYPE,
         createdBy: `onlyoffice:${scope.actorRole}`,
-        fileName: createSaveBackFileName(scope.module, baselineAsset),
+        fileName: createSaveBackFileName(scope, baselineAsset),
         parentAssetId: scope.baselineAssetId,
         sourceModule,
         sourceJobId: jobId,
       });
+      const storedOutputAsset =
+        scope.purpose === "human_review_working_state"
+          ? {
+              ...outputAsset,
+              is_current: false,
+            }
+          : outputAsset;
+      if (storedOutputAsset !== outputAsset) {
+        await context.assetRepository.save(storedOutputAsset);
+      }
 
-      await (context.jobRepository ?? this.jobRepository).save({
+      const savedJob = {
         ...job,
         payload: {
           ...job.payload,
-          outputAssetId: outputAsset.id,
+          outputAssetId: storedOutputAsset.id,
         },
-      });
+      };
+      await (context.jobRepository ?? this.jobRepository).save(savedJob);
+
+      if (scope.purpose === "human_review_working_state") {
+        savedWorkingState = {
+          scope,
+          outputAsset: storedOutputAsset,
+          job: savedJob,
+        };
+      }
     });
 
+    if (savedWorkingState) {
+      await this.extractAndPersistHumanReviewDiffs(savedWorkingState);
+    }
+
     return { error: 0 };
+  }
+
+  private async extractAndPersistHumanReviewDiffs(input: {
+    scope: VerifiedSaveBackScope;
+    outputAsset: DocumentAssetRecord;
+    job: JobRecord;
+  }): Promise<void> {
+    if (
+      !this.humanReviewRepository ||
+      !this.humanReviewDiffService ||
+      !this.sourceBlockResolver
+    ) {
+      return;
+    }
+
+    const [baselineBlocks, workingBlocks] = await Promise.all([
+      this.sourceBlockResolver.resolveBlocks({
+        manuscriptId: input.scope.manuscriptId,
+        assetId: input.scope.baselineAssetId,
+      }),
+      this.sourceBlockResolver.resolveBlocks({
+        manuscriptId: input.scope.manuscriptId,
+        assetId: input.outputAsset.id,
+      }),
+    ]);
+    const result = this.humanReviewDiffService.extractDiffItems({
+      manuscriptId: input.scope.manuscriptId,
+      module: input.scope.module,
+      baselineAssetId: input.scope.baselineAssetId,
+      workingAssetId: input.outputAsset.id,
+      baselineBlocks: mapHumanReviewComparableBlocks(baselineBlocks),
+      workingBlocks: mapHumanReviewComparableBlocks(workingBlocks),
+    });
+    await this.humanReviewRepository.saveDiffItems(result.items);
+
+    await this.jobRepository.save({
+      ...input.job,
+      payload: {
+        ...input.job.payload,
+        humanReviewDiffItemIds: result.items.map((item) => item.id),
+        humanReviewDiffItemCount: result.items.length,
+        learningSignal: {
+          ...asRecord(input.job.payload?.learningSignal),
+          status: result.items.length > 0 ? "diff_extracted" : "no_diff_detected",
+        },
+      },
+      updated_at: this.now().toISOString(),
+    });
   }
 
   private verifySaveBackScope(
@@ -282,6 +392,7 @@ export class OnlyOfficeSaveBackService {
       module,
       baselineAssetId,
       documentKey: claims.document_key,
+      purpose: claims.save_back.purpose,
       outputAssetType: claims.save_back.output_asset_type,
     };
   }
@@ -332,7 +443,11 @@ interface VerifiedSaveBackScope {
   module: "editing" | "proofreading";
   baselineAssetId: string;
   documentKey: string;
-  outputAssetType: Extract<DocumentAssetType, "edited_docx" | "human_final_docx">;
+  purpose: OnlyOfficeSaveBackPurpose;
+  outputAssetType: Extract<
+    DocumentAssetType,
+    OnlyOfficeSaveBackOutputAssetType
+  >;
 }
 
 function parseCallbackBody(body: unknown): SaveBackCallbackBody {
@@ -509,24 +624,36 @@ function createSaveBackStorageKey(input: {
 }
 
 function createSaveBackFileName(
-  module: "editing" | "proofreading",
+  scope: VerifiedSaveBackScope,
   baselineAsset: DocumentAssetRecord,
 ): string {
-  const baseName = baselineAsset.file_name?.replace(/\.docx$/iu, "") || module;
-  const suffix = module === "editing" ? "人工复核编辑" : "人工终稿";
+  const baseName =
+    baselineAsset.file_name?.replace(/\.docx$/iu, "") || scope.module;
+  const suffix =
+    scope.purpose === "human_review_working_state"
+      ? "人工核验工作稿"
+      : scope.module === "editing"
+        ? "人工复核编辑"
+        : "人工终稿";
   return `${baseName}-${suffix}.docx`;
 }
 
-function resolveSaveBackJobType(module: "editing" | "proofreading"): string {
-  return module === "editing"
+function resolveSaveBackJobType(scope: VerifiedSaveBackScope): string {
+  if (scope.purpose === "human_review_working_state") {
+    return "onlyoffice_human_review_working_save_back";
+  }
+
+  return scope.module === "editing"
     ? "onlyoffice_editing_save_back"
     : "onlyoffice_proofreading_human_final_save_back";
 }
 
-function resolveOutputSourceModule(
-  module: "editing" | "proofreading",
-): ManuscriptModule {
-  return module === "editing" ? "editing" : "manual";
+function resolveOutputSourceModule(scope: VerifiedSaveBackScope): ManuscriptModule {
+  if (scope.purpose === "human_review_working_state") {
+    return "manual";
+  }
+
+  return scope.module === "editing" ? "editing" : "manual";
 }
 
 function isAllowedBaselineForModule(
@@ -542,6 +669,44 @@ function isAllowedBaselineForModule(
     assetType === "final_proof_annotated_docx" ||
     assetType === "human_final_docx"
   );
+}
+
+function mapHumanReviewComparableBlocks(
+  blocks: readonly EditorialTextBlock[],
+): HumanReviewComparableBlock[] {
+  return blocks.map((block, index) => {
+    const kind = normalizeHumanReviewBlockKind(block.block_kind);
+
+    return {
+      key: block.source_locator ?? `${kind}:${index}`,
+      kind,
+      text: block.text,
+      block_index: index,
+      ...(block.section ? { section_label: block.section } : {}),
+    };
+  });
+}
+
+function normalizeHumanReviewBlockKind(
+  value: string | undefined,
+): HumanReviewComparableBlockKind {
+  switch (value) {
+    case "heading":
+    case "table_cell":
+    case "table":
+    case "image":
+    case "caption":
+    case "reference_entry":
+      return value;
+    default:
+      return "paragraph";
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function sanitizeStorageSegment(value: string): string {

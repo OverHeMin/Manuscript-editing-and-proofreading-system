@@ -83,6 +83,12 @@ import {
   PostgresFeedbackGovernanceRepository,
 } from "../modules/feedback-governance/index.ts";
 import {
+  createHumanReviewApi,
+  HumanReviewDiffService,
+  HumanReviewService,
+  PostgresHumanReviewRepository,
+} from "../modules/human-review/index.ts";
+import {
   createExecutionGovernanceApi,
   ExecutionGovernanceService,
   PostgresExecutionGovernanceRepository,
@@ -293,6 +299,9 @@ export function createPersistentGovernanceRuntime(
     client: options.client,
   });
   const feedbackGovernanceRepository = new PostgresFeedbackGovernanceRepository({
+    client: options.client,
+  });
+  const humanReviewRepository = new PostgresHumanReviewRepository({
     client: options.client,
   });
 
@@ -506,6 +515,9 @@ export function createPersistentGovernanceRuntime(
     assetService: documentAssetService,
     uploadRootDir,
     transactionManager: workbenchTransactionManager,
+    humanReviewRepository,
+    humanReviewDiffService: new HumanReviewDiffService(),
+    sourceBlockResolver: docxSourceBlockResolver,
   });
   const feedbackGovernanceService = new FeedbackGovernanceService({
     repository: feedbackGovernanceRepository,
@@ -565,6 +577,15 @@ export function createPersistentGovernanceRuntime(
     },
   });
   const reviewItemsApi = createReviewItemsApi({
+    reviewItemsService,
+  });
+  const humanReviewService = new HumanReviewService({
+    repository: humanReviewRepository,
+    manuscriptRepository,
+    assetRepository,
+    jobRepository,
+    documentAssetService,
+    editorialDocxTransformService,
     reviewItemsService,
   });
   const harnessDatasetService = new HarnessDatasetService({
@@ -1085,6 +1106,10 @@ export function createPersistentGovernanceRuntime(
     }),
     feedbackGovernanceApi: createFeedbackGovernanceApi({
       feedbackGovernanceService,
+    }),
+    humanReviewRepository,
+    humanReviewApi: createHumanReviewApi({
+      humanReviewService,
     }),
     learningApi,
     residualLearningApi,

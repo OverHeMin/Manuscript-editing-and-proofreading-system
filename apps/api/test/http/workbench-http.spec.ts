@@ -540,7 +540,7 @@ test("workbench http preview callback acknowledges read-only onlyoffice pings", 
   }
 });
 
-test("workbench http preview callback saves editable OnlyOffice sessions into the same editing flow idempotently", async () => {
+test("workbench http preview callback saves editable OnlyOffice sessions as human-review working state idempotently", async () => {
   const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-workbench-saveback-http-"));
   const originalOnlyOfficeJwtSecret = process.env.ONLYOFFICE_JWT_SECRET;
   process.env.ONLYOFFICE_JWT_SECRET = "save-back-http-secret";
@@ -677,14 +677,20 @@ test("workbench http preview callback saves editable OnlyOffice sessions into th
       is_current: boolean;
     }>;
     assert.equal(assetsResponse.status, 200);
-    const saveBackAssets = assets.filter(
+    const legacyEditingSaveBackAssets = assets.filter(
       (asset) =>
         asset.asset_type === "edited_docx" &&
         asset.parent_asset_id === editing.asset.id,
     );
+    assert.equal(legacyEditingSaveBackAssets.length, 0);
+    const saveBackAssets = assets.filter(
+      (asset) =>
+        asset.asset_type === "human_review_working_docx" &&
+        asset.parent_asset_id === editing.asset.id,
+    );
     assert.equal(saveBackAssets.length, 1);
-    assert.equal(saveBackAssets[0]?.source_module, "editing");
-    assert.equal(saveBackAssets[0]?.is_current, true);
+    assert.equal(saveBackAssets[0]?.source_module, "manual");
+    assert.equal(saveBackAssets[0]?.is_current, false);
 
     const jobResponse = await fetch(
       `${baseUrl}/api/v1/jobs/${saveBackAssets[0]?.source_job_id}`,
@@ -699,15 +705,19 @@ test("workbench http preview callback saves editable OnlyOffice sessions into th
       payload?: Record<string, unknown>;
     };
     assert.equal(jobResponse.status, 200);
-    assert.equal(job.job_type, "onlyoffice_editing_save_back");
+    assert.equal(job.job_type, "onlyoffice_human_review_working_save_back");
     assert.equal(job.payload?.source, "onlyoffice_save_back");
     assert.equal(job.payload?.baselineAssetId, editing.asset.id);
-    assert.deepEqual(job.payload?.learningSignal, {
-      kind: "human_final_merge",
-      status: "pending_semantic_diff",
-      reason:
-        "OnlyOffice saved final DOCX; semantic diff extraction is deferred.",
-    });
+    assert.equal(job.payload?.saveBackPurpose, "human_review_working_state");
+    assert.equal(job.payload?.outputAssetType, "human_review_working_docx");
+    const learningSignal = job.payload?.learningSignal as
+      | { kind?: string; status?: string; reason?: string }
+      | undefined;
+    assert.equal(learningSignal?.kind, "human_review_working_state");
+    assert.match(
+      learningSignal?.status ?? "",
+      /^(pending_diff_extraction|diff_extracted|no_diff_detected)$/u,
+    );
 
     const downloadResponse = await fetch(
       `${baseUrl}/api/v1/document-assets/${saveBackAssets[0]?.id}/download`,
