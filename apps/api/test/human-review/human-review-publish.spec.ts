@@ -269,6 +269,66 @@ test("human review publish applies kept text diffs and excludes rejected diffs",
   assert.equal(reject?.status, "published_writeback_done");
 });
 
+test("human review publish creates an edited docx final for editing module", async () => {
+  const {
+    manuscriptRepository,
+    assetRepository,
+    humanReviewRepository,
+    service,
+    transformCalls,
+  } = createHarness();
+  await manuscriptRepository.save({
+    id: "manuscript-1",
+    title: "Editing Human Review Publish",
+    manuscript_type: "review",
+    status: "awaiting_review",
+    created_by: "editor-1",
+    current_editing_asset_id: "asset-edit-base",
+    created_at: "2026-04-28T00:00:00.000Z",
+    updated_at: "2026-04-28T00:00:00.000Z",
+  });
+  await assetRepository.save(createAsset("asset-edit-base", "edited_docx"));
+  await assetRepository.save(
+    createAsset("asset-edit-work", "human_review_working_docx"),
+  );
+  await humanReviewRepository.saveDiffItem(
+    createDiff({
+      id: "diff-edit-1",
+      module: "editing",
+      baseline_asset_id: "asset-edit-base",
+      working_asset_id: "asset-edit-work",
+      content_decision: "keep",
+      status: "confirmed",
+      before_text: "Methods were described.",
+      after_text: "The methods were described.",
+    }),
+  );
+
+  const result = await service.publishConfirmedFinal({
+    manuscriptId: "manuscript-1",
+    module: "editing",
+    requestedBy: "editor-1",
+    actorRole: "editor",
+    outputStorageKey: "runs/human-review/editing-final.docx",
+    outputFileName: "editing-final.docx",
+  });
+
+  assert.equal(result.asset.asset_type, "edited_docx");
+  assert.equal(result.asset.source_module, "editing");
+  assert.equal(result.asset.parent_asset_id, "asset-edit-base");
+  assert.equal(transformCalls[0]?.sourceAssetId, "asset-edit-base");
+  assert.deepEqual(transformCalls[0]?.aiReplacements, [
+    {
+      targetText: "Methods were described.",
+      replacementText: "The methods were described.",
+      reason: "Human review diff diff-edit-1 kept by reviewer.",
+    },
+  ]);
+  const manuscript = await manuscriptRepository.findById("manuscript-1");
+  assert.equal(manuscript?.current_editing_asset_id, result.asset.id);
+  assert.equal(manuscript?.current_proofreading_asset_id, undefined);
+});
+
 test("human review publish keeps final asset when candidate backflow fails", async () => {
   const {
     manuscriptRepository,

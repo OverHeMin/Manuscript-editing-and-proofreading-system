@@ -249,7 +249,7 @@ export class HumanReviewService {
     const job: JobRecord = {
       id: jobId,
       manuscript_id: input.manuscriptId,
-      module: "manual",
+      module: input.module,
       job_type: "human_review_publish_final",
       status: "completed",
       requested_by: requestedBy,
@@ -277,13 +277,13 @@ export class HumanReviewService {
 
     const asset = await this.documentAssetService.createAsset({
       manuscriptId: input.manuscriptId,
-      assetType: "human_final_docx",
+      assetType: resolveHumanReviewFinalAssetType(input.module),
       storageKey: outputStorageKey,
       mimeType: DOCX_MIME_TYPE,
       createdBy: requestedBy,
       fileName: outputFileName,
       parentAssetId: baselineAssetId,
-      sourceModule: "manual",
+      sourceModule: resolveHumanReviewFinalSourceModule(input.module),
       sourceJobId: jobId,
     });
 
@@ -635,6 +635,18 @@ function normalizeBackflowModule(
   module: HumanReviewDiffRecord["module"],
 ): "proofreading" | "editing" {
   return module === "editing" ? "editing" : "proofreading";
+}
+
+function resolveHumanReviewFinalAssetType(
+  module: HumanReviewPublishModule,
+): DocumentAssetRecord["asset_type"] {
+  return module === "editing" ? "edited_docx" : "human_final_docx";
+}
+
+function resolveHumanReviewFinalSourceModule(
+  module: HumanReviewPublishModule,
+): DocumentAssetRecord["source_module"] {
+  return module === "editing" ? "editing" : "manual";
 }
 
 async function markDiffItemsPublished(input: {
