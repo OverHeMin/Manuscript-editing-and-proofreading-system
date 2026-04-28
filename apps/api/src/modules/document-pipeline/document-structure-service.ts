@@ -181,9 +181,28 @@ export interface DocumentStructureTableBorderHints {
   right?: boolean;
 }
 
+export interface DocumentStructureTableStyleRun {
+  text: string;
+  kind?: "text" | "symbol" | "tab" | "line_break" | "object";
+  paragraph_index?: number;
+  fragment_index?: number;
+  start_offset?: number;
+  end_offset?: number;
+  font_family?: string;
+  font_size_pt?: number;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  script_position?: string;
+}
+
 export interface DocumentStructureTableGridCell {
   id: string;
   text: string;
+  display_text?: string;
+  normalized_text?: string;
+  raw_xml_text?: string;
+  style_runs?: DocumentStructureTableStyleRun[];
   row_index: number;
   column_index: number;
   row_span: number;

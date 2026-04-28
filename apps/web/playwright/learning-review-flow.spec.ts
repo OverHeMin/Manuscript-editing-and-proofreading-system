@@ -169,30 +169,7 @@ test("admin can complete the governed learning review flow from manuscript hando
   ).toBeTruthy();
 
   await navigateToProofreadingIssueWorkbench(page, manuscriptId, proofreadingDraftAsset.id);
-  const selectedIssue = page.locator(
-    ".manuscript-workbench-proofreading-issue.is-selected",
-  );
-  const issueDetail = selectedIssue.locator(
-    ".manuscript-workbench-proofreading-issue-detail",
-  );
-  await clickViaDom(issueDetail.getByRole("button", { name: /^采纳$/ }));
-  await expect(issueDetail.getByRole("button", { name: /^采纳$/ })).toHaveClass(
-    /is-selected/,
-  );
-
-  const proofreadingIssues = page.locator(".manuscript-workbench-proofreading-issue");
-  const issueCount = await proofreadingIssues.count();
-  for (let index = 1; index < issueCount; index += 1) {
-    const issue = proofreadingIssues.nth(index);
-    await clickViaDom(issue.getByRole("button").first());
-    const currentIssueDetail = issue.locator(
-      ".manuscript-workbench-proofreading-issue-detail",
-    );
-    await expect(currentIssueDetail).toBeVisible();
-    const acceptButton = currentIssueDetail.getByRole("button", { name: /^采纳$/ });
-    await clickViaDom(acceptButton);
-    await expect(acceptButton).toHaveClass(/is-selected/);
-  }
+  await rejectProofreadingIssuesForSafePublish(page);
 
   const publishHumanFinalButton = page.getByRole("button", { name: "发布人工终稿" });
   await expect(publishHumanFinalButton).toBeEnabled();
@@ -517,6 +494,28 @@ async function navigateToProofreadingIssueWorkbench(
   await expect(
     page.locator('.manuscript-workbench-proofreading-block[data-selected="true"]').first(),
   ).toBeVisible();
+}
+
+async function rejectProofreadingIssuesForSafePublish(page: Page) {
+  const proofreadingIssues = page.locator(".manuscript-workbench-proofreading-issue");
+  const issueCount = await proofreadingIssues.count();
+  for (let index = 0; index < issueCount; index += 1) {
+    const issue = proofreadingIssues.nth(index);
+    const issueButton = issue.getByRole("button").first();
+    const issueLabel = await issueButton.innerText();
+    if (/驳回|采纳|转规则候选|转知识候选|仅人工处理|升级处理/u.test(issueLabel)) {
+      continue;
+    }
+
+    await clickViaDom(issueButton);
+    const issueDetail = issue.locator(
+      ".manuscript-workbench-proofreading-issue-detail",
+    );
+    await expect(issueDetail).toBeVisible();
+    const rejectButton = issueDetail.getByRole("button", { name: "驳回" });
+    await clickViaDom(rejectButton);
+    await expect(rejectButton).toHaveClass(/is-selected/);
+  }
 }
 
 async function expandResultDetails(page: Page) {

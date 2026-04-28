@@ -17,6 +17,7 @@ import {
 } from "../document-pipeline/editorial-docx-transform-service.ts";
 import type {
   DocumentStructureObjectEvidence,
+  DocumentStructureSnapshot,
   DocumentStructureService,
 } from "../document-pipeline/document-structure-service.ts";
 import type { AgentExecutionLogRecord } from "../agent-execution/agent-execution-record.ts";
@@ -47,6 +48,7 @@ import type {
 import type { JobRecord } from "../jobs/job-record.ts";
 import type { JobRepository } from "../jobs/job-repository.ts";
 import type { KnowledgeRepository } from "../knowledge/knowledge-repository.ts";
+import type { KnowledgeRetrievalService } from "../knowledge-retrieval/knowledge-retrieval-service.ts";
 import type { LearningCandidateRecord } from "../learning/learning-record.ts";
 import type { LearningService } from "../learning/learning-service.ts";
 import type { ManuscriptRepository } from "../manuscripts/manuscript-repository.ts";
@@ -110,6 +112,10 @@ import { materializeTextAsset } from "../shared/text-asset-materialization.ts";
 import {
   ProofreadingAiPlanService,
 } from "./proofreading-ai-plan-service.ts";
+import {
+  DeepProofreadingOrchestrator,
+  type DeepProofreadingOrchestratorRunResult,
+} from "./deep-proofreading-orchestrator.ts";
 import type { CreateProofreadingAiPlanInput } from "./proofreading-ai-plan-service.ts";
 import type {
   ProofreadingAiPlan,
@@ -218,6 +224,11 @@ export interface ProofreadingServiceOptions {
   textAssetRootDir?: string;
   textAssetMaterializer?: typeof materializeTextAsset;
   proofreadingAiPlanService?: Pick<ProofreadingAiPlanService, "createPlan">;
+  knowledgeRetrievalService?: Pick<
+    KnowledgeRetrievalService,
+    "rankIndexEntriesForContext"
+  >;
+  deepProofreadingEnabled?: boolean;
   editorialDocxTransformService?: Pick<
     EditorialDocxTransformService,
     "applyDeterministicRules"
@@ -354,6 +365,11 @@ export class ProofreadingService {
     ProofreadingAiPlanService,
     "createPlan"
   >;
+  private readonly knowledgeRetrievalService?: Pick<
+    KnowledgeRetrievalService,
+    "rankIndexEntriesForContext"
+  >;
+  private readonly deepProofreadingEnabled: boolean;
   private readonly editorialDocxTransformService: Pick<
     EditorialDocxTransformService,
     "applyDeterministicRules"
@@ -417,6 +433,8 @@ export class ProofreadingService {
       new ProofreadingAiPlanService({
         mainlineAiRuntimeExecutor: options.mainlineAiRuntimeExecutor,
       });
+    this.knowledgeRetrievalService = options.knowledgeRetrievalService;
+    this.deepProofreadingEnabled = options.deepProofreadingEnabled ?? true;
     this.editorialDocxTransformService =
       options.editorialDocxTransformService ??
       new EditorialDocxTransformService({
@@ -1202,9 +1220,75 @@ export class ProofreadingService {
               }),
             )
           : [];
+      let deepProofreadingRun: DeepProofreadingOrchestratorRunResult | undefined;
+      const shouldUseDeepProofreading =
+        input.jobType === "proofreading_draft_run" &&
+        resolvedContext.executionMode === "governed" &&
+        this.deepProofreadingEnabled;
+      if (shouldUseDeepProofreading && proofreadingArtifacts) {
+        try {
+          deepProofreadingRun = await new DeepProofreadingOrchestrator({
+            proofreadingAiPlanService: this.proofreadingAiPlanService,
+            knowledgeRetrievalService: this.knowledgeRetrievalService,
+            now: this.now,
+          }).run({
+            manuscriptId: input.manuscriptId,
+            sourceFileName:
+              sourceAsset?.file_name ?? input.fileName ?? input.parentAssetId,
+            manuscriptType: manuscript?.manuscript_type,
+            templateFamilyId: manuscript?.current_template_family_id,
+            sourceBlocks: proofreadingArtifacts.sourceBlocks,
+            documentStructure: proofreadingArtifacts.documentStructureSnapshot,
+            rules: resolvedContext.rules ?? [],
+            knowledge: await this.knowledgeRepository.listApproved(),
+            generalPackageIds: resolvedContext.qualityPackageVersionIds,
+            medicalPackageIds: resolvedContext.qualityPackageVersionIds,
+            governedFailedChecks: proofreadingFindings?.failedChecks,
+            governedManualReviewItems: proofreadingFindings?.manualReviewItems,
+            qualityIssues: proofreadingFindings?.qualityFindings,
+            knowledgeHits: proofreadingKnowledgeHits,
+            promptGuardrails: {
+              roleLabel: "医学稿件终校审校员",
+              systemInstructions:
+                proofreadingPromptTemplate?.system_instructions,
+              taskFrame: proofreadingPromptTemplate?.task_frame,
+              manualReviewPolicy:
+                proofreadingPromptTemplate?.manual_review_policy,
+              forbiddenOperations:
+                proofreadingPromptTemplate?.forbidden_operations,
+              outputContract: proofreadingPromptTemplate?.output_contract,
+            },
+            governanceContext: buildAiGovernanceContext({
+              hardRuleSummary:
+                resolvedContext.instructionPayload?.hardRuleSummary,
+              allowedContentOperations:
+                resolvedContext.instructionPayload?.allowedContentOperations,
+              forbiddenOperations:
+                resolvedContext.instructionPayload?.forbiddenOperations,
+              manualReviewPolicy:
+                resolvedContext.instructionPayload?.manualReviewPolicy,
+              promptSnippets:
+                resolvedContext.instructionPayload?.promptSnippets,
+              manualReviewItems:
+                resolvedContext.instructionPayload?.manualReviewItems.map(
+                  (item) => `${item.ruleId}: ${item.reason}`,
+                ),
+              contentRuleCandidates:
+                resolvedContext.instructionPayload?.contentRuleCandidates.map(
+                  (item) => `${item.ruleId}: ${item.actionKind}`,
+                ),
+              resolvedRules: resolvedContext.resolvedRules,
+              knowledgeHits: resolvedContext.knowledgeHits,
+            }),
+          });
+        } catch {
+          deepProofreadingRun = undefined;
+        }
+      }
       const proofreadingPlan =
         input.jobType === "proofreading_draft_run"
-          ? (structuredClone(
+          ? deepProofreadingRun?.plan ??
+            ((structuredClone(
               await this.proofreadingAiPlanService.createPlan({
                 manuscriptId: input.manuscriptId,
                 sourceFileName:
@@ -1249,13 +1333,15 @@ export class ProofreadingService {
                   knowledgeHits: resolvedContext.knowledgeHits,
                 }),
               }),
-            ) as ProofreadingAiPlan)
+            ) as ProofreadingAiPlan))
           : undefined;
       const storedProofreadingPlan = proofreadingPlan
         ? buildStoredProofreadingPlan(proofreadingPlan)
         : undefined;
       const proofreadingDeepPassRuns =
-        input.jobType === "proofreading_draft_run" && proofreadingPlan
+        input.jobType === "proofreading_draft_run" &&
+        proofreadingPlan &&
+        !deepProofreadingRun
           ? await this.runProofreadingDeepPasses({
               manuscriptId: input.manuscriptId,
               jobId,
@@ -1520,6 +1606,13 @@ export class ProofreadingService {
                 ),
               }
             : {}),
+          ...(deepProofreadingRun
+            ? {
+                deepProofreading: structuredClone(
+                  deepProofreadingRun.deepProofreading,
+                ),
+              }
+            : {}),
           ...(proofreadingDeepPassRuns
             ? {
                 proofreadingDeepPassRuns: proofreadingDeepPassRuns.map((pass) => ({
@@ -1542,16 +1635,29 @@ export class ProofreadingService {
       };
       await jobRepository.save(completedJob);
       const proofreadingPassRunPersistenceRecords =
-        proofreadingDeepPassRuns && this.proofreadingPassRunRepository
-          ? buildProofreadingPassRunPersistenceRecords({
-              payloadRuns: proofreadingDeepPassRuns,
-              manuscriptId: input.manuscriptId,
-              jobId,
-              snapshotId: snapshot.id,
-              resolvedContext,
-              createdAt: finishedTimestamp,
-              createId: this.createId,
-            })
+        this.proofreadingPassRunRepository
+          ? proofreadingDeepPassRuns
+            ? buildProofreadingPassRunPersistenceRecords({
+                payloadRuns: proofreadingDeepPassRuns,
+                manuscriptId: input.manuscriptId,
+                jobId,
+                snapshotId: snapshot.id,
+                resolvedContext,
+                createdAt: finishedTimestamp,
+                createId: this.createId,
+              })
+            : deepProofreadingRun
+              ? buildDeepProofreadingPassRunPersistenceRecords({
+                  deepProofreadingRun,
+                  manuscriptId: input.manuscriptId,
+                  jobId,
+                  snapshotId: snapshot.id,
+                  resolvedContext,
+                  createdAt: finishedTimestamp,
+                  sourceBlocks: proofreadingArtifacts?.sourceBlocks ?? [],
+                  createId: this.createId,
+                })
+              : undefined
           : undefined;
 
       return {
@@ -2173,6 +2279,7 @@ export class ProofreadingService {
           : {}),
       },
       sourceBlocks,
+      ...(documentStructureSnapshot ? { documentStructureSnapshot } : {}),
     };
   }
 }
@@ -3256,8 +3363,11 @@ function normalizeProofreadingConfirmationSeverity(
 function normalizeIssueSource(
   value: unknown,
 ): ProofreadingIssue["source"] | undefined {
-  return value === "governed_rule" ||
+  return value === "deterministic_check" ||
+    value === "governed_rule" ||
     value === "knowledge_base" ||
+    value === "quality_package" ||
+    value === "ai_pass" ||
     value === "quality_check" ||
     value === "residual_ai" ||
     value === "legacy_correction"
@@ -3649,6 +3759,7 @@ function cloneEvidencePack(
 interface ProofreadingRunArtifacts {
   inspectionResult: ProofreadingInspectionResult;
   sourceBlocks: ProofreadingResidualSourceBlock[];
+  documentStructureSnapshot?: DocumentStructureSnapshot;
 }
 
 interface ResolvedProofreadingExecutionContext {
@@ -4141,6 +4252,133 @@ function buildProofreadingPassRunPersistenceRecords(input: {
   }));
 }
 
+function buildDeepProofreadingPassRunPersistenceRecords(input: {
+  deepProofreadingRun: DeepProofreadingOrchestratorRunResult;
+  manuscriptId: string;
+  jobId: string;
+  snapshotId: string;
+  resolvedContext: ResolvedProofreadingExecutionContext;
+  createdAt: string;
+  sourceBlocks: readonly EditorialTextBlock[];
+  createId: () => string;
+}): ProofreadingPassRunRecord[] {
+  const ruleIds = collectKnownRuleIds(input.resolvedContext);
+  const knowledgeItemIds = input.resolvedContext.knowledgeHits.map(
+    (hit) => hit.knowledgeItemId,
+  );
+
+  return input.deepProofreadingRun.deepProofreading.passRuns.map((pass, index) => ({
+    id: input.createId(),
+    manuscript_id: input.manuscriptId,
+    job_id: input.jobId,
+    snapshot_id: input.snapshotId,
+    pass_no: index + 1,
+    pass_kind: pass.passKind,
+    status: pass.status,
+    model_id: input.resolvedContext.modelId,
+    ...(input.resolvedContext.modelVersion
+      ? { model_version: input.resolvedContext.modelVersion }
+      : {}),
+    input_context_digest: serializeProofreadingPassRunReplayInput({
+      manuscriptId: input.manuscriptId,
+      sourceBlocks: input.sourceBlocks.map((block) => ({ ...block })),
+      passFocus: {
+        passNo: index + 1,
+        passKind: pass.passKind,
+        instruction: formatProofreadingDeepPassInstruction(pass.passKind),
+      },
+      sliceContext: {
+        id: pass.sliceId,
+        passKind: pass.passKind,
+      },
+    }),
+    rule_ids: ruleIds,
+    knowledge_item_ids: knowledgeItemIds,
+    quality_package_ids: input.resolvedContext.qualityPackageVersionIds,
+    prompt_template_id: input.resolvedContext.promptTemplateId,
+    skill_package_ids: input.resolvedContext.skillPackageIds,
+    output: {
+      summary: `Deep proofreading ${pass.passKind} / ${pass.sliceId} produced ${pass.issueCount} issue(s).`,
+      issues: input.deepProofreadingRun.plan.issues.filter((issue) =>
+        issueBelongsToDeepPass(issue, pass),
+      ),
+      governedEvidenceCounts: {
+        failedChecks: 0,
+        manualReviewItems: 0,
+        qualityFindings: 0,
+      },
+      contextEvidence: buildDeepProofreadingPassContextEvidence({
+        passNo: index + 1,
+        passKind: pass.passKind,
+        sourceBlocks: input.sourceBlocks,
+        ruleIds,
+        knowledgeItemIds,
+      }),
+    },
+    retry_count: 0,
+    started_at: input.createdAt,
+    finished_at: input.createdAt,
+    created_at: input.createdAt,
+    updated_at: input.createdAt,
+  }));
+}
+
+function issueBelongsToDeepPass(
+  issue: ProofreadingIssue,
+  pass: { passKind: ProofreadingDeepPassKind; sliceId: string },
+): boolean {
+  const deepIssue = issue as ProofreadingIssue & {
+    passKind?: unknown;
+    sliceId?: unknown;
+  };
+  return (
+    deepIssue.passKind === pass.passKind &&
+    (deepIssue.sliceId === undefined || deepIssue.sliceId === pass.sliceId)
+  );
+}
+
+function buildDeepProofreadingPassContextEvidence(input: {
+  passNo: number;
+  passKind: ProofreadingDeepPassKind;
+  sourceBlocks: readonly EditorialTextBlock[];
+  ruleIds: readonly string[];
+  knowledgeItemIds: readonly string[];
+}): ProofreadingPassRunContextEvidenceRecord {
+  const sectionLabels = dedupeStringArray(
+    input.sourceBlocks
+      .map((block) => block.section)
+      .filter((section): section is string => typeof section === "string"),
+  );
+
+  return {
+    localBlockContext: {
+      blockCount: input.sourceBlocks.length,
+    },
+    neighborContext: {
+      windowCount: 0,
+    },
+    sectionContext: {
+      sectionCount: sectionLabels.length,
+      sectionLabels,
+    },
+    globalConsistencyContext: {
+      passNo: input.passNo,
+      passKind: input.passKind,
+      wholeDocumentLayer: true,
+    },
+    ruleCitationContext: {
+      ruleIds: [...input.ruleIds],
+    },
+    knowledgeCitationContext: {
+      knowledgeItemIds: [...input.knowledgeItemIds],
+    },
+    residualAnalysisContext: {
+      passKind: input.passKind,
+      runsAfterGovernedCoverage: true,
+    },
+  };
+}
+
 function splitProofreadingIssuesByPass(
   issues: readonly ProofreadingIssue[],
 ): Record<ProofreadingDeepPassKind, ProofreadingIssue[]> {
@@ -4200,7 +4438,7 @@ function buildResidualObservationSourceBlocks(input: {
   );
 
   for (const issue of input.proofreadingPlan?.issues ?? []) {
-    if (issue.source !== "residual_ai") {
+    if (issue.source !== "residual_ai" && issue.source !== "ai_pass") {
       continue;
     }
 

@@ -86,6 +86,7 @@ import {
   buildEditingDocumentBlocks,
   buildEditingGuardrailEntries,
   buildEditingSlotGovernanceSummary,
+  buildDeepProofreadingEvidence,
   buildProofreadingConfirmationItems,
   buildProofreadingDocumentBlocks,
   buildScreeningDocumentBlocks,
@@ -3650,6 +3651,7 @@ function buildTemplateContextActionResult(
             executionSnapshot={detailExecutionTracking.snapshot}
             knowledgeHitLogs={detailExecutionTracking.knowledgeHitLogs}
             knowledgeReferences={workspace.knowledgeReferences}
+            deepProofreadingEvidence={buildDeepProofreadingEvidence(detailJob)}
             confirmationItems={confirmationItems}
             confirmationState={confirmationState}
             humanReviewDiffItems={humanReviewDiffItems}

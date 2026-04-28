@@ -425,6 +425,14 @@ def build_grid_cells(
                 ),
                 "paragraphs": paragraphs,
             }
+            for fidelity_key in (
+                "display_text",
+                "normalized_text",
+                "raw_xml_text",
+                "style_runs",
+            ):
+                if fidelity_key in raw_cell:
+                    cell_payload[fidelity_key] = raw_cell[fidelity_key]
             borders = _copy_border_flags(raw_cell.get("borders"))
             if borders:
                 cell_payload["border_hints"] = borders

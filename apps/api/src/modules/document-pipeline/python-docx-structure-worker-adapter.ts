@@ -18,6 +18,7 @@ import type {
   DocumentStructureTableSemanticCoordinate,
   DocumentStructureTableSnapshot,
   DocumentStructureTableStyleFact,
+  DocumentStructureTableStyleRun,
   DocumentStructureTableStubColumn,
   DocumentStructureTableUnitMarker,
   DocumentStructureWorkerAdapter,
@@ -783,6 +784,22 @@ function normalizeGridCells(
       style_evidence: normalizeCellStyleEvidence(record.style_evidence),
       paragraphs: normalizeParagraphSnapshots(record.paragraphs) ?? [],
     };
+    const displayText = readOptionalString(record.display_text);
+    const normalizedText = readOptionalString(record.normalized_text);
+    const rawXmlText = readOptionalString(record.raw_xml_text);
+    const styleRuns = normalizeTableStyleRuns(record.style_runs);
+    if (displayText !== undefined) {
+      gridCell.display_text = displayText;
+    }
+    if (normalizedText !== undefined) {
+      gridCell.normalized_text = normalizedText;
+    }
+    if (rawXmlText !== undefined) {
+      gridCell.raw_xml_text = rawXmlText;
+    }
+    if (styleRuns.length > 0) {
+      gridCell.style_runs = styleRuns;
+    }
     const borderHints = normalizeBorderHints(record.border_hints);
     if (borderHints) {
       gridCell.border_hints = borderHints;
@@ -810,6 +827,63 @@ function normalizeBorderHints(
   });
 
   return Object.keys(hints).length > 0 ? hints : undefined;
+}
+
+function normalizeTableStyleRuns(value: unknown): DocumentStructureTableStyleRun[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry): DocumentStructureTableStyleRun | undefined => {
+      const record = isRecord(entry) ? entry : {};
+      const text = readOptionalString(record.text);
+      if (!text) {
+        return undefined;
+      }
+      const kind = readOptionalString(record.kind);
+      return {
+        text,
+        ...(kind === "text" ||
+        kind === "symbol" ||
+        kind === "tab" ||
+        kind === "line_break" ||
+        kind === "object"
+          ? { kind }
+          : {}),
+        ...(readOptionalNumber(record.paragraph_index) !== undefined
+          ? { paragraph_index: readOptionalNumber(record.paragraph_index) }
+          : {}),
+        ...(readOptionalNumber(record.fragment_index) !== undefined
+          ? { fragment_index: readOptionalNumber(record.fragment_index) }
+          : {}),
+        ...(readOptionalNumber(record.start_offset) !== undefined
+          ? { start_offset: readOptionalNumber(record.start_offset) }
+          : {}),
+        ...(readOptionalNumber(record.end_offset) !== undefined
+          ? { end_offset: readOptionalNumber(record.end_offset) }
+          : {}),
+        ...(readOptionalString(record.font_family)
+          ? { font_family: readOptionalString(record.font_family) }
+          : {}),
+        ...(readOptionalNumber(record.font_size_pt) !== undefined
+          ? { font_size_pt: readOptionalNumber(record.font_size_pt) }
+          : {}),
+        ...(readOptionalBoolean(record.bold) !== undefined
+          ? { bold: readOptionalBoolean(record.bold) }
+          : {}),
+        ...(readOptionalBoolean(record.italic) !== undefined
+          ? { italic: readOptionalBoolean(record.italic) }
+          : {}),
+        ...(readOptionalBoolean(record.underline) !== undefined
+          ? { underline: readOptionalBoolean(record.underline) }
+          : {}),
+        ...(readOptionalString(record.script_position)
+          ? { script_position: readOptionalString(record.script_position) }
+          : {}),
+      };
+    })
+    .filter((entry): entry is DocumentStructureTableStyleRun => Boolean(entry));
 }
 
 function normalizeParagraphSnapshots(

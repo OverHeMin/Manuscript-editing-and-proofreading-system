@@ -157,6 +157,72 @@ test("proofreading AI planning sends governed coverage and whole-document guardr
   });
 });
 
+test("proofreading AI planning sends slice scoped deep context without full-document-only prompt", async () => {
+  let recordedInput: ExecuteMainlineAiInput | undefined;
+  const service = new ProofreadingAiPlanService({
+    mainlineAiRuntimeExecutor: {
+      async executeJson<T>(input: ExecuteMainlineAiInput): Promise<T> {
+        recordedInput = structuredClone(input);
+        return {
+          role: "医学稿件终校审校员",
+          summary: "Slice scoped plan.",
+          issues: [],
+          manualReviewItems: [],
+        } as T;
+      },
+      async executeMarkdown(): Promise<string> {
+        throw new Error("Proofreading AI planning should request JSON.");
+      },
+    } satisfies MainlineAiRuntimeExecutor,
+  });
+
+  await service.createPlan({
+    manuscriptId: "manuscript-1",
+    sourceBlocks: [{ section: "results", block_kind: "paragraph", text: "见表1。" }],
+    passFocus: {
+      passNo: 3,
+      passKind: "data_statistics_units_and_tables",
+      instruction: "核对表格与数据。",
+    },
+    sliceContext: {
+      id: "slice-table-1",
+      sliceKind: "table",
+      text: "表1 ALT 12.3",
+      tableIds: ["table-1"],
+    },
+    factLedgerSummary: {
+      factCount: 2,
+      conflictCount: 1,
+      summary: "ALT values differ.",
+    },
+    activatedRules: [{ ruleId: "rule-table", reasons: ["exact_object"] }],
+    budgetedKnowledge: [
+      {
+        knowledgeItemId: "knowledge-table",
+        title: "表格单位",
+        promptSnippet: "核对表格单位。",
+      },
+    ],
+    deepDiagnostics: { sliceId: "slice-table-1" },
+  } as never);
+
+  assert.doesNotMatch(recordedInput?.systemPrompt ?? "", /整篇稿件单次校对/u);
+  const payload = recordedInput?.userPayload as {
+    deepProofreading?: Record<string, unknown>;
+  };
+  assert.deepEqual(payload.deepProofreading?.sliceContext, {
+    id: "slice-table-1",
+    sliceKind: "table",
+    text: "表1 ALT 12.3",
+    tableIds: ["table-1"],
+  });
+  assert.deepEqual(payload.deepProofreading?.factLedgerSummary, {
+    factCount: 2,
+    conflictCount: 1,
+    summary: "ALT values differ.",
+  });
+});
+
 test("proofreading AI planning forwards governance context without losing whole-document planning controls", async () => {
   let recordedInput: ExecuteMainlineAiInput | undefined;
   const service = new ProofreadingAiPlanService({

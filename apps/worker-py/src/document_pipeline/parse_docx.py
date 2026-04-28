@@ -622,6 +622,7 @@ def extract_table_dimensions(
         raw_row: list[dict] = []
         for cell_index, cell in enumerate(cells):
             paragraphs = extract_table_cell_paragraphs(cell)
+            display_text = build_table_cell_display_text(paragraphs)
             cell_objects = extract_table_cell_object_evidence(
                 cell,
                 table_index=table_index,
@@ -632,15 +633,15 @@ def extract_table_dimensions(
             objects.extend(
                 cell_objects
             )
-            text = "\n".join(
-                paragraph.get("text", "")
-                for paragraph in paragraphs
-                if (paragraph.get("text") or "").strip()
-            ).strip()
+            text = display_text.strip()
             text_row.append(text)
             raw_row.append(
                 {
                     "text": text,
+                    "display_text": display_text,
+                    "normalized_text": normalize_table_cell_text(display_text),
+                    "raw_xml_text": ET.tostring(cell, encoding="unicode"),
+                    "style_runs": flatten_table_cell_style_runs(paragraphs),
                     "column_span": extract_grid_span(cell),
                     "row_span": extract_row_span(cell),
                     "borders": extract_cell_border_hints(cell),
@@ -666,6 +667,62 @@ def extract_table_dimensions(
         extract_table_border_hints(node),
         objects,
     )
+
+
+def build_table_cell_display_text(paragraphs: list[dict]) -> str:
+    return "\n".join(
+        paragraph.get("text", "")
+        for paragraph in paragraphs
+        if (paragraph.get("text") or "").strip()
+    )
+
+
+def normalize_table_cell_text(text: str) -> str:
+    normalized = " ".join(part.strip() for part in text.splitlines() if part.strip())
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    normalized = re.sub(r"\s*±\s*", "±", normalized)
+    normalized = re.sub(r"\s*([<>=≤≥])\s*", r"\1", normalized)
+    normalized = re.sub(r"\s*([;；])\s*", r"\1", normalized)
+    return normalized
+
+
+def flatten_table_cell_style_runs(paragraphs: list[dict]) -> list[dict]:
+    style_runs: list[dict] = []
+    for paragraph_index, paragraph in enumerate(paragraphs):
+        fragments = paragraph.get("fragments") if isinstance(paragraph, dict) else None
+        if not isinstance(fragments, list):
+            continue
+        for fragment_index, fragment in enumerate(fragments):
+            if not isinstance(fragment, dict):
+                continue
+            text = fragment.get("text") or ""
+            if not text:
+                continue
+            style = fragment.get("style") if isinstance(fragment.get("style"), dict) else {}
+            style_runs.append(
+                {
+                    "text": text,
+                    "kind": fragment.get("kind") or "text",
+                    "paragraph_index": paragraph_index,
+                    "fragment_index": fragment_index,
+                    "font_family": read_style_fact_value(style.get("font_family")),
+                    "font_size_pt": read_style_fact_value(style.get("font_size_pt")),
+                    "bold": read_style_fact_value(style.get("bold")),
+                    "italic": read_style_fact_value(style.get("italic")),
+                    "script_position": read_style_fact_value(
+                        style.get("script_position")
+                    ),
+                }
+            )
+    return style_runs
+
+
+def read_style_fact_value(value: object) -> object:
+    if not isinstance(value, dict):
+        return None
+    if value.get("availability") != "authoritative":
+        return None
+    return value.get("value")
 
 
 def extract_table_cell_object_evidence(
