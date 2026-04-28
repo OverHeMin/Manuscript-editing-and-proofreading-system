@@ -64,17 +64,22 @@ test("queue pane renders uploaded manuscripts with a compact capacity summary", 
       activeQueueFilter="all"
       onQueueFilterChange={() => {}}
       onOpenQueueItem={() => {}}
+      onArchiveQueueItem={() => {}}
     />,
   );
 
   assert.match(markup, /data-queue-view="worklist"/);
-  assert.match(markup, /data-queue-filter="all"/);
-  assert.match(markup, /data-queue-filter="pending"/);
-  assert.match(markup, /data-queue-filter="in_progress"/);
-  assert.match(markup, /data-queue-filter="completed"/);
-  assert.match(markup, /data-queue-filter="failed"/);
+  assert.doesNotMatch(markup, /data-queue-filter="all"/);
+  assert.doesNotMatch(markup, /data-queue-filter="pending"/);
+  assert.doesNotMatch(markup, /data-queue-filter="in_progress"/);
+  assert.doesNotMatch(markup, /data-queue-filter="completed"/);
+  assert.doesNotMatch(markup, /data-queue-filter="failed"/);
+  assert.doesNotMatch(markup, /稿件查找/u);
+  assert.doesNotMatch(markup, /placeholder="输入稿件标题或编号"/u);
   assert.match(markup, /data-queue-item-status="pending"/);
   assert.match(markup, /data-queue-item-status="failed"/);
+  assert.match(markup, /data-queue-row-action="open"/);
+  assert.match(markup, /data-queue-row-action="archive"/);
   assert.match(markup, /已上传稿件/u);
   assert.match(markup, /总并发 2，初筛并发 2，超出自动排队。/u);
   assert.match(markup, /Batch Review A/);
@@ -83,7 +88,7 @@ test("queue pane renders uploaded manuscripts with a compact capacity summary", 
   assert.doesNotMatch(markup, /data-queue-view="focus-card"/);
 });
 
-test("queue pane shows the active manuscript title in the lookup field instead of the raw manuscript id", () => {
+test("queue pane keeps the worklist compact without the legacy lookup field", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchQueuePane
       mode="proofreading"
@@ -106,10 +111,12 @@ test("queue pane shows the active manuscript title in the lookup field instead o
       activeQueueFilter="all"
       onQueueFilterChange={() => {}}
       onOpenQueueItem={() => {}}
+      onArchiveQueueItem={() => {}}
     />,
   );
 
-  assert.match(markup, /value="语义浏览器验收稿件"/u);
+  assert.match(markup, /稿件队列/u);
+  assert.doesNotMatch(markup, /value="语义浏览器验收稿件"/u);
   assert.doesNotMatch(markup, /value="manuscript-1"/);
-  assert.match(markup, /placeholder="输入稿件标题或编号"/u);
+  assert.doesNotMatch(markup, /placeholder="输入稿件标题或编号"/u);
 });

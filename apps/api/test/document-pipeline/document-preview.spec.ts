@@ -22,6 +22,8 @@ function createPreviewHarness() {
     "asset-original-1",
     "job-upload-1",
     "asset-normalized-1",
+    "asset-edited-1",
+    "asset-screening-1",
   ];
   const nextId = () => {
     const value = issuedIds.shift();
@@ -64,6 +66,7 @@ function createPreviewHarness() {
 
   return {
     manuscriptService,
+    assetService,
     workflowService,
     documentPipelineApi,
   };
@@ -261,4 +264,81 @@ test("preview session for pending normalization stays read-only and signals wait
   assert.equal(body.event_bridge?.capabilities?.locate_to_anchor, true);
   assert.equal(response.body.save_back_enabled, false);
   assert.equal(response.body.source_asset_type, "original");
+});
+
+test("preview session enables signed save-back only for editing and proofreading document reviews", async () => {
+  const { manuscriptService, assetService, documentPipelineApi } =
+    createPreviewHarness();
+  const uploadResult = await manuscriptService.upload({
+    title: "Editing Save Back",
+    manuscriptType: "review",
+    createdBy: "editor-1",
+    fileName: "editing-save-back.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    storageKey: "uploads/editing-save-back.docx",
+  });
+  const editedAsset = await assetService.createAsset({
+    manuscriptId: uploadResult.manuscript.id,
+    assetType: "edited_docx",
+    storageKey: "runs/editing/edited-save-back.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    createdBy: "editor-1",
+    fileName: "edited-save-back.docx",
+    parentAssetId: uploadResult.asset.id,
+    sourceModule: "editing",
+    sourceJobId: uploadResult.job.id,
+  });
+  const screeningAsset = await assetService.createAsset({
+    manuscriptId: uploadResult.manuscript.id,
+    assetType: "screening_report",
+    storageKey: "runs/screening/report.md",
+    mimeType: "text/markdown",
+    createdBy: "screener-1",
+    fileName: "screening-report.md",
+    parentAssetId: uploadResult.asset.id,
+    sourceModule: "screening",
+    sourceJobId: uploadResult.job.id,
+  });
+
+  const response = await documentPipelineApi.createPreviewSession({
+    manuscriptId: uploadResult.manuscript.id,
+    assetId: editedAsset.id,
+    actorRole: "editor",
+    saveBack: {
+      enabled: true,
+      module: "editing",
+      baselineAssetId: editedAsset.id,
+    },
+  } as never);
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.mode, "edit");
+  assert.equal(response.body.surface_mode, "editable_review");
+  assert.equal(response.body.source_asset_type, "edited_docx");
+  assert.equal(response.body.document.permissions.edit, true);
+  assert.equal(response.body.document.permissions.comment, true);
+  assert.equal(response.body.document.permissions.review, true);
+  assert.equal(response.body.embed.editor_config.mode, "edit");
+  assert.equal(response.body.embed.editor_config.customization.autosave, true);
+  assert.equal(response.body.embed.editor_config.customization.forcesave, true);
+  assert.equal(response.body.save_back_enabled, true);
+  assert.equal(response.body.save_back?.module, "editing");
+  assert.equal(response.body.save_back?.baseline_asset_id, editedAsset.id);
+  assert.equal(response.body.save_back?.output_asset_type, "edited_docx");
+  assert.match(response.body.save_back?.callback_token ?? "", /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u);
+
+  await assert.rejects(
+    () =>
+      documentPipelineApi.createPreviewSession({
+        manuscriptId: uploadResult.manuscript.id,
+        assetId: screeningAsset.id,
+        actorRole: "screener",
+        saveBack: {
+          enabled: true,
+          module: "editing",
+          baselineAssetId: screeningAsset.id,
+        },
+      } as never),
+    /does not support OnlyOffice save-back/u,
+  );
 });

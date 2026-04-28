@@ -43,10 +43,10 @@ export type DocumentPreviewSessionStatus =
   | "ready"
   | "failed"
   | "pending_normalization";
-export type DocumentPreviewMode = "view" | "comment" | "comment_review";
+export type DocumentPreviewMode = "view" | "edit" | "comment" | "comment_review";
 export type DocumentPreviewViewer = "onlyoffice" | "pdf" | "html";
 export type DocumentCommentSource = "onlyoffice" | "system";
-export type DocumentPreviewSurfaceMode = "read_only_review";
+export type DocumentPreviewSurfaceMode = "read_only_review" | "editable_review";
 export type DocumentPreviewSessionAuthorizationKind = "surface_session";
 export type DocumentPreviewSessionTokenScheme = "none" | "surface_session_jwt";
 export type DocumentPreviewEventBridgeTransport = "window_post_message";
@@ -61,9 +61,9 @@ export type DocumentPreviewAnchorKind =
   | "reference_entry";
 
 export interface DocumentPreviewEmbeddedDocumentPermissions {
-  edit: false;
-  comment: false;
-  review: false;
+  edit: boolean;
+  comment: boolean;
+  review: boolean;
   download: true;
   print: true;
 }
@@ -99,19 +99,19 @@ export interface DocumentPreviewEventBridge {
 }
 
 export interface DocumentPreviewEmbedEditorConfigCustomization {
-  autosave: false;
+  autosave: boolean;
   chat: false;
-  comments: false;
+  comments: boolean;
   compactHeader: true;
   compactToolbar: true;
   feedback: false;
-  forcesave: false;
+  forcesave: boolean;
   help: false;
   submitForm: false;
 }
 
 export interface DocumentPreviewEmbedEditorConfig {
-  mode: "view";
+  mode: "view" | "edit";
   lang: "zh-CN";
   customization: DocumentPreviewEmbedEditorConfigCustomization;
 }
@@ -164,7 +164,14 @@ export interface DocumentPreviewSession {
   surface_mode: DocumentPreviewSurfaceMode;
   status: DocumentPreviewSessionStatus;
   comment_source: DocumentCommentSource;
-  source_asset_type?: Extract<DocumentAssetType, "original" | "normalized_docx">;
+  source_asset_type?: Extract<
+    DocumentAssetType,
+    | "original"
+    | "normalized_docx"
+    | "edited_docx"
+    | "final_proof_annotated_docx"
+    | "human_final_docx"
+  >;
   document: DocumentPreviewEmbeddedDocument;
   authorization: DocumentPreviewSessionAuthorization;
   event_bridge: DocumentPreviewEventBridge;
@@ -173,7 +180,13 @@ export interface DocumentPreviewSession {
   updated_at?: string;
   comment_view?: DocumentCommentView[];
   comments?: DocumentCommentView[];
-  save_back_enabled: false;
+  save_back_enabled: boolean;
+  save_back?: {
+    module: Extract<ManuscriptModule, "editing" | "proofreading">;
+    baseline_asset_id: DocumentAssetId;
+    output_asset_type: Extract<DocumentAssetType, "edited_docx" | "human_final_docx">;
+    callback_token: string;
+  };
   warnings?: string[];
 }
 

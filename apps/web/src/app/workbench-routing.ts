@@ -37,6 +37,7 @@ export interface WorkbenchHandoff {
   manuscriptId?: string;
   knowledgeItemId?: string;
   assetId?: string;
+  presentation?: "fullscreen";
   revisionId?: string;
   learningCandidateId?: string;
   reviewItemId?: string;
@@ -55,6 +56,7 @@ export interface WorkbenchLocation {
   manuscriptId?: string;
   knowledgeItemId?: string;
   assetId?: string;
+  presentation?: "fullscreen";
   revisionId?: string;
   learningCandidateId?: string;
   reviewItemId?: string;
@@ -135,6 +137,8 @@ export function formatWorkbenchHash(
   const knowledgeItemId =
     typeof handoff === "string" ? undefined : handoff?.knowledgeItemId;
   const assetId = typeof handoff === "string" ? undefined : handoff?.assetId;
+  const presentation =
+    typeof handoff === "string" ? undefined : handoff?.presentation;
   const revisionId =
     typeof handoff === "string" ? undefined : handoff?.revisionId;
   const learningCandidateId =
@@ -168,6 +172,10 @@ export function formatWorkbenchHash(
 
   if (assetId && assetId.trim().length > 0) {
     params.set("assetId", assetId.trim());
+  }
+
+  if (presentation === "fullscreen") {
+    params.set("presentation", presentation);
   }
 
   if (revisionId && revisionId.trim().length > 0) {
@@ -237,6 +245,7 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
   const manuscriptId = params.get("manuscriptId")?.trim();
   const knowledgeItemId = params.get("knowledgeItemId")?.trim();
   const assetId = params.get("assetId")?.trim();
+  const presentation = normalizePresentation(params.get("presentation"));
   const revisionId = params.get("revisionId")?.trim();
   const learningCandidateId = params.get("learningCandidateId")?.trim();
   const reviewItemId = params.get("reviewItemId")?.trim();
@@ -256,6 +265,7 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
     ...(manuscriptId && manuscriptId.length > 0 ? { manuscriptId } : {}),
     ...(knowledgeItemId && knowledgeItemId.length > 0 ? { knowledgeItemId } : {}),
     ...(assetId && assetId.length > 0 ? { assetId } : {}),
+    ...(presentation ? { presentation } : {}),
     ...(revisionId && revisionId.length > 0 ? { revisionId } : {}),
     ...(learningCandidateId && learningCandidateId.length > 0
       ? { learningCandidateId }
@@ -274,6 +284,14 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
     ...(settingsSection ? { settingsSection } : {}),
     ...(harnessSection ? { harnessSection } : {}),
   };
+}
+
+function normalizePresentation(value: string | null): WorkbenchLocation["presentation"] {
+  if (value === "fullscreen") {
+    return value;
+  }
+
+  return undefined;
 }
 
 export function resolveKnowledgeLibraryEntryView(

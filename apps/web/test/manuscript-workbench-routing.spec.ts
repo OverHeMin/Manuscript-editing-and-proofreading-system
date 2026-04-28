@@ -61,6 +61,25 @@ test("workbench routing formats and resolves sample-context manuscript handoff h
   });
 });
 
+test("workbench routing preserves fullscreen manuscript detail presentation", () => {
+  const hash = formatWorkbenchHash("editing", {
+    manuscriptId: "manuscript-42",
+    assetId: "asset-edited-42",
+    presentation: "fullscreen",
+  });
+
+  assert.equal(
+    hash,
+    "#editing?manuscriptId=manuscript-42&assetId=asset-edited-42&presentation=fullscreen",
+  );
+  assert.deepEqual(resolveWorkbenchLocation(hash), {
+    workbenchId: "editing",
+    manuscriptId: "manuscript-42",
+    assetId: "asset-edited-42",
+    presentation: "fullscreen",
+  });
+});
+
 test("workbench routing keeps submission as a compatibility hash inside the manuscript desk family", () => {
   assert.equal(formatWorkbenchHash("submission"), "#submission");
   assert.deepEqual(resolveWorkbenchLocation("#submission"), {

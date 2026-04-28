@@ -71,9 +71,7 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
     timeout: 10_000,
   });
   await expect(page.locator("body")).toContainText("已自动带入稿件");
-  await expect(
-    page.getByRole("textbox", { name: /稿件查找|搜索稿件 ID/ }),
-  ).toHaveValue(manuscriptTitle);
+  await expectLoadedManuscript(page, manuscriptTitle);
 
   const runScreeningButton = page.getByRole("button", { name: "执行初筛" });
   await expect(runScreeningButton).toBeEnabled();
@@ -104,9 +102,7 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
     timeout: 10_000,
   });
   await expect(page.locator("body")).toContainText("已自动带入稿件");
-  await expect(
-    page.getByRole("textbox", { name: /稿件查找|搜索稿件 ID/ }),
-  ).toHaveValue(manuscriptTitle);
+  await expectLoadedManuscript(page, manuscriptTitle);
   const journalTemplateSelect = page
     .locator(".manuscript-workbench-field")
     .filter({ hasText: "期刊模板（小期刊/场景）" })
@@ -148,9 +144,7 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
     timeout: 10_000,
   });
   await expect(page.locator("body")).toContainText("已自动带入稿件");
-  await expect(
-    page.getByRole("textbox", { name: /稿件查找|搜索稿件 ID/ }),
-  ).toHaveValue(manuscriptTitle);
+  await expectLoadedManuscript(page, manuscriptTitle);
 
   const createDraftButton = page.getByRole("button", { name: "生成校对草稿" });
   await expect(createDraftButton).toBeEnabled();
@@ -363,6 +357,12 @@ async function waitForJob(
   };
 }
 
+async function expectLoadedManuscript(page: Page, title: string) {
+  const workspaceStage = page.locator('[data-pane="workspace-stage"]').first();
+  await expect(workspaceStage).toContainText("当前稿件");
+  await expect(workspaceStage).toContainText(title);
+}
+
 async function navigateViaHashLink(
   page: Page,
   link: Locator,
@@ -380,12 +380,16 @@ async function navigateToProofreadingIssueWorkbench(
   assetId: string,
 ) {
   const currentResultLink = page
-    .locator(`a[href="#proofreading?manuscriptId=${manuscriptId}&assetId=${assetId}"]`)
+    .getByRole("link", { name: /进入结果页|查看当前结果/ })
     .first();
   await expect(currentResultLink).toBeVisible();
+  await expect(currentResultLink).toHaveAttribute(
+    "href",
+    new RegExp(`#proofreading\\?manuscriptId=${manuscriptId}&assetId=${assetId}`),
+  );
   await navigateViaHashLink(page, currentResultLink);
   await expect(page).toHaveURL(
-    new RegExp(`#proofreading\\?manuscriptId=${manuscriptId}&assetId=${assetId}$`),
+    new RegExp(`#proofreading\\?manuscriptId=${manuscriptId}&assetId=${assetId}(&presentation=fullscreen)?$`),
   );
   await expect(
     page.locator('[data-detail-kind="proofreading_workspace"]'),
@@ -420,19 +424,21 @@ async function navigateToEditingSharedReview(
   await expect(page).toHaveURL(
     new RegExp(`#editing\\?manuscriptId=${manuscriptId}&assetId=${assetId}$`),
   );
-  const sharedReview = page.locator('[data-editing-layout="shared-review"]');
-  await expect(sharedReview).toBeVisible();
-  await expect(sharedReview).toContainText("稿件全文");
-  await expect(sharedReview).toContainText("问题与台账");
-  await expect(sharedReview.locator(".manuscript-workbench-proofreading-block").first()).toBeVisible();
-  const focusToggle = sharedReview.locator(".manuscript-workbench-proofreading-issue-toggle").first();
-  await expect(focusToggle).toBeVisible();
-  await clickViaDom(focusToggle);
-  await expect(
-    sharedReview.locator('.manuscript-workbench-proofreading-block[data-selected="true"]').first(),
-  ).toBeVisible();
-  await expect(page.locator("body")).toContainText("前置信息槽位");
-  await expect(page.locator("body")).toContainText("编辑完成门禁");
+  const onlyOfficeReview = page.locator('[data-editing-layout="onlyoffice-review"]');
+  await expect(onlyOfficeReview).toBeVisible();
+  await expect(onlyOfficeReview).toContainText("编辑稿全文");
+  await expect(onlyOfficeReview).toContainText("人工核验");
+  await expect(onlyOfficeReview).toContainText("改动台账");
+  await expect(onlyOfficeReview).toContainText("阻断项");
+
+  const blockerDetails = onlyOfficeReview
+    .locator("summary")
+    .filter({ hasText: "查看阻断详情" })
+    .first();
+  await expect(blockerDetails).toBeVisible();
+  await clickViaDom(blockerDetails);
+  await expect(onlyOfficeReview).toContainText("前置信息槽位");
+  await expect(onlyOfficeReview).toContainText("编辑完成门禁");
 }
 
 async function navigateToScreeningSharedReview(

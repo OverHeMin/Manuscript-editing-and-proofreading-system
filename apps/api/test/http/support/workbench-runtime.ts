@@ -27,6 +27,7 @@ import { InMemoryAgentRuntimeRepository } from "../../../src/modules/agent-runti
 import { AiGatewayService } from "../../../src/modules/ai-gateway/ai-gateway-service.ts";
 import { DocumentExportService } from "../../../src/modules/document-pipeline/document-export-service.ts";
 import { DocumentPreviewService } from "../../../src/modules/document-pipeline/document-preview-service.ts";
+import { OnlyOfficeSaveBackService } from "../../../src/modules/document-pipeline/onlyoffice-save-back-service.ts";
 import { OnlyOfficeSessionService } from "../../../src/modules/document-pipeline/onlyoffice-session-service.ts";
 import { PythonDocxSourceBlockResolver } from "../../../src/modules/document-pipeline/python-docx-source-block-resolver.ts";
 import { createEditingApi } from "../../../src/modules/editing/editing-api.ts";
@@ -127,6 +128,11 @@ export interface WorkbenchRuntimeBundle {
       assetId: string;
       actorRole: string;
       previewStatus?: "ready" | "pending_normalization";
+      saveBack?: {
+        enabled: boolean;
+        module: "editing" | "proofreading";
+        baselineAssetId?: string;
+      };
       comments?: Array<{
         id: string;
         author?: string;
@@ -145,7 +151,25 @@ export interface WorkbenchRuntimeBundle {
         comment_source: string;
         comments: Array<{ id: string; body: string }>;
         save_back_enabled: boolean;
+        save_back?: {
+          module: string;
+          baseline_asset_id: string;
+          callback_token: string;
+        };
+        authorization: {
+          access_token?: string;
+        };
       };
+    }>;
+    handlePreviewCallback: (input: {
+      sessionId?: string;
+      surfaceAccessToken?: string;
+      saveBackModule?: "editing" | "proofreading";
+      baselineAssetId?: string;
+      body: unknown;
+    }) => Promise<{
+      status: number;
+      body: { error: 0 };
     }>;
     exportCurrentAsset: (input: {
       manuscriptId: string;
@@ -389,6 +413,15 @@ export function createWorkbenchRuntime(input: {
   const previewService = new DocumentPreviewService({
     assetRepository,
     sessionService: new OnlyOfficeSessionService(),
+  });
+  const saveBackService = new OnlyOfficeSaveBackService({
+    manuscriptRepository,
+    assetRepository,
+    jobRepository,
+    assetService: documentAssetService,
+    uploadRootDir:
+      input.uploadRootDir ??
+      path.resolve(process.cwd(), ".local-data", "uploads", "test"),
   });
   const aiGatewayService = new AiGatewayService({
     repository: modelRepository,
@@ -712,8 +745,15 @@ export function createWorkbenchRuntime(input: {
             assetId: input.assetId,
             actorRole: input.actorRole as never,
             previewStatus: input.previewStatus,
+            saveBack: input.saveBack,
             comments: input.comments,
           }),
+        };
+      },
+      async handlePreviewCallback(input) {
+        return {
+          status: 200,
+          body: await saveBackService.handleCallback(input),
         };
       },
       async exportCurrentAsset(input) {

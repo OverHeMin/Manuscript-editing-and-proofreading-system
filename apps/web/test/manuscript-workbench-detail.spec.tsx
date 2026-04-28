@@ -40,6 +40,15 @@ test("asset detail helpers build hash-based preview routes for manuscript assets
     }),
     "#proofreading?manuscriptId=manuscript-2&assetId=asset-proof-1&reviewedCaseSnapshotId=snapshot-9",
   );
+  assert.equal(
+    buildWorkbenchAssetDetailHref({
+      mode: "editing",
+      manuscriptId: "manuscript-3",
+      assetId: "asset-edited-docx-1",
+      presentation: "fullscreen",
+    }),
+    "#editing?manuscriptId=manuscript-3&assetId=asset-edited-docx-1&presentation=fullscreen",
+  );
 });
 
 test("document preview detail keeps legacy doc manuscripts operationally pending and surfaces normalization warnings", () => {
@@ -227,6 +236,154 @@ test("proofreading workspace falls back to block view when preview session is mi
   assert.match(markup, /问题驱动工作台/u);
   assert.match(markup, /HbA1c improved after treatment\./u);
   assert.match(markup, /问题 1 项/u);
+});
+
+test("editing edited docx detail uses the onlyoffice review layout even with governance evidence", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchAssetDetailPage
+      mode="editing"
+      manuscriptTitle="编辑稿核验稿件"
+      asset={{
+        id: "asset-edited-docx-1",
+        manuscript_id: "manuscript-editing-1",
+        asset_type: "edited_docx",
+        status: "active",
+        storage_key: "runs/editing/edited.docx",
+        mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        source_module: "editing",
+        created_by: "editor-1",
+        version_no: 2,
+        is_current: true,
+        file_name: "edited.docx",
+        created_at: "2026-04-24T10:00:00.000Z",
+        updated_at: "2026-04-24T10:05:00.000Z",
+      }}
+      detailKind="document_preview"
+      backHref="#editing?manuscriptId=manuscript-editing-1"
+      downloadHref="http://localhost/api/v1/document-assets/asset-edited-docx-1/download"
+      previewSession={{
+        manuscript_id: "manuscript-editing-1",
+        source_asset_id: "asset-edited-docx-1",
+        source_asset_type: "edited_docx",
+        viewer: "onlyoffice",
+        mode: "view",
+        surface_mode: "read_only_review",
+        status: "ready",
+        mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        comment_source: "onlyoffice",
+        comments: [],
+        session_id: "preview-session-editing-1",
+        correlation_id: "preview-session-editing-1",
+        document: {
+          document_key: "asset-edited-docx-1",
+          file_name: "edited.docx",
+          file_extension: "docx",
+          mime_type:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          download_path: "/api/v1/document-assets/asset-edited-docx-1/download",
+          permissions: {
+            edit: false,
+            comment: false,
+            review: false,
+            download: true,
+            print: true,
+          },
+        },
+        authorization: {
+          kind: "surface_session",
+          requires_surface_session: true,
+          token_scheme: "none",
+        },
+        event_bridge: {
+          provider: "onlyoffice",
+          transport: "window_post_message",
+          capabilities: {
+            ready_event: true,
+            locate_to_anchor: true,
+            selection_from_document: true,
+            visible_issue_marks: false,
+            bi_directional_sync: true,
+          },
+        },
+        embed: {
+          provider: "onlyoffice",
+          provider_origin: "http://127.0.0.1:58080",
+          api_js_url: "http://127.0.0.1:58080/web-apps/apps/api/documents/api.js",
+          document_type: "word",
+          ui_type: "desktop",
+          editor_config: {
+            mode: "view",
+            lang: "zh-CN",
+            customization: {
+              autosave: false,
+              chat: false,
+              comments: false,
+              compactHeader: true,
+              compactToolbar: true,
+              feedback: false,
+              forcesave: false,
+              help: false,
+              submitForm: false,
+            },
+          },
+        },
+        save_back_enabled: false,
+        warnings: [],
+      }}
+      editingDocumentBlocks={[
+        {
+          blockId: "editing-block-1",
+          blockIndex: 1,
+          sourceLocator: "body:p:1",
+          sectionLabel: "摘要",
+          blockKind: "paragraph",
+          text: "编辑后的摘要文本。",
+        },
+      ]}
+      changeLedger={[
+        {
+          id: "change-1",
+          sourceLabel: "rule-abstract",
+          before: "旧摘要",
+          after: "新摘要",
+          locationText: "body:p:1",
+          blockIndex: 1,
+        },
+      ]}
+      executionSnapshot={{
+        id: "snapshot-editing-docx-1",
+        manuscript_id: "manuscript-editing-1",
+        module: "editing",
+        job_id: "job-editing-docx-1",
+        execution_profile_id: "execution-profile-editing-1",
+        module_template_id: "template-editing-1",
+        module_template_version_no: 1,
+        prompt_template_id: "prompt-editing-1",
+        prompt_template_version: "v1",
+        skill_package_ids: [],
+        skill_package_versions: [],
+        model_id: "gpt-5.4",
+        knowledge_item_ids: [],
+        created_asset_ids: ["asset-edited-docx-1"],
+        created_at: "2026-04-24T10:00:00.000Z",
+        agent_execution: {
+          observation_status: "not_linked",
+        },
+        runtime_binding_readiness: {
+          observation_status: "failed_open",
+          error: "not used",
+        },
+      }}
+    />,
+  );
+
+  assert.match(markup, /data-editing-layout="onlyoffice-review"/u);
+  assert.match(markup, /data-document-surface-provider="onlyoffice"/u);
+  assert.match(markup, /编辑结果核验/u);
+  assert.match(markup, /人工核验/u);
+  assert.match(markup, /改动台账/u);
+  assert.doesNotMatch(markup, /data-editing-layout="shared-review"/u);
+  assert.doesNotMatch(markup, /编辑共享审阅工作台/u);
 });
 
 test("asset detail kind routes proofreading draft reports into the dedicated issue workbench", () => {
@@ -2042,21 +2199,18 @@ test("editing detail page renders the shared review workspace with full text on 
     />,
   );
 
-  assert.match(markup, /data-editing-layout="shared-review"/);
+  assert.match(markup, /data-editing-layout="onlyoffice-review"/);
   assert.match(markup, /运行时绑定与自动动作账本/u);
   assert.match(markup, /full_rebuild/u);
   assert.match(markup, /apply_three_line_table_style/u);
   assert.match(markup, /验证 passed/u);
-  assert.match(markup, /编辑共享审阅工作台/u);
-  assert.match(markup, /左全文右问题的编辑审阅台/u);
-  assert.match(markup, /稿件全文/u);
-  assert.match(markup, /问题与台账/u);
+  assert.doesNotMatch(markup, /编辑共享审阅工作台/u);
+  assert.match(markup, /编辑结果核验/u);
+  assert.match(markup, /编辑稿全文/u);
+  assert.match(markup, /人工核验/u);
   assert.match(markup, /张三, 李四/u);
   assert.match(markup, /卡方检验结果见表 1/u);
-  assert.match(markup, /槽位 · 作者署名/u);
-  assert.match(markup, /门禁 · 高风险对象待人工确认：图片对象/u);
-  assert.match(markup, /拦截 · 对象类型不安全（object_type_not_safe）/u);
-  assert.match(markup, /改动 · rule-author-layout/u);
+  assert.match(markup, /阻断项/u);
   assert.match(markup, /前置信息槽位/u);
   assert.match(markup, /编辑完成门禁/u);
   assert.match(markup, /改动台账/u);

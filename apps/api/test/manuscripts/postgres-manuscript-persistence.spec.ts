@@ -67,6 +67,63 @@ test("postgres manuscript repository persists current journal template selection
   });
 });
 
+test("postgres manuscript repository lists recent non-archived records and soft archives", async () => {
+  await withMigratedManuscriptPool(async (pool) => {
+    const repository = new PostgresManuscriptRepository({
+      client: pool,
+    });
+
+    await repository.save({
+      id: "44444444-4444-4444-8444-444444444444",
+      title: "Older manuscript",
+      manuscript_type: "review",
+      status: "uploaded",
+      created_by: "editor-1",
+      created_at: "2026-04-07T09:00:00.000Z",
+      updated_at: "2026-04-07T09:00:00.000Z",
+    });
+    await repository.save({
+      id: "55555555-5555-4555-8555-555555555555",
+      title: "Recent manuscript",
+      manuscript_type: "clinical_study",
+      status: "completed",
+      created_by: "editor-1",
+      created_at: "2026-04-07T10:00:00.000Z",
+      updated_at: "2026-04-07T11:00:00.000Z",
+    });
+    await repository.save({
+      id: "66666666-6666-4666-8666-666666666666",
+      title: "Archived manuscript",
+      manuscript_type: "review",
+      status: "archived",
+      created_by: "editor-1",
+      created_at: "2026-04-07T12:00:00.000Z",
+      updated_at: "2026-04-07T12:00:00.000Z",
+    });
+
+    const recent = await repository.listRecent(50);
+    const archived = await repository.archive(
+      "55555555-5555-4555-8555-555555555555",
+      "2026-04-07T12:30:00.000Z",
+    );
+    const afterArchive = await repository.listRecent(50);
+
+    assert.deepEqual(
+      recent.map((manuscript) => manuscript.id),
+      [
+        "55555555-5555-4555-8555-555555555555",
+        "44444444-4444-4444-8444-444444444444",
+      ],
+    );
+    assert.equal(archived?.status, "archived");
+    assert.equal(archived?.updated_at, "2026-04-07T12:30:00.000Z");
+    assert.deepEqual(
+      afterArchive.map((manuscript) => manuscript.id),
+      ["44444444-4444-4444-8444-444444444444"],
+    );
+  });
+});
+
 async function withMigratedManuscriptPool(
   run: (pool: Pool) => Promise<void>,
 ): Promise<void> {

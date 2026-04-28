@@ -209,12 +209,14 @@ export function buildWorkbenchAssetDetailHref(input: {
   mode: ManuscriptWorkbenchMode;
   manuscriptId: string;
   assetId: string;
+  presentation?: "fullscreen";
   reviewedCaseSnapshotId?: string;
   sampleSetItemId?: string;
 }): string {
   return formatWorkbenchHash(input.mode, {
     manuscriptId: input.manuscriptId,
     assetId: input.assetId,
+    presentation: input.presentation,
     reviewedCaseSnapshotId: input.reviewedCaseSnapshotId,
     sampleSetItemId: input.sampleSetItemId,
   });
@@ -1954,6 +1956,170 @@ export function ManuscriptWorkbenchAssetDetailPage({
             ) : null}
             {governanceEvidenceCard}
           </article>
+        </div>
+      </section>
+    );
+  }
+
+  if (
+    mode === "editing" &&
+    detailKind === "document_preview" &&
+    asset.asset_type === "edited_docx"
+  ) {
+    const showsOnlyOfficeSurface = Boolean(
+      previewSession && supportsOnlyOfficePreviewSurface(previewSession),
+    );
+
+    return (
+      <section
+        className="manuscript-workbench-detail-page manuscript-workbench-editing-onlyoffice-layout"
+        data-detail-kind={detailKind}
+        data-editing-layout="onlyoffice-review"
+      >
+        <header className="manuscript-workbench-detail-header">
+          <div className="manuscript-workbench-detail-copy">
+            <span className="manuscript-workbench-section-eyebrow">
+              编辑结果核验
+            </span>
+            <h3>编辑稿全文核验页</h3>
+            <p>{manuscriptTitle}</p>
+          </div>
+          <div className="manuscript-workbench-detail-actions">
+            <a className="manuscript-workbench-shortcut" href={backHref}>
+              返回工作台
+            </a>
+            <a
+              className="manuscript-workbench-shortcut"
+              href={downloadHref}
+              target="_blank"
+              rel="noreferrer"
+            >
+              打开编辑稿
+            </a>
+            <a className="manuscript-workbench-shortcut" href={downloadHref} download>
+              {resolveDetailDownloadLabel(asset)}
+            </a>
+          </div>
+        </header>
+
+        <div className="manuscript-workbench-editing-onlyoffice-grid">
+          <article className="manuscript-workbench-editing-onlyoffice-document">
+            <div className="manuscript-workbench-detail-card-header">
+              <div>
+                <h4>编辑稿全文</h4>
+                <p>{assetDisplayName}</p>
+                <small>{assetRoleLabel}</small>
+              </div>
+            </div>
+            {showsOnlyOfficeSurface ? (
+              <OnlyOfficePreviewSurface previewSession={previewSession!} />
+            ) : editingDocumentBlocks.length > 0 ? (
+              <div className="manuscript-workbench-proofreading-block-list">
+                {editingDocumentBlocks.map((block) => (
+                  <article
+                    key={block.blockId}
+                    id={block.blockId}
+                    className="manuscript-workbench-proofreading-block"
+                  >
+                    <header>
+                      <strong>{formatWorkbenchDocumentBlockLabel(block)}</strong>
+                      <span>{block.blockKind ?? "paragraph"}</span>
+                    </header>
+                    <p>{block.text}</p>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="manuscript-workbench-detail-empty">
+                <strong>编辑稿预览暂不可用</strong>
+                <p>可以先打开或下载编辑稿，待预览服务完成转换后再回到本页核验。</p>
+              </div>
+            )}
+          </article>
+
+          <aside className="manuscript-workbench-editing-onlyoffice-review">
+            <section className="manuscript-workbench-detail-ledger-card">
+              <div className="manuscript-workbench-detail-card-header">
+                <div>
+                  <h4>人工核验</h4>
+                  <p>在左侧通读编辑稿，右侧只保留必要核验入口。</p>
+                </div>
+              </div>
+              <dl className="manuscript-workbench-detail-metadata">
+                <div>
+                  <dt>编辑稿</dt>
+                  <dd>{assetDisplayName}</dd>
+                </div>
+                <div>
+                  <dt>预览</dt>
+                  <dd>
+                    {previewOperationalState
+                      ? formatPreviewStatusLabel(previewOperationalState.status)
+                      : "待生成"}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+
+            <section className="manuscript-workbench-detail-ledger-card">
+              <div className="manuscript-workbench-detail-card-header">
+                <div>
+                  <h4>改动台账</h4>
+                  <p>{changeLedger.length > 0 ? `共 ${changeLedger.length} 条` : "暂无台账"}</p>
+                </div>
+              </div>
+              {changeLedger.length > 0 ? (
+                <ul className="manuscript-workbench-detail-ledger-list manuscript-workbench-detail-ledger-list--compact">
+                  {changeLedger.slice(0, 6).map((entry) => (
+                    <li key={entry.id} className="manuscript-workbench-detail-ledger-item">
+                      <header>
+                        <strong>{entry.sourceLabel}</strong>
+                        {entry.locationText ? <span>{entry.locationText}</span> : null}
+                      </header>
+                      <p>{entry.after}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="manuscript-workbench-detail-empty">
+                  <strong>暂无改动台账</strong>
+                  <p>当前编辑任务没有保存结构化改动记录。</p>
+                </div>
+              )}
+            </section>
+
+            <section className="manuscript-workbench-detail-ledger-card">
+              <div className="manuscript-workbench-detail-card-header">
+                <div>
+                  <h4>阻断项</h4>
+                  <p>只提示会影响人工放行的问题。</p>
+                </div>
+              </div>
+              {editingCompletionGateCard || editingGuardrailCard || editingSlotGovernanceCard ? (
+                <details className="manuscript-workbench-result-details">
+                  <summary>查看阻断详情</summary>
+                  <div className="manuscript-workbench-result-details-body">
+                    {editingCompletionGateCard}
+                    {editingGuardrailCard}
+                    {editingSlotGovernanceCard}
+                  </div>
+                </details>
+              ) : (
+                <div className="manuscript-workbench-detail-empty">
+                  <strong>暂无阻断项</strong>
+                  <p>当前编辑结果没有需要优先处理的阻断问题。</p>
+                </div>
+              )}
+            </section>
+
+            <details className="manuscript-workbench-result-details">
+              <summary>查看详细治理信息</summary>
+              <div className="manuscript-workbench-result-details-body">
+                {editingRuntimeBindingCard}
+                {governanceEvidenceCard}
+              </div>
+            </details>
+          </aside>
         </div>
       </section>
     );

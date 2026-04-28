@@ -5,6 +5,7 @@ import type {
   ProofreadingIssueAnchorInputViewModel,
   DocumentPreviewViewModel,
   DocumentPreviewSessionViewModel,
+  DocumentPreviewSaveBackModule,
 } from "./types.ts";
 
 export interface DocumentPreviewHttpClient {
@@ -44,6 +45,11 @@ export function createPreviewSession(
     assetId: string;
     actorRole: string;
     previewStatus?: "ready" | "pending_normalization";
+    saveBack?: {
+      enabled: boolean;
+      module: DocumentPreviewSaveBackModule;
+      baselineAssetId?: string;
+    };
     comments?: Array<{
       id: string;
       author?: string;

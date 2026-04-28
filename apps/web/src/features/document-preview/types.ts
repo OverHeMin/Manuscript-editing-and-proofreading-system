@@ -1,6 +1,8 @@
 export type DocumentPreviewStatus = "ready" | "pending_normalization";
-export type DocumentPreviewSurfaceMode = "read_only_review";
+export type DocumentPreviewSurfaceMode = "read_only_review" | "editable_review";
+export type DocumentPreviewMode = "view" | "edit";
 export type DocumentPreviewSessionTokenScheme = "none" | "surface_session_jwt";
+export type DocumentPreviewSaveBackModule = "editing" | "proofreading";
 export type ProofreadingDocumentAnchorKind =
   | "block"
   | "paragraph"
@@ -74,11 +76,16 @@ export interface DocumentPreviewViewModel {
 export interface DocumentPreviewSessionViewModel {
   manuscript_id: string;
   source_asset_id: string;
-  source_asset_type: "original" | "normalized_docx";
+  source_asset_type:
+    | "original"
+    | "normalized_docx"
+    | "edited_docx"
+    | "final_proof_annotated_docx"
+    | "human_final_docx";
   session_id: string;
   correlation_id: string;
   viewer: "onlyoffice";
-  mode: "view";
+  mode: DocumentPreviewMode;
   surface_mode: DocumentPreviewSurfaceMode;
   status: DocumentPreviewStatus;
   mime_type: string;
@@ -90,9 +97,9 @@ export interface DocumentPreviewSessionViewModel {
     mime_type: string;
     download_path: string;
     permissions: {
-      edit: false;
-      comment: false;
-      review: false;
+      edit: boolean;
+      comment: boolean;
+      review: boolean;
       download: true;
       print: true;
     };
@@ -121,23 +128,29 @@ export interface DocumentPreviewSessionViewModel {
     document_type: "word";
     ui_type: "desktop";
     editor_config: {
-      mode: "view";
+      mode: DocumentPreviewMode;
       lang: "zh-CN";
       customization: {
-        autosave: false;
+        autosave: boolean;
         chat: false;
-        comments: false;
+        comments: boolean;
         compactHeader: true;
         compactToolbar: true;
         feedback: false;
-        forcesave: false;
+        forcesave: boolean;
         help: false;
         submitForm: false;
       };
     };
   };
   comments: DocumentPreviewCommentViewModel[];
-  save_back_enabled: false;
+  save_back_enabled: boolean;
+  save_back?: {
+    module: DocumentPreviewSaveBackModule;
+    baseline_asset_id: string;
+    output_asset_type: "edited_docx" | "human_final_docx";
+    callback_token: string;
+  };
   warnings: string[];
 }
 

@@ -17,17 +17,29 @@ export interface CreateOnlyOfficeViewSessionInput {
   actorRole: RoleKey;
   previewStatus: "ready" | "pending_normalization";
   comments?: DocumentPreviewComment[];
+  saveBack?: {
+    enabled: boolean;
+    module: "editing" | "proofreading";
+    baselineAssetId: string;
+  };
 }
+
+export type OnlyOfficePreviewSourceAssetType =
+  | "original"
+  | "normalized_docx"
+  | "edited_docx"
+  | "final_proof_annotated_docx"
+  | "human_final_docx";
 
 export interface OnlyOfficeViewSession {
   manuscript_id: string;
   source_asset_id: string;
-  source_asset_type: "original" | "normalized_docx";
+  source_asset_type: OnlyOfficePreviewSourceAssetType;
   session_id: string;
   correlation_id: string;
   viewer: "onlyoffice";
-  mode: "view";
-  surface_mode: "read_only_review";
+  mode: "view" | "edit";
+  surface_mode: "read_only_review" | "editable_review";
   status: "ready" | "pending_normalization";
   mime_type: string;
   comment_source: "onlyoffice";
@@ -38,9 +50,9 @@ export interface OnlyOfficeViewSession {
     mime_type: string;
     download_path: string;
     permissions: {
-      edit: false;
-      comment: false;
-      review: false;
+      edit: boolean;
+      comment: boolean;
+      review: boolean;
       download: true;
       print: true;
     };
@@ -69,23 +81,29 @@ export interface OnlyOfficeViewSession {
     document_type: "word";
     ui_type: "desktop";
     editor_config: {
-      mode: "view";
+      mode: "view" | "edit";
       lang: "zh-CN";
       customization: {
-        autosave: false;
+        autosave: boolean;
         chat: false;
-        comments: false;
+        comments: boolean;
         compactHeader: true;
         compactToolbar: true;
         feedback: false;
-        forcesave: false;
+        forcesave: boolean;
         help: false;
         submitForm: false;
       };
     };
   };
   comments: DocumentPreviewComment[];
-  save_back_enabled: false;
+  save_back_enabled: boolean;
+  save_back?: {
+    module: "editing" | "proofreading";
+    baseline_asset_id: string;
+    output_asset_type: "edited_docx" | "human_final_docx";
+    callback_token: string;
+  };
   warnings: string[];
 }
 
@@ -101,6 +119,12 @@ export interface SurfaceSessionAccessTokenClaims {
   asset_id: string;
   actor_role: RoleKey;
   preview_status: "ready" | "pending_normalization";
+  document_key?: string;
+  save_back?: {
+    module: "editing" | "proofreading";
+    baseline_asset_id: string;
+    output_asset_type: "edited_docx" | "human_final_docx";
+  };
 }
 
 export class OnlyOfficeSessionService {
@@ -118,11 +142,21 @@ export class OnlyOfficeSessionService {
       "";
   }
 
+  hasSurfaceSessionSecret(): boolean {
+    return this.surfaceSessionSecret.length > 0;
+  }
+
   createViewSession(
     input: CreateOnlyOfficeViewSessionInput,
   ): OnlyOfficeViewSession {
     const sessionId = this.createId();
     const fileName = resolveDocumentFileName(input.asset);
+    const signedDocumentKey = createOnlyOfficeDocumentKey(input.asset.id, sessionId);
+    const saveBack = input.saveBack?.enabled === true ? input.saveBack : undefined;
+    const editable = Boolean(saveBack);
+    const outputAssetType = saveBack
+      ? resolveSaveBackOutputAssetType(saveBack.module)
+      : undefined;
     const accessToken = this.surfaceSessionSecret
       ? createSurfaceSessionAccessToken({
           secret: this.surfaceSessionSecret,
@@ -131,19 +165,28 @@ export class OnlyOfficeSessionService {
           assetId: input.asset.id,
           actorRole: input.actorRole,
           previewStatus: input.previewStatus,
+          documentKey: signedDocumentKey,
+          ...(saveBack && outputAssetType
+            ? {
+                saveBack: {
+                  module: saveBack.module,
+                  baselineAssetId: saveBack.baselineAssetId,
+                  outputAssetType,
+                },
+              }
+            : {}),
         })
       : undefined;
 
     return {
       manuscript_id: input.manuscriptId,
       source_asset_id: input.asset.id,
-      source_asset_type:
-        input.asset.asset_type === "normalized_docx" ? "normalized_docx" : "original",
+      source_asset_type: resolvePreviewSourceAssetType(input.asset),
       session_id: sessionId,
       correlation_id: sessionId,
       viewer: "onlyoffice",
-      mode: "view",
-      surface_mode: "read_only_review",
+      mode: editable ? "edit" : "view",
+      surface_mode: editable ? "editable_review" : "read_only_review",
       status: input.previewStatus,
       mime_type: input.asset.mime_type,
       comment_source: "onlyoffice",
@@ -157,9 +200,9 @@ export class OnlyOfficeSessionService {
         mime_type: input.asset.mime_type,
         download_path: `/api/v1/document-assets/${input.asset.id}/download`,
         permissions: {
-          edit: false,
-          comment: false,
-          review: false,
+          edit: editable,
+          comment: editable,
+          review: editable,
           download: true,
           print: true,
         },
@@ -192,25 +235,59 @@ export class OnlyOfficeSessionService {
         document_type: "word",
         ui_type: "desktop",
         editor_config: {
-          mode: "view",
+          mode: editable ? "edit" : "view",
           lang: "zh-CN",
           customization: {
-            autosave: false,
+            autosave: editable,
             chat: false,
-            comments: false,
+            comments: editable,
             compactHeader: true,
             compactToolbar: true,
             feedback: false,
-            forcesave: false,
+            forcesave: editable,
             help: false,
             submitForm: false,
           },
         },
       },
       comments: [...(input.comments ?? [])],
-      save_back_enabled: false,
+      save_back_enabled: editable,
+      ...(saveBack && outputAssetType && accessToken
+        ? {
+            save_back: {
+              module: saveBack.module,
+              baseline_asset_id: saveBack.baselineAssetId,
+              output_asset_type: outputAssetType,
+              callback_token: accessToken,
+            },
+          }
+        : {}),
       warnings: [],
     };
+  }
+}
+
+function createOnlyOfficeDocumentKey(assetId: string, sessionId: string): string {
+  return `${assetId}-${sessionId}`;
+}
+
+function resolveSaveBackOutputAssetType(
+  module: "editing" | "proofreading",
+): "edited_docx" | "human_final_docx" {
+  return module === "editing" ? "edited_docx" : "human_final_docx";
+}
+
+function resolvePreviewSourceAssetType(
+  asset: DocumentAssetRecord,
+): OnlyOfficePreviewSourceAssetType {
+  switch (asset.asset_type) {
+    case "normalized_docx":
+    case "edited_docx":
+    case "final_proof_annotated_docx":
+    case "human_final_docx":
+      return asset.asset_type;
+    default:
+      return "original";
   }
 }
 
@@ -254,6 +331,12 @@ function createSurfaceSessionAccessToken(input: {
   assetId: string;
   actorRole: RoleKey;
   previewStatus: "ready" | "pending_normalization";
+  documentKey?: string;
+  saveBack?: {
+    module: "editing" | "proofreading";
+    baselineAssetId: string;
+    outputAssetType: "edited_docx" | "human_final_docx";
+  };
 }): string {
   const encodedHeader = Buffer.from(
     JSON.stringify({
@@ -269,6 +352,16 @@ function createSurfaceSessionAccessToken(input: {
       asset_id: input.assetId,
       actor_role: input.actorRole,
       preview_status: input.previewStatus,
+      ...(input.documentKey ? { document_key: input.documentKey } : {}),
+      ...(input.saveBack
+        ? {
+            save_back: {
+              module: input.saveBack.module,
+              baseline_asset_id: input.saveBack.baselineAssetId,
+              output_asset_type: input.saveBack.outputAssetType,
+            },
+          }
+        : {}),
     }),
   ).toString("base64url");
   const signature = createHmac("sha256", input.secret)
@@ -315,6 +408,9 @@ export function verifySurfaceSessionAccessToken(input: {
 
   const record = payload as Record<string, unknown>;
   const previewStatus = record.preview_status;
+  const documentKey =
+    typeof record.document_key === "string" ? record.document_key : undefined;
+  const saveBack = parseSaveBackClaims(record.save_back);
   if (
     record.sub !== "document-preview-surface-session" ||
     typeof record.session_id !== "string" ||
@@ -332,6 +428,32 @@ export function verifySurfaceSessionAccessToken(input: {
     asset_id: record.asset_id,
     actor_role: record.actor_role as RoleKey,
     preview_status: previewStatus,
+    ...(documentKey ? { document_key: documentKey } : {}),
+    ...(saveBack ? { save_back: saveBack } : {}),
+  };
+}
+
+function parseSaveBackClaims(value: unknown): SurfaceSessionAccessTokenClaims["save_back"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const module = record.module;
+  const baselineAssetId = record.baseline_asset_id;
+  const outputAssetType = record.output_asset_type;
+  if (
+    (module !== "editing" && module !== "proofreading") ||
+    typeof baselineAssetId !== "string" ||
+    (outputAssetType !== "edited_docx" && outputAssetType !== "human_final_docx")
+  ) {
+    return undefined;
+  }
+
+  return {
+    module,
+    baseline_asset_id: baselineAssetId,
+    output_asset_type: outputAssetType,
   };
 }
 

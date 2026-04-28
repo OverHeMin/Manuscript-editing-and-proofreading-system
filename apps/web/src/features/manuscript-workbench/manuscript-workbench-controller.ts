@@ -19,6 +19,8 @@ import {
   getJob,
   getManuscript,
   getModuleExecutionConcurrency,
+  archiveManuscript as archiveManuscriptRequest,
+  listRecentManuscripts as listRecentManuscriptsRequest,
   listManuscriptAssets,
   uploadManuscriptBatch,
   uploadManuscript,
@@ -261,6 +263,8 @@ export interface UpdateTemplateSelectionAndLoadInput {
 }
 
 export interface ManuscriptWorkbenchController {
+  listRecentManuscripts(input?: { limit?: number }): Promise<ManuscriptViewModel[]>;
+  archiveManuscript(input: { manuscriptId: string }): Promise<ManuscriptViewModel>;
   loadWorkspace(
     manuscriptId: string,
     options?: ManuscriptWorkbenchWorkspaceLoadOptions,
@@ -313,6 +317,11 @@ export interface ManuscriptWorkbenchController {
     assetId: string;
     actorRole: AuthRole;
     previewStatus?: "ready" | "pending_normalization";
+    saveBack?: {
+      enabled: boolean;
+      module: "editing" | "proofreading";
+      baselineAssetId?: string;
+    };
     comments?: Array<{
       id: string;
       author?: string;
@@ -340,6 +349,14 @@ export function createManuscriptWorkbenchController(
   ) => loadWorkspace(client, manuscriptId, knowledgeReferenceCache, options);
 
   return {
+    async listRecentManuscripts(input) {
+      const response = await listRecentManuscriptsRequest(client, input);
+      return response.body;
+    },
+    async archiveManuscript(input) {
+      const response = await archiveManuscriptRequest(client, input);
+      return response.body;
+    },
     loadWorkspace(manuscriptId, options) {
       return loadWorkspaceWithKnowledge(manuscriptId, options);
     },
@@ -528,6 +545,7 @@ export function createManuscriptWorkbenchController(
         assetId: input.assetId,
         actorRole: input.actorRole,
         ...(input.previewStatus ? { previewStatus: input.previewStatus } : {}),
+        ...(input.saveBack ? { saveBack: input.saveBack } : {}),
         ...(input.comments ? { comments: input.comments } : {}),
       });
       return response.body;

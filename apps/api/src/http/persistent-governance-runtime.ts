@@ -43,6 +43,7 @@ import {
   DocumentStructureService,
   DocumentExportService,
   EditorialDocxTransformService,
+  OnlyOfficeSaveBackService,
   PythonDocxSourceBlockResolver,
   PythonDocxStructureWorkerAdapter,
 } from "../modules/document-pipeline/index.ts";
@@ -492,6 +493,14 @@ export function createPersistentGovernanceRuntime(
   const previewService = new DocumentPreviewService({
     assetRepository,
     sessionService: new OnlyOfficeSessionService(),
+  });
+  const saveBackService = new OnlyOfficeSaveBackService({
+    manuscriptRepository,
+    assetRepository,
+    jobRepository,
+    assetService: documentAssetService,
+    uploadRootDir,
+    transactionManager: workbenchTransactionManager,
   });
   const feedbackGovernanceService = new FeedbackGovernanceService({
     repository: feedbackGovernanceRepository,
@@ -989,6 +998,12 @@ export function createPersistentGovernanceRuntime(
         return {
           status: 200,
           body: await previewService.createPreviewSession(input),
+        };
+      },
+      async handlePreviewCallback(input) {
+        return {
+          status: 200,
+          body: await saveBackService.handleCallback(input),
         };
       },
       async exportCurrentAsset(input) {

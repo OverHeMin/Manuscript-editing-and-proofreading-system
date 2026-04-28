@@ -108,6 +108,52 @@ function createLifecycleHarness(
   };
 }
 
+test("manuscript lifecycle lists recent active manuscripts and archives rows", async () => {
+  const { manuscriptService, manuscriptRepository } = createLifecycleHarness();
+  await manuscriptRepository.save({
+    id: "manuscript-old",
+    title: "Old manuscript",
+    manuscript_type: "review",
+    status: "uploaded",
+    created_by: "editor-1",
+    created_at: "2026-03-25T09:00:00.000Z",
+    updated_at: "2026-03-25T09:00:00.000Z",
+  });
+  await manuscriptRepository.save({
+    id: "manuscript-recent",
+    title: "Recent manuscript",
+    manuscript_type: "clinical_study",
+    status: "completed",
+    created_by: "editor-1",
+    created_at: "2026-03-25T10:00:00.000Z",
+    updated_at: "2026-03-26T09:00:00.000Z",
+  });
+  await manuscriptRepository.save({
+    id: "manuscript-archived",
+    title: "Archived manuscript",
+    manuscript_type: "review",
+    status: "archived",
+    created_by: "editor-1",
+    created_at: "2026-03-25T11:00:00.000Z",
+    updated_at: "2026-03-26T09:30:00.000Z",
+  });
+
+  const recent = await manuscriptService.listRecentManuscripts(50);
+  const archived = await manuscriptService.archiveManuscript("manuscript-recent");
+  const afterArchive = await manuscriptService.listRecentManuscripts(50);
+
+  assert.deepEqual(
+    recent.map((manuscript) => manuscript.id),
+    ["manuscript-recent", "manuscript-old"],
+  );
+  assert.equal(archived.status, "archived");
+  assert.equal(archived.updated_at, "2026-03-26T10:00:00.000Z");
+  assert.deepEqual(
+    afterArchive.map((manuscript) => manuscript.id),
+    ["manuscript-old"],
+  );
+});
+
 function createSettlementLifecycleHarness(options?: {
   issuedIds?: string[];
   agentExecutionLogs?: AgentExecutionLogRecord[];

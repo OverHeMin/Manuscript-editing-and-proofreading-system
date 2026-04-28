@@ -7,3 +7,4 @@ export * from "./document-export-service.ts";
 export * from "./editorial-docx-transform-service.ts";
 export * from "./document-pipeline-api.ts";
 export * from "./local-doc-to-docx-converter.ts";
+export * from "./onlyoffice-save-back-service.ts";
