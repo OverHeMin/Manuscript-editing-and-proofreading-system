@@ -32,6 +32,12 @@ function buildLedgerViewModel() {
         selected_revision_id: "knowledge-1-revision-2",
         semantic_status: "pending_confirmation",
         content_block_count: 2,
+        usage_metrics: {
+          retrieval_count: 7,
+          retrieval_count_30d: 2,
+          last_used_at: "2026-04-27T08:00:00.000Z",
+          revision_count: 2,
+        },
         contributor_label: "editor.zh",
         updated_at: "2026-04-08T08:30:00.000Z",
       },
@@ -48,6 +54,12 @@ function buildLedgerViewModel() {
         selected_revision_id: "knowledge-1-revision-2",
         semantic_status: "pending_confirmation",
         content_block_count: 2,
+        usage_metrics: {
+          retrieval_count: 7,
+          retrieval_count_30d: 2,
+          last_used_at: "2026-04-27T08:00:00.000Z",
+          revision_count: 2,
+        },
         contributor_label: "editor.zh",
         updated_at: "2026-04-08T08:30:00.000Z",
       },
@@ -69,6 +81,12 @@ function buildLedgerViewModel() {
       selected_revision_id: "knowledge-1-revision-2",
       semantic_status: "pending_confirmation",
       content_block_count: 2,
+      usage_metrics: {
+        retrieval_count: 7,
+        retrieval_count_30d: 2,
+        last_used_at: "2026-04-27T08:00:00.000Z",
+        revision_count: 2,
+      },
       contributor_label: "editor.zh",
       updated_at: "2026-04-08T08:30:00.000Z",
     },
@@ -177,6 +195,35 @@ function buildBoundDraftComposer(): KnowledgeLibraryLedgerComposer {
   };
 }
 
+function buildKnowledgeCandidateComposer(): KnowledgeLibraryLedgerComposer {
+  const composer = createEmptyLedgerComposer();
+  return {
+    ...composer,
+    sourceLearningCandidateId: "candidate-knowledge-1",
+    sourceSummary: {
+      candidateId: "candidate-knowledge-1",
+      manuscriptId: "manuscript-1",
+      module: "proofreading",
+      manuscriptType: "clinical_study",
+      provenanceLabel: "人工确认回流",
+      sourceAssetId: "asset-final-1",
+      beforeFragment: "旧表注处理",
+      afterFragment: "确认后的表注处理",
+      evidenceSummary: "人工校对确认。",
+      proposalText: "沉淀为知识。",
+    },
+    draft: {
+      ...composer.draft,
+      title: "临床研究表注处理",
+      canonicalText: "表注应置于表格下方，并解释统计缩写。",
+      knowledgeKind: "reference",
+      moduleScope: "proofreading",
+      manuscriptTypes: ["clinical_study"],
+      sourceLearningCandidateId: "candidate-knowledge-1",
+    },
+  };
+}
+
 function buildEvidenceGapDraftComposer(): KnowledgeLibraryLedgerComposer {
   const composer = buildPersistedDraftComposer();
   return {
@@ -229,6 +276,12 @@ test("knowledge library ledger page renders the approved toolbar and default col
   assert.match(markup, /data-column="aliases"/u);
   assert.match(markup, /data-column="scenarios"/u);
   assert.match(markup, /data-column="riskTags"/u);
+  assert.match(markup, /data-column="retrievalCount"/u);
+  assert.match(markup, /data-column="recentRetrievalCount"/u);
+  assert.match(markup, /data-column="lastUsedAt"/u);
+  assert.match(markup, /data-column="revisionCount"/u);
+  assert.match(markup, /7/u);
+  assert.match(markup, /2026-04-27/u);
   assert.match(markup, /data-column="contributor"/u);
   assert.match(markup, /data-column="revisionId"/u);
   assert.match(markup, /data-column="archivedAt"/u);
@@ -286,6 +339,25 @@ test("knowledge library ledger page switches the board footer to save and submit
   assert.match(markup, /data-board-action="save-draft"/u);
   assert.match(markup, /data-board-action="submit-review"/u);
   assert.doesNotMatch(markup, /data-board-action="confirm-entry"/u);
+});
+
+test("knowledge library ledger page renders knowledge candidate source before draft materialization", () => {
+  const markup = renderToStaticMarkup(
+    <KnowledgeLibraryLedgerPage
+      initialViewModel={buildLedgerViewModel()}
+      initialComposer={buildKnowledgeCandidateComposer()}
+      initialFormMode="create"
+      prefilledLearningCandidateId="candidate-knowledge-1"
+    />,
+  );
+
+  assert.match(markup, /data-prefilled-learning-candidate-id="candidate-knowledge-1"/u);
+  assert.match(markup, /knowledge-candidate-source-strip/u);
+  assert.match(markup, /人工确认回流/u);
+  assert.match(markup, /candidate-knowledge-1/u);
+  assert.match(markup, /data-board-action="save-draft"/u);
+  assert.match(markup, /data-board-action="confirm-entry"/u);
+  assert.doesNotMatch(markup, /data-board-action="submit-review"/u);
 });
 
 test("knowledge library ledger page renders the high-precision evidence precheck for submit review", () => {

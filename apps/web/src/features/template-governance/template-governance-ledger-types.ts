@@ -34,10 +34,18 @@ export interface TemplateGovernanceRuleLedgerRow {
   ai_participation_label?: string;
   review_status_label?: string;
   similarity_resolution_label?: string;
+  effect_metrics?: TemplateGovernanceRuleLedgerEffectMetrics;
   updated_at?: string;
   default_rule_count?: number;
   related_rules?: TemplateGovernanceRuleLedgerRelatedRule[];
   learning_candidate?: LearningCandidateViewModel;
+}
+
+export interface TemplateGovernanceRuleLedgerEffectMetrics {
+  hit_count: number;
+  accepted_change_count: number;
+  writeback_applied_count: number;
+  human_confirmation_count: number;
 }
 
 export interface TemplateGovernanceRuleLedgerSummary {

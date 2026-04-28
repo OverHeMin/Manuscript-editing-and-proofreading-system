@@ -12,4 +12,7 @@ export interface ExecutionTrackingRepository {
   listSnapshots(): Promise<ModuleExecutionSnapshotRecord[]>;
   saveKnowledgeHitLog(record: KnowledgeHitLogRecord): Promise<void>;
   listKnowledgeHitLogsBySnapshotId(snapshotId: string): Promise<KnowledgeHitLogRecord[]>;
+  listKnowledgeHitLogsByKnowledgeItemIds(
+    knowledgeItemIds: readonly string[],
+  ): Promise<KnowledgeHitLogRecord[]>;
 }

@@ -34,6 +34,10 @@ import type {
 import type { KnowledgeRetrievalSnapshotRecord } from "../knowledge-retrieval/knowledge-retrieval-record.ts";
 import type { CreateKnowledgeUploadInput, KnowledgeUploadRecord, KnowledgeUploadService } from "./knowledge-upload-service.ts";
 import type {
+  KnowledgeUsageMetricSummaryRecord,
+  KnowledgeUsageMetricsService,
+} from "./knowledge-usage-metrics.ts";
+import type {
   KnowledgeDuplicateAcknowledgementRecord,
   KnowledgeDuplicateCheckInput,
   KnowledgeDuplicateMatchRecord,
@@ -63,6 +67,14 @@ export interface KnowledgeLibraryListItemRecord {
   archived_at?: string;
   archived_by_role?: KnowledgeReviewActionRecord["actor_role"];
   updated_at?: string;
+  usage_metrics?: KnowledgeLibraryUsageMetricsRecord;
+}
+
+export interface KnowledgeLibraryUsageMetricsRecord {
+  retrieval_count: number;
+  retrieval_count_30d: number;
+  last_used_at?: string;
+  revision_count: number;
 }
 
 export interface KnowledgeLibraryListResponse {
@@ -77,6 +89,7 @@ export interface CreateKnowledgeApiOptions {
   aiAssistService?: KnowledgeAiAssistService;
   semanticLayerService?: KnowledgeSemanticLayerService;
   uploadService?: KnowledgeUploadService;
+  usageMetricsService?: KnowledgeUsageMetricsService;
 }
 
 export function createKnowledgeApi(options: CreateKnowledgeApiOptions) {
@@ -86,6 +99,7 @@ export function createKnowledgeApi(options: CreateKnowledgeApiOptions) {
     aiAssistService,
     semanticLayerService,
     uploadService,
+    usageMetricsService,
   } = options;
 
   return {
@@ -365,6 +379,7 @@ export function createKnowledgeApi(options: CreateKnowledgeApiOptions) {
       const normalizedQueryMode = queryMode === "semantic" ? "semantic" : "keyword";
       const items = await buildKnowledgeLibraryListItems({
         knowledgeService,
+        usageMetricsService,
         search,
         queryMode: normalizedQueryMode,
       });
@@ -515,10 +530,16 @@ export function createKnowledgeApi(options: CreateKnowledgeApiOptions) {
 
 async function buildKnowledgeLibraryListItems(input: {
   knowledgeService: KnowledgeService;
+  usageMetricsService?: KnowledgeUsageMetricsService;
   search?: string;
   queryMode: KnowledgeLibraryQueryMode;
 }): Promise<KnowledgeLibraryListItemRecord[]> {
   const records = await input.knowledgeService.listKnowledgeItems();
+  const usageMetricsByItemId = input.usageMetricsService
+    ? await input.usageMetricsService.summarizeByKnowledgeItemIds(
+        records.map((record) => record.id),
+      )
+    : new Map<string, KnowledgeUsageMetricSummaryRecord>();
   const normalizedSearch = normalizeSearchTerm(input.search);
   const items = await Promise.all(
     records.map(async (record) => {
@@ -564,6 +585,14 @@ async function buildKnowledgeLibraryListItems(input: {
         ...(selectedRevision ? { selected_revision_id: selectedRevision.id } : {}),
         ...(semanticLayer ? { semantic_status: semanticLayer.status } : {}),
         content_block_count: selectedRevision?.content_blocks.length ?? 0,
+        ...(input.usageMetricsService
+          ? {
+              usage_metrics: buildKnowledgeLibraryUsageMetricsRecord({
+                summary: usageMetricsByItemId.get(record.id),
+                revisionCount: detail?.revisions.length ?? 0,
+              }),
+            }
+          : {}),
         ...(isArchived
           ? {
               archived_at: selectedRevision?.updated_at ?? detail?.asset.updated_at,
@@ -578,6 +607,20 @@ async function buildKnowledgeLibraryListItems(input: {
   );
 
   return items.filter((item): item is KnowledgeLibraryListItemRecord => item != null);
+}
+
+function buildKnowledgeLibraryUsageMetricsRecord(input: {
+  summary?: KnowledgeUsageMetricSummaryRecord;
+  revisionCount: number;
+}): KnowledgeLibraryUsageMetricsRecord {
+  return {
+    retrieval_count: input.summary?.retrieval_count ?? 0,
+    retrieval_count_30d: input.summary?.retrieval_count_30d ?? 0,
+    ...(input.summary?.last_used_at
+      ? { last_used_at: input.summary.last_used_at }
+      : {}),
+    revision_count: input.revisionCount,
+  };
 }
 
 function normalizeSearchTerm(search: string | undefined): string {

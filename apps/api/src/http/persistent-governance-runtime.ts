@@ -121,6 +121,7 @@ import {
   createKnowledgeApi,
   KnowledgeAiAssistService,
   KnowledgeService,
+  KnowledgeUsageMetricsService,
   OpenAiKnowledgeAiAssistGenerator,
   KnowledgeSemanticLayerService,
   KnowledgeUploadService,
@@ -1103,6 +1104,9 @@ export function createPersistentGovernanceRuntime(
       semanticLayerService: knowledgeSemanticLayerService,
       uploadService: knowledgeUploadService,
       harnessDatasetService,
+      usageMetricsService: new KnowledgeUsageMetricsService({
+        executionTrackingRepository,
+      }),
     }),
     feedbackGovernanceApi: createFeedbackGovernanceApi({
       feedbackGovernanceService,

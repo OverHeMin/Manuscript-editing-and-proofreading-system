@@ -270,6 +270,8 @@ export function WorkbenchHost({
             prefilledAssetId={routeState.assetId}
             prefilledRevisionId={routeState.revisionId}
             prefilledKnowledgeTemplateId={routeState.knowledgePrefillTemplateId}
+            prefilledLearningCandidateId={routeState.learningCandidateId}
+            prefilledReviewItemId={routeState.reviewItemId}
           />
         );
       case "knowledge-review":

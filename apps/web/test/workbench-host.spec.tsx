@@ -199,6 +199,17 @@ test("workbench host runtime render routes knowledge ledger hashes to the ledger
   assert.match(markup, /workbench-nav/u);
 });
 
+test("workbench host forwards knowledge candidate handoffs into the knowledge ledger page", async () => {
+  const markup = await renderWorkbenchHostAtHash(
+    "#knowledge-library?knowledgeView=ledger&learningCandidateId=knowledge-candidate-42&reviewItemId=review-item-42",
+  );
+
+  assert.match(markup, /knowledge-library-ledger-page/u);
+  assert.match(markup, /data-prefilled-learning-candidate-id="knowledge-candidate-42"/u);
+  assert.match(markup, /data-prefilled-review-item-id="review-item-42"/u);
+  assert.doesNotMatch(markup, /template-governance-recovery-route/u);
+});
+
 test("workbench host defaults bare knowledge library hashes to the final ledger page", async () => {
   const markup = await renderWorkbenchHostAtHash(
     "#knowledge-library?assetId=knowledge-42&revisionId=knowledge-42-revision-2",

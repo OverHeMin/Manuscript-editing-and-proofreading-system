@@ -1137,7 +1137,12 @@ test("summary explains knowledge-candidate routing without sending operators to 
   assert.match(markup, /\u77e5\u8bc6\u5019\u9009/u);
   assert.match(
     markup,
-    /\u590d\u6838\u9879\u5df2\u8fdb\u5165\u77e5\u8bc6\u5ba1\u6838\u961f\u5217\uff0c\u8bf7\u5728\u77e5\u8bc6\u5ba1\u6838\u4e0e\u8d28\u91cf\u56de\u6536\u4e2d\u7ee7\u7eed\u5904\u7406\u3002/u,
+    /\u590d\u6838\u9879\u5df2\u8fdb\u5165\u77e5\u8bc6\u5019\u9009\u94fe\u8def\uff0c\u8bf7\u5728\u77e5\u8bc6\u5e93\u53f0\u8d26\u4e2d\u7ee7\u7eed\u7f16\u8f91\u5e76\u63d0\u4ea4\u77e5\u8bc6\u5ba1\u6838\u3002/u,
+  );
+  assert.match(markup, /\u524d\u5f80\u77e5\u8bc6\u5e93\u5904\u7406/u);
+  assert.match(
+    markup,
+    /href="#knowledge-library\?[^"]*knowledgeView=ledger[^"]*reviewItemId=review-item-knowledge-1/u,
   );
   assert.doesNotMatch(
     markup,
@@ -1278,7 +1283,7 @@ test("summary surfaces proofreading residual progression without duplicating the
   assert.match(markup, /\u524d\u5f80\u540e\u7eed\u5ba1\u6838/u);
   assert.match(
     markup,
-    /href="#template-governance\?[^"]*manuscriptId=manuscript-proof-1[^"]*templateGovernanceView=rule-ledger[^"]*ruleCenterMode=learning[^"]*reviewItemId=residual-ready-1/u,
+    /href="#knowledge-library\?[^"]*knowledgeView=ledger[^"]*learningCandidateId=candidate-proofreading-knowledge-1/u,
   );
   assert.doesNotMatch(markup, /\u7edf\u4e00\u590d\u6838\u961f\u5217/u);
 });

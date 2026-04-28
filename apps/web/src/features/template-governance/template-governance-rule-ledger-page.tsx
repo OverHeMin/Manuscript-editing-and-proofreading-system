@@ -318,6 +318,10 @@ export function TemplateGovernanceRuleLedgerPage({
                 <th>稿件类型</th>
                 <th>语义状态</th>
                 <th>发布状态</th>
+                <th>命中</th>
+                <th>接受改动</th>
+                <th>写回应用</th>
+                <th>人工确认</th>
                 <th>来源</th>
                 <th>AI 参与</th>
                 <th>审核状态</th>
@@ -359,6 +363,10 @@ export function TemplateGovernanceRuleLedgerPage({
                     <td>{row.manuscript_type_label}</td>
                     <td>{row.semantic_status}</td>
                     <td>{row.publish_status}</td>
+                    <td>{formatRuleLedgerEffectMetric(row.effect_metrics?.hit_count)}</td>
+                    <td>{formatRuleLedgerEffectMetric(row.effect_metrics?.accepted_change_count)}</td>
+                    <td>{formatRuleLedgerEffectMetric(row.effect_metrics?.writeback_applied_count)}</td>
+                    <td>{formatRuleLedgerEffectMetric(row.effect_metrics?.human_confirmation_count)}</td>
                     <td>{row.source_label ?? "人工/系统"}</td>
                     <td>{row.ai_participation_label ?? "无"}</td>
                     <td>{row.review_status_label ?? row.publish_status}</td>
@@ -368,7 +376,7 @@ export function TemplateGovernanceRuleLedgerPage({
                 ))
               ) : (
                 <tr>
-                  <td colSpan={bulkState.isOpen ? 12 : 11}>当前分类下还没有规则资产。</td>
+                  <td colSpan={bulkState.isOpen ? 16 : 15}>当前分类下还没有规则资产。</td>
                 </tr>
               )}
             </tbody>
@@ -406,6 +414,22 @@ export function TemplateGovernanceRuleLedgerPage({
             <div>
               <span>发布状态</span>
               <p>{viewModel.selectedRow.publish_status}</p>
+            </div>
+            <div>
+              <span>命中</span>
+              <p>{formatRuleLedgerEffectMetric(viewModel.selectedRow.effect_metrics?.hit_count)}</p>
+            </div>
+            <div>
+              <span>接受改动</span>
+              <p>{formatRuleLedgerEffectMetric(viewModel.selectedRow.effect_metrics?.accepted_change_count)}</p>
+            </div>
+            <div>
+              <span>写回应用</span>
+              <p>{formatRuleLedgerEffectMetric(viewModel.selectedRow.effect_metrics?.writeback_applied_count)}</p>
+            </div>
+            <div>
+              <span>人工确认</span>
+              <p>{formatRuleLedgerEffectMetric(viewModel.selectedRow.effect_metrics?.human_confirmation_count)}</p>
             </div>
             <div>
               <span>来源</span>
@@ -717,4 +741,8 @@ function formatRuleLedgerTimestamp(value: string | undefined): string {
   }
 
   return value.replace("T", " ").replace(".000Z", "");
+}
+
+function formatRuleLedgerEffectMetric(value: number | undefined): string {
+  return String(value ?? 0);
 }

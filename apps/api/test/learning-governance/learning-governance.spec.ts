@@ -117,6 +117,7 @@ function createLearningGovernanceHarness() {
     activationMetricsService,
     api,
     editorialRuleRepository,
+    knowledgeService,
     learningCandidateRepository,
     templateFamilyRepository,
     templateService,
@@ -284,6 +285,88 @@ test("admin can apply writebacks into governed draft assets and list them by can
   assert.equal(appliedTemplate.body.created_draft_asset_id, "template-1");
   assert.equal(listedCandidateOne.body.length, 1);
   assert.equal(listedCandidateTwo.body.length, 1);
+});
+
+test("knowledge reviewers can write back knowledge candidates as revision-governed drafts without approving them", async () => {
+  const { api, knowledgeService, learningCandidateRepository } =
+    createLearningGovernanceHarness();
+
+  await learningCandidateRepository.save({
+    id: "candidate-knowledge-approved-1",
+    type: "knowledge_candidate",
+    status: "approved",
+    module: "proofreading",
+    manuscript_type: "clinical_study",
+    title: "Table footnote guidance",
+    proposal_text: "Create governed knowledge from reviewed table handling.",
+    created_by: "proofreader-1",
+    created_at: "2026-04-28T08:00:00.000Z",
+    updated_at: "2026-04-28T08:00:00.000Z",
+  });
+
+  const writeback = await api.createWriteback({
+    actorRole: "knowledge_reviewer",
+    input: {
+      learningCandidateId: "candidate-knowledge-approved-1",
+      targetType: "knowledge_item",
+      createdBy: "knowledge-reviewer-1",
+    },
+  });
+
+  const applied = await api.applyWriteback({
+    actorRole: "knowledge_reviewer",
+    input: {
+      writebackId: writeback.body.id,
+      targetType: "knowledge_item",
+      appliedBy: "knowledge-reviewer-1",
+      title: "临床研究表注处理",
+      canonicalText: "临床研究表格的表注应置于表下，并解释统计缩写。",
+      summary: "从人工校对确认的表注处理经验回流。",
+      knowledgeKind: "reference",
+      moduleScope: "proofreading",
+      manuscriptTypes: ["clinical_study"],
+      sections: ["tables"],
+      riskTags: ["table_quality"],
+      disciplineTags: ["clinical_study"],
+      evidenceLevel: "expert_opinion",
+      sourceType: "internal_case",
+      aliases: ["表注规范"],
+      bindings: [
+        {
+          bindingKind: "section",
+          bindingTargetId: "tables",
+          bindingTargetLabel: "表格",
+        },
+      ],
+    },
+  });
+
+  assert.equal(applied.body.status, "applied");
+  assert.equal(applied.body.created_draft_asset_id, "knowledge-1");
+
+  const detail = await knowledgeService.getKnowledgeAsset("knowledge-1");
+  assert.equal(detail.asset.current_approved_revision_id, undefined);
+  assert.equal(detail.selected_revision.status, "draft");
+  assert.equal(
+    detail.selected_revision.source_learning_candidate_id,
+    "candidate-knowledge-approved-1",
+  );
+  assert.equal(detail.selected_revision.title, "临床研究表注处理");
+  assert.deepEqual(detail.selected_revision.routing.sections, ["tables"]);
+  assert.deepEqual(
+    detail.selected_revision.bindings.map((binding) => ({
+      kind: binding.binding_kind,
+      target: binding.binding_target_id,
+      label: binding.binding_target_label,
+    })),
+    [
+      {
+        kind: "section",
+        target: "tables",
+        label: "表格",
+      },
+    ],
+  );
 });
 
 test("approved rule candidates can write back into editorial rule drafts with candidate provenance", async () => {

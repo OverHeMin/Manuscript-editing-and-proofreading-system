@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserHttpClient } from "../../lib/browser-http-client.ts";
+import type { AuthRole } from "../auth/roles.ts";
 import {
   SearchableMultiSelectField,
   type SearchableMultiSelectOption,
@@ -28,10 +29,13 @@ import {
 import {
   applyAiIntakeSuggestion,
   buildCreateDraftInput,
+  createLedgerComposerFromKnowledgeCandidatePrefill,
   createLedgerComposerFromDraftPrefill,
   createEmptyLedgerComposer,
+  createLedgerComposerFromKnowledgeRevision,
   type KnowledgeLibraryLedgerComposer,
 } from "./knowledge-library-ledger-composer.ts";
+import { KnowledgeCandidateSourceStrip } from "./knowledge-candidate-source-strip.tsx";
 import {
   applyKnowledgeLibrarySemanticSuggestion,
   buildKnowledgeLibrarySemanticAnalysisNotes,
@@ -171,10 +175,12 @@ export interface KnowledgeLibraryLedgerPageProps {
   initialAiAssistMode?: KnowledgeLibraryEntryAiAssistMode;
   initialSearchOpen?: boolean;
   initialSearchQuery?: string;
-  actorRole?: string;
+  actorRole?: AuthRole;
   prefilledAssetId?: string;
   prefilledRevisionId?: string;
   prefilledKnowledgeTemplateId?: string;
+  prefilledLearningCandidateId?: string;
+  prefilledReviewItemId?: string;
   initialPriorityOrder?: string[];
   initialColumnOrder?: KnowledgeLibraryLedgerColumnKey[];
   initialColumnOrderPanelOpen?: boolean;
@@ -192,6 +198,8 @@ export function KnowledgeLibraryLedgerPage({
   prefilledAssetId,
   prefilledRevisionId,
   prefilledKnowledgeTemplateId,
+  prefilledLearningCandidateId,
+  prefilledReviewItemId,
   initialPriorityOrder,
   initialColumnOrder,
   initialColumnOrderPanelOpen = false,
@@ -336,6 +344,60 @@ export function KnowledgeLibraryLedgerPage({
     semanticStatusFilter,
     assetStatusFilter,
     contributorQuery,
+  ]);
+
+  useEffect(() => {
+    if (
+      !prefilledLearningCandidateId ||
+      initialComposer ||
+      prefilledKnowledgeTemplateId
+    ) {
+      return;
+    }
+
+    let isActive = true;
+    setIsBusy(true);
+    setErrorMessage(null);
+
+    void controller
+      .loadKnowledgeCandidatePrefill({
+        learningCandidateId: prefilledLearningCandidateId,
+      })
+      .then((prefill) => {
+        if (!isActive) {
+          return;
+        }
+
+        setComposer(createLedgerComposerFromKnowledgeCandidatePrefill(prefill));
+        setFormMode("create");
+        setAiAssistMode("manual");
+        setStatusMessage(
+          "已从学习候选预填知识草稿，保存后会生成知识库草稿，提交审核后才能生效。",
+        );
+      })
+      .catch((error) => {
+        if (!isActive) {
+          return;
+        }
+
+        setErrorMessage(
+          toErrorMessage(error, "知识候选加载失败，请回到稿件工作台重试。"),
+        );
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsBusy(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [
+    controller,
+    initialComposer,
+    prefilledKnowledgeTemplateId,
+    prefilledLearningCandidateId,
   ]);
 
   useEffect(() => {
@@ -594,7 +656,11 @@ export function KnowledgeLibraryLedgerPage({
   }, [controller, duplicateCheckInput]);
 
   return (
-    <main className="knowledge-library-ledger-page">
+    <main
+      className="knowledge-library-ledger-page"
+      data-prefilled-learning-candidate-id={prefilledLearningCandidateId}
+      data-prefilled-review-item-id={prefilledReviewItemId}
+    >
       <header className="knowledge-library-ledger-page__header">
         <div>
           <p className="knowledge-library-ledger-page__eyebrow">知识库</p>
@@ -884,6 +950,9 @@ export function KnowledgeLibraryLedgerPage({
 
         {boardMode !== "closed" && composer ? (
           <aside className="knowledge-library-ledger-page__board">
+            {composer.sourceSummary ? (
+              <KnowledgeCandidateSourceStrip source={composer.sourceSummary} />
+            ) : null}
             <KnowledgeLibraryEntryForm
             mode={boardMode === "edit" ? "edit" : "create"}
             aiAssistMode={aiAssistMode}
@@ -1780,6 +1849,9 @@ export function KnowledgeLibraryLedgerPage({
     setStatusMessage(null);
 
     try {
+      const wasLearningCandidateMaterialized =
+        composer.persistedRevisionId == null &&
+        composer.sourceLearningCandidateId != null;
       let nextViewModel = composer.persistedRevisionId
         ? await controller.saveDraftAndLoad({
             revisionId: composer.persistedRevisionId,
@@ -1788,6 +1860,13 @@ export function KnowledgeLibraryLedgerPage({
             },
             filters: viewModel?.filters,
           })
+        : composer.sourceLearningCandidateId
+          ? await controller.createDraftFromLearningCandidateAndLoad({
+              ...buildCreateDraftInput(composer),
+              learningCandidateId: composer.sourceLearningCandidateId,
+              actorRole,
+              filters: viewModel?.filters,
+            })
         : await controller.createDraftAndLoad({
             ...buildCreateDraftInput(composer),
             filters: viewModel?.filters,
@@ -1824,9 +1903,21 @@ export function KnowledgeLibraryLedgerPage({
       }
 
       applyLoadedWorkbench(nextViewModel);
-      setComposer(createEditableComposerFromViewModel(nextViewModel));
+      const loadedComposer = createEditableComposerFromViewModel(nextViewModel);
+      setComposer(
+        loadedComposer && composer.sourceSummary
+          ? {
+              ...loadedComposer,
+              sourceSummary: composer.sourceSummary,
+            }
+          : loadedComposer,
+      );
       setSemanticNotes([]);
-      setStatusMessage(input.successMessage);
+      setStatusMessage(
+        wasLearningCandidateMaterialized
+          ? "已从学习候选创建知识草稿，需提交知识审核后才能生效。"
+          : input.successMessage,
+      );
       setSurface("table");
       if (input.closeForm) {
         setFormMode("closed");
@@ -1965,6 +2056,10 @@ const DEFAULT_COLUMN_WIDTHS: KnowledgeLibraryLedgerColumnWidthMap = {
   aliases: 180,
   scenarios: 220,
   riskTags: 180,
+  retrievalCount: 120,
+  recentRetrievalCount: 120,
+  lastUsedAt: 140,
+  revisionCount: 110,
   contributor: 160,
   revisionId: 180,
   archivedAt: 160,
@@ -2027,37 +2122,7 @@ function createComposerFromSelectedRevision(
   selectedRevision: KnowledgeRevisionViewModel,
   selectedAssetId: string | null,
 ): KnowledgeLibraryLedgerComposer {
-  return {
-    mode: "existing_revision",
-    persistedAssetId: selectedAssetId,
-    persistedRevisionId: selectedRevision.id,
-    aiIntakeSourceText: selectedRevision.canonical_text,
-    draft: {
-      title: selectedRevision.title,
-      canonicalText: selectedRevision.canonical_text,
-      summary: selectedRevision.summary,
-      knowledgeKind: selectedRevision.knowledge_kind,
-      moduleScope: selectedRevision.routing.module_scope,
-      manuscriptTypes: selectedRevision.routing.manuscript_types,
-      sections: selectedRevision.routing.sections,
-      riskTags: selectedRevision.routing.risk_tags,
-      disciplineTags: selectedRevision.routing.discipline_tags,
-      evidenceLevel: selectedRevision.evidence_level,
-      sourceType: selectedRevision.source_type,
-      sourceLink: selectedRevision.source_link,
-      aliases: selectedRevision.aliases,
-      effectiveAt: selectedRevision.effective_at,
-      expiresAt: selectedRevision.expires_at,
-      bindings: selectedRevision.bindings.map((binding) => ({
-        bindingKind: binding.binding_kind,
-        bindingTargetId: binding.binding_target_id,
-        bindingTargetLabel: binding.binding_target_label,
-      })),
-    },
-    contentBlocksDraft: [...selectedRevision.content_blocks],
-    semanticLayerDraft: selectedRevision.semantic_layer,
-    warnings: [],
-  };
+  return createLedgerComposerFromKnowledgeRevision(selectedRevision, selectedAssetId);
 }
 
 /*
@@ -2151,6 +2216,10 @@ function createLedgerRow(
     aliases: (revision?.aliases ?? []).join("、"),
     scenarios: (revision?.semantic_layer?.retrieval_snippets ?? []).join("；"),
     riskTags: (revision?.routing.risk_tags ?? []).join("、"),
+    retrievalCount: String(item.usage_metrics?.retrieval_count ?? 0),
+    recentRetrievalCount: String(item.usage_metrics?.retrieval_count_30d ?? 0),
+    lastUsedAt: formatDate(item.usage_metrics?.last_used_at),
+    revisionCount: String(item.usage_metrics?.revision_count ?? 0),
     contributor: item.contributor_label ?? "",
     revisionId: item.selected_revision_id ?? "",
     date: formatDate(item.updated_at),
@@ -2291,6 +2360,10 @@ function createLedgerRow(
     aliases: (revision?.aliases ?? []).join("、"),
     scenarios: (revision?.semantic_layer?.retrieval_snippets ?? []).join("；"),
     riskTags: (revision?.routing.risk_tags ?? []).join("、"),
+    retrievalCount: String(item.usage_metrics?.retrieval_count ?? 0),
+    recentRetrievalCount: String(item.usage_metrics?.retrieval_count_30d ?? 0),
+    lastUsedAt: formatDate(item.usage_metrics?.last_used_at),
+    revisionCount: String(item.usage_metrics?.revision_count ?? 0),
     contributor: item.contributor_label ?? "",
     revisionId: item.selected_revision_id ?? "",
     archivedAt: formatDate(item.archived_at ?? (item.status === "archived" ? item.updated_at : undefined)),

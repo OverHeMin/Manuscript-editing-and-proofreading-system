@@ -77,6 +77,7 @@ import {
   type CreateEditorialRuleInput,
   type CreateEditorialRuleSetInput,
   type CreateRulePackageExampleSourceSessionInput,
+  type EditorialRuleActivationMetricsSummary,
   type EditorialRulesHttpClient,
   type EditorialRuleSetViewModel,
   type TransitionEditorialRuleSetInput,
@@ -1094,6 +1095,7 @@ async function loadTemplateGovernanceRuleLedger(
     learningCandidatesResponse,
     generalRuleInventory,
     medicalRuleInventory,
+    editorialRuleSetsResponse,
   ] = await Promise.all([
     listKnowledgeItems(client),
     listTemplateFamilies(client),
@@ -1103,7 +1105,19 @@ async function loadTemplateGovernanceRuleLedger(
     listLearningCandidates(client),
     loadContentModuleRuleInventory(client, { moduleClass: "general" }),
     loadContentModuleRuleInventory(client, { moduleClass: "medical_specialized" }),
+    listEditorialRuleSets(client),
   ]);
+  const editorialRulesByRuleSetId = new Map<string, EditorialRuleViewModel[]>();
+  await Promise.all(
+    editorialRuleSetsResponse.body.map(async (ruleSet) => {
+      const rules = (await listEditorialRulesByRuleSetId(client, ruleSet.id)).body;
+      editorialRulesByRuleSetId.set(ruleSet.id, rules);
+    }),
+  );
+  const ruleEffectMetrics = createRuleLedgerEffectMetricsLookup(
+    editorialRuleSetsResponse.body,
+    editorialRulesByRuleSetId,
+  );
 
   const journalTemplateEntries = (
     await Promise.all(
@@ -1124,7 +1138,7 @@ async function loadTemplateGovernanceRuleLedger(
   const rows = [
     ...knowledgeItemsResponse.body
       .filter((item) => item.knowledge_kind === "rule")
-      .map(mapKnowledgeItemToRuleLedgerRow),
+      .map((item) => mapKnowledgeItemToRuleLedgerRow(item, ruleEffectMetrics)),
     ...templatesResponse.body.map(mapTemplateCompositionToRuleLedgerRow),
     ...journalTemplateEntries.map(({ family, journalTemplate }) =>
       mapJournalTemplateToRuleLedgerRow(journalTemplate, family),
@@ -1870,6 +1884,7 @@ function isNotFoundHttpError(error: unknown): boolean {
 
 function mapKnowledgeItemToRuleLedgerRow(
   item: KnowledgeItemViewModel,
+  effectMetricsLookup?: RuleLedgerEffectMetricsLookup,
 ): TemplateGovernanceRuleLedgerRow {
   const aiMetadata = deriveRuleLedgerAiMetadata(item);
   return {
@@ -1887,7 +1902,83 @@ function mapKnowledgeItemToRuleLedgerRow(
     publish_status: formatTemplateGovernanceGovernedAssetStatusLabel(item.status),
     contributor_label: item.source_type ? "知识规则" : "规则中心",
     ...aiMetadata,
+    effect_metrics: resolveRuleLedgerEffectMetrics(item, effectMetricsLookup),
     updated_at: item.effective_at,
+  };
+}
+
+interface RuleLedgerEffectMetricsLookup {
+  byRuleId: Map<string, NonNullable<TemplateGovernanceRuleLedgerRow["effect_metrics"]>>;
+  byRuleSetId: Map<
+    string,
+    NonNullable<TemplateGovernanceRuleLedgerRow["effect_metrics"]>
+  >;
+}
+
+function createRuleLedgerEffectMetricsLookup(
+  ruleSets: readonly EditorialRuleSetViewModel[],
+  rulesByRuleSetId: ReadonlyMap<string, readonly EditorialRuleViewModel[]>,
+): RuleLedgerEffectMetricsLookup {
+  const byRuleId = new Map<
+    string,
+    NonNullable<TemplateGovernanceRuleLedgerRow["effect_metrics"]>
+  >();
+  const byRuleSetId = new Map<
+    string,
+    NonNullable<TemplateGovernanceRuleLedgerRow["effect_metrics"]>
+  >();
+
+  for (const ruleSet of ruleSets) {
+    const metrics = mapActivationMetricsToRuleLedgerEffectMetrics(
+      ruleSet.metrics_summary,
+    );
+    if (metrics) {
+      byRuleSetId.set(ruleSet.id, metrics);
+    }
+
+    for (const rule of rulesByRuleSetId.get(ruleSet.id) ?? []) {
+      const ruleMetrics = mapActivationMetricsToRuleLedgerEffectMetrics(
+        rule.metrics_summary,
+      );
+      if (ruleMetrics) {
+        byRuleId.set(rule.id, ruleMetrics);
+      }
+    }
+  }
+
+  return {
+    byRuleId,
+    byRuleSetId,
+  };
+}
+
+function resolveRuleLedgerEffectMetrics(
+  item: KnowledgeItemViewModel,
+  lookup: RuleLedgerEffectMetricsLookup | undefined,
+): TemplateGovernanceRuleLedgerRow["effect_metrics"] {
+  const projectionSource = item.projection_source;
+  if (lookup == null || projectionSource?.source_kind !== "editorial_rule_projection") {
+    return undefined;
+  }
+
+  return (
+    lookup.byRuleId.get(projectionSource.rule_id) ??
+    lookup.byRuleSetId.get(projectionSource.rule_set_id)
+  );
+}
+
+function mapActivationMetricsToRuleLedgerEffectMetrics(
+  metrics: EditorialRuleActivationMetricsSummary | undefined,
+): TemplateGovernanceRuleLedgerRow["effect_metrics"] {
+  if (!metrics) {
+    return undefined;
+  }
+
+  return {
+    hit_count: metrics.totals.governed_hit_count,
+    accepted_change_count: metrics.totals.accept_change_only_count,
+    writeback_applied_count: metrics.totals.writeback_applied_count,
+    human_confirmation_count: metrics.totals.human_confirmation_count,
   };
 }
 

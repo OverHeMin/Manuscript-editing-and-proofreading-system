@@ -1,5 +1,6 @@
 import type { AuthRole } from "../auth/roles.ts";
-import type { ManuscriptType } from "../manuscripts/types.ts";
+import type { KnowledgeRevisionBindingInput } from "../knowledge-library/types.ts";
+import type { ManuscriptModule, ManuscriptType } from "../manuscripts/types.ts";
 import type { TemplateModule } from "../templates/types.ts";
 
 export type LearningWritebackTarget =
@@ -44,7 +45,7 @@ export interface ApplyKnowledgeWritebackInput
   canonicalText: string;
   summary?: string;
   knowledgeKind: "rule" | "case_pattern" | "checklist" | "prompt_snippet" | "reference" | "other";
-  moduleScope: TemplateModule | "any";
+  moduleScope: ManuscriptModule | "any";
   manuscriptTypes: ManuscriptType[] | "any";
   sections?: string[];
   riskTags?: string[];
@@ -54,6 +55,9 @@ export interface ApplyKnowledgeWritebackInput
   sourceLink?: string;
   aliases?: string[];
   templateBindings?: string[];
+  effectiveAt?: string;
+  expiresAt?: string;
+  bindings?: KnowledgeRevisionBindingInput[];
 }
 
 export interface ApplyModuleTemplateWritebackInput

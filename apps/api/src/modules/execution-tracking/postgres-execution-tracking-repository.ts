@@ -332,6 +332,39 @@ export class PostgresExecutionTrackingRepository
 
     return result.rows.map(mapKnowledgeHitLogRow);
   }
+
+  async listKnowledgeHitLogsByKnowledgeItemIds(
+    knowledgeItemIds: readonly string[],
+  ): Promise<KnowledgeHitLogRecord[]> {
+    const normalizedIds = Array.from(
+      new Set(knowledgeItemIds.map((id) => id.trim()).filter(Boolean)),
+    );
+    if (normalizedIds.length === 0) {
+      return [];
+    }
+
+    const result = await this.dependencies.client.query<KnowledgeHitLogRow>(
+      `
+        select
+          id,
+          snapshot_id,
+          knowledge_item_id,
+          match_source_id,
+          binding_rule_id,
+          match_source,
+          match_reasons,
+          score,
+          section,
+          created_at
+        from knowledge_hit_logs
+        where knowledge_item_id = any($1::text[])
+        order by created_at asc, id asc
+      `,
+      [normalizedIds],
+    );
+
+    return result.rows.map(mapKnowledgeHitLogRow);
+  }
 }
 
 function mapExecutionSnapshotRow(

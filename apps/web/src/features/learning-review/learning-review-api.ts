@@ -19,6 +19,13 @@ export interface LearningReviewHttpClient {
   }>;
 }
 
+export interface ListLearningCandidatesInput {
+  type?: "rule_candidate" | "knowledge_candidate";
+  status?: LearningCandidateViewModel["status"];
+  module?: "screening" | "editing" | "proofreading";
+  manuscriptId?: string;
+}
+
 export function createReviewedCaseSnapshot(
   client: LearningReviewHttpClient,
   input: CreateReviewedCaseSnapshotInput,
@@ -41,11 +48,36 @@ export function createLearningCandidate(
   });
 }
 
-export function listLearningCandidates(client: LearningReviewHttpClient) {
+export function listLearningCandidates(
+  client: LearningReviewHttpClient,
+  input: ListLearningCandidatesInput = {},
+) {
+  const query = createLearningCandidateListQuery(input);
   return client.request<LearningCandidateViewModel[]>({
     method: "GET",
-    url: "/api/v1/learning/candidates",
+    url: `/api/v1/learning/candidates${query}`,
   });
+}
+
+function createLearningCandidateListQuery(
+  input: ListLearningCandidatesInput,
+): string {
+  const params = new URLSearchParams();
+  if (input.type) {
+    params.set("type", input.type);
+  }
+  if (input.status) {
+    params.set("status", input.status);
+  }
+  if (input.module) {
+    params.set("module", input.module);
+  }
+  if (input.manuscriptId?.trim()) {
+    params.set("manuscriptId", input.manuscriptId.trim());
+  }
+
+  const serialized = params.toString();
+  return serialized ? `?${serialized}` : "";
 }
 
 export function listPendingLearningReviewCandidates(

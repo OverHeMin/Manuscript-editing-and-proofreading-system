@@ -1313,6 +1313,26 @@ export function ManuscriptWorkbenchSummary({
                       >
                         前往学习审核
                       </a>
+                    ) : canOpenLearningReview &&
+                      manualFeedback.lastSubmitted.recommendedRoute ===
+                        "knowledge_candidate" ? (
+                      <>
+                        <p className="manuscript-workbench-manual-feedback-copy">
+                          {formatManualFeedbackSubmissionFollowup(
+                            manualFeedback.lastSubmitted.feedbackCategory,
+                            canOpenLearningReview,
+                          )}
+                        </p>
+                        <a
+                          className="manuscript-workbench-shortcut"
+                          href={formatWorkbenchHash("knowledge-library", {
+                            knowledgeView: "ledger",
+                            reviewItemId: manualFeedback.lastSubmitted.reviewItemId,
+                          })}
+                        >
+                          前往知识库处理
+                        </a>
+                      </>
                     ) : (
                       <p className="manuscript-workbench-manual-feedback-copy">
                         {formatManualFeedbackSubmissionFollowup(
@@ -2685,6 +2705,9 @@ function buildProofreadingGovernanceLoopSummary(input: {
   const latestResidualItem = [...residualReviewItems].sort((left, right) =>
     right.updated_at.localeCompare(left.updated_at),
   )[0];
+  const latestKnowledgeCandidate = [...knowledgeCandidates].sort((left, right) =>
+    right.updated_at.localeCompare(left.updated_at),
+  )[0];
 
   const currentStageLabel =
     candidateCreatedCount > 0
@@ -2706,12 +2729,17 @@ function buildProofreadingGovernanceLoopSummary(input: {
     candidateCreatedCount,
     actionableKnowledgeRouteItems,
     targetHref: input.canOpenLearningReview
-      ? formatWorkbenchHash("template-governance", {
-          manuscriptId: input.manuscriptId,
-          templateGovernanceView: "rule-ledger",
-          ruleCenterMode: "learning",
-          reviewItemId: latestResidualItem?.id,
-        })
+      ? latestKnowledgeCandidate
+        ? formatWorkbenchHash("knowledge-library", {
+            knowledgeView: "ledger",
+            learningCandidateId: latestKnowledgeCandidate.id,
+          })
+        : formatWorkbenchHash("template-governance", {
+            manuscriptId: input.manuscriptId,
+            templateGovernanceView: "rule-ledger",
+            ruleCenterMode: "learning",
+            reviewItemId: latestResidualItem?.id,
+          })
       : undefined,
   };
 }
@@ -4354,7 +4382,9 @@ function formatManualFeedbackSubmissionFollowup(
   canOpenLearningReview: boolean,
 ): string {
   if (category === "missing_knowledge") {
-    return "复核项已进入知识审核队列，请在知识审核与质量回收中继续处理。";
+    return canOpenLearningReview
+      ? "复核项已进入知识候选链路，请在知识库台账中继续编辑并提交知识审核。"
+      : "当前角色无知识库处理权限，复核项已进入后续审核队列。";
   }
 
   if (canOpenLearningReview) {

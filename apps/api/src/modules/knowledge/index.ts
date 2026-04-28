@@ -9,3 +9,4 @@ export * from "./knowledge-ai-assist-service.ts";
 export * from "./knowledge-semantic-layer-service.ts";
 export * from "./knowledge-content-block-normalizer.ts";
 export * from "./knowledge-upload-service.ts";
+export * from "./knowledge-usage-metrics.ts";

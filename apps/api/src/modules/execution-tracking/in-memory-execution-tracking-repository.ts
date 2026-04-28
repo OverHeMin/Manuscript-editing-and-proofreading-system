@@ -118,6 +118,22 @@ export class InMemoryExecutionTrackingRepository
       .map(cloneKnowledgeHitLogRecord);
   }
 
+  async listKnowledgeHitLogsByKnowledgeItemIds(
+    knowledgeItemIds: readonly string[],
+  ): Promise<KnowledgeHitLogRecord[]> {
+    const normalizedIds = new Set(
+      knowledgeItemIds.map((id) => id.trim()).filter(Boolean),
+    );
+    if (normalizedIds.size === 0) {
+      return [];
+    }
+
+    return [...this.hitLogs.values()]
+      .filter((record) => normalizedIds.has(record.knowledge_item_id))
+      .sort(compareKnowledgeHitLogs)
+      .map(cloneKnowledgeHitLogRecord);
+  }
+
   snapshotState(): {
     snapshots: Map<string, ModuleExecutionSnapshotRecord>;
     hitLogs: Map<string, KnowledgeHitLogRecord>;
