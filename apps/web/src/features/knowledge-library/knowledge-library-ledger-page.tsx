@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserHttpClient } from "../../lib/browser-http-client.ts";
+import type { AuthRole } from "../auth/roles.ts";
 import {
   SearchableMultiSelectField,
   type SearchableMultiSelectOption,
@@ -28,6 +29,7 @@ import {
 import {
   applyAiIntakeSuggestion,
   buildCreateDraftInput,
+  createLedgerComposerFromKnowledgeCandidatePrefill,
   createLedgerComposerFromDraftPrefill,
   createEmptyLedgerComposer,
   createLedgerComposerFromKnowledgeRevision,
@@ -173,7 +175,7 @@ export interface KnowledgeLibraryLedgerPageProps {
   initialAiAssistMode?: KnowledgeLibraryEntryAiAssistMode;
   initialSearchOpen?: boolean;
   initialSearchQuery?: string;
-  actorRole?: string;
+  actorRole?: AuthRole;
   prefilledAssetId?: string;
   prefilledRevisionId?: string;
   prefilledKnowledgeTemplateId?: string;
@@ -342,6 +344,60 @@ export function KnowledgeLibraryLedgerPage({
     semanticStatusFilter,
     assetStatusFilter,
     contributorQuery,
+  ]);
+
+  useEffect(() => {
+    if (
+      !prefilledLearningCandidateId ||
+      initialComposer ||
+      prefilledKnowledgeTemplateId
+    ) {
+      return;
+    }
+
+    let isActive = true;
+    setIsBusy(true);
+    setErrorMessage(null);
+
+    void controller
+      .loadKnowledgeCandidatePrefill({
+        learningCandidateId: prefilledLearningCandidateId,
+      })
+      .then((prefill) => {
+        if (!isActive) {
+          return;
+        }
+
+        setComposer(createLedgerComposerFromKnowledgeCandidatePrefill(prefill));
+        setFormMode("create");
+        setAiAssistMode("manual");
+        setStatusMessage(
+          "已从学习候选预填知识草稿，保存后会生成知识库草稿，提交审核后才能生效。",
+        );
+      })
+      .catch((error) => {
+        if (!isActive) {
+          return;
+        }
+
+        setErrorMessage(
+          toErrorMessage(error, "知识候选加载失败，请回到稿件工作台重试。"),
+        );
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsBusy(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [
+    controller,
+    initialComposer,
+    prefilledKnowledgeTemplateId,
+    prefilledLearningCandidateId,
   ]);
 
   useEffect(() => {
@@ -1793,6 +1849,9 @@ export function KnowledgeLibraryLedgerPage({
     setStatusMessage(null);
 
     try {
+      const wasLearningCandidateMaterialized =
+        composer.persistedRevisionId == null &&
+        composer.sourceLearningCandidateId != null;
       let nextViewModel = composer.persistedRevisionId
         ? await controller.saveDraftAndLoad({
             revisionId: composer.persistedRevisionId,
@@ -1801,6 +1860,13 @@ export function KnowledgeLibraryLedgerPage({
             },
             filters: viewModel?.filters,
           })
+        : composer.sourceLearningCandidateId
+          ? await controller.createDraftFromLearningCandidateAndLoad({
+              ...buildCreateDraftInput(composer),
+              learningCandidateId: composer.sourceLearningCandidateId,
+              actorRole,
+              filters: viewModel?.filters,
+            })
         : await controller.createDraftAndLoad({
             ...buildCreateDraftInput(composer),
             filters: viewModel?.filters,
@@ -1837,9 +1903,21 @@ export function KnowledgeLibraryLedgerPage({
       }
 
       applyLoadedWorkbench(nextViewModel);
-      setComposer(createEditableComposerFromViewModel(nextViewModel));
+      const loadedComposer = createEditableComposerFromViewModel(nextViewModel);
+      setComposer(
+        loadedComposer && composer.sourceSummary
+          ? {
+              ...loadedComposer,
+              sourceSummary: composer.sourceSummary,
+            }
+          : loadedComposer,
+      );
       setSemanticNotes([]);
-      setStatusMessage(input.successMessage);
+      setStatusMessage(
+        wasLearningCandidateMaterialized
+          ? "已从学习候选创建知识草稿，需提交知识审核后才能生效。"
+          : input.successMessage,
+      );
       setSurface("table");
       if (input.closeForm) {
         setFormMode("closed");

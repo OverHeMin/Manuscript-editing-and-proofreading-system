@@ -18,6 +18,16 @@ import {
   updateKnowledgeRevisionDraft,
   type KnowledgeLibraryHttpClient,
 } from "./knowledge-library-api.ts";
+import type { AuthRole } from "../auth/roles.ts";
+import { getLearningCandidate } from "../learning-review/learning-review-api.ts";
+import {
+  applyLearningWriteback,
+  createLearningWriteback,
+} from "../learning-governance/learning-governance-api.ts";
+import {
+  buildKnowledgeLibraryPrefillFromLearningCandidate,
+  type KnowledgeCandidatePrefill,
+} from "./knowledge-candidate-prefill.ts";
 import type {
   CreateKnowledgeLibraryDraftInput,
   DuplicateKnowledgeCheckInput,
@@ -50,6 +60,20 @@ export interface KnowledgeLibraryMutationOptions {
 export interface CreateKnowledgeLibraryDraftAndLoadInput
   extends CreateKnowledgeLibraryDraftInput,
     KnowledgeLibraryMutationOptions {}
+
+export interface LoadKnowledgeCandidatePrefillInput {
+  learningCandidateId: string;
+}
+
+export interface CreateKnowledgeLibraryDraftFromLearningCandidateAndLoadInput
+  extends Omit<CreateKnowledgeLibraryDraftInput, "sourceLearningCandidateId">,
+    KnowledgeLibraryMutationOptions {
+  learningCandidateId: string;
+  actorRole: AuthRole;
+  createdBy?: string;
+  appliedBy?: string;
+  sourceLearningCandidateId?: string;
+}
 
 export interface SaveKnowledgeLibraryDraftAndLoadInput
   extends KnowledgeLibraryMutationOptions {
@@ -110,6 +134,12 @@ export interface KnowledgeLibraryWorkbenchController {
   ): Promise<DuplicateKnowledgeMatchViewModel[]>;
   createDraftAndLoad(
     input: CreateKnowledgeLibraryDraftAndLoadInput,
+  ): Promise<KnowledgeLibraryWorkbenchViewModel>;
+  loadKnowledgeCandidatePrefill(
+    input: LoadKnowledgeCandidatePrefillInput,
+  ): Promise<KnowledgeCandidatePrefill>;
+  createDraftFromLearningCandidateAndLoad(
+    input: CreateKnowledgeLibraryDraftFromLearningCandidateAndLoadInput,
   ): Promise<KnowledgeLibraryWorkbenchViewModel>;
   saveDraftAndLoad(
     input: SaveKnowledgeLibraryDraftAndLoadInput,
@@ -178,6 +208,49 @@ export function createKnowledgeLibraryWorkbenchController(
       return loadKnowledgeLibraryWorkbench(client, {
         selectedAssetId: detail.asset.id,
         selectedRevisionId: detail.selected_revision.id,
+        filters,
+      });
+    },
+    async loadKnowledgeCandidatePrefill(input) {
+      const candidate = (
+        await getLearningCandidate(client, input.learningCandidateId)
+      ).body;
+      return buildKnowledgeLibraryPrefillFromLearningCandidate(candidate);
+    },
+    async createDraftFromLearningCandidateAndLoad(input) {
+      const {
+        filters,
+        learningCandidateId,
+        actorRole,
+        createdBy,
+        appliedBy,
+        sourceLearningCandidateId: _sourceLearningCandidateId,
+        ...draftInput
+      } = input;
+      const fallbackActorId = createDefaultKnowledgeWritebackActorId(actorRole);
+      const writeback = (
+        await createLearningWriteback(client, {
+          actorRole,
+          learningCandidateId,
+          targetType: "knowledge_item",
+          createdBy: createdBy ?? fallbackActorId,
+        })
+      ).body;
+      const applied = (
+        await applyLearningWriteback(client, {
+          actorRole,
+          writebackId: writeback.id,
+          targetType: "knowledge_item",
+          appliedBy: appliedBy ?? createdBy ?? fallbackActorId,
+          ...draftInput,
+        })
+      ).body;
+      if (!applied.created_draft_asset_id) {
+        throw new Error("知识回流写回后未返回草稿资产。");
+      }
+
+      return loadKnowledgeLibraryWorkbench(client, {
+        selectedAssetId: applied.created_draft_asset_id,
         filters,
       });
     },
@@ -275,6 +348,24 @@ export function createKnowledgeLibraryWorkbenchController(
       return (await uploadKnowledgeImage(client, input)).body;
     },
   };
+}
+
+function createDefaultKnowledgeWritebackActorId(actorRole: AuthRole): string {
+  switch (actorRole) {
+    case "knowledge_reviewer":
+      return "knowledge-reviewer-1";
+    case "admin":
+      return "admin-1";
+    case "editor":
+      return "editor-1";
+    case "proofreader":
+      return "proofreader-1";
+    case "screener":
+      return "screener-1";
+    case "user":
+    default:
+      return "user-1";
+  }
 }
 
 async function loadKnowledgeLibraryWorkbench(

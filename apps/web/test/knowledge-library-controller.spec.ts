@@ -377,6 +377,246 @@ test("knowledge library controller can submit a draft revision with duplicate ac
   );
 });
 
+test("knowledge library controller loads a knowledge candidate as a full ledger prefill", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createKnowledgeLibraryWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/learning/candidates/candidate-knowledge-1") {
+        return {
+          status: 200,
+          body: {
+            id: "candidate-knowledge-1",
+            type: "knowledge_candidate",
+            status: "approved",
+            manuscript_id: "manuscript-1",
+            module: "proofreading",
+            manuscript_type: "clinical_study",
+            governed_provenance_kind: "human_feedback",
+            human_final_asset_id: "asset-final-1",
+            title: "表注处理依据",
+            proposal_text: "将人工确认的表注处理沉淀为知识。",
+            candidate_payload: {
+              knowledge_prefill: {
+                title: "临床研究表注处理",
+                canonical_text: "表注应置于表格下方，并解释统计缩写。",
+                summary: "表注位置与缩写解释。",
+                knowledge_kind: "reference",
+                sections: ["tables"],
+                risk_tags: ["table_quality"],
+                aliases: ["表注规范"],
+                evidence_level: "expert_opinion",
+                source_type: "internal_case",
+              },
+              ai_semantic_suggestion: {
+                page_summary: "表注处理知识。",
+                retrieval_terms: ["表注", "统计缩写"],
+                retrieval_snippets: ["表注应置于表下。"],
+              },
+              evidence_summary: "人工校对确认。",
+            },
+            created_by: "proofreader-1",
+            created_at: "2026-04-28T08:00:00.000Z",
+            updated_at: "2026-04-28T08:10:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const prefill = await controller.loadKnowledgeCandidatePrefill({
+    learningCandidateId: "candidate-knowledge-1",
+  });
+
+  assert.equal(prefill.sourceLearningCandidateId, "candidate-knowledge-1");
+  assert.equal(prefill.draft.title, "临床研究表注处理");
+  assert.equal(prefill.draft.moduleScope, "proofreading");
+  assert.deepEqual(prefill.draft.sections, ["tables"]);
+  assert.deepEqual(prefill.draft.aliases, ["表注规范"]);
+  assert.equal(prefill.semanticLayer?.status, "pending_confirmation");
+  assert.equal(prefill.sourceSummary.provenanceLabel, "人工确认回流");
+  assert.deepEqual(requests, [
+    {
+      method: "GET",
+      url: "/api/v1/learning/candidates/candidate-knowledge-1",
+    },
+  ]);
+});
+
+test("knowledge library controller materializes a learning candidate as a draft without submitting review", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createKnowledgeLibraryWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.url === "/api/v1/learning-governance/writebacks") {
+        return {
+          status: 201,
+          body: {
+            id: "writeback-knowledge-1",
+            learning_candidate_id: "candidate-knowledge-1",
+            target_type: "knowledge_item",
+            status: "draft",
+            created_by: "knowledge-reviewer-1",
+            created_at: "2026-04-28T08:12:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.url ===
+        "/api/v1/learning-governance/writebacks/writeback-knowledge-1/apply"
+      ) {
+        return {
+          status: 200,
+          body: {
+            id: "writeback-knowledge-1",
+            learning_candidate_id: "candidate-knowledge-1",
+            target_type: "knowledge_item",
+            status: "applied",
+            created_draft_asset_id: "knowledge-from-candidate-1",
+            created_by: "knowledge-reviewer-1",
+            created_at: "2026-04-28T08:12:00.000Z",
+            applied_by: "knowledge-reviewer-1",
+            applied_at: "2026-04-28T08:13:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/knowledge/library") {
+        return {
+          status: 200,
+          body: {
+            query_mode: "keyword",
+            items: [
+              {
+                asset_id: "knowledge-from-candidate-1",
+                title: "临床研究表注处理",
+                summary: "表注位置与缩写解释。",
+                knowledge_kind: "reference",
+                status: "draft",
+                module_scope: "proofreading",
+                manuscript_types: ["clinical_study"],
+                selected_revision_id: "knowledge-from-candidate-1-revision-1",
+                semantic_status: "pending_confirmation",
+                content_block_count: 1,
+                updated_at: "2026-04-28T08:13:00.000Z",
+              },
+            ],
+          } as TResponse,
+        };
+      }
+
+      if (
+        input.url ===
+        "/api/v1/knowledge/assets/knowledge-from-candidate-1?revisionId=knowledge-from-candidate-1-revision-1"
+      ) {
+        return {
+          status: 200,
+          body: createKnowledgeAssetDetail({
+            assetId: "knowledge-from-candidate-1",
+            revisionId: "knowledge-from-candidate-1-revision-1",
+            revisionNo: 1,
+            status: "draft",
+            title: "临床研究表注处理",
+          }) as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const viewModel = await controller.createDraftFromLearningCandidateAndLoad({
+    learningCandidateId: "candidate-knowledge-1",
+    actorRole: "knowledge_reviewer",
+    title: "临床研究表注处理",
+    canonicalText: "表注应置于表格下方，并解释统计缩写。",
+    summary: "表注位置与缩写解释。",
+    knowledgeKind: "reference",
+    moduleScope: "proofreading",
+    manuscriptTypes: ["clinical_study"],
+    sections: ["tables"],
+    riskTags: ["table_quality"],
+    aliases: ["表注规范"],
+    evidenceLevel: "expert_opinion",
+    sourceType: "internal_case",
+    sourceLearningCandidateId: "candidate-knowledge-1",
+    bindings: [
+      {
+        bindingKind: "section",
+        bindingTargetId: "tables",
+        bindingTargetLabel: "表格",
+      },
+    ],
+  });
+
+  assert.equal(viewModel.selectedAssetId, "knowledge-from-candidate-1");
+  assert.equal(viewModel.detail?.selected_revision.status, "draft");
+  assert.deepEqual(requests[0], {
+    method: "POST",
+    url: "/api/v1/learning-governance/writebacks",
+    body: {
+      actorRole: "knowledge_reviewer",
+      input: {
+        learningCandidateId: "candidate-knowledge-1",
+        targetType: "knowledge_item",
+        createdBy: "knowledge-reviewer-1",
+      },
+    },
+  });
+  assert.deepEqual(requests[1], {
+    method: "POST",
+    url: "/api/v1/learning-governance/writebacks/writeback-knowledge-1/apply",
+    body: {
+      actorRole: "knowledge_reviewer",
+      input: {
+        writebackId: "writeback-knowledge-1",
+        targetType: "knowledge_item",
+        appliedBy: "knowledge-reviewer-1",
+        title: "临床研究表注处理",
+        canonicalText: "表注应置于表格下方，并解释统计缩写。",
+        summary: "表注位置与缩写解释。",
+        knowledgeKind: "reference",
+        moduleScope: "proofreading",
+        manuscriptTypes: ["clinical_study"],
+        sections: ["tables"],
+        riskTags: ["table_quality"],
+        aliases: ["表注规范"],
+        evidenceLevel: "expert_opinion",
+        sourceType: "internal_case",
+        bindings: [
+          {
+            bindingKind: "section",
+            bindingTargetId: "tables",
+            bindingTargetLabel: "表格",
+          },
+        ],
+      },
+    },
+  });
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "POST /api/v1/learning-governance/writebacks",
+      "POST /api/v1/learning-governance/writebacks/writeback-knowledge-1/apply",
+      "GET /api/v1/knowledge/library",
+      "GET /api/v1/knowledge/assets/knowledge-from-candidate-1?revisionId=knowledge-from-candidate-1-revision-1",
+    ],
+  );
+});
+
 test("knowledge library controller can create, update, derive, and submit a draft revision", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const controller = createKnowledgeLibraryWorkbenchController({
