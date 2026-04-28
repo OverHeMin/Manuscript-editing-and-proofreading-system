@@ -65,6 +65,7 @@ test("rule center overview renders approved A-layout shell", () => {
   assert.match(markup, /\u89c4\u5219\u4e2d\u5fc3\u603b\u89c8/u);
   assert.match(markup, /\u89c4\u5219\u53f0\u8d26/u);
   assert.match(markup, /\u65b0\u5efa\u89c4\u5219/u);
+  assert.match(markup, /\u65b0\u5efa AI \u89c4\u5219\u8349\u7a3f/u);
   assert.match(markup, /\u8fdb\u5165\u89c4\u5219\u53f0\u8d26/u);
   assert.match(markup, /\u67e5\u770b\u5f85\u5ba1\u6838/u);
   assert.match(markup, /\u5f85\u5904\u7406\u4e8b\u9879/u);
