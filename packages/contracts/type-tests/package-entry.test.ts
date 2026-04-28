@@ -1,6 +1,7 @@
 import type {
   DocumentAssetType,
   HumanFeedbackRecord,
+  HumanReviewDiffItem,
   KnowledgeItemRouting,
   ModuleExecutionProfile,
   LearningRun,
@@ -28,12 +29,20 @@ type _TemplateKnowledgeBindingNotAny = Assert<NotAny<TemplateKnowledgeBinding>>;
 type _ResolvedModelNotAny = Assert<NotAny<ResolvedModel>>;
 type _ModuleExecutionProfileNotAny = Assert<NotAny<ModuleExecutionProfile>>;
 type _HumanFeedbackRecordNotAny = Assert<NotAny<HumanFeedbackRecord>>;
+type _HumanReviewDiffItemNotAny = Assert<NotAny<HumanReviewDiffItem>>;
 
 // Spot-check a couple of tricky unions via the package entry.
 type _DocumentAssetTypeHasFinalProofOutputs = Assert<
   IsEqual<
     Extract<DocumentAssetType, "final_proof_issue_report" | "final_proof_annotated_docx">,
     "final_proof_issue_report" | "final_proof_annotated_docx"
+  >
+>;
+
+type _DocumentAssetTypeHasHumanReviewWorkingAsset = Assert<
+  IsEqual<
+    Extract<DocumentAssetType, "human_review_working_docx">,
+    "human_review_working_docx"
   >
 >;
 

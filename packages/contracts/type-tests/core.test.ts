@@ -4,6 +4,9 @@ import type {
   DocumentAssetType,
   DocumentAssetId,
   EvidenceLevel,
+  HumanReviewContentDecision,
+  HumanReviewDiffItem,
+  HumanReviewGovernanceIntent,
   KnowledgeItemRouting,
   KnowledgeKind,
   KnowledgeItem,
@@ -124,6 +127,7 @@ type _DocumentAssetType = Assert<
     | "final_proof_annotated_docx"
     | "pdf_consistency_report"
     | "human_final_docx"
+    | "human_review_working_docx"
     | "learning_snapshot_attachment"
   >
 >;
@@ -153,6 +157,37 @@ type _DocumentAssetShapeBackward = Assert<
 >;
 type _DocumentAssetTypeNotAny = Assert<NotAny<DocumentAsset["asset_type"]>>;
 type _DocumentAssetStatusNotAny = Assert<NotAny<DocumentAsset["status"]>>;
+
+// Human review
+const humanReviewGovernanceIntent: HumanReviewGovernanceIntent = {
+  rule_candidate: false,
+  knowledge_candidate: true,
+};
+const humanReviewContentDecision: HumanReviewContentDecision = "unconfirmed";
+const humanReviewDiffItem: HumanReviewDiffItem = {
+  id: "diff-1",
+  module: "proofreading",
+  manuscript_id: "manuscript-1",
+  baseline_asset_id: "asset-ai-draft-1",
+  working_asset_id: "asset-work-1",
+  source: "human_added",
+  content_decision: humanReviewContentDecision,
+  governance_intents: humanReviewGovernanceIntent,
+  apply_capability: "auto_apply_revert",
+  status: "pending",
+  before_text: "ALT remained stable.",
+  after_text: "Serum ALT remained stable.",
+  created_at: "2026-04-28T00:00:00.000Z",
+  updated_at: "2026-04-28T00:00:00.000Z",
+};
+void humanReviewDiffItem;
+type _HumanReviewDiffItemNotAny = Assert<NotAny<HumanReviewDiffItem>>;
+type _HumanReviewContentDecisionNotAny = Assert<
+  NotAny<HumanReviewContentDecision>
+>;
+type _HumanReviewGovernanceIntentNotAny = Assert<
+  NotAny<HumanReviewGovernanceIntent>
+>;
 
 // Knowledge
 type _KnowledgeItemStatus = Assert<
