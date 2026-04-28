@@ -175,6 +175,8 @@ export interface KnowledgeLibraryLedgerPageProps {
   prefilledAssetId?: string;
   prefilledRevisionId?: string;
   prefilledKnowledgeTemplateId?: string;
+  prefilledLearningCandidateId?: string;
+  prefilledReviewItemId?: string;
   initialPriorityOrder?: string[];
   initialColumnOrder?: KnowledgeLibraryLedgerColumnKey[];
   initialColumnOrderPanelOpen?: boolean;
@@ -192,6 +194,8 @@ export function KnowledgeLibraryLedgerPage({
   prefilledAssetId,
   prefilledRevisionId,
   prefilledKnowledgeTemplateId,
+  prefilledLearningCandidateId,
+  prefilledReviewItemId,
   initialPriorityOrder,
   initialColumnOrder,
   initialColumnOrderPanelOpen = false,
@@ -594,7 +598,11 @@ export function KnowledgeLibraryLedgerPage({
   }, [controller, duplicateCheckInput]);
 
   return (
-    <main className="knowledge-library-ledger-page">
+    <main
+      className="knowledge-library-ledger-page"
+      data-prefilled-learning-candidate-id={prefilledLearningCandidateId}
+      data-prefilled-review-item-id={prefilledReviewItemId}
+    >
       <header className="knowledge-library-ledger-page__header">
         <div>
           <p className="knowledge-library-ledger-page__eyebrow">知识库</p>
