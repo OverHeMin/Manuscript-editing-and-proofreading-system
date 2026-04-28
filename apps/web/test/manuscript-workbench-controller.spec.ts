@@ -76,6 +76,72 @@ test("manuscript workbench controller loads the shared module execution concurre
   );
 });
 
+test("manuscript workbench controller lists recent manuscripts and archives rows safely", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (input.method === "GET" && input.url === "/api/v1/manuscripts?limit=50") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "manuscript-1",
+              title: "Recent manuscript",
+              manuscript_type: "clinical_study",
+              status: "uploaded",
+              created_by: "user-1",
+              created_at: "2026-04-28T08:00:00.000Z",
+              updated_at: "2026-04-28T08:00:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/manuscripts/manuscript-1/archive"
+      ) {
+        return {
+          status: 200,
+          body: {
+            id: "manuscript-1",
+            title: "Recent manuscript",
+            manuscript_type: "clinical_study",
+            status: "archived",
+            created_by: "user-1",
+            created_at: "2026-04-28T08:00:00.000Z",
+            updated_at: "2026-04-28T08:05:00.000Z",
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const recent = await controller.listRecentManuscripts();
+  const archived = await controller.archiveManuscript({
+    manuscriptId: "manuscript-1",
+  });
+
+  assert.equal(recent[0]?.id, "manuscript-1");
+  assert.equal(archived.id, "manuscript-1");
+  assert.equal(archived.status, "archived");
+  assert.deepEqual(
+    requests.map((request) => `${request.method} ${request.url}`),
+    [
+      "GET /api/v1/manuscripts?limit=50",
+      "POST /api/v1/manuscripts/manuscript-1/archive",
+    ],
+  );
+});
+
 test("manuscript workbench controller uploads a manuscript and hydrates workspace", async () => {
   const requests: Array<{ method: string; url: string; body?: unknown }> = [];
   const hydratedUploadJob = {
@@ -1352,6 +1418,80 @@ test("manuscript workbench controller creates a document preview session through
             body: "Open a truthful preview instead of a fake button.",
           },
         ],
+      },
+    },
+  ]);
+});
+
+test("manuscript workbench controller forwards OnlyOffice save-back intent", async () => {
+  const requests: Array<{ method: string; url: string; body?: unknown }> = [];
+  const controller = createManuscriptWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      requests.push(input);
+
+      if (
+        input.method === "POST" &&
+        input.url === "/api/v1/document-pipeline/preview-session"
+      ) {
+        return {
+          status: 200,
+          body: {
+            manuscript_id: "manuscript-1",
+            source_asset_id: "asset-edited-1",
+            source_asset_type: "edited_docx",
+            viewer: "onlyoffice",
+            mode: "edit",
+            status: "ready",
+            mime_type:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            comment_source: "onlyoffice",
+            comments: [],
+            save_back_enabled: true,
+            save_back: {
+              module: "editing",
+              baseline_asset_id: "asset-edited-1",
+              output_asset_type: "edited_docx",
+              callback_token: "header.payload.signature",
+            },
+            warnings: [],
+          } as TResponse,
+        };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const preview = await controller.createPreviewSession({
+    manuscriptId: "manuscript-1",
+    assetId: "asset-edited-1",
+    actorRole: "editor",
+    saveBack: {
+      enabled: true,
+      module: "editing",
+      baselineAssetId: "asset-edited-1",
+    },
+  });
+
+  assert.equal(preview.mode, "edit");
+  assert.equal(preview.save_back_enabled, true);
+  assert.deepEqual(requests, [
+    {
+      method: "POST",
+      url: "/api/v1/document-pipeline/preview-session",
+      body: {
+        manuscriptId: "manuscript-1",
+        assetId: "asset-edited-1",
+        actorRole: "editor",
+        saveBack: {
+          enabled: true,
+          module: "editing",
+          baselineAssetId: "asset-edited-1",
+        },
       },
     },
   ]);

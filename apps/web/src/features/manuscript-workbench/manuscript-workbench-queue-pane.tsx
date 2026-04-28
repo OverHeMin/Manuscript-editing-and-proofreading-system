@@ -1,6 +1,5 @@
 import type { JobViewModel } from "../manuscripts/index.ts";
 import type { ModuleJobViewModel } from "../screening/index.ts";
-import type { ManuscriptWorkbenchLookupPanelProps } from "./manuscript-workbench-controls.tsx";
 import type {
   ManuscriptWorkbenchMode,
   ManuscriptWorkbenchWorkspace,
@@ -29,36 +28,22 @@ export interface ManuscriptWorkbenchQueueItem {
 export interface ManuscriptWorkbenchQueuePaneProps {
   mode: Exclude<ManuscriptWorkbenchMode, "submission">;
   busy: boolean;
-  lookup: ManuscriptWorkbenchLookupPanelProps;
   workspace: ManuscriptWorkbenchWorkspace | null;
   latestJob: AnyWorkbenchJob | null;
   queueItems: ManuscriptWorkbenchQueueItem[];
-  activeQueueFilter: ManuscriptWorkbenchQueueFilter;
-  onQueueFilterChange(nextFilter: ManuscriptWorkbenchQueueFilter): void;
   onOpenQueueItem(manuscriptId: string): void;
+  onArchiveQueueItem(manuscriptId: string): void;
 }
 
 export function ManuscriptWorkbenchQueuePane({
   mode,
   busy,
-  lookup,
   workspace,
   latestJob,
   queueItems,
-  activeQueueFilter,
-  onQueueFilterChange,
   onOpenQueueItem,
+  onArchiveQueueItem,
 }: ManuscriptWorkbenchQueuePaneProps) {
-  const canLoadWorkspace = lookup.manuscriptId.trim().length > 0;
-  const lookupDisplayValue =
-    workspace?.manuscript &&
-    lookup.manuscriptId.trim() === workspace.manuscript.id
-      ? workspace.manuscript.title
-      : lookup.manuscriptId;
-  const filteredQueueItems =
-    activeQueueFilter === "all"
-      ? queueItems
-      : queueItems.filter((item) => item.queueStatus === activeQueueFilter);
   const concurrencySnapshot = workspace?.moduleExecutionConcurrency;
   const queueListHint = resolveQueueListHint(mode, concurrencySnapshot);
 
@@ -72,46 +57,14 @@ export function ManuscriptWorkbenchQueuePane({
         </div>
       </header>
 
-      <div className="manuscript-workbench-queue-search">
-        <label className={resolveLookupFieldClassName(!canLoadWorkspace)}>
-          <span>稿件查找</span>
-          <input
-            value={lookupDisplayValue}
-            onChange={(event) => lookup.onChange(event.target.value)}
-            placeholder="输入稿件标题或编号"
-          />
-        </label>
-        <button type="button" disabled={busy || !canLoadWorkspace} onClick={() => lookup.onLoad()}>
-          {busy ? "加载中..." : "打开稿件"}
-        </button>
-      </div>
-
-      <div className="manuscript-workbench-queue-filters" aria-label="队列筛选">
-        {QUEUE_FILTER_OPTIONS.map(([filter, label]) => (
-          <button
-            key={filter}
-            type="button"
-            data-queue-filter={filter}
-            className={
-              filter === activeQueueFilter
-                ? "manuscript-workbench-queue-filter is-active"
-                : "manuscript-workbench-queue-filter"
-            }
-            onClick={() => onQueueFilterChange(filter)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
       <div className="manuscript-workbench-queue-list-shell">
         <div className="manuscript-workbench-queue-list-header">
           <strong>已上传稿件</strong>
           <p>{queueListHint}</p>
         </div>
         <div className="manuscript-workbench-queue-list">
-          {filteredQueueItems.length > 0 ? (
-            filteredQueueItems.map((item) => (
+          {queueItems.length > 0 ? (
+            queueItems.map((item) => (
               <article
                 key={item.manuscriptId}
                 data-queue-item-status={item.queueStatus}
@@ -130,24 +83,27 @@ export function ManuscriptWorkbenchQueuePane({
                   </div>
                   <span className="manuscript-workbench-queue-item-badge">{item.statusLabel}</span>
                 </div>
-                <dl className="manuscript-workbench-queue-item-meta">
-                  <div>
-                    <dt>稿件类型</dt>
-                    <dd>{item.manuscriptTypeLabel}</dd>
-                  </div>
-                  <div>
-                    <dt>当前状态</dt>
-                    <dd>{item.activityLabel}</dd>
-                  </div>
-                </dl>
+                <p className="manuscript-workbench-queue-item-type">
+                  {item.manuscriptTypeLabel}
+                </p>
                 <div className="manuscript-workbench-button-row">
                   <button
                     type="button"
                     className="manuscript-workbench-queue-open"
+                    data-queue-row-action="open"
                     disabled={busy}
                     onClick={() => onOpenQueueItem(item.manuscriptId)}
                   >
-                    打开稿件
+                    打开
+                  </button>
+                  <button
+                    type="button"
+                    className="manuscript-workbench-queue-archive"
+                    data-queue-row-action="archive"
+                    disabled={busy}
+                    onClick={() => onArchiveQueueItem(item.manuscriptId)}
+                  >
+                    删除
                   </button>
                 </div>
               </article>
@@ -166,22 +122,6 @@ export function ManuscriptWorkbenchQueuePane({
       </div>
     </aside>
   );
-}
-
-const QUEUE_FILTER_OPTIONS: ReadonlyArray<
-  readonly [ManuscriptWorkbenchQueueFilter, string]
-> = [
-  ["all", "全部"],
-  ["pending", "待处理"],
-  ["in_progress", "处理中"],
-  ["completed", "已完成"],
-  ["failed", "失败"],
-];
-
-function resolveLookupFieldClassName(isInvalid: boolean): string {
-  return isInvalid
-    ? "manuscript-workbench-queue-field is-invalid"
-    : "manuscript-workbench-queue-field";
 }
 
 function resolveQueueHint(mode: Exclude<ManuscriptWorkbenchMode, "submission">): string {

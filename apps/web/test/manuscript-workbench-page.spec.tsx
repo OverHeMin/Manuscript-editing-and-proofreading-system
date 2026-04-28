@@ -38,6 +38,7 @@ import {
   canSaveProofreadingConfirmationDraft,
   shouldAutoSaveProofreadingConfirmationDraft,
   resolveProofreadingIssueSelection,
+  resolveWorkbenchProgressSnapshot,
   resolveWorkbenchGeneratedAssetFileName,
   resolveWorkbenchNotice,
 } from "../src/features/manuscript-workbench/manuscript-workbench-page.tsx";
@@ -922,6 +923,67 @@ test("queue activity labels stay localized for completed and queued module runs"
   );
 });
 
+test("workbench progress snapshot exposes live percent labels for running jobs", () => {
+  const running = resolveWorkbenchProgressSnapshot({
+    mode: "editing",
+    workspace: null,
+    latestJob: {
+      id: "job-editing-1",
+      module: "editing",
+      job_type: "editing_run",
+      status: "running",
+      requested_by: "editor-1",
+      attempt_count: 1,
+      created_at: "2026-04-28T08:00:00.000Z",
+      updated_at: "2026-04-28T08:01:00.000Z",
+    },
+  });
+  const batch = resolveWorkbenchProgressSnapshot({
+    mode: "screening",
+    workspace: null,
+    latestJob: {
+      id: "job-batch-1",
+      module: "upload",
+      job_type: "batch_upload",
+      status: "running",
+      requested_by: "editor-1",
+      attempt_count: 1,
+      created_at: "2026-04-28T08:00:00.000Z",
+      updated_at: "2026-04-28T08:01:00.000Z",
+      batch_progress: {
+        lifecycle_status: "running",
+        settlement_status: "in_progress",
+        total_count: 4,
+        queued_count: 1,
+        running_count: 1,
+        succeeded_count: 2,
+        failed_count: 0,
+        cancelled_count: 0,
+        remaining_count: 2,
+        restart_posture: {
+          status: "fresh",
+          reason: "new",
+          observed_at: "2026-04-28T08:01:00.000Z",
+        },
+        items: [],
+      },
+    },
+  });
+
+  assert.deepEqual(running, {
+    label: "编辑处理中",
+    percent: 55,
+    status: "running",
+    isLive: true,
+  });
+  assert.deepEqual(batch, {
+    label: "批量处理 2/4",
+    percent: 50,
+    status: "running",
+    isLive: true,
+  });
+});
+
 test("focus canvas shows the AI recognition action for governed module work while leaving proofreading finalize unchanged", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchFocusCanvas
@@ -1072,7 +1134,7 @@ test("focus canvas shows the AI recognition action for governed module work whil
   );
   assert.match(
     markup,
-    /href="#editing\?manuscriptId=manuscript-1&amp;assetId=asset-edited-1"/,
+    /href="#editing\?manuscriptId=manuscript-1&amp;assetId=asset-edited-1&amp;presentation=fullscreen"/,
   );
   assert.match(
     markup,
@@ -1522,6 +1584,60 @@ test("proofreading workspace preview session input targets the manuscript asset 
   assert.equal(previewRequest?.comments[0]?.id, "issue-1");
   assert.equal(previewRequest?.comments[0]?.anchor_text, "5 mg per dL");
   assert.match(previewRequest?.comments[0]?.body ?? "", /5 mg\/dL/);
+  assert.deepEqual(previewRequest?.saveBack, {
+    enabled: true,
+    module: "proofreading",
+    baselineAssetId: "asset-edited-1",
+  });
+});
+
+test("editing detail preview session input enables save-back for the edited manuscript version", () => {
+  const editedAsset = {
+    id: "asset-edited-docx-1",
+    manuscript_id: "manuscript-edit-1",
+    asset_type: "edited_docx",
+    status: "active",
+    storage_key: "runs/editing/edited.docx",
+    mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    source_module: "editing",
+    created_by: "editor-1",
+    version_no: 2,
+    is_current: true,
+    file_name: "edited.docx",
+    created_at: "2026-04-24T09:00:00.000Z",
+    updated_at: "2026-04-24T09:00:00.000Z",
+  } as never;
+
+  const previewRequest = buildDetailPreviewSessionInput({
+    workspace: {
+      manuscript: {
+        id: "manuscript-edit-1",
+        title: "Editing manuscript",
+      },
+      assets: [editedAsset],
+      currentManuscriptAsset: editedAsset,
+    } as never,
+    selectedAsset: editedAsset,
+    detailJob: {
+      payload: {
+        appliedChanges: [
+          {
+            before: "per dL",
+            after: "/dL",
+          },
+        ],
+      },
+    } as never,
+    mode: "editing",
+    actorRole: "editor",
+  });
+
+  assert.equal(previewRequest?.assetId, "asset-edited-docx-1");
+  assert.deepEqual(previewRequest?.saveBack, {
+    enabled: true,
+    module: "editing",
+    baselineAssetId: "asset-edited-docx-1",
+  });
 });
 
 test("proofreading current result selection prefers the annotated proof asset over the draft report when both exist", () => {

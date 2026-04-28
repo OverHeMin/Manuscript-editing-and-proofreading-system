@@ -208,3 +208,130 @@ test("createPreviewSession posts the preview-session payload without mutating st
     },
   ]);
 });
+
+test("createPreviewSession forwards save-back intent for editable editing and proofreading sessions", async () => {
+  const calls: Array<{
+    method: "GET" | "POST";
+    url: string;
+    body?: unknown;
+  }> = [];
+
+  await createPreviewSession(
+    {
+      async request<TResponse>(input: {
+        method: "GET" | "POST";
+        url: string;
+        body?: unknown;
+      }) {
+        calls.push(input);
+        return {
+          status: 200,
+          body: {
+            manuscript_id: "manuscript-1",
+            source_asset_id: "asset-edited-1",
+            source_asset_type: "edited_docx",
+            viewer: "onlyoffice",
+            mode: "edit",
+            surface_mode: "editable_review",
+            status: "ready",
+            mime_type:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            comment_source: "onlyoffice",
+            comments: [],
+            session_id: "session-1",
+            correlation_id: "session-1",
+            document: {
+              document_key: "asset-edited-1",
+              file_name: "edited.docx",
+              file_extension: "docx",
+              mime_type:
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              download_path: "/api/v1/document-assets/asset-edited-1/download",
+              permissions: {
+                edit: true,
+                comment: true,
+                review: true,
+                download: true,
+                print: true,
+              },
+            },
+            authorization: {
+              kind: "surface_session",
+              requires_surface_session: true,
+              token_scheme: "surface_session_jwt",
+              access_token: "header.payload.signature",
+            },
+            event_bridge: {
+              provider: "onlyoffice",
+              transport: "window_post_message",
+              capabilities: {
+                ready_event: true,
+                locate_to_anchor: true,
+                selection_from_document: true,
+                visible_issue_marks: true,
+                bi_directional_sync: true,
+              },
+            },
+            embed: {
+              provider: "onlyoffice",
+              provider_origin: "http://127.0.0.1:58080",
+              api_js_url: "http://127.0.0.1:58080/web-apps/apps/api/documents/api.js",
+              document_type: "word",
+              ui_type: "desktop",
+              editor_config: {
+                mode: "edit",
+                lang: "zh-CN",
+                customization: {
+                  autosave: true,
+                  chat: false,
+                  comments: true,
+                  compactHeader: true,
+                  compactToolbar: true,
+                  feedback: false,
+                  forcesave: true,
+                  help: false,
+                  submitForm: false,
+                },
+              },
+            },
+            save_back_enabled: true,
+            save_back: {
+              module: "editing",
+              baseline_asset_id: "asset-edited-1",
+              output_asset_type: "edited_docx",
+              callback_token: "header.payload.signature",
+            },
+            warnings: [],
+          } as TResponse,
+        };
+      },
+    },
+    {
+      manuscriptId: "manuscript-1",
+      assetId: "asset-edited-1",
+      actorRole: "editor",
+      saveBack: {
+        enabled: true,
+        module: "editing",
+        baselineAssetId: "asset-edited-1",
+      },
+    },
+  );
+
+  assert.deepEqual(calls, [
+    {
+      method: "POST",
+      url: "/api/v1/document-pipeline/preview-session",
+      body: {
+        manuscriptId: "manuscript-1",
+        assetId: "asset-edited-1",
+        actorRole: "editor",
+        saveBack: {
+          enabled: true,
+          module: "editing",
+          baselineAssetId: "asset-edited-1",
+        },
+      },
+    },
+  ]);
+});

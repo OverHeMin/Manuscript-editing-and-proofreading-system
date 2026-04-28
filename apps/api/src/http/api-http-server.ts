@@ -143,12 +143,19 @@ import {
   DocumentNormalizationService,
   DocumentNormalizationWorkflowService,
   LocalDocToDocxConverter,
+  OnlyOfficeSaveBackAssetNotFoundError,
+  OnlyOfficeSaveBackDownloadError,
+  OnlyOfficeSaveBackInvalidCallbackError,
+  OnlyOfficeSaveBackService,
+  OnlyOfficeSaveBackUnauthorizedError,
   PythonDocxSourceBlockResolver,
   PythonDocxStructureWorkerAdapter,
   type DocumentIntakeResult,
 } from "../modules/document-pipeline/index.ts";
 import {
   DocumentPreviewAssetNotFoundError,
+  DocumentPreviewSaveBackNotAllowedError,
+  DocumentPreviewSaveBackTokenRequiredError,
   DocumentPreviewService,
 } from "../modules/document-pipeline/document-preview-service.ts";
 import {
@@ -565,7 +572,15 @@ type HttpRouteMatch =
       route: "manuscripts-upload-batch";
     }
   | {
+      route: "manuscripts-list";
+      limit?: number;
+    }
+  | {
       route: "manuscripts-get";
+      manuscriptId: string;
+    }
+  | {
+      route: "manuscripts-archive";
       manuscriptId: string;
     }
   | {
@@ -1394,6 +1409,11 @@ export interface ApiServerRuntime {
       assetId: string;
       actorRole: RoleKey;
       previewStatus?: "ready" | "pending_normalization";
+      saveBack?: {
+        enabled: boolean;
+        module: "editing" | "proofreading";
+        baselineAssetId?: string;
+      };
       comments?: Array<{
         id: string;
         author?: string;
@@ -1402,6 +1422,13 @@ export interface ApiServerRuntime {
         created_at?: string;
       }>;
     }) => Promise<RouteResponse<OnlyOfficeViewSession>>;
+    handlePreviewCallback: (input: {
+      sessionId?: string;
+      surfaceAccessToken?: string;
+      saveBackModule?: "editing" | "proofreading";
+      baselineAssetId?: string;
+      body: unknown;
+    }) => Promise<RouteResponse<{ error: 0 }>>;
     exportCurrentAsset: (input: {
       manuscriptId: string;
       preferredAssetType?: DocumentAssetRecord["asset_type"];
@@ -1816,6 +1843,13 @@ export function createInMemoryApiRuntime(input: {
     assetRepository,
     sessionService: new OnlyOfficeSessionService(),
   });
+  const saveBackService = new OnlyOfficeSaveBackService({
+    manuscriptRepository,
+    assetRepository,
+    jobRepository,
+    assetService: documentAssetService,
+    uploadRootDir: input.uploadRootDir,
+  });
   const modelRoutingGovernanceService = new ModelRoutingGovernanceService({
     repository: modelRoutingGovernanceRepository,
     modelRegistryRepository,
@@ -2194,6 +2228,12 @@ export function createInMemoryApiRuntime(input: {
         return {
           status: 200,
           body: await previewService.createPreviewSession(input),
+        };
+      },
+      async handlePreviewCallback(input) {
+        return {
+          status: 200,
+          body: await saveBackService.handleCallback(input),
         };
       },
       async exportCurrentAsset(input) {
@@ -4639,9 +4679,19 @@ async function handleRoute(
         },
       };
     }
+    case "manuscripts-list":
+      await requireManuscriptSurfaceSession(req, runtime, "manuscript workbench");
+      return runtime.manuscriptApi.listRecent({
+        limit: routeMatch.limit,
+      });
     case "manuscripts-get":
       await requireManuscriptSurfaceSession(req, runtime, "manuscript workbench");
       return runtime.manuscriptApi.getManuscript({
+        manuscriptId: routeMatch.manuscriptId,
+      });
+    case "manuscripts-archive":
+      await requireManuscriptSurfaceSession(req, runtime, "manuscript workbench");
+      return runtime.manuscriptApi.archiveManuscript({
         manuscriptId: routeMatch.manuscriptId,
       });
     case "manuscripts-harness-matrix":
@@ -4685,13 +4735,18 @@ async function handleRoute(
       >[0];
       return runtime.documentPipelineApi.createPreviewSession(body);
     }
-    case "document-pipeline-preview-callback":
-      return {
-        status: 200,
-        body: {
-          error: 0,
-        },
-      };
+    case "document-pipeline-preview-callback": {
+      const requestUrl = readRequestUrl(req);
+      return runtime.documentPipelineApi.handlePreviewCallback({
+        sessionId: requestUrl.searchParams.get("sessionId")?.trim() || undefined,
+        surfaceAccessToken:
+          requestUrl.searchParams.get("surfaceAccessToken")?.trim() || undefined,
+        saveBackModule: readSaveBackModuleQueryParam(requestUrl),
+        baselineAssetId:
+          requestUrl.searchParams.get("baselineAssetId")?.trim() || undefined,
+        body: await readJsonBody(req),
+      });
+    }
     case "document-pipeline-export-current-asset": {
       await requireManuscriptSurfaceSession(req, runtime, "manuscript export");
       const body = (await readJsonBody(req)) as Parameters<
@@ -7640,6 +7695,24 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     };
   }
 
+  if (method === "GET" && path === "/api/v1/manuscripts") {
+    const rawLimit = Number(url.searchParams.get("limit") ?? "50");
+    return {
+      route: "manuscripts-list",
+      limit: Number.isFinite(rawLimit) ? rawLimit : undefined,
+    };
+  }
+
+  const manuscriptArchiveMatch = path.match(
+    /^\/api\/v1\/manuscripts\/([^/]+)\/archive$/,
+  );
+  if (method === "POST" && manuscriptArchiveMatch) {
+    return {
+      route: "manuscripts-archive",
+      manuscriptId: manuscriptArchiveMatch[1],
+    };
+  }
+
   const manuscriptGetMatch = path.match(/^\/api\/v1\/manuscripts\/([^/]+)$/);
   if (method === "GET" && manuscriptGetMatch) {
     return {
@@ -9110,6 +9183,13 @@ function readDocumentPreviewSurfaceAccessToken(
   return bearerMatch?.[1]?.trim() || null;
 }
 
+function readSaveBackModuleQueryParam(
+  url: URL,
+): "editing" | "proofreading" | undefined {
+  const value = url.searchParams.get("saveBackModule")?.trim();
+  return value === "editing" || value === "proofreading" ? value : undefined;
+}
+
 function resolveWorkbenchPermissionForModule(
   module: "screening" | "editing" | "proofreading",
 ): Parameters<PermissionGuard["assert"]>[1] {
@@ -9369,6 +9449,7 @@ export function mapErrorToHttpResponse(
     error instanceof ManuscriptNotFoundError ||
     error instanceof DocumentExportAssetNotFoundError ||
     error instanceof DocumentPreviewAssetNotFoundError ||
+    error instanceof OnlyOfficeSaveBackAssetNotFoundError ||
     error instanceof DocumentAssetDownloadNotFoundError ||
     error instanceof JournalTemplateProfileNotFoundError ||
     error instanceof ManuscriptJournalTemplateNotFoundError ||
@@ -9525,6 +9606,9 @@ export function mapErrorToHttpResponse(
 
   if (
       error instanceof LearningHumanFinalAssetRequiredError ||
+      error instanceof DocumentPreviewSaveBackNotAllowedError ||
+      error instanceof DocumentPreviewSaveBackTokenRequiredError ||
+      error instanceof OnlyOfficeSaveBackInvalidCallbackError ||
       error instanceof KnowledgeContentBlockOrderError ||
       error instanceof KnowledgeContentBlockPayloadInvalidError ||
       error instanceof KnowledgeRevisionReviewGateError ||
@@ -9572,9 +9656,14 @@ export function mapErrorToHttpResponse(
 
   if (
     error instanceof AuthorizationError ||
-    error instanceof RoleRouteAuthorizationError
+    error instanceof RoleRouteAuthorizationError ||
+    error instanceof OnlyOfficeSaveBackUnauthorizedError
   ) {
     return [403, { error: "forbidden", message: error.message }];
+  }
+
+  if (error instanceof OnlyOfficeSaveBackDownloadError) {
+    return [502, { error: "upstream_error", message: error.message }];
   }
 
   if (error instanceof InvalidCredentialsError) {

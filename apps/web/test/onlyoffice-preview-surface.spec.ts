@@ -111,6 +111,79 @@ test("onlyoffice preview config registers the proofreading locate bridge plugin 
   });
 });
 
+test("onlyoffice preview config enables editable save-back sessions with scoped callback parameters", () => {
+  const baseSession = createPreviewSession();
+  const editableSession = {
+    ...baseSession,
+    mode: "edit",
+    surface_mode: "editable_review",
+    document: {
+      ...baseSession.document,
+      permissions: {
+        edit: true,
+        comment: true,
+        review: true,
+        download: true,
+        print: true,
+      },
+    },
+    embed: {
+      ...baseSession.embed,
+      editor_config: {
+        ...baseSession.embed.editor_config,
+        mode: "edit",
+        customization: {
+          ...baseSession.embed.editor_config.customization,
+          autosave: true,
+          comments: true,
+          forcesave: true,
+        },
+      },
+    },
+    save_back_enabled: true,
+    save_back: {
+      module: "editing",
+      baseline_asset_id: "asset-original-1",
+      output_asset_type: "edited_docx",
+      callback_token: "header.payload.signature",
+    },
+  } as const;
+
+  const config = buildOnlyOfficeDocEditorConfig(editableSession);
+
+  assert.equal(config.editorConfig.mode, "edit");
+  assert.equal(config.document.permissions.edit, true);
+  assert.equal(config.document.permissions.comment, true);
+  assert.equal(config.document.permissions.review, true);
+  assert.match(config.editorConfig.callbackUrl, /saveBackModule=editing/u);
+  assert.match(config.editorConfig.callbackUrl, /baselineAssetId=asset-original-1/u);
+  assert.match(
+    config.editorConfig.callbackUrl,
+    /surfaceAccessToken=header\.payload\.signature/u,
+  );
+});
+
+test("onlyoffice preview surface copy explains editable sessions as the current manuscript flow", () => {
+  const markup = renderToStaticMarkup(
+    React.createElement(OnlyOfficePreviewSurface, {
+      previewSession: {
+        ...createPreviewSession(),
+        mode: "edit",
+        save_back_enabled: true,
+        save_back: {
+          module: "editing",
+          baseline_asset_id: "asset-original-1",
+          output_asset_type: "edited_docx",
+          callback_token: "header.payload.signature",
+        },
+      },
+    }),
+  );
+
+  assert.match(markup, /保存后合并为当前稿件版本/u);
+  assert.doesNotMatch(markup, /新的资产/u);
+});
+
 test("onlyoffice preview surface describes the mounted document as the current manuscript version", () => {
   const markup = renderToStaticMarkup(
     React.createElement(OnlyOfficePreviewSurface, {

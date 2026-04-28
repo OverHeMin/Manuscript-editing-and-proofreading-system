@@ -1,5 +1,6 @@
 import { once } from "node:events";
 import { mkdtemp, rm, stat } from "node:fs/promises";
+import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -235,6 +236,101 @@ test("workbench http routes upload a manuscript and expose manuscript, asset, jo
   }
 });
 
+test("workbench http lists recent manuscripts and soft archives rows", async () => {
+  const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-workbench-list-http-"));
+  const { server, baseUrl } = await startWorkbenchServer({
+    uploadRootDir,
+  });
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.user");
+    const uploadManuscript = async (title: string) => {
+      const response = await fetch(`${baseUrl}/api/v1/manuscripts/upload`, {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title,
+          manuscriptType: "review",
+          createdBy: "forged-user",
+          fileName: `${title}.docx`,
+          mimeType:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          fileContentBase64: "SGlzdG9yeSBwYXlsb2Fk",
+        }),
+      });
+      const uploaded = (await response.json()) as {
+        manuscript: { id: string; title: string };
+      };
+      assert.equal(response.status, 201);
+      return uploaded.manuscript;
+    };
+
+    const first = await uploadManuscript("History A");
+    const second = await uploadManuscript("History B");
+
+    const listResponse = await fetch(`${baseUrl}/api/v1/manuscripts?limit=50`, {
+      headers: { Cookie: cookie },
+    });
+    const recent = (await listResponse.json()) as Array<{
+      id: string;
+      title: string;
+      status: string;
+    }>;
+
+    const archiveResponse = await fetch(
+      `${baseUrl}/api/v1/manuscripts/${second.id}/archive`,
+      {
+        method: "POST",
+        headers: { Cookie: cookie },
+      },
+    );
+    const archived = (await archiveResponse.json()) as {
+      id: string;
+      status: string;
+    };
+
+    const afterArchiveResponse = await fetch(
+      `${baseUrl}/api/v1/manuscripts?limit=50`,
+      {
+        headers: { Cookie: cookie },
+      },
+    );
+    const afterArchive = (await afterArchiveResponse.json()) as Array<{
+      id: string;
+      title: string;
+      status: string;
+    }>;
+
+    assert.equal(listResponse.status, 200);
+    assert.equal(archiveResponse.status, 200);
+    assert.equal(afterArchiveResponse.status, 200);
+    assert.deepEqual(
+      new Set(
+        recent
+          .filter((manuscript) => manuscript.title.startsWith("History "))
+          .map((manuscript) => manuscript.id),
+      ),
+      new Set([first.id, second.id]),
+    );
+    assert.equal(archived.id, second.id);
+    assert.equal(archived.status, "archived");
+    assert.deepEqual(
+      new Set(
+        afterArchive
+          .filter((manuscript) => manuscript.title.startsWith("History "))
+          .map((manuscript) => manuscript.id),
+      ),
+      new Set([first.id]),
+    );
+  } finally {
+    await stopServer(server);
+    await rm(uploadRootDir, { recursive: true, force: true });
+  }
+});
+
 test("workbench http asset downloads support unicode file names via RFC 5987 content disposition", async () => {
   const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-workbench-http-unicode-"));
   const { server, baseUrl } = await startWorkbenchServer({
@@ -441,6 +537,201 @@ test("workbench http preview callback acknowledges read-only onlyoffice pings", 
     });
   } finally {
     await stopServer(server);
+  }
+});
+
+test("workbench http preview callback saves editable OnlyOffice sessions into the same editing flow idempotently", async () => {
+  const uploadRootDir = await mkdtemp(path.join(os.tmpdir(), "medsys-workbench-saveback-http-"));
+  const originalOnlyOfficeJwtSecret = process.env.ONLYOFFICE_JWT_SECRET;
+  process.env.ONLYOFFICE_JWT_SECRET = "save-back-http-secret";
+  const { server, baseUrl, seededIds } = await startWorkbenchServer({
+    uploadRootDir,
+  });
+  const callbackSourceServer = createServer((_, response) => {
+    response.writeHead(200, {
+      "Content-Type":
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+    response.end("Human saved editing DOCX");
+  });
+  callbackSourceServer.listen(0, "127.0.0.1");
+  await once(callbackSourceServer, "listening");
+  const callbackSourceAddress = callbackSourceServer.address();
+  assert.ok(
+    callbackSourceAddress && typeof callbackSourceAddress !== "string",
+    "Expected callback source server to listen on TCP.",
+  );
+  const callbackSourceUrl = `http://127.0.0.1:${callbackSourceAddress.port}/saved.docx`;
+
+  try {
+    const cookie = await loginAsDemoUser(baseUrl, "dev.editor");
+    const editingResponse = await fetch(`${baseUrl}/api/v1/modules/editing/run`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        manuscriptId: seededIds.manuscriptId,
+        parentAssetId: seededIds.originalAssetId,
+        requestedBy: "forged-requester",
+        actorRole: "admin",
+        storageKey: "runs/http/saveback/editing-ai.docx",
+        fileName: "editing-ai.docx",
+      }),
+    });
+    const editing = (await editingResponse.json()) as {
+      asset: {
+        id: string;
+      };
+    };
+    assert.equal(editingResponse.status, 201);
+
+    const previewResponse = await fetch(
+      `${baseUrl}/api/v1/document-pipeline/preview-session`,
+      {
+        method: "POST",
+        headers: {
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          manuscriptId: seededIds.manuscriptId,
+          assetId: editing.asset.id,
+          actorRole: "editor",
+          saveBack: {
+            enabled: true,
+            module: "editing",
+            baselineAssetId: editing.asset.id,
+          },
+        }),
+      },
+    );
+    const preview = (await previewResponse.json()) as {
+      session_id: string;
+      mode: string;
+      authorization: {
+        access_token?: string;
+      };
+      save_back_enabled: boolean;
+      save_back?: {
+        baseline_asset_id: string;
+        module: string;
+      };
+    };
+    assert.equal(previewResponse.status, 200);
+    assert.equal(preview.mode, "edit");
+    assert.equal(preview.save_back_enabled, true);
+    assert.equal(preview.save_back?.module, "editing");
+
+    const callbackUrl = new URL(
+      `${baseUrl}/api/v1/document-pipeline/preview-callback`,
+    );
+    callbackUrl.searchParams.set("sessionId", preview.session_id);
+    callbackUrl.searchParams.set(
+      "surfaceAccessToken",
+      preview.authorization.access_token ?? "",
+    );
+    callbackUrl.searchParams.set("saveBackModule", "editing");
+    callbackUrl.searchParams.set("baselineAssetId", editing.asset.id);
+
+    const callbackPayload = {
+      status: 2,
+      key: `${editing.asset.id}-${preview.session_id}`,
+      url: callbackSourceUrl,
+    };
+    const firstCallbackResponse = await fetch(callbackUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(callbackPayload),
+    });
+    assert.equal(firstCallbackResponse.status, 200);
+    assert.deepEqual(await firstCallbackResponse.json(), { error: 0 });
+
+    const secondCallbackResponse = await fetch(callbackUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(callbackPayload),
+    });
+    assert.equal(secondCallbackResponse.status, 200);
+    assert.deepEqual(await secondCallbackResponse.json(), { error: 0 });
+
+    const assetsResponse = await fetch(
+      `${baseUrl}/api/v1/manuscripts/${seededIds.manuscriptId}/assets`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const assets = (await assetsResponse.json()) as Array<{
+      id: string;
+      asset_type: string;
+      parent_asset_id?: string;
+      source_module: string;
+      source_job_id?: string;
+      is_current: boolean;
+    }>;
+    assert.equal(assetsResponse.status, 200);
+    const saveBackAssets = assets.filter(
+      (asset) =>
+        asset.asset_type === "edited_docx" &&
+        asset.parent_asset_id === editing.asset.id,
+    );
+    assert.equal(saveBackAssets.length, 1);
+    assert.equal(saveBackAssets[0]?.source_module, "editing");
+    assert.equal(saveBackAssets[0]?.is_current, true);
+
+    const jobResponse = await fetch(
+      `${baseUrl}/api/v1/jobs/${saveBackAssets[0]?.source_job_id}`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    const job = (await jobResponse.json()) as {
+      job_type: string;
+      payload?: Record<string, unknown>;
+    };
+    assert.equal(jobResponse.status, 200);
+    assert.equal(job.job_type, "onlyoffice_editing_save_back");
+    assert.equal(job.payload?.source, "onlyoffice_save_back");
+    assert.equal(job.payload?.baselineAssetId, editing.asset.id);
+    assert.deepEqual(job.payload?.learningSignal, {
+      kind: "human_final_merge",
+      status: "pending_semantic_diff",
+      reason:
+        "OnlyOffice saved final DOCX; semantic diff extraction is deferred.",
+    });
+
+    const downloadResponse = await fetch(
+      `${baseUrl}/api/v1/document-assets/${saveBackAssets[0]?.id}/download`,
+      {
+        headers: {
+          Cookie: cookie,
+        },
+      },
+    );
+    assert.equal(downloadResponse.status, 200);
+    assert.equal(
+      Buffer.from(await downloadResponse.arrayBuffer()).toString("utf8"),
+      "Human saved editing DOCX",
+    );
+  } finally {
+    callbackSourceServer.close();
+    await once(callbackSourceServer, "close");
+    await stopServer(server);
+    if (originalOnlyOfficeJwtSecret == null) {
+      delete process.env.ONLYOFFICE_JWT_SECRET;
+    } else {
+      process.env.ONLYOFFICE_JWT_SECRET = originalOnlyOfficeJwtSecret;
+    }
+    await rm(uploadRootDir, { recursive: true, force: true });
   }
 });
 

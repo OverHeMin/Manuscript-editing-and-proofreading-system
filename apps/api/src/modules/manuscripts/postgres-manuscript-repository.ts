@@ -119,6 +119,66 @@ export class PostgresManuscriptRepository implements ManuscriptRepository {
 
     return result.rows[0] ? mapManuscriptRow(result.rows[0]) : undefined;
   }
+
+  async listRecent(limit: number): Promise<ManuscriptRecord[]> {
+    const result = await this.dependencies.client.query<ManuscriptRow>(
+      `
+        select
+          id,
+          title,
+          manuscript_type,
+          manuscript_type_detection_summary,
+          status,
+          created_by,
+          current_screening_asset_id,
+          current_editing_asset_id,
+          current_proofreading_asset_id,
+          current_template_family_id,
+          current_journal_template_id,
+          editing_slot_governance_summary,
+          editing_completion_gate_summary,
+          created_at,
+          updated_at
+        from manuscripts
+        where status <> 'archived'
+        order by updated_at desc, created_at desc
+        limit $1
+      `,
+      [limit],
+    );
+
+    return result.rows.map((row) => mapManuscriptRow(row));
+  }
+
+  async archive(id: string, archivedAt: string): Promise<ManuscriptRecord | undefined> {
+    const result = await this.dependencies.client.query<ManuscriptRow>(
+      `
+        update manuscripts
+        set status = 'archived',
+            updated_at = $2
+        where id = $1
+        returning
+          id,
+          title,
+          manuscript_type,
+          manuscript_type_detection_summary,
+          status,
+          created_by,
+          current_screening_asset_id,
+          current_editing_asset_id,
+          current_proofreading_asset_id,
+          current_template_family_id,
+          current_journal_template_id,
+          editing_slot_governance_summary,
+          editing_completion_gate_summary,
+          created_at,
+          updated_at
+      `,
+      [id, archivedAt],
+    );
+
+    return result.rows[0] ? mapManuscriptRow(result.rows[0]) : undefined;
+  }
 }
 
 function mapManuscriptRow(row: ManuscriptRow): ManuscriptRecord {

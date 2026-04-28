@@ -249,6 +249,7 @@ export function WorkbenchHost({
             mode={activeWorkbenchId as ManuscriptWorkbenchMode}
             prefilledManuscriptId={routeState.manuscriptId}
             prefilledAssetId={routeState.assetId}
+            prefilledPresentation={routeState.presentation}
             prefilledReviewedCaseSnapshotId={routeState.reviewedCaseSnapshotId}
             prefilledSampleSetItemId={routeState.sampleSetItemId}
             accessibleHandoffModes={accessibleManuscriptWorkbenchModes}

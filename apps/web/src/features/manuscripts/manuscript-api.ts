@@ -51,6 +51,27 @@ export function getManuscript(client: ManuscriptHttpClient, manuscriptId: string
   });
 }
 
+export function listRecentManuscripts(
+  client: ManuscriptHttpClient,
+  input: { limit?: number } = {},
+) {
+  const limit = input.limit ?? 50;
+  return client.request<ManuscriptViewModel[]>({
+    method: "GET",
+    url: `/api/v1/manuscripts?limit=${encodeURIComponent(String(limit))}`,
+  });
+}
+
+export function archiveManuscript(
+  client: ManuscriptHttpClient,
+  input: { manuscriptId: string },
+) {
+  return client.request<ManuscriptViewModel>({
+    method: "POST",
+    url: `/api/v1/manuscripts/${input.manuscriptId}/archive`,
+  });
+}
+
 export function getManuscriptHarnessMatrix(
   client: ManuscriptHttpClient,
   manuscriptId: string,

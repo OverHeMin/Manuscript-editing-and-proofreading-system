@@ -117,7 +117,7 @@ export function RuleAuthoringTableSemanticFields({
         className="template-governance-field template-governance-field-full"
         data-table-auto-apply-patch-type="field"
       >
-        <span>PATCH 绫诲瀷</span>
+        <span>PATCH 类型</span>
         <select
           value={payload.patchType}
           onChange={(event) =>

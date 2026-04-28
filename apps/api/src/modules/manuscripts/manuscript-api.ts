@@ -163,6 +163,60 @@ export function createManuscriptApi(options: CreateManuscriptApiOptions) {
       };
     },
 
+    async listRecent({
+      limit,
+    }: {
+      limit?: number;
+    } = {}): Promise<RouteResponse<ManuscriptViewRecord[]>> {
+      const manuscripts = await manuscriptService.listRecentManuscripts(limit);
+
+      return {
+        status: 200,
+        body: await Promise.all(
+          manuscripts.map((manuscript) =>
+            enrichManuscriptView(manuscript, {
+              manuscriptService,
+              assetService,
+              executionResolutionService: options.executionResolutionService,
+              executionTrackingService: options.executionTrackingService,
+              executionTrackingViewOptions: {
+                executionGovernanceRepository: options.executionGovernanceRepository,
+                runtimeBindingReadinessService: options.runtimeBindingReadinessService,
+                agentExecutionService: options.agentExecutionService,
+                observationTime: observeNow(),
+                runningAttemptStaleAfterMs,
+              },
+            }),
+          ),
+        ),
+      };
+    },
+
+    async archiveManuscript({
+      manuscriptId,
+    }: {
+      manuscriptId: string;
+    }): Promise<RouteResponse<ManuscriptViewRecord>> {
+      const manuscript = await manuscriptService.archiveManuscript(manuscriptId);
+
+      return {
+        status: 200,
+        body: await enrichManuscriptView(manuscript, {
+          manuscriptService,
+          assetService,
+          executionResolutionService: options.executionResolutionService,
+          executionTrackingService: options.executionTrackingService,
+          executionTrackingViewOptions: {
+            executionGovernanceRepository: options.executionGovernanceRepository,
+            runtimeBindingReadinessService: options.runtimeBindingReadinessService,
+            agentExecutionService: options.agentExecutionService,
+            observationTime: observeNow(),
+            runningAttemptStaleAfterMs,
+          },
+        }),
+      };
+    },
+
     async getManuscript({
       manuscriptId,
     }: {

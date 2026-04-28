@@ -48,6 +48,34 @@ export class InMemoryManuscriptRepository implements ManuscriptRepository {
     return record ? cloneRecord(record) : undefined;
   }
 
+  async listRecent(limit: number): Promise<ManuscriptRecord[]> {
+    return [...this.records.values()]
+      .filter((record) => record.status !== "archived")
+      .sort((left, right) => {
+        const updatedComparison = right.updated_at.localeCompare(left.updated_at);
+        return updatedComparison !== 0
+          ? updatedComparison
+          : right.created_at.localeCompare(left.created_at);
+      })
+      .slice(0, limit)
+      .map((record) => cloneRecord(record));
+  }
+
+  async archive(id: string, archivedAt: string): Promise<ManuscriptRecord | undefined> {
+    const record = this.records.get(id);
+    if (!record) {
+      return undefined;
+    }
+
+    const archived = cloneRecord({
+      ...record,
+      status: "archived",
+      updated_at: archivedAt,
+    });
+    this.records.set(id, archived);
+    return cloneRecord(archived);
+  }
+
   snapshotState(): Map<string, ManuscriptRecord> {
     return new Map(
       [...this.records.entries()].map(([id, record]) => [id, cloneRecord(record)]),

@@ -454,6 +454,23 @@ export class ManuscriptLifecycleService {
     return this.manuscriptRepository.findById(manuscriptId);
   }
 
+  listRecentManuscripts(limit = 50): Promise<ManuscriptRecord[]> {
+    const normalizedLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
+    return this.manuscriptRepository.listRecent(normalizedLimit);
+  }
+
+  async archiveManuscript(manuscriptId: string): Promise<ManuscriptRecord> {
+    const archived = await this.manuscriptRepository.archive(
+      manuscriptId,
+      this.now().toISOString(),
+    );
+    if (!archived) {
+      throw new ManuscriptNotFoundError(manuscriptId);
+    }
+
+    return archived;
+  }
+
   async updateTemplateSelection(
     input: UpdateManuscriptTemplateSelectionInput,
   ): Promise<ManuscriptRecord> {

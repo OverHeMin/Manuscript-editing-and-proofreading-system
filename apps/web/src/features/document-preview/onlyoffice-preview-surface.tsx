@@ -41,15 +41,15 @@ interface OnlyOfficeDocEditorConfig {
     title: string;
     url: string;
     permissions: {
-      edit: false;
-      comment: false;
-      review: false;
+      edit: boolean;
+      comment: boolean;
+      review: boolean;
       download: true;
       print: true;
     };
   };
   editorConfig: {
-    mode: "view";
+    mode: "view" | "edit";
     lang: "zh-CN";
     callbackUrl: string;
     customization: DocumentPreviewSessionViewModel["embed"]["editor_config"]["customization"];
@@ -463,7 +463,7 @@ export function OnlyOfficePreviewSurface({
       <div className="document-preview-surface-toolbar">
         <div className="document-preview-surface-toolbar-copy">
           <strong>真实文档面</strong>
-          <p>当前以只读模式挂载当前稿件版本，右侧仍然是人工确认主工作面。</p>
+          <p>{formatSurfaceFlowCopy(previewSession)}</p>
         </div>
         <div className="document-preview-surface-toolbar-meta">
           <span>{formatSurfaceStateLabel(surfaceState)}</span>
@@ -515,11 +515,7 @@ export function buildOnlyOfficeDocEditorConfig(
     previewSession,
   );
   const callbackUrl = resolveOnlyOfficeReachableUrl(
-    resolveBrowserApiUrl(
-      `/api/v1/document-pipeline/preview-callback?sessionId=${encodeURIComponent(
-        previewSession.session_id,
-      )}`,
-    ),
+    buildOnlyOfficeCallbackUrl(previewSession),
   );
 
   return {
@@ -551,6 +547,39 @@ export function buildOnlyOfficeDocEditorConfig(
       onError: () => undefined,
     },
   };
+}
+
+function buildOnlyOfficeCallbackUrl(
+  previewSession: DocumentPreviewSessionViewModel,
+): string {
+  const url = new URL(
+    resolveBrowserApiUrl("/api/v1/document-pipeline/preview-callback"),
+  );
+  url.searchParams.set("sessionId", previewSession.session_id);
+
+  if (previewSession.save_back_enabled && previewSession.save_back) {
+    url.searchParams.set("saveBackModule", previewSession.save_back.module);
+    url.searchParams.set(
+      "baselineAssetId",
+      previewSession.save_back.baseline_asset_id,
+    );
+    url.searchParams.set(
+      "surfaceAccessToken",
+      previewSession.save_back.callback_token,
+    );
+  }
+
+  return url.toString();
+}
+
+function formatSurfaceFlowCopy(
+  previewSession: DocumentPreviewSessionViewModel,
+): string {
+  if (previewSession.save_back_enabled && previewSession.save_back) {
+    return "当前可在文档中完成人工复核编辑，保存后合并为当前稿件版本。";
+  }
+
+  return "当前以只读模式挂载当前稿件版本，右侧仍然是人工确认主工作面。";
 }
 
 function buildOnlyOfficeLocatePluginRegistration(
