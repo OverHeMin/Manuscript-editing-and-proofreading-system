@@ -6,6 +6,7 @@ import type {
   CreateLearningCandidateInput,
   CreateReviewedCaseSnapshotInput,
   ExtractRuleCandidateInput,
+  ListLearningCandidatesInput,
 } from "./learning-service.ts";
 import type {
   LearningCandidateRecord,
@@ -110,10 +111,12 @@ export function createLearningApi(options: CreateLearningApiOptions) {
       };
     },
 
-    async listLearningCandidates(): Promise<RouteResponse<LearningCandidateRecord[]>> {
+    async listLearningCandidates(
+      input: ListLearningCandidatesInput = {},
+    ): Promise<RouteResponse<LearningCandidateRecord[]>> {
       return {
         status: 200,
-        body: await learningService.listLearningCandidates(),
+        body: await learningService.listLearningCandidates(input),
       };
     },
 

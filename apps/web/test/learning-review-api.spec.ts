@@ -93,3 +93,39 @@ test("learning review client exposes list and detail query routes", async () => 
     ],
   );
 });
+
+test("learning review client serializes target workbench filters", async () => {
+  const requests: Array<{
+    method: "GET" | "POST";
+    url: string;
+    body?: unknown;
+  }> = [];
+
+  const client = {
+    async request<TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) {
+      requests.push(input);
+      return {
+        status: 200,
+        body: [] as unknown as TResponse,
+      };
+    },
+  };
+
+  await listLearningCandidates(client, {
+    type: "knowledge_candidate",
+    status: "pending_review",
+    module: "proofreading",
+    manuscriptId: "manuscript-1",
+  });
+
+  assert.deepEqual(requests, [
+    {
+      method: "GET",
+      url: "/api/v1/learning/candidates?type=knowledge_candidate&status=pending_review&module=proofreading&manuscriptId=manuscript-1",
+    },
+  ]);
+});

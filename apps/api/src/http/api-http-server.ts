@@ -276,6 +276,7 @@ import {
   type CreateReviewedCaseSnapshotInput,
   type ExtractRuleCandidateInput,
   type LearningCandidateRecord,
+  type ListLearningCandidatesInput,
   type ReviewedCaseSnapshotRecord,
 } from "../modules/learning/index.ts";
 import {
@@ -6553,7 +6554,9 @@ async function handleRoute(
     }
     case "learning-list-candidates":
       await requirePermission(req, runtime, "learning.review");
-      return runtime.learningApi.listLearningCandidates();
+      return runtime.learningApi.listLearningCandidates(
+        parseLearningCandidateListFilters(readRequestUrl(req)),
+      );
     case "learning-review-queue":
       await requirePermission(req, runtime, "learning.review");
       return runtime.learningApi.listPendingReviewCandidates();
@@ -9272,6 +9275,60 @@ function readRequestPath(req: IncomingMessage): string {
 
 function readRequestUrl(req: IncomingMessage): URL {
   return new URL(req.url || "/", "http://127.0.0.1");
+}
+
+function parseLearningCandidateListFilters(url: URL): ListLearningCandidatesInput {
+  const type = normalizeLearningCandidateListType(url.searchParams.get("type"));
+  const status = normalizeLearningCandidateListStatus(
+    url.searchParams.get("status"),
+  );
+  const module = normalizeLearningCandidateListModule(
+    url.searchParams.get("module"),
+  );
+  const manuscriptId = coalesceOptionalString(
+    url.searchParams.get("manuscriptId") ?? undefined,
+  );
+
+  return {
+    ...(type ? { type } : {}),
+    ...(status ? { status } : {}),
+    ...(module ? { module } : {}),
+    ...(manuscriptId ? { manuscriptId } : {}),
+  };
+}
+
+function normalizeLearningCandidateListType(
+  value: string | null,
+): ListLearningCandidatesInput["type"] | undefined {
+  return value === "rule_candidate" ||
+    value === "knowledge_candidate" ||
+    value === "case_pattern_candidate" ||
+    value === "template_update_candidate" ||
+    value === "prompt_optimization_candidate" ||
+    value === "checklist_update_candidate" ||
+    value === "skill_update_candidate"
+    ? value
+    : undefined;
+}
+
+function normalizeLearningCandidateListStatus(
+  value: string | null,
+): ListLearningCandidatesInput["status"] | undefined {
+  return value === "draft" ||
+    value === "pending_review" ||
+    value === "approved" ||
+    value === "rejected" ||
+    value === "archived"
+    ? value
+    : undefined;
+}
+
+function normalizeLearningCandidateListModule(
+  value: string | null,
+): ListLearningCandidatesInput["module"] | undefined {
+  return value === "screening" || value === "editing" || value === "proofreading"
+    ? value
+    : undefined;
 }
 
 function normalizeReviewItemSourceKind(
