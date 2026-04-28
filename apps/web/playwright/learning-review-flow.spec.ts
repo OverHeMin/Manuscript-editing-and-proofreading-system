@@ -61,9 +61,7 @@ test("admin can complete the governed learning review flow from manuscript hando
     timeout: 10_000,
   });
   await expect(page.locator("body")).toContainText("已自动带入稿件");
-  await expect(
-    page.getByRole("textbox", { name: /稿件查找|搜索稿件 ID/ }),
-  ).toHaveValue(manuscriptTitle);
+  await expectLoadedManuscript(page, manuscriptTitle);
 
   await page.getByRole("button", { name: runScreeningLabel }).click();
   await expect(page.locator("body")).toContainText("操作已完成");
@@ -465,6 +463,12 @@ function appendHashQueryParam(href: string, key: string, value: string): string 
   return `${hashPath}?${params.toString()}`;
 }
 
+async function expectLoadedManuscript(page: Page, title: string) {
+  const workspaceStage = page.locator('[data-pane="workspace-stage"]').first();
+  await expect(workspaceStage).toContainText("当前稿件");
+  await expect(workspaceStage).toContainText(title);
+}
+
 async function navigateViaHashLink(
   page: Page,
   link: Locator,
@@ -482,12 +486,16 @@ async function navigateToProofreadingIssueWorkbench(
   assetId: string,
 ) {
   const currentResultLink = page
-    .locator(`a[href="#proofreading?manuscriptId=${manuscriptId}&assetId=${assetId}"]`)
+    .getByRole("link", { name: /进入结果页|查看当前结果/ })
     .first();
   await expect(currentResultLink).toBeVisible();
+  await expect(currentResultLink).toHaveAttribute(
+    "href",
+    new RegExp(`#proofreading\\?manuscriptId=${manuscriptId}&assetId=${assetId}`),
+  );
   await navigateViaHashLink(page, currentResultLink);
   await expect(page).toHaveURL(
-    new RegExp(`#proofreading\\?manuscriptId=${manuscriptId}&assetId=${assetId}$`),
+    new RegExp(`#proofreading\\?manuscriptId=${manuscriptId}&assetId=${assetId}(&presentation=fullscreen)?$`),
   );
   await expect(
     page.locator('[data-detail-kind="proofreading_workspace"]'),

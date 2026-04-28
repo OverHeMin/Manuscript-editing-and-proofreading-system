@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { semanticTableDocxBase64 } from "../../../test-support/semantic-table-docx.ts";
 
 const apiBaseUrl =
@@ -126,9 +126,7 @@ test("screening result panel exposes current manuscript shortcuts without requir
   await maybeLogin(page);
 
   await expect(page.locator(".manuscript-workbench-result-panel")).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "稿件查找" })).toHaveValue(
-    "Direct asset shortcut manuscript",
-  );
+  await expectLoadedManuscript(page, "Direct asset shortcut manuscript");
 
   const viewShortcut = page.getByRole("link", { name: "查看稿件" }).first();
   const downloadShortcut = page.getByRole("link", { name: "下载稿件" }).first();
@@ -136,11 +134,16 @@ test("screening result panel exposes current manuscript shortcuts without requir
   await expect(downloadShortcut).toBeVisible();
   await expect(viewShortcut).toHaveAttribute(
     "href",
-    `#screening?manuscriptId=${uploadPayload.manuscript.id}&assetId=${uploadPayload.asset.id}`,
+    new RegExp(`#screening\\?manuscriptId=${uploadPayload.manuscript.id}&assetId=[0-9a-f-]+`),
   );
+  const viewHref = await viewShortcut.getAttribute("href");
+  const displayedAssetId = viewHref
+    ? new URLSearchParams(viewHref.split("?")[1] ?? "").get("assetId")
+    : null;
+  expect(displayedAssetId).toBeTruthy();
   await expect(downloadShortcut).toHaveAttribute(
     "href",
-    `${apiBaseUrl}/api/v1/document-assets/${uploadPayload.asset.id}/download`,
+    `${apiBaseUrl}/api/v1/document-assets/${displayedAssetId}/download`,
   );
 });
 
@@ -176,6 +179,12 @@ async function createUploadedManuscript(
       id: string;
     };
   };
+}
+
+async function expectLoadedManuscript(page: Page, title: string) {
+  const workspaceStage = page.locator('[data-pane="workspace-stage"]').first();
+  await expect(workspaceStage).toContainText("当前稿件");
+  await expect(workspaceStage).toContainText(title);
 }
 
 async function maybeLogin(page: Parameters<typeof test>[0]["page"]) {

@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 const apiBaseUrl =
   process.env.PLAYWRIGHT_API_BASE_URL ?? "http://127.0.0.1:3001";
@@ -110,9 +110,7 @@ test("editing workbench saves a journal template context before running editing"
   });
 
   await expect(page.getByRole("heading", { name: /编辑工作区/ })).toBeVisible();
-  await expect(
-    page.getByRole("textbox", { name: /稿件查找|搜索稿件 ID/ }),
-  ).toHaveValue(prepared.manuscriptTitle);
+  await expectLoadedManuscript(page, prepared.manuscriptTitle);
   await expect(page.locator("body")).toContainText("基础模板家族");
   await expect(page.locator("body")).toContainText(seededFamilyName);
 
@@ -162,6 +160,12 @@ test("editing workbench saves a journal template context before running editing"
   await expect(page.locator("body")).toContainText("已生成编辑稿件");
   await expect(page.locator("body")).toContainText(prepared.journalName);
 });
+
+async function expectLoadedManuscript(page: Page, title: string) {
+  const workspaceStage = page.locator('[data-pane="workspace-stage"]').first();
+  await expect(workspaceStage).toContainText("当前稿件");
+  await expect(workspaceStage).toContainText(title);
+}
 
 async function prepareEditingWorkbenchJournalScenario(
   request: APIRequestContext,
