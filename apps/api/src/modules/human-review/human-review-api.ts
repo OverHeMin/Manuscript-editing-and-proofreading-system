@@ -4,6 +4,7 @@ import type {
   HumanReviewService,
   ListHumanReviewDiffItemsInput,
   PublishHumanReviewFinalInput,
+  RetryHumanReviewBackflowInput,
   UpdateHumanReviewDiffDecisionInput,
 } from "./human-review-service.ts";
 
@@ -62,6 +63,15 @@ export function createHumanReviewApi(options: CreateHumanReviewApiOptions) {
         body: await humanReviewService.publishConfirmedFinal(input),
       } satisfies RouteResponse<
         Awaited<ReturnType<HumanReviewService["publishConfirmedFinal"]>>
+      >;
+    },
+
+    async retryBackflow(input: RetryHumanReviewBackflowInput) {
+      return {
+        status: 200,
+        body: await humanReviewService.retryBackflow(input),
+      } satisfies RouteResponse<
+        Awaited<ReturnType<HumanReviewService["retryBackflow"]>>
       >;
     },
   };

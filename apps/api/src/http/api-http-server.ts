@@ -1292,6 +1292,10 @@ type HttpRouteMatch =
       route: "human-review-publish-final";
     }
   | {
+      route: "human-review-retry-backflow";
+      diffItemId: string;
+    }
+  | {
       route: "learning-governance-create-writeback";
     }
   | {
@@ -1672,14 +1676,6 @@ export function createInMemoryApiRuntime(input: {
     assetRepository,
     rootDir: input.uploadRootDir,
   });
-  const humanReviewService = new HumanReviewService({
-    repository: humanReviewRepository,
-    manuscriptRepository,
-    assetRepository,
-    jobRepository,
-    documentAssetService,
-    editorialDocxTransformService,
-  });
   const docxSourceBlockResolver = new PythonDocxSourceBlockResolver({
     assetRepository,
     rootDir: input.uploadRootDir,
@@ -1739,6 +1735,15 @@ export function createInMemoryApiRuntime(input: {
     },
   });
   const reviewItemsApi = createReviewItemsApi({
+    reviewItemsService,
+  });
+  const humanReviewService = new HumanReviewService({
+    repository: humanReviewRepository,
+    manuscriptRepository,
+    assetRepository,
+    jobRepository,
+    documentAssetService,
+    editorialDocxTransformService,
     reviewItemsService,
   });
   const harnessDatasetService = new HarnessDatasetService({
@@ -6995,6 +7000,19 @@ async function handleRoute(
         ...body,
         module: normalizeHumanReviewModule(body.module),
         requestedBy: session.user.id,
+        actorRole: session.user.role,
+      });
+    }
+    case "human-review-retry-backflow": {
+      const session = await requireManuscriptSurfaceSession(
+        req,
+        runtime,
+        "human review",
+      );
+      return runtime.humanReviewApi.retryBackflow({
+        diffItemId: routeMatch.diffItemId,
+        requestedBy: session.user.id,
+        actorRole: session.user.role,
       });
     }
     case "learning-governance-create-writeback": {
@@ -8925,6 +8943,16 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
   if (method === "POST" && path === "/api/v1/human-review/publish-final") {
     return { route: "human-review-publish-final" };
+  }
+
+  const humanReviewRetryBackflowMatch = path.match(
+    /^\/api\/v1\/human-review\/diff-items\/([^/]+)\/retry-backflow$/,
+  );
+  if (method === "POST" && humanReviewRetryBackflowMatch) {
+    return {
+      route: "human-review-retry-backflow",
+      diffItemId: humanReviewRetryBackflowMatch[1],
+    };
   }
 
   if (method === "POST" && path === "/api/v1/learning-governance/writebacks") {

@@ -10,7 +10,9 @@ import { HumanReviewService } from "../../src/modules/human-review/human-review-
 import { InMemoryJobRepository } from "../../src/modules/jobs/in-memory-job-repository.ts";
 import { InMemoryManuscriptRepository } from "../../src/modules/manuscripts/in-memory-manuscript-repository.ts";
 
-function createHarness() {
+function createHarness(options: {
+  reviewItemsService?: ConstructorParameters<typeof HumanReviewService>[0]["reviewItemsService"];
+} = {}) {
   const manuscriptRepository = new InMemoryManuscriptRepository();
   const assetRepository = new InMemoryDocumentAssetRepository();
   const jobRepository = new InMemoryJobRepository();
@@ -41,6 +43,7 @@ function createHarness() {
         };
       },
     },
+    reviewItemsService: options.reviewItemsService,
     createId: () => "job-human-review-publish-1",
     now: () => new Date("2026-04-28T01:05:00.000Z"),
   });
@@ -221,4 +224,50 @@ test("human review publish applies kept text diffs and excludes rejected diffs",
   assert.equal(reject?.final_asset_id, result.asset.id);
   assert.equal(keep?.status, "published_writeback_done");
   assert.equal(reject?.status, "published_writeback_done");
+});
+
+test("human review publish keeps final asset when candidate backflow fails", async () => {
+  const {
+    manuscriptRepository,
+    assetRepository,
+    humanReviewRepository,
+    service,
+  } = createHarness({
+    reviewItemsService: {
+      async submitGovernedHit() {
+        throw new Error("candidate service unavailable");
+      },
+      async decideReviewItem() {
+        throw new Error("decideReviewItem should not run after submit failure.");
+      },
+    },
+  });
+  await seedManuscriptAndAssets({ manuscriptRepository, assetRepository });
+  await humanReviewRepository.saveDiffItem(
+    createDiff({
+      id: "diff-rule-1",
+      content_decision: "keep",
+      status: "confirmed",
+      governance_intents: { rule_candidate: true, knowledge_candidate: false },
+    }),
+  );
+
+  const result = await service.publishConfirmedFinal({
+    manuscriptId: "manuscript-1",
+    module: "proofreading",
+    requestedBy: "proofreader-1",
+    actorRole: "proofreader",
+    outputStorageKey: "runs/human-review/final.docx",
+    outputFileName: "human-final.docx",
+  });
+
+  assert.equal(result.asset.asset_type, "human_final_docx");
+  assert.equal(result.backflow.summary.failed_count, 1);
+  const item = await humanReviewRepository.findDiffItemById("diff-rule-1");
+  assert.equal(item?.status, "writeback_failed");
+  assert.match(item?.backflow_error ?? "", /candidate service unavailable/u);
+  const attempts =
+    await humanReviewRepository.listBackflowAttemptsByDiffItemId("diff-rule-1");
+  assert.equal(attempts[0]?.target, "rule_candidate");
+  assert.equal(attempts[0]?.status, "failed");
 });

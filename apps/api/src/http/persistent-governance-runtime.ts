@@ -515,14 +515,6 @@ export function createPersistentGovernanceRuntime(
     uploadRootDir,
     transactionManager: workbenchTransactionManager,
   });
-  const humanReviewService = new HumanReviewService({
-    repository: humanReviewRepository,
-    manuscriptRepository,
-    assetRepository,
-    jobRepository,
-    documentAssetService,
-    editorialDocxTransformService,
-  });
   const feedbackGovernanceService = new FeedbackGovernanceService({
     repository: feedbackGovernanceRepository,
     executionTrackingRepository,
@@ -581,6 +573,15 @@ export function createPersistentGovernanceRuntime(
     },
   });
   const reviewItemsApi = createReviewItemsApi({
+    reviewItemsService,
+  });
+  const humanReviewService = new HumanReviewService({
+    repository: humanReviewRepository,
+    manuscriptRepository,
+    assetRepository,
+    jobRepository,
+    documentAssetService,
+    editorialDocxTransformService,
     reviewItemsService,
   });
   const harnessDatasetService = new HarnessDatasetService({

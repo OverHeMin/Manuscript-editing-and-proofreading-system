@@ -10,8 +10,14 @@ import type { ApplyDeterministicDocxRulesInput } from "../editorial-execution/ty
 import type { JobRecord } from "../jobs/job-record.ts";
 import type { JobRepository } from "../jobs/job-repository.ts";
 import type { ManuscriptRepository } from "../manuscripts/manuscript-repository.ts";
+import type { RoleKey } from "../../users/roles.ts";
 import type { EditorialDocxTransformService } from "../document-pipeline/editorial-docx-transform-service.ts";
-import type { HumanReviewDiffRecord } from "./human-review-record.ts";
+import type { ReviewItemsService } from "../review-items/review-items-service.ts";
+import type {
+  HumanReviewBackflowAttemptRecord,
+  HumanReviewBackflowTarget,
+  HumanReviewDiffRecord,
+} from "./human-review-record.ts";
 import type {
   HumanReviewDiffItemPatch,
   HumanReviewRepository,
@@ -31,6 +37,10 @@ export interface HumanReviewServiceOptions {
   editorialDocxTransformService: Pick<
     EditorialDocxTransformService,
     "applyDeterministicRules"
+  >;
+  reviewItemsService?: Pick<
+    ReviewItemsService,
+    "submitGovernedHit" | "decideReviewItem"
   >;
   createId?: () => string;
   now?: () => Date;
@@ -74,14 +84,31 @@ export interface HumanReviewPublishPreflightResult {
 export interface PublishHumanReviewFinalInput
   extends HumanReviewPublishPreflightInput {
   requestedBy?: string;
+  actorRole?: RoleKey;
   outputStorageKey?: string;
   outputFileName?: string;
+}
+
+export interface HumanReviewBackflowResult {
+  attempts: HumanReviewBackflowAttemptRecord[];
+  summary: {
+    attempted_count: number;
+    succeeded_count: number;
+    failed_count: number;
+  };
 }
 
 export interface PublishHumanReviewFinalResult {
   job: JobRecord;
   asset: DocumentAssetRecord;
   preflight: HumanReviewPublishPreflightResult;
+  backflow: HumanReviewBackflowResult;
+}
+
+export interface RetryHumanReviewBackflowInput {
+  diffItemId: string;
+  requestedBy?: string;
+  actorRole?: RoleKey;
 }
 
 export class HumanReviewDiffItemNotFoundError extends Error {
@@ -108,6 +135,10 @@ export class HumanReviewService {
     EditorialDocxTransformService,
     "applyDeterministicRules"
   >;
+  private readonly reviewItemsService?: Pick<
+    ReviewItemsService,
+    "submitGovernedHit" | "decideReviewItem"
+  >;
   private readonly createId: () => string;
   private readonly now: () => Date;
 
@@ -118,6 +149,7 @@ export class HumanReviewService {
     this.jobRepository = options.jobRepository;
     this.documentAssetService = options.documentAssetService;
     this.editorialDocxTransformService = options.editorialDocxTransformService;
+    this.reviewItemsService = options.reviewItemsService;
     this.createId = options.createId ?? (() => randomUUID());
     this.now = options.now ?? (() => new Date());
   }
@@ -270,12 +302,191 @@ export class HumanReviewService {
       finalAssetId: asset.id,
       updatedAt: timestamp,
     });
+    const backflow = await this.runBackflow({
+      items,
+      finalAsset: asset,
+      requestedBy,
+      actorRole: input.actorRole,
+      timestamp,
+      targets: "all",
+    });
 
     return {
       job: completedJob,
       asset,
       preflight,
+      backflow,
     };
+  }
+
+  async retryBackflow(
+    input: RetryHumanReviewBackflowInput,
+  ): Promise<HumanReviewBackflowResult> {
+    const item = await this.repository.findDiffItemById(input.diffItemId);
+    if (!item) {
+      throw new HumanReviewDiffItemNotFoundError(input.diffItemId);
+    }
+    if (!item.final_asset_id) {
+      throw new HumanReviewPublishGateError(
+        "Human review backflow can only be retried after final publish.",
+      );
+    }
+
+    const finalAsset = await this.assetRepository.findById(item.final_asset_id);
+    if (!finalAsset) {
+      throw new HumanReviewPublishGateError(
+        "Human review final asset was not found for backflow retry.",
+      );
+    }
+
+    const failedAttempts = (
+      await this.repository.listBackflowAttemptsByDiffItemId(item.id)
+    ).filter((attempt) => attempt.status === "failed");
+    return this.runBackflow({
+      items: [item],
+      finalAsset,
+      requestedBy: input.requestedBy ?? "human-review",
+      actorRole: input.actorRole,
+      timestamp: this.now().toISOString(),
+      targets: failedAttempts.map((attempt) => attempt.target),
+    });
+  }
+
+  private async runBackflow(input: {
+    items: readonly HumanReviewDiffRecord[];
+    finalAsset: DocumentAssetRecord;
+    requestedBy: string;
+    actorRole?: RoleKey;
+    timestamp: string;
+    targets: "all" | readonly HumanReviewBackflowTarget[];
+  }): Promise<HumanReviewBackflowResult> {
+    const attempts: HumanReviewBackflowAttemptRecord[] = [];
+    for (const item of input.items) {
+      for (const target of resolveBackflowTargets(item, input.targets)) {
+        attempts.push(
+          await this.runBackflowTarget({
+            item,
+            target,
+            finalAsset: input.finalAsset,
+            requestedBy: input.requestedBy,
+            actorRole: input.actorRole,
+            timestamp: input.timestamp,
+          }),
+        );
+      }
+    }
+
+    return {
+      attempts,
+      summary: {
+        attempted_count: attempts.length,
+        succeeded_count: attempts.filter((attempt) => attempt.status === "succeeded")
+          .length,
+        failed_count: attempts.filter((attempt) => attempt.status === "failed")
+          .length,
+      },
+    };
+  }
+
+  private async runBackflowTarget(input: {
+    item: HumanReviewDiffRecord;
+    target: HumanReviewBackflowTarget;
+    finalAsset: DocumentAssetRecord;
+    requestedBy: string;
+    actorRole?: RoleKey;
+    timestamp: string;
+  }): Promise<HumanReviewBackflowAttemptRecord> {
+    const attemptBase = {
+      id: randomUUID(),
+      diff_item_id: input.item.id,
+      target: input.target,
+      created_at: input.timestamp,
+    };
+
+    try {
+      if (!this.reviewItemsService) {
+        throw new Error("human review candidate backflow service is not configured");
+      }
+
+      const manuscript = await this.manuscriptRepository.findById(
+        input.item.manuscript_id,
+      );
+      if (!manuscript) {
+        throw new Error(`manuscript ${input.item.manuscript_id} was not found`);
+      }
+
+      const governedHit = await this.reviewItemsService.submitGovernedHit({
+        manuscriptId: input.item.manuscript_id,
+        manuscriptType: manuscript.manuscript_type,
+        module: normalizeBackflowModule(input.item.module),
+        snapshotId: `human-review:${input.finalAsset.id}`,
+        sourceAssetId: input.finalAsset.id,
+        feedbackCategory:
+          input.target === "knowledge_candidate"
+            ? "missing_knowledge"
+            : "missed_hit",
+        feedbackText:
+          input.item.note ??
+          input.item.summary ??
+          `Human review diff ${input.item.id} requested ${input.target}.`,
+        title: `Human review ${input.target} ${input.item.id}`,
+        excerpt: input.item.before_text,
+        suggestion: input.item.after_text,
+        rationale: `Confirmed after human review final asset ${input.finalAsset.id}.`,
+        candidatePosture: "candidate_change",
+        decisionSource: "manual_feedback",
+        originPayload: {
+          source: "human_review_diff",
+          diffItemId: input.item.id,
+          finalAssetId: input.finalAsset.id,
+          target: input.target,
+        },
+        createdBy: input.requestedBy,
+      });
+
+      const decision = await this.reviewItemsService.decideReviewItem({
+        sourceKind: "governed_hit",
+        id: governedHit.item.id,
+        action:
+          input.target === "knowledge_candidate"
+            ? "route_to_knowledge_candidate"
+            : "route_to_rule_candidate",
+        requestedBy: input.requestedBy,
+        requestedByRole: input.actorRole,
+        title: `Human review ${input.target} ${input.item.id}`,
+        proposalText:
+          input.item.after_text ?? input.item.summary ?? input.item.before_text,
+      });
+      const learningCandidateId = decision.item?.id;
+      if (!learningCandidateId) {
+        throw new Error("human review candidate backflow did not return a candidate id");
+      }
+
+      const attempt: HumanReviewBackflowAttemptRecord = {
+        ...attemptBase,
+        status: "succeeded",
+        learning_candidate_id: learningCandidateId,
+        updated_at: this.now().toISOString(),
+      };
+      await this.repository.saveBackflowAttempt(attempt);
+      return attempt;
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "human review backflow failed";
+      const attempt: HumanReviewBackflowAttemptRecord = {
+        ...attemptBase,
+        status: "failed",
+        error_message: message,
+        updated_at: this.now().toISOString(),
+      };
+      await this.repository.saveBackflowAttempt(attempt);
+      await this.repository.updateDiffItem(input.item.id, {
+        status: "writeback_failed",
+        backflow_error: message,
+        updated_at: attempt.updated_at,
+      });
+      return attempt;
+    }
   }
 }
 
@@ -380,6 +591,32 @@ function buildKeptTextReplacements(
         },
       ];
     });
+}
+
+function resolveBackflowTargets(
+  item: HumanReviewDiffRecord,
+  requestedTargets: "all" | readonly HumanReviewBackflowTarget[],
+): HumanReviewBackflowTarget[] {
+  const targets: HumanReviewBackflowTarget[] = [];
+  if (item.governance_intents.rule_candidate) {
+    targets.push("rule_candidate");
+  }
+  if (item.governance_intents.knowledge_candidate) {
+    targets.push("knowledge_candidate");
+  }
+
+  if (requestedTargets === "all") {
+    return targets;
+  }
+
+  const requested = new Set(requestedTargets);
+  return targets.filter((target) => requested.has(target));
+}
+
+function normalizeBackflowModule(
+  module: HumanReviewDiffRecord["module"],
+): "proofreading" | "editing" {
+  return module === "editing" ? "editing" : "proofreading";
 }
 
 async function markDiffItemsPublished(input: {
