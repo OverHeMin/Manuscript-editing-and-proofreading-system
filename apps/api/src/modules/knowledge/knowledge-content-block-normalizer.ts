@@ -56,13 +56,18 @@ async function normalizeKnowledgeContentBlock(
       byte_length: upload.byte_length,
       uploaded_at: upload.uploaded_at,
     };
+  } else if (blockType === "table_evidence_block") {
+    normalizedPayload = normalizeTableEvidenceBlockPayload(contentPayload);
   }
 
   return {
     blockType,
     orderNo,
     contentPayload: normalizedPayload,
-    tableSemantics: asOptionalRecord(body.tableSemantics),
+    tableSemantics:
+      blockType === "table_evidence_block"
+        ? undefined
+        : asOptionalRecord(body.tableSemantics),
     imageUnderstanding: asOptionalRecord(body.imageUnderstanding),
   };
 }
@@ -89,6 +94,7 @@ function asBlockType(value: unknown): KnowledgeContentBlockInput["blockType"] {
   if (
     value === "text_block" ||
     value === "table_block" ||
+    value === "table_evidence_block" ||
     value === "image_block"
   ) {
     return value;
@@ -96,6 +102,37 @@ function asBlockType(value: unknown): KnowledgeContentBlockInput["blockType"] {
 
   throw new KnowledgeContentBlockPayloadInvalidError(
     `Unknown knowledge content block type: ${String(value)}.`,
+  );
+}
+
+function normalizeTableEvidenceBlockPayload(payload: Record<string, unknown>) {
+  const assetId = readRequiredString(
+    payload.table_evidence_asset_id,
+    "table_evidence_asset_id",
+  );
+  const revisionId = readRequiredString(
+    payload.table_evidence_revision_id,
+    "table_evidence_revision_id",
+  );
+  const bindingId =
+    typeof payload.binding_id === "string" ? payload.binding_id.trim() : "";
+  return {
+    table_evidence_asset_id: assetId,
+    table_evidence_revision_id: revisionId,
+    binding_id: bindingId.length > 0 ? bindingId : undefined,
+  };
+}
+
+function readRequiredString(value: unknown, fieldName: string): string {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.length > 0) {
+      return trimmed;
+    }
+  }
+
+  throw new KnowledgeContentBlockPayloadInvalidError(
+    `Knowledge table evidence block payload field ${fieldName} must be a non-empty string.`,
   );
 }
 

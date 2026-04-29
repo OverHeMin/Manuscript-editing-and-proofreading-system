@@ -3,6 +3,8 @@ import path from "node:path";
 import type { AiGatewayService } from "../ai-gateway/ai-gateway-service.ts";
 import type { AiProviderRuntimeService } from "../ai-provider-runtime/ai-provider-runtime-service.ts";
 import type { ManuscriptType } from "../manuscripts/manuscript-record.ts";
+import type { ConfirmedAiTablePackage } from "../table-evidence/table-evidence-record.ts";
+import type { TableEvidenceService } from "../table-evidence/table-evidence-service.ts";
 import type { TemplateModule } from "../templates/template-record.ts";
 import type { KnowledgeRepository } from "./knowledge-repository.ts";
 import type {
@@ -55,6 +57,8 @@ export interface KnowledgeAiAssistGenerator {
     semanticLayer?: KnowledgeSemanticLayerRecord;
     instructionText: string;
     targetScopes?: string[];
+    confirmedTablePackages?: ConfirmedAiTablePackage[];
+    tableEvidenceInstruction?: string;
   }): Promise<KnowledgeSemanticAssistSuggestionRecord>;
 }
 
@@ -67,6 +71,10 @@ export interface KnowledgeAiAssistServiceOptions {
     | "listAssets"
   >;
   generator?: KnowledgeAiAssistGenerator;
+  tableEvidenceService?: Pick<
+    TableEvidenceService,
+    "assertConfirmedRevision" | "resolveConfirmedPackagesForTarget"
+  >;
 }
 
 export interface OpenAiKnowledgeAiAssistGeneratorOptions {
@@ -82,6 +90,9 @@ interface AssistRequestContent {
   userContent: string | OpenAiChatMessageContentPart[];
   warnings: string[];
 }
+
+const TABLE_EVIDENCE_INSTRUCTION =
+  "Use confirmed_table_packages as authoritative table evidence. Do not collapse U+002D, U+2013, U+2014, U+2212, U+3000, U+00A0, tabs, line breaks, or paragraph boundaries. Use run styles for superscript and subscript.";
 
 type OpenAiChatMessageContentPart =
   | {
@@ -107,9 +118,15 @@ export class KnowledgeAiAssistService {
 
   private readonly generator?: KnowledgeAiAssistGenerator;
 
+  private readonly tableEvidenceService?: Pick<
+    TableEvidenceService,
+    "assertConfirmedRevision" | "resolveConfirmedPackagesForTarget"
+  >;
+
   constructor(options: KnowledgeAiAssistServiceOptions) {
     this.repository = options.repository;
     this.generator = options.generator;
+    this.tableEvidenceService = options.tableEvidenceService;
   }
 
   async createIntakeSuggestion(
@@ -132,6 +149,12 @@ export class KnowledgeAiAssistService {
     const semanticLayer = this.repository.findSemanticLayerByRevisionId
       ? await this.repository.findSemanticLayerByRevisionId(input.revisionId)
       : undefined;
+    const confirmedTablePackages = this.tableEvidenceService
+      ? await this.tableEvidenceService.resolveConfirmedPackagesForTarget(
+          "knowledge_revision",
+          input.revisionId,
+        )
+      : [];
 
     return this.requireGenerator().assistSemanticLayer({
       revision,
@@ -139,6 +162,8 @@ export class KnowledgeAiAssistService {
       semanticLayer,
       instructionText: input.instructionText,
       targetScopes: input.targetScopes,
+      confirmedTablePackages,
+      tableEvidenceInstruction: TABLE_EVIDENCE_INSTRUCTION,
     });
   }
 
@@ -236,6 +261,8 @@ export class OpenAiKnowledgeAiAssistGenerator
     semanticLayer?: KnowledgeSemanticLayerRecord;
     instructionText: string;
     targetScopes?: string[];
+    confirmedTablePackages?: ConfirmedAiTablePackage[];
+    tableEvidenceInstruction?: string;
   }): Promise<KnowledgeSemanticAssistSuggestionRecord> {
     const userPayload = {
       task: "knowledge_semantic_assist",
@@ -258,6 +285,9 @@ export class OpenAiKnowledgeAiAssistGenerator
       },
       instructionText: input.instructionText,
       targetScopes: input.targetScopes,
+      confirmed_table_packages: input.confirmedTablePackages ?? [],
+      table_evidence_instruction:
+        input.tableEvidenceInstruction ?? TABLE_EVIDENCE_INSTRUCTION,
       revision: {
         title: input.revision.title,
         canonicalText: input.revision.canonical_text,

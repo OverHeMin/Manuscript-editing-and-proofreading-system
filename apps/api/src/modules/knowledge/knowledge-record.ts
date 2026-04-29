@@ -250,6 +250,7 @@ export type KnowledgeRevisionBindingKind =
 export type KnowledgeContentBlockType =
   | "text_block"
   | "table_block"
+  | "table_evidence_block"
   | "image_block";
 
 export type KnowledgeContentBlockStatus = "active" | "archived";

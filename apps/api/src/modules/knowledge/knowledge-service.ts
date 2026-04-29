@@ -33,6 +33,7 @@ import type { ModuleTemplateRepository } from "../templates/template-repository.
 import type { TemplateModule } from "../templates/template-record.ts";
 import type { DocumentStructureTableSnapshot } from "../document-pipeline/document-structure-service.ts";
 import type { ToolPermissionPolicyService } from "../tool-permission-policies/tool-permission-policy-service.ts";
+import type { TableEvidenceService } from "../table-evidence/table-evidence-service.ts";
 import {
   InMemoryKnowledgeRepository,
   InMemoryKnowledgeReviewActionRepository,
@@ -259,6 +260,10 @@ export interface GovernedRetrievalResolverDependencies {
 export interface KnowledgeServiceOptions {
   repository: KnowledgeRepository;
   reviewActionRepository: KnowledgeReviewActionRepository;
+  tableEvidenceService?: Pick<
+    TableEvidenceService,
+    "assertConfirmedRevision" | "resolveConfirmedPackagesForTarget"
+  >;
   learningCandidateRepository?: LearningCandidateRepository;
   knowledgeRetrievalRepository?: KnowledgeRetrievalRepository;
   knowledgeRetrievalService?: Pick<
@@ -365,18 +370,32 @@ export class KnowledgeContentBlockOrderError extends Error {
 
 type KnowledgeRevisionReviewGatePhase = "submit_for_review" | "approve";
 
+export interface KnowledgeRevisionReviewGateFailureRecord {
+  code: string;
+  message: string;
+  block_id?: string;
+  revision_id?: string;
+}
+
+type KnowledgeRevisionReviewGateFailureInput =
+  | string
+  | KnowledgeRevisionReviewGateFailureRecord;
+
 export class KnowledgeRevisionReviewGateError extends Error {
   readonly revisionId: string;
   readonly phase: KnowledgeRevisionReviewGatePhase;
   readonly reasons: readonly string[];
+  readonly failures: readonly KnowledgeRevisionReviewGateFailureRecord[];
 
   constructor(
     revisionId: string,
     phase: KnowledgeRevisionReviewGatePhase,
-    reasons: readonly string[],
+    failures: readonly KnowledgeRevisionReviewGateFailureInput[],
   ) {
     const action =
       phase === "submit_for_review" ? "submitted for review" : "approved";
+    const normalizedFailures = failures.map(normalizeReviewGateFailure);
+    const reasons = normalizedFailures.map((failure) => failure.message);
     super(
       `Knowledge revision ${revisionId} cannot be ${action}: ${reasons.join("; ")}.`,
     );
@@ -384,6 +403,7 @@ export class KnowledgeRevisionReviewGateError extends Error {
     this.revisionId = revisionId;
     this.phase = phase;
     this.reasons = [...reasons];
+    this.failures = [...normalizedFailures];
   }
 }
 
@@ -409,6 +429,10 @@ export class KnowledgeService {
     KnowledgeRetrievalService,
     "recordRetrievalSnapshot"
   >;
+  private readonly tableEvidenceService?: Pick<
+    TableEvidenceService,
+    "assertConfirmedRevision" | "resolveConfirmedPackagesForTarget"
+  >;
   private readonly governedRetrievalResolverDependencies?: GovernedRetrievalResolverDependencies;
   private readonly transactionManager: WriteTransactionManager<KnowledgeWriteContext>;
   private readonly permissionGuard: PermissionGuard;
@@ -421,6 +445,7 @@ export class KnowledgeService {
     this.learningCandidateRepository = options.learningCandidateRepository;
     this.knowledgeRetrievalRepository = options.knowledgeRetrievalRepository;
     this.knowledgeRetrievalService = options.knowledgeRetrievalService;
+    this.tableEvidenceService = options.tableEvidenceService;
     this.governedRetrievalResolverDependencies =
       options.governedRetrievalResolverDependencies;
     this.transactionManager =
@@ -1793,10 +1818,82 @@ export class KnowledgeService {
       revision,
       repository,
     );
-    const failures = collectKnowledgeRevisionReviewGateFailures(detail, phase);
+    const failures = [
+      ...collectKnowledgeRevisionReviewGateFailures(detail, phase),
+      ...(await this.collectTableEvidenceReviewGateFailures(detail)),
+    ];
     if (failures.length > 0) {
       throw new KnowledgeRevisionReviewGateError(revision.id, phase, failures);
     }
+  }
+
+  private async collectTableEvidenceReviewGateFailures(
+    detail: KnowledgeRevisionDetailRecord,
+  ): Promise<KnowledgeRevisionReviewGateFailureRecord[]> {
+    const failures: KnowledgeRevisionReviewGateFailureRecord[] = [];
+
+    for (const block of detail.content_blocks) {
+      if (block.block_type !== "table_evidence_block") {
+        continue;
+      }
+
+      const revisionId = String(
+        block.content_payload.table_evidence_revision_id ?? "",
+      );
+      if (revisionId.length === 0) {
+        failures.push({
+          code: "table_evidence_revision_missing",
+          message: `Table evidence block #${block.order_no} is missing a table evidence revision id`,
+          block_id: block.id,
+        });
+        continue;
+      }
+
+      const assetId = String(
+        block.content_payload.table_evidence_asset_id ?? "",
+      ).trim();
+      if (assetId.length === 0) {
+        failures.push({
+          code: "table_evidence_asset_missing",
+          message: `Table evidence block #${block.order_no} is missing a table evidence asset id`,
+          block_id: block.id,
+          revision_id: revisionId,
+        });
+        continue;
+      }
+
+      if (!this.tableEvidenceService) {
+        failures.push({
+          code: "table_evidence_revision_not_confirmed",
+          message: `Table evidence block #${block.order_no} revision ${revisionId} is not confirmed`,
+          block_id: block.id,
+          revision_id: revisionId,
+        });
+        continue;
+      }
+
+      try {
+        const tableEvidenceRevision =
+          await this.tableEvidenceService.assertConfirmedRevision(revisionId);
+        if (tableEvidenceRevision.table_evidence_asset_id !== assetId) {
+          failures.push({
+            code: "table_evidence_asset_mismatch",
+            message: `Table evidence block #${block.order_no} asset ${assetId} does not match revision ${revisionId}`,
+            block_id: block.id,
+            revision_id: revisionId,
+          });
+        }
+      } catch {
+        failures.push({
+          code: "table_evidence_revision_not_confirmed",
+          message: `Table evidence block #${block.order_no} revision ${revisionId} is not confirmed`,
+          block_id: block.id,
+          revision_id: revisionId,
+        });
+      }
+    }
+
+    return failures;
   }
 
   private async findKnowledgeAssetIfSupported(
@@ -2224,10 +2321,23 @@ function compareDuplicateCandidateGroupRecords(
   );
 }
 
+function normalizeReviewGateFailure(
+  failure: KnowledgeRevisionReviewGateFailureInput,
+): KnowledgeRevisionReviewGateFailureRecord {
+  if (typeof failure === "string") {
+    return {
+      code: "knowledge_revision_review_gate_failed",
+      message: failure,
+    };
+  }
+
+  return failure;
+}
+
 function collectKnowledgeRevisionReviewGateFailures(
   detail: KnowledgeRevisionDetailRecord,
   phase: KnowledgeRevisionReviewGatePhase,
-): string[] {
+): KnowledgeRevisionReviewGateFailureInput[] {
   return detail.content_blocks.flatMap((block) => [
     ...collectTableReviewGateFailures(block),
     ...collectImageReviewGateFailures(block, phase),

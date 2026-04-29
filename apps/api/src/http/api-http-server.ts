@@ -2089,6 +2089,7 @@ export function createInMemoryApiRuntime(input: {
   const knowledgeService = new KnowledgeService({
     repository: knowledgeRepository,
     reviewActionRepository: knowledgeReviewActionRepository,
+    tableEvidenceService,
     learningCandidateRepository,
     knowledgeRetrievalRepository,
     knowledgeRetrievalService,
@@ -2111,6 +2112,7 @@ export function createInMemoryApiRuntime(input: {
   });
   const knowledgeAiAssistService = new KnowledgeAiAssistService({
     repository: knowledgeRepository,
+    tableEvidenceService,
     generator: {
       async createIntakeSuggestion() {
         return {
@@ -10123,6 +10125,19 @@ export function mapErrorToHttpResponse(
     return [409, { error: "state_conflict", message: error.message }];
   }
 
+  if (error instanceof KnowledgeRevisionReviewGateError) {
+    return [
+      400,
+      {
+        error: "invalid_request",
+        message: error.message,
+        revisionId: error.revisionId,
+        phase: error.phase,
+        failures: error.failures,
+      },
+    ];
+  }
+
   if (
       error instanceof LearningHumanFinalAssetRequiredError ||
       error instanceof DocumentPreviewSaveBackNotAllowedError ||
@@ -10130,7 +10145,6 @@ export function mapErrorToHttpResponse(
       error instanceof OnlyOfficeSaveBackInvalidCallbackError ||
       error instanceof KnowledgeContentBlockOrderError ||
       error instanceof KnowledgeContentBlockPayloadInvalidError ||
-      error instanceof KnowledgeRevisionReviewGateError ||
       error instanceof LearningDeidentificationRequiredError ||
     error instanceof LearningCandidateEvidenceRequiredError ||
     error instanceof LearningSnapshotDeidentificationRequiredError ||

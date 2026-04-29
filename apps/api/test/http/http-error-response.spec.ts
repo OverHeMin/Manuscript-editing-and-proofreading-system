@@ -40,10 +40,15 @@ test("missing template family failures map to an actionable state conflict respo
   });
 });
 
-test("knowledge review gate failures map to invalid_request", () => {
+test("knowledge review gate failures map to structured invalid_request details", () => {
   const [status, body] = mapErrorToHttpResponse(
     new KnowledgeRevisionReviewGateError("revision-1", "approve", [
-      "Table block #1 is not authoritative exact capture",
+      {
+        code: "table_evidence_revision_not_confirmed",
+        message: "Table evidence block #0 revision rev-pending is not confirmed",
+        block_id: "block-1",
+        revision_id: "rev-pending",
+      },
     ]),
   );
 
@@ -51,6 +56,16 @@ test("knowledge review gate failures map to invalid_request", () => {
   assert.deepEqual(body, {
     error: "invalid_request",
     message:
-      "Knowledge revision revision-1 cannot be approved: Table block #1 is not authoritative exact capture.",
+      "Knowledge revision revision-1 cannot be approved: Table evidence block #0 revision rev-pending is not confirmed.",
+    revisionId: "revision-1",
+    phase: "approve",
+    failures: [
+      {
+        code: "table_evidence_revision_not_confirmed",
+        message: "Table evidence block #0 revision rev-pending is not confirmed",
+        block_id: "block-1",
+        revision_id: "rev-pending",
+      },
+    ],
   });
 });

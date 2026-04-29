@@ -833,6 +833,7 @@ export function createPersistentGovernanceRuntime(
   const knowledgeService = new KnowledgeService({
     repository: knowledgeRepository,
     reviewActionRepository: knowledgeReviewActionRepository,
+    tableEvidenceService,
     learningCandidateRepository,
     knowledgeRetrievalRepository,
     knowledgeRetrievalService,
@@ -860,6 +861,7 @@ export function createPersistentGovernanceRuntime(
   });
   const knowledgeAiAssistService = new KnowledgeAiAssistService({
     repository: knowledgeRepository,
+    tableEvidenceService,
     generator: new OpenAiKnowledgeAiAssistGenerator({
       aiGatewayService,
       aiProviderRuntimeService,
