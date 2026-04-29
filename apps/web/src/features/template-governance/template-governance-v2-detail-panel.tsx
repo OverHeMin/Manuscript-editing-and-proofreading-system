@@ -71,6 +71,78 @@ export function TemplateGovernanceV2DetailPanel({
     );
   }
 
+  if (routeState.section === "ai-intake") {
+    return (
+      <div data-v2-detail-panel="ai-intake">
+        <label className="rule-center-v2__field">
+          <span>人工输入</span>
+          <textarea name="rule-ai-intake-panel" rows={6} />
+        </label>
+        <div className="template-governance-actions">
+          <button type="button">解析规则</button>
+          <button type="button">应用到向导</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (data?.section === "templates") {
+    return (
+      <div data-v2-detail-panel="template-detail">
+        <strong>
+          {data.subtype === "large"
+            ? data.ledger.selectedTemplate?.name ?? data.ledger.templates[0]?.name ?? "大模板"
+            : data.overview.selectedJournalTemplateProfile?.journal_name ??
+              data.overview.journalTemplateProfiles[0]?.journal_name ??
+              "期刊模板"}
+        </strong>
+        <div className="template-governance-actions">
+          <button type="button">新建模板</button>
+          <button type="button">编辑模板</button>
+          <button type="button">归档模板</button>
+          {data.subtype === "journal" ? <button type="button">启用期刊模板</button> : null}
+        </div>
+      </div>
+    );
+  }
+
+  if (data?.section === "packages") {
+    const selectedModule = data.ledger.selectedModule ?? data.ledger.modules[0] ?? null;
+    return (
+      <div data-v2-detail-panel="package-detail">
+        <strong>{selectedModule?.name ?? "规则包"}</strong>
+        <div className="template-governance-actions">
+          <button type="button">新建规则包</button>
+          <button type="button">编辑规则包</button>
+          <button type="button">归档规则包</button>
+          <button type="button">默认规则</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (data?.section === "extraction") {
+    const selectedTask = data.ledger.selectedTask;
+    const fallbackTask = data.ledger.tasks[0] ?? null;
+    const selectedCandidate = selectedTask?.candidates[0] ?? null;
+    return (
+      <div data-v2-detail-panel="extraction-detail">
+        <strong>
+          {selectedCandidate?.title ??
+            selectedTask?.task_name ??
+            fallbackTask?.task_name ??
+            "提取任务"}
+        </strong>
+        <div className="template-governance-actions">
+          <button type="button">暂存候选</button>
+          <button type="button">驳回候选</button>
+          <button type="button">确认入库</button>
+          <button type="button">转成草稿</button>
+        </div>
+      </div>
+    );
+  }
+
   if (data?.section === "rules") {
     const selectedRow = data.ledger.selectedRow ?? data.ledger.rows[0] ?? null;
     return (

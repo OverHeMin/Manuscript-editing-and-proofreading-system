@@ -73,6 +73,45 @@ test("rule center V2 page renders advanced compatibility inside the V2 shell", (
   assert.doesNotMatch(markup, /template-governance-workbench > .template-governance-card/u);
 });
 
+test("rule center V2 page exposes package and extraction operation panels", () => {
+  const packageMarkup = renderToStaticMarkup(
+    <TemplateGovernanceV2WorkbenchPage
+      initialView="general-package-ledger"
+      initialSectionData={createPackageData()}
+    />,
+  );
+  const extractionMarkup = renderToStaticMarkup(
+    <TemplateGovernanceV2WorkbenchPage
+      initialView="extraction-ledger"
+      initialSectionData={createExtractionData()}
+    />,
+  );
+
+  assert.match(packageMarkup, /data-active-section="packages"/u);
+  assert.match(packageMarkup, /data-v2-detail-panel="package-detail"/u);
+  assert.match(packageMarkup, /编辑规则包/u);
+  assert.match(packageMarkup, /默认规则/u);
+  assert.match(extractionMarkup, /data-active-section="extraction"/u);
+  assert.match(extractionMarkup, /data-v2-detail-panel="extraction-detail"/u);
+  assert.match(extractionMarkup, /暂存候选/u);
+  assert.match(extractionMarkup, /确认入库/u);
+});
+
+test("rule center V2 page exposes AI intake operation panel", () => {
+  const markup = renderToStaticMarkup(
+    <TemplateGovernanceV2WorkbenchPage
+      initialView="rule-ledger"
+      initialMode="ai-intake"
+      initialSectionData={createAiIntakeData()}
+    />,
+  );
+
+  assert.match(markup, /data-active-section="ai-intake"/u);
+  assert.match(markup, /data-v2-detail-panel="ai-intake"/u);
+  assert.match(markup, /解析规则/u);
+  assert.match(markup, /应用到向导/u);
+});
+
 function createRulesData(): TemplateGovernanceV2SectionData {
   return {
     section: "rules",
@@ -158,6 +197,81 @@ function createRecoveryData(): TemplateGovernanceV2SectionData {
 function createAdvancedData(): TemplateGovernanceV2SectionData {
   return {
     section: "advanced",
+    overview: createOverview(),
+  };
+}
+
+function createPackageData(): TemplateGovernanceV2SectionData {
+  return {
+    section: "packages",
+    subtype: "general",
+    ledger: {
+      modules: [
+        {
+          id: "module-1",
+          name: "通用规则包",
+          status: "draft",
+          module_class: "general",
+        },
+      ],
+      selectedModuleId: "module-1",
+      selectedModule: {
+        id: "module-1",
+        name: "通用规则包",
+        status: "draft",
+        module_class: "general",
+      },
+      selectedModuleRules: [],
+      summary: {
+        totalCount: 1,
+        draftCount: 1,
+        publishedCount: 0,
+      },
+    },
+  } as unknown as TemplateGovernanceV2SectionData;
+}
+
+function createExtractionData(): TemplateGovernanceV2SectionData {
+  return {
+    section: "extraction",
+    ledger: {
+      tasks: [
+        {
+          id: "task-1",
+          task_name: "提取任务一",
+          status: "pending_confirmation",
+          candidate_count: 1,
+          pending_confirmation_count: 1,
+        },
+      ],
+      selectedTaskId: "task-1",
+      selectedTask: {
+        id: "task-1",
+        task_name: "提取任务一",
+        status: "pending_confirmation",
+        candidate_count: 1,
+        pending_confirmation_count: 1,
+        candidates: [
+          {
+            id: "candidate-1",
+            title: "候选一",
+            confirmation_status: "ai_semantic_ready",
+            suggested_destination: "general_module",
+          },
+        ],
+      },
+      summary: {
+        totalTaskCount: 1,
+        candidateCount: 1,
+        awaitingConfirmationCount: 1,
+      },
+    },
+  } as unknown as TemplateGovernanceV2SectionData;
+}
+
+function createAiIntakeData(): TemplateGovernanceV2SectionData {
+  return {
+    section: "ai-intake",
     overview: createOverview(),
   };
 }
