@@ -2,3 +2,8 @@ export * from "./table-evidence-record.ts";
 export * from "./table-evidence-repository.ts";
 export * from "./in-memory-table-evidence-repository.ts";
 export * from "./postgres-table-evidence-repository.ts";
+export * from "./table-evidence-source-file-service.ts";
+export * from "./table-evidence-worker-adapter.ts";
+export * from "./table-evidence-patch-service.ts";
+export * from "./table-evidence-package-builder.ts";
+export * from "./table-evidence-service.ts";

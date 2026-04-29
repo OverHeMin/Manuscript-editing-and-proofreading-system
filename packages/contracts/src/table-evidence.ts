@@ -108,6 +108,7 @@ export interface TableEvidenceCellSnapshot {
   colspan: number;
   role: "header" | "stub" | "data" | "unknown";
   text: string;
+  display_text?: string;
   codepoints: string[];
   paragraphs: TableEvidenceParagraph[];
   runs: TableEvidenceTextRun[];
