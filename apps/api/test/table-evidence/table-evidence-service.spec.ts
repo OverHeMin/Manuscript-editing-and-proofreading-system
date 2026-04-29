@@ -16,7 +16,7 @@ const DOCX_MIME =
 
 test("table evidence service creates a DOCX upload asset and confirms an authoritative AI package", async () => {
   const repository = new InMemoryTableEvidenceRepository();
-  const ids = ["asset-1", "rev-1", "patch-1", "package-1"];
+  const ids = ["asset-1", "rev-1", "patch-1", "rev-2", "package-1"];
   const sourceFile: TableEvidenceSourceFile = {
     id: "file-1",
     storage_key: "uploads/2026/04/29/table.docx",
@@ -146,7 +146,7 @@ test("table evidence service creates a DOCX upload asset and confirms an authori
 
 test("table evidence service keeps legacy unknown symbol warnings in review", async () => {
   const repository = new InMemoryTableEvidenceRepository();
-  const ids = ["asset-1", "rev-1", "patch-1", "package-1"];
+  const ids = ["asset-1", "rev-1", "patch-1", "rev-2", "package-1"];
   const sourceFile: TableEvidenceSourceFile = {
     id: "file-1",
     storage_key: "uploads/2026/04/29/table.docx",
@@ -413,7 +413,7 @@ test("table correction patches recompute display text with paragraph boundary co
 
 test("table evidence confirmation preserves text-only cells without paragraph snapshots", async () => {
   const repository = new InMemoryTableEvidenceRepository();
-  const ids = ["asset-1", "rev-1", "patch-1", "package-1"];
+  const ids = ["asset-1", "rev-1", "patch-1", "rev-2", "package-1"];
   const sourceFile = createSourceFile();
   const sourceSnapshot = createTextOnlySourceSnapshot();
   const service = createMockedService({ repository, ids, sourceFile, sourceSnapshot });
@@ -437,7 +437,7 @@ test("table evidence confirmation preserves text-only cells without paragraph sn
 
 test("table evidence fidelity warnings require review even after confirmations", async () => {
   const repository = new InMemoryTableEvidenceRepository();
-  const ids = ["asset-1", "rev-1", "patch-1", "package-1"];
+  const ids = ["asset-1", "rev-1", "patch-1", "rev-2", "package-1"];
   const sourceSnapshot = createOneCellSourceSnapshot({
     warnings: ["image_only_table", "nested_table_unsupported"],
   });
@@ -592,7 +592,7 @@ test("table correction confirmation targets must belong to declared cells", () =
 
 test("saving a correction patch clears stale confirmed package metadata", async () => {
   const repository = new InMemoryTableEvidenceRepository();
-  const ids = ["asset-1", "rev-1", "patch-1", "package-1"];
+  const ids = ["asset-1", "rev-1", "patch-1", "rev-2", "package-1", "rev-3"];
   const service = createMockedService({
     repository,
     ids,
@@ -612,7 +612,7 @@ test("saving a correction patch clears stale confirmed package metadata", async 
   assert.equal(confirmed.ai_table_package?.authority, "authoritative");
 
   const updated = await service.saveCorrectionPatch({
-    revisionId: "rev-1",
+    revisionId: confirmed.id,
     patch: {
       patch_id: "patch-updated",
       operations: [
@@ -642,6 +642,133 @@ test("saving a correction patch clears stale confirmed package metadata", async 
   ]);
   const asset = await repository.findAssetById("asset-1");
   assert.equal(asset?.fidelity_status, "needs_review");
+});
+
+test("saving a correction patch appends a new active revision instead of overwriting the source revision", async () => {
+  const repository = new InMemoryTableEvidenceRepository();
+  const ids = ["asset-1", "rev-1", "patch-1", "rev-2"];
+  const service = createMockedService({
+    repository,
+    ids,
+    sourceFile: createSourceFile(),
+    sourceSnapshot: createOneCellSourceSnapshot(),
+  });
+
+  await service.createAssetFromDocxUpload(createUploadInput());
+  const updated = await service.saveCorrectionPatch({
+    revisionId: "rev-1",
+    patch: {
+      patch_id: "patch-updated",
+      operations: [
+        {
+          op: "replace_run_text",
+          cell_id: "cell-r0-c0",
+          paragraph_id: "p-1",
+          run_id: "run-1",
+          before_text: "Hcy–L⁻¹",
+          after_text: "Hcy",
+          after_codepoints: ["0048", "0063", "0079"],
+        },
+      ],
+    },
+  });
+
+  assert.equal(updated.id, "rev-2");
+  assert.equal(updated.revision_no, 2);
+  assert.equal(updated.confirmation_status, "needs_review");
+
+  const original = await repository.findRevisionById("rev-1");
+  assert.equal(original?.confirmation_status, "pending");
+  assert.deepEqual(original?.correction_patch.operations, []);
+
+  const revisions = await repository.listRevisionsForAsset("asset-1");
+  assert.deepEqual(
+    revisions.map((revision) => revision.id).sort(),
+    ["rev-1", "rev-2"],
+  );
+  const asset = await repository.findAssetById("asset-1");
+  assert.equal(asset?.active_revision_id, "rev-2");
+});
+
+test("confirming a revision appends a new active revision with an authoritative package", async () => {
+  const repository = new InMemoryTableEvidenceRepository();
+  const ids = ["asset-1", "rev-1", "patch-1", "rev-2", "package-1"];
+  const service = createMockedService({
+    repository,
+    ids,
+    sourceFile: createSourceFile(),
+    sourceSnapshot: createOneCellSourceSnapshot(),
+  });
+
+  await service.createAssetFromDocxUpload(createUploadInput());
+  const confirmed = await service.confirmRevision({
+    revisionId: "rev-1",
+    actorId: "user-1",
+    confirmations: {
+      invisibleCharsConfirmed: true,
+      specialSymbolsConfirmed: true,
+    },
+  });
+
+  assert.equal(confirmed.id, "rev-2");
+  assert.equal(confirmed.revision_no, 2);
+  assert.equal(confirmed.ai_table_package?.revision_id, "rev-2");
+  assert.equal(confirmed.ai_table_package?.revision_no, 2);
+
+  const original = await repository.findRevisionById("rev-1");
+  assert.equal(original?.confirmation_status, "pending");
+  assert.equal(original?.ai_table_package, undefined);
+  const asset = await repository.findAssetById("asset-1");
+  assert.equal(asset?.active_revision_id, "rev-2");
+});
+
+test("DOCX uploads persist a pending revision for every extracted table", async () => {
+  const repository = new InMemoryTableEvidenceRepository();
+  const ids = ["asset-1", "rev-1", "patch-1", "rev-2", "patch-2"];
+  const firstTable = createOneCellSourceSnapshot();
+  const secondTable: TableSourceSnapshot = {
+    ...createTextOnlySourceSnapshot(),
+    snapshot_id: "source-table-2",
+    table_id: "table-2",
+  };
+  const service = new TableEvidenceService({
+    repository,
+    sourceFileService: {
+      createSourceFile: async () => createSourceFile(),
+      resolveSourcePath: async () => "C:/tmp/table.docx",
+    },
+    workerAdapter: {
+      extractTables: async () => ({
+        parser: "python_docx_ooxml",
+        parser_version: "table-evidence-v1",
+        tables: [firstTable, secondTable],
+        warnings: [],
+      }),
+    },
+    createId: () => {
+      const id = ids.shift();
+      assert.ok(id, "unexpected createId call");
+      return id;
+    },
+    now: () => new Date("2026-04-29T00:00:00.000Z"),
+  });
+
+  const created = await service.createAssetFromDocxUpload(createUploadInput());
+
+  assert.equal(created.tables.length, 2);
+  assert.deepEqual(
+    created.revisions.map((revision) => revision.source_snapshot.table_id),
+    ["table-1", "table-2"],
+  );
+  assert.deepEqual(
+    created.revisions.map((revision) => revision.revision_no),
+    [1, 2],
+  );
+  const persisted = await repository.listRevisionsForAsset("asset-1");
+  assert.deepEqual(
+    persisted.map((revision) => revision.source_snapshot.table_id).sort(),
+    ["table-1", "table-2"],
+  );
 });
 
 test("table evidence worker normalizer marks malformed cell payloads as unconfirmable", () => {

@@ -160,6 +160,40 @@ test("table evidence repository keeps revision asset membership immutable", asyn
   assert.equal(revision?.table_evidence_asset_id, "asset-1");
 });
 
+test("table evidence repository rejects same-id revision overwrites", async () => {
+  const repository = new InMemoryTableEvidenceRepository();
+
+  await seedTwoAssetHarness(repository);
+
+  await assert.rejects(
+    () =>
+      repository.saveRevision({
+        ...createRevision(
+          "asset-1-rev-1",
+          "asset-1",
+          99,
+          "2026-04-29T00:12:00.000Z",
+        ),
+        correction_patch: { patch_id: "replacement-patch", operations: [] },
+        confirmation_status: "confirmed",
+        fidelity_report: {
+          status: "confirmed",
+          failure_codes: [],
+          unsupported_fact_groups: [],
+          required_confirmations: [],
+          invisible_chars_confirmed: true,
+          special_symbols_confirmed: true,
+        },
+      }),
+    /revision id is append-only/i,
+  );
+
+  const revision = await repository.findRevisionById("asset-1-rev-1");
+  assert.equal(revision?.revision_no, 1);
+  assert.equal(revision?.confirmation_status, "pending");
+  assert.equal(revision?.correction_patch.patch_id, "asset-1-rev-1-patch");
+});
+
 async function seedTwoAssetHarness(
   repository: InMemoryTableEvidenceRepository,
 ): Promise<void> {

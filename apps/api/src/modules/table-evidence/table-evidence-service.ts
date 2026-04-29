@@ -96,33 +96,37 @@ export class TableEvidenceService {
     };
     await this.repository.saveAsset(asset);
 
-    const revision: TableEvidenceRevision = {
-      id: this.createId(),
-      table_evidence_asset_id: asset.id,
-      revision_no: 1,
-      source_snapshot: tables[0],
-      correction_patch: { patch_id: this.createId(), operations: [] },
-      fidelity_report: buildFidelityReport(tables[0], {
-        invisibleCharsConfirmed: false,
-        specialSymbolsConfirmed: false,
-        hasConfirmedSnapshot: false,
-        hasAiPackage: false,
-      }),
-      confirmation_status: "pending",
-      created_at: timestamp,
-    };
-    await this.repository.saveRevision(revision);
+    const revisions: TableEvidenceRevision[] = [];
+    for (const [index, table] of tables.entries()) {
+      const revision: TableEvidenceRevision = {
+        id: this.createId(),
+        table_evidence_asset_id: asset.id,
+        revision_no: index + 1,
+        source_snapshot: table,
+        correction_patch: { patch_id: this.createId(), operations: [] },
+        fidelity_report: buildFidelityReport(table, {
+          invisibleCharsConfirmed: false,
+          specialSymbolsConfirmed: false,
+          hasConfirmedSnapshot: false,
+          hasAiPackage: false,
+        }),
+        confirmation_status: "pending",
+        created_at: timestamp,
+      };
+      await this.repository.saveRevision(revision);
+      revisions.push(revision);
+    }
 
     const activeAsset = {
       ...asset,
-      active_revision_id: revision.id,
+      active_revision_id: revisions[0]?.id,
     };
     await this.repository.saveAsset(activeAsset);
 
     return {
       sourceFile,
       asset: activeAsset,
-      revisions: [revision],
+      revisions,
       tables,
     };
   }
@@ -132,20 +136,20 @@ export class TableEvidenceService {
     patch: TableCorrectionPatch;
   }): Promise<TableEvidenceRevision> {
     const revision = await this.requireRevision(input.revisionId);
-    const {
-      ai_table_package: _staleAiTablePackage,
-      confirmed_by: _staleConfirmedBy,
-      confirmed_at: _staleConfirmedAt,
-      ...revisionWithoutConfirmationMetadata
-    } = revision;
+    const asset = await this.requireAsset(revision.table_evidence_asset_id);
+    const timestamp = this.now().toISOString();
     const updated: TableEvidenceRevision = {
-      ...revisionWithoutConfirmationMetadata,
+      id: this.createId(),
+      table_evidence_asset_id: revision.table_evidence_asset_id,
+      revision_no: await this.nextRevisionNo(revision.table_evidence_asset_id),
+      source_snapshot: structuredClone(revision.source_snapshot),
       correction_patch: structuredClone(input.patch),
       confirmed_snapshot: applyTableCorrectionPatch({
         sourceSnapshot: revision.source_snapshot,
         patch: input.patch,
       }),
       confirmation_status: "needs_review",
+      created_at: timestamp,
       fidelity_report: buildFidelityReport(revision.source_snapshot, {
         invisibleCharsConfirmed: false,
         specialSymbolsConfirmed: false,
@@ -154,14 +158,12 @@ export class TableEvidenceService {
       }),
     };
     await this.repository.saveRevision(updated);
-    const asset = await this.repository.findAssetById(revision.table_evidence_asset_id);
-    if (asset?.active_revision_id === revision.id) {
-      await this.repository.saveAsset({
-        ...asset,
-        fidelity_status: "needs_review",
-        updated_at: this.now().toISOString(),
-      });
-    }
+    await this.repository.saveAsset({
+      ...asset,
+      active_revision_id: updated.id,
+      fidelity_status: "needs_review",
+      updated_at: timestamp,
+    });
     return updated;
   }
 
@@ -188,14 +190,22 @@ export class TableEvidenceService {
     const timestamp = this.now().toISOString();
     const status =
       preliminaryReport.status === "confirmed" ? "confirmed" : "needs_review";
-    const revisionForPackage: TableEvidenceRevision = {
-      ...revision,
+    const nextRevision: TableEvidenceRevision = {
+      id: this.createId(),
+      table_evidence_asset_id: revision.table_evidence_asset_id,
+      revision_no: await this.nextRevisionNo(revision.table_evidence_asset_id),
+      source_snapshot: structuredClone(revision.source_snapshot),
+      correction_patch: structuredClone(revision.correction_patch),
       confirmed_snapshot: confirmedSnapshot,
       fidelity_report: preliminaryReport,
       confirmation_status: status,
+      created_at: timestamp,
       ...(status === "confirmed"
         ? { confirmed_by: input.actorId, confirmed_at: timestamp }
         : {}),
+    };
+    const revisionForPackage: TableEvidenceRevision = {
+      ...nextRevision,
     };
     const aiPackage = buildConfirmedAiTablePackage({
       packageId: this.createId(),
@@ -289,6 +299,11 @@ export class TableEvidenceService {
       throw new Error(`Table evidence asset ${assetId} was not found.`);
     }
     return asset;
+  }
+
+  private async nextRevisionNo(assetId: string): Promise<number> {
+    const revisions = await this.repository.listRevisionsForAsset(assetId);
+    return Math.max(0, ...revisions.map((revision) => revision.revision_no)) + 1;
   }
 }
 

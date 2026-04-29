@@ -433,7 +433,7 @@ export async function appendKnowledgeLibraryTableEvidenceBlock({
   const nextOrder = blocks.length;
   const revisionId = normalizeKnowledgeLibraryTableEvidenceRevisionId(currentRevisionId);
   const binding =
-    client
+    client && isConfirmedTableEvidenceSelection(selection)
       ? await bindTableEvidenceRevision(client, {
           revisionId: selection.revisionId,
           targetType: tableEvidenceBindingTargetType,
@@ -478,6 +478,15 @@ function normalizeKnowledgeLibraryTableEvidenceRevisionId(
   }
 
   return revisionId;
+}
+
+function isConfirmedTableEvidenceSelection(
+  selection: KnowledgeTableEvidenceBlockSelection,
+): boolean {
+  return (
+    selection.revisionStatus === "confirmed" &&
+    selection.confirmedTablePackage?.authority === "authoritative"
+  );
 }
 
 export async function handleKnowledgeLibraryTableEvidenceSelection({

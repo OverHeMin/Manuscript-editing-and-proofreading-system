@@ -1882,6 +1882,21 @@ export class KnowledgeService {
             block_id: block.id,
             revision_id: revisionId,
           });
+          continue;
+        }
+
+        const packages =
+          await this.tableEvidenceService.resolveConfirmedPackagesForTarget(
+            "knowledge_revision",
+            detail.id,
+          );
+        if (!packages.some((tablePackage) => tablePackage.revision_id === revisionId)) {
+          failures.push({
+            code: "table_evidence_binding_missing",
+            message: `Table evidence block #${block.order_no} revision ${revisionId} is not bound to knowledge revision ${detail.id}`,
+            block_id: block.id,
+            revision_id: revisionId,
+          });
         }
       } catch {
         failures.push({

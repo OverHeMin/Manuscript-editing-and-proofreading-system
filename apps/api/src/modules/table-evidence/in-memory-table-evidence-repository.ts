@@ -75,6 +75,11 @@ export class InMemoryTableEvidenceRepository implements TableEvidenceRepository 
         `Table evidence revision asset membership is immutable: revision ${record.id} belongs to asset ${existing.table_evidence_asset_id}, not ${record.table_evidence_asset_id}.`,
       );
     }
+    if (existing) {
+      throw new Error(
+        `Table evidence revision id is append-only: revision ${record.id} already exists.`,
+      );
+    }
 
     this.revisions.set(record.id, clone(record));
   }

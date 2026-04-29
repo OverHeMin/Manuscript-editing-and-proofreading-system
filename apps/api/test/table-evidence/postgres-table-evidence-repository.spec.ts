@@ -173,18 +173,38 @@ test("postgres table evidence repository keeps revision asset membership immutab
   });
 });
 
-test("postgres table evidence repository updates an existing revision within the same asset", async () => {
+test("postgres table evidence repository rejects same-id revision overwrites", async () => {
   await withMigratedTableEvidenceClient(async (client) => {
     const repository = new PostgresTableEvidenceRepository({ client });
 
     await seedTwoAssetHarness(repository);
-    await repository.saveRevision(
-      createRevision("asset-1-rev-1", "asset-1", 1, "2026-04-29T00:12:00.000Z"),
+    await assert.rejects(
+      () =>
+        repository.saveRevision({
+          ...createRevision(
+            "asset-1-rev-1",
+            "asset-1",
+            99,
+            "2026-04-29T00:12:00.000Z",
+          ),
+          correction_patch: { patch_id: "replacement-patch", operations: [] },
+          confirmation_status: "confirmed",
+          fidelity_report: {
+            status: "confirmed",
+            failure_codes: [],
+            unsupported_fact_groups: [],
+            required_confirmations: [],
+            invisible_chars_confirmed: true,
+            special_symbols_confirmed: true,
+          },
+        }),
+      /revision id is append-only/i,
     );
 
     const revision = await repository.findRevisionById("asset-1-rev-1");
-    assert.equal(revision?.table_evidence_asset_id, "asset-1");
-    assert.equal(revision?.created_at, "2026-04-29T00:12:00.000Z");
+    assert.equal(revision?.revision_no, 1);
+    assert.equal(revision?.confirmation_status, "pending");
+    assert.equal(revision?.correction_patch.patch_id, "asset-1-rev-1-patch");
   });
 });
 

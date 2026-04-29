@@ -78,6 +78,9 @@ test("knowledge library rich content editor appends table evidence block from a 
       assetId: "asset-1",
       revisionId: "table-revision-1",
       revisionStatus: "confirmed",
+      confirmedTablePackage: {
+        authority: "authoritative",
+      } as never,
     },
   });
 
@@ -101,6 +104,38 @@ test("knowledge library rich content editor appends table evidence block from a 
     table_evidence_revision_id: "table-revision-1",
     binding_id: "binding-1",
     revision_status: "confirmed",
+    confirmed_table_package: {
+      authority: "authoritative",
+    },
+  });
+});
+
+test("knowledge library rich content editor inserts pending table evidence without attempting a backend bind", async () => {
+  const requests: unknown[] = [];
+  const client = {
+    async request<TResponse>(input: unknown) {
+      requests.push(input);
+      return { status: 200, body: {} as TResponse };
+    },
+  };
+
+  const nextBlocks = await appendKnowledgeLibraryTableEvidenceBlock({
+    blocks: [],
+    currentRevisionId: "knowledge-revision-1",
+    client,
+    selection: {
+      assetId: "asset-1",
+      revisionId: "table-revision-pending",
+      revisionStatus: "pending",
+    },
+  });
+
+  assert.deepEqual(requests, []);
+  assert.equal(nextBlocks.length, 1);
+  assert.deepEqual(nextBlocks[0]?.content_payload, {
+    table_evidence_asset_id: "asset-1",
+    table_evidence_revision_id: "table-revision-pending",
+    revision_status: "pending",
   });
 });
 
@@ -122,6 +157,9 @@ test("knowledge library table evidence UI selection handler catches binding fail
       assetId: "asset-1",
       revisionId: "table-revision-1",
       revisionStatus: "confirmed",
+      confirmedTablePackage: {
+        authority: "authoritative",
+      } as never,
     },
     onChange: (nextBlocks) => changes.push(nextBlocks),
     onError: (message) => errors.push(message),
@@ -177,6 +215,9 @@ test("knowledge library table evidence selection requires a real knowledge revis
           assetId: "asset-1",
           revisionId: "table-revision-1",
           revisionStatus: "confirmed",
+          confirmedTablePackage: {
+            authority: "authoritative",
+          } as never,
         },
       }),
     /请先保存草稿后再添加 Word 表格证据/u,

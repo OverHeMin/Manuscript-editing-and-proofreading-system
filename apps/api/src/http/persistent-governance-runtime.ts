@@ -760,6 +760,7 @@ export function createPersistentGovernanceRuntime(
     existingRules: createRuleAiSimilarityLedgerResolver(editorialRuleRepository),
   });
   const ruleAiParsingService = new RuleAiParsingService({
+    tableEvidenceService,
     generator: new OpenAiRuleAiParsingGenerator({
       aiGatewayService,
       aiProviderRuntimeService,

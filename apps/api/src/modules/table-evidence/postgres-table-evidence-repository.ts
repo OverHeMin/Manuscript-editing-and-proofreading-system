@@ -242,6 +242,11 @@ export class PostgresTableEvidenceRepository implements TableEvidenceRepository 
         `Table evidence revision asset membership is immutable: revision ${record.id} belongs to asset ${existing.rows[0].table_evidence_asset_id}, not ${record.table_evidence_asset_id}.`,
       );
     }
+    if (existing.rows[0]) {
+      throw new Error(
+        `Table evidence revision id is append-only: revision ${record.id} already exists.`,
+      );
+    }
 
     const result = await this.dependencies.client.query(
       `
@@ -273,19 +278,7 @@ export class PostgresTableEvidenceRepository implements TableEvidenceRepository 
           $11::timestamptz,
           $12::timestamptz
         )
-        on conflict (id) do update
-        set
-          revision_no = excluded.revision_no,
-          source_snapshot = excluded.source_snapshot,
-          correction_patch = excluded.correction_patch,
-          confirmed_snapshot = excluded.confirmed_snapshot,
-          ai_table_package = excluded.ai_table_package,
-          fidelity_report = excluded.fidelity_report,
-          confirmation_status = excluded.confirmation_status,
-          confirmed_by = excluded.confirmed_by,
-          confirmed_at = excluded.confirmed_at,
-          created_at = excluded.created_at
-        where table_evidence_revisions.table_evidence_asset_id = excluded.table_evidence_asset_id
+        on conflict (id) do nothing
       `,
       [
         record.id,
@@ -305,7 +298,7 @@ export class PostgresTableEvidenceRepository implements TableEvidenceRepository 
 
     if (result.rowCount === 0) {
       throw new Error(
-        `Table evidence revision asset membership is immutable: revision ${record.id} already belongs to another asset.`,
+        `Table evidence revision id is append-only: revision ${record.id} already exists.`,
       );
     }
   }

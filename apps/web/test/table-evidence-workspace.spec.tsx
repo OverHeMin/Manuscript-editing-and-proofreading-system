@@ -272,6 +272,30 @@ test("workspace disables confirmation for each independent blocking reason", () 
   }
 });
 
+test("workspace allows confirmation when needs_review only reflects now-satisfied required confirmations", () => {
+  const html = renderToStaticMarkup(
+    <TableEvidenceWorkspace
+      asset={buildAsset()}
+      revision={buildRevision({
+        fidelity_report: {
+          status: "needs_review",
+          failure_codes: [],
+          unsupported_fact_groups: [],
+          required_confirmations: ["invisible_chars", "special_symbols"],
+          invisible_chars_confirmed: true,
+          special_symbols_confirmed: true,
+        },
+      })}
+      onBind={() => Promise.resolve()}
+      onConfirm={() => Promise.resolve()}
+      onSavePatch={() => Promise.resolve()}
+    />,
+  );
+
+  assert.match(html, /data-fidelity-status="needs_review"/);
+  assert.match(html, /data-confirm-disabled="false"/);
+});
+
 test("workspace exposes stale patch errors and disables save and confirm", () => {
   const html = renderToStaticMarkup(
     <TableEvidenceWorkspace

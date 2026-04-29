@@ -1,4 +1,5 @@
 import type {
+  ConfirmedAiTablePackage,
   RuleAiEvidenceItem,
   RuleAiParsingRequest,
   RuleAiParsingResponse,
@@ -11,11 +12,22 @@ export interface RuleAiParsingGenerator {
   parseRule(input: RuleAiParsingRequest): Promise<RuleAiParsingResponse>;
 }
 
+export interface RuleAiParsingTableEvidenceService {
+  assertConfirmedRevision(revisionId: string): Promise<{
+    ai_table_package?: ConfirmedAiTablePackage;
+  }>;
+}
+
 export class RuleAiParsingService {
   private readonly generator?: RuleAiParsingGenerator;
+  private readonly tableEvidenceService?: RuleAiParsingTableEvidenceService;
 
-  constructor(options: { generator?: RuleAiParsingGenerator }) {
+  constructor(options: {
+    generator?: RuleAiParsingGenerator;
+    tableEvidenceService?: RuleAiParsingTableEvidenceService;
+  }) {
     this.generator = options.generator;
+    this.tableEvidenceService = options.tableEvidenceService;
   }
 
   async parseRule(input: RuleAiParsingRequest): Promise<RuleAiParsingResponse> {
@@ -25,7 +37,8 @@ export class RuleAiParsingService {
       );
     }
 
-    const tableEvidenceWarnings = buildTableEvidenceWarnings(input);
+    const resolvedInput = await this.resolveTableEvidence(input);
+    const tableEvidenceWarnings = buildTableEvidenceWarnings(resolvedInput);
     if (isPublishParseMode(input) && tableEvidenceWarnings.length > 0) {
       throw new RuleAiIntakeUnavailableError(
         "table_evidence_not_authoritative",
@@ -36,7 +49,7 @@ export class RuleAiParsingService {
       throw new RuleAiIntakeUnavailableError("Rule AI parsing is unavailable.");
     }
 
-    const parsed = await this.generator.parseRule(input);
+    const parsed = await this.generator.parseRule(resolvedInput);
     return {
       ai_understanding_summary: parsed.ai_understanding_summary.trim(),
       consistency: parsed.consistency,
@@ -48,6 +61,64 @@ export class RuleAiParsingService {
         ...tableEvidenceWarnings,
       ]),
     };
+  }
+
+  private async resolveTableEvidence(
+    input: RuleAiParsingRequest,
+  ): Promise<RuleAiParsingRequest> {
+    if (!this.tableEvidenceService) {
+      return input;
+    }
+
+    const evidence = input.rule_fields.evidence;
+    if (!evidence?.length) {
+      return input;
+    }
+
+    const resolvedEvidence = await Promise.all(
+      evidence.map((item) => this.resolveTableEvidenceItem(item)),
+    );
+
+    return {
+      ...input,
+      rule_fields: {
+        ...input.rule_fields,
+        evidence: resolvedEvidence,
+      },
+    };
+  }
+
+  private async resolveTableEvidenceItem(
+    evidence: RuleAiEvidenceItem,
+  ): Promise<RuleAiEvidenceItem> {
+    if (evidence.kind !== "confirmed_table_package") {
+      return evidence;
+    }
+
+    const revisionId =
+      normalizeOptionalId(evidence.source_id) ??
+      normalizeOptionalId(evidence.confirmed_table_package?.revision_id);
+    if (!revisionId) {
+      return markTableEvidenceUnavailable(evidence);
+    }
+
+    try {
+      const revision =
+        await this.tableEvidenceService?.assertConfirmedRevision(revisionId);
+      const tablePackage = revision?.ai_table_package;
+      if (tablePackage?.authority !== "authoritative") {
+        return markTableEvidenceUnavailable(evidence);
+      }
+
+      return {
+        ...evidence,
+        source_id: revisionId,
+        authority: "authoritative",
+        confirmed_table_package: tablePackage,
+      };
+    } catch {
+      return markTableEvidenceUnavailable(evidence);
+    }
   }
 }
 
@@ -203,6 +274,24 @@ function isPublishParseMode(input: RuleAiParsingRequest): boolean {
 
 function uniqueWarnings(warnings: string[]): string[] {
   return [...new Set(warnings)];
+}
+
+function normalizeOptionalId(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized ? normalized : undefined;
+}
+
+function markTableEvidenceUnavailable(
+  evidence: RuleAiEvidenceItem,
+): RuleAiEvidenceItem {
+  const {
+    confirmed_table_package: _untrustedClientPackage,
+    ...withoutClientPackage
+  } = evidence;
+  return {
+    ...withoutClientPackage,
+    authority: "unavailable",
+  };
 }
 
 function extractOpenAiCompatibleContent(body: {

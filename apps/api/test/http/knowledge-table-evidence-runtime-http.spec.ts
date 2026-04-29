@@ -13,7 +13,10 @@ import {
 test("in-memory HTTP runtime gates table evidence using its constructed table evidence service", async () => {
   const originalAssertConfirmedRevision =
     TableEvidenceService.prototype.assertConfirmedRevision;
+  const originalResolveConfirmedPackagesForTarget =
+    TableEvidenceService.prototype.resolveConfirmedPackagesForTarget;
   const assertCalls: string[] = [];
+  const resolveCalls: Array<{ targetType: string; targetId: string }> = [];
   TableEvidenceService.prototype.assertConfirmedRevision = async function (
     revisionId: string,
   ) {
@@ -25,6 +28,18 @@ test("in-memory HTTP runtime gates table evidence using its constructed table ev
       fidelity_report: { status: "confirmed" },
       ai_table_package: { authority: "authoritative" },
     } as never;
+  };
+  TableEvidenceService.prototype.resolveConfirmedPackagesForTarget = async function (
+    targetType,
+    targetId,
+  ) {
+    resolveCalls.push({ targetType, targetId });
+    return [
+      {
+        revision_id: "rev-confirmed",
+        authority: "authoritative",
+      },
+    ] as never;
   };
 
   const runtime = createInMemoryApiRuntime({
@@ -59,9 +74,17 @@ test("in-memory HTTP runtime gates table evidence using its constructed table ev
 
     assert.equal(submitResponse.status, 200);
     assert.deepEqual(assertCalls, ["rev-confirmed"]);
+    assert.deepEqual(resolveCalls, [
+      {
+        targetType: "knowledge_revision",
+        targetId: revisionId,
+      },
+    ]);
   } finally {
     TableEvidenceService.prototype.assertConfirmedRevision =
       originalAssertConfirmedRevision;
+    TableEvidenceService.prototype.resolveConfirmedPackagesForTarget =
+      originalResolveConfirmedPackagesForTarget;
     await stopHttpTestServer(server);
   }
 });

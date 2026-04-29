@@ -353,18 +353,24 @@ function isConfirmDisabled(input: {
 }): boolean {
   if (
     input.patchError ||
-    input.report.status === "needs_review" ||
     input.report.failure_codes.length > 0 ||
     input.report.unsupported_fact_groups.length > 0
   ) {
     return true;
   }
 
-  return (
+  const missingRequiredConfirmation =
     (input.report.required_confirmations.includes("invisible_chars") &&
       !input.invisibleCharsConfirmed) ||
     (input.report.required_confirmations.includes("special_symbols") &&
-      !input.specialSymbolsConfirmed)
+      !input.specialSymbolsConfirmed);
+  if (missingRequiredConfirmation) {
+    return true;
+  }
+
+  return (
+    input.report.status === "needs_review" &&
+    input.report.required_confirmations.length === 0
   );
 }
 

@@ -12,11 +12,13 @@ import { normalizeKnowledgeContentBlocksInput } from "../../src/modules/knowledg
 
 function createKnowledgeTableEvidenceHarness(input?: {
   confirmedRevisionIds?: readonly string[];
+  boundRevisionIds?: readonly string[];
   revisionAssetIds?: Record<string, string>;
 }) {
   const repository = new InMemoryKnowledgeRepository();
   const reviewActionRepository = new InMemoryKnowledgeReviewActionRepository();
   const confirmedRevisionIds = new Set(input?.confirmedRevisionIds ?? []);
+  const boundRevisionIds = new Set(input?.boundRevisionIds ?? []);
   let nextId = 1;
 
   const service = new KnowledgeService({
@@ -37,8 +39,14 @@ function createKnowledgeTableEvidenceHarness(input?: {
             input?.revisionAssetIds?.[revisionId] ?? "table-asset-1",
         } as never;
       },
-      async resolveConfirmedPackagesForTarget() {
-        return [];
+      async resolveConfirmedPackagesForTarget(targetType, targetId) {
+        assert.equal(targetType, "knowledge_revision");
+        assert.ok(targetId.length > 0);
+        return [...boundRevisionIds].map((revisionId) => ({
+          revision_id: revisionId,
+          asset_id: input?.revisionAssetIds?.[revisionId] ?? "table-asset-1",
+          authority: "authoritative",
+        })) as never;
       },
     },
   });
@@ -102,6 +110,7 @@ test("unconfirmed table evidence revision cannot be submitted for review", async
 test("confirmed table evidence revision passes submit and approve gates", async () => {
   const { service } = createKnowledgeTableEvidenceHarness({
     confirmedRevisionIds: ["rev-confirmed"],
+    boundRevisionIds: ["rev-confirmed"],
   });
   const created = await createDraftWithTableEvidenceBlock(service, {
     table_evidence_asset_id: "table-asset-1",
@@ -118,6 +127,36 @@ test("confirmed table evidence revision passes submit and approve gates", async 
 
   assert.equal(submitted.selected_revision.status, "pending_review");
   assert.equal(approved.selected_revision.status, "approved");
+});
+
+test("confirmed table evidence revision without a knowledge revision binding blocks review gates", async () => {
+  const { service } = createKnowledgeTableEvidenceHarness({
+    confirmedRevisionIds: ["rev-confirmed"],
+  });
+  const created = await createDraftWithTableEvidenceBlock(service, {
+    table_evidence_asset_id: "table-asset-1",
+    table_evidence_revision_id: "rev-confirmed",
+  });
+
+  await assert.rejects(
+    () =>
+      service.submitRevisionForReview({
+        revisionId: created.selected_revision.id,
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof KnowledgeRevisionReviewGateError);
+      assert.deepEqual(
+        error.failures.map((failure) => failure.code),
+        ["table_evidence_binding_missing"],
+      );
+      assert.equal(error.failures[0]?.revision_id, "rev-confirmed");
+      assert.equal(
+        error.failures[0]?.block_id,
+        `${created.selected_revision.id}-content-block-1`,
+      );
+      return true;
+    },
+  );
 });
 
 test("table evidence asset id mismatch blocks submit with an inspectable failure code", async () => {

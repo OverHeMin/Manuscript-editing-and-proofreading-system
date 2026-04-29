@@ -2190,6 +2190,7 @@ export function createInMemoryApiRuntime(input: {
     existingRules: createRuleAiSimilarityLedgerResolver(editorialRuleRepository),
   });
   const ruleAiParsingService = new RuleAiParsingService({
+    tableEvidenceService,
     generator: {
       async parseRule(input) {
         return {

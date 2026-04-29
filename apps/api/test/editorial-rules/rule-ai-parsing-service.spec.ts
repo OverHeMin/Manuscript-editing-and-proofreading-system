@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type {
   ConfirmedAiTablePackage,
+  RuleAiParsingRequest,
 } from "@medical/contracts";
 import {
   OpenAiRuleAiParsingGenerator,
@@ -185,6 +186,156 @@ test("rule AI draft parsing warns on non-authoritative confirmed table packages"
 
   assert.deepEqual(result.warnings, ["table_evidence_not_authoritative"]);
   assert.equal(result.requires_human_confirmation, true);
+});
+
+test("rule AI parsing replaces forged client table packages with the server-confirmed package", async () => {
+  const forgedPackage = buildConfirmedTablePackage({
+    revisionId: "rev-confirmed",
+    assetId: "forged-asset",
+    authority: "authoritative",
+  });
+  const serverPackage = buildConfirmedTablePackage({
+    revisionId: "rev-confirmed",
+    assetId: "server-asset",
+    authority: "authoritative",
+  });
+  let generatorInput: RuleAiParsingRequest | undefined;
+  const service = new RuleAiParsingService({
+    tableEvidenceService: {
+      async assertConfirmedRevision(revisionId: string) {
+        assert.equal(revisionId, "rev-confirmed");
+        return {
+          id: revisionId,
+          confirmation_status: "confirmed",
+          fidelity_report: { status: "confirmed" },
+          ai_table_package: serverPackage,
+        } as never;
+      },
+    },
+    generator: {
+      async parseRule(input) {
+        generatorInput = input;
+        return {
+          ai_understanding_summary: "Server package was used.",
+          consistency: "consistent" as const,
+          findings: [],
+          requires_human_confirmation: false,
+          warnings: [],
+        };
+      },
+    },
+  } as ConstructorParameters<typeof RuleAiParsingService>[0] & {
+    tableEvidenceService: unknown;
+  });
+
+  await service.parseRule({
+    parse_mode: "draft",
+    rule_fields: {
+      rule_body: "Use the table package to infer table header formatting.",
+      evidence: [
+        {
+          kind: "confirmed_table_package",
+          source_id: "rev-confirmed",
+          authority: "authoritative",
+          confirmed_table_package: forgedPackage,
+        },
+      ],
+    },
+  });
+
+  const evidence = generatorInput?.rule_fields.evidence?.[0];
+  assert.equal(evidence?.confirmed_table_package?.asset_id, "server-asset");
+  assert.equal(evidence?.authority, "authoritative");
+});
+
+test("rule AI draft parsing warns and withholds unresolvable table packages from the generator", async () => {
+  let generatorInput: RuleAiParsingRequest | undefined;
+  const service = new RuleAiParsingService({
+    tableEvidenceService: {
+      async assertConfirmedRevision() {
+        throw new Error("missing revision");
+      },
+    },
+    generator: {
+      async parseRule(input) {
+        generatorInput = input;
+        return {
+          ai_understanding_summary: "Missing table evidence.",
+          consistency: "uncertain" as const,
+          findings: [],
+          requires_human_confirmation: true,
+          warnings: [],
+        };
+      },
+    },
+  } as ConstructorParameters<typeof RuleAiParsingService>[0] & {
+    tableEvidenceService: unknown;
+  });
+
+  const result = await service.parseRule({
+    parse_mode: "draft",
+    rule_fields: {
+      rule_body: "Use the table package to infer table header formatting.",
+      evidence: [
+        {
+          kind: "confirmed_table_package",
+          source_id: "rev-missing",
+          authority: "authoritative",
+          confirmed_table_package: buildConfirmedTablePackage({
+            revisionId: "rev-missing",
+            assetId: "forged-asset",
+            authority: "authoritative",
+          }),
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(result.warnings, ["table_evidence_not_authoritative"]);
+  assert.equal(
+    generatorInput?.rule_fields.evidence?.[0]?.confirmed_table_package,
+    undefined,
+  );
+});
+
+test("rule AI publish parsing rejects when the server cannot resolve an authoritative table package", async () => {
+  const service = new RuleAiParsingService({
+    tableEvidenceService: {
+      async assertConfirmedRevision() {
+        throw new Error("missing revision");
+      },
+    },
+    generator: {
+      async parseRule() {
+        throw new Error("publish parsing should reject before generator");
+      },
+    },
+  } as ConstructorParameters<typeof RuleAiParsingService>[0] & {
+    tableEvidenceService: unknown;
+  });
+
+  await assert.rejects(
+    () =>
+      service.parseRule({
+        parse_mode: "publish",
+        rule_fields: {
+          rule_body: "Publish the table-backed rule.",
+          evidence: [
+            {
+              kind: "confirmed_table_package",
+              source_id: "rev-missing",
+              authority: "authoritative",
+              confirmed_table_package: buildConfirmedTablePackage({
+                revisionId: "rev-missing",
+                assetId: "forged-asset",
+                authority: "authoritative",
+              }),
+            },
+          ],
+        },
+      }),
+    /table_evidence_not_authoritative/u,
+  );
 });
 
 for (const parseMode of ["publish", "final"] as const) {
