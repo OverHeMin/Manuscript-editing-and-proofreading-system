@@ -184,7 +184,7 @@ test("knowledge library table evidence selection requires a real knowledge revis
   assert.deepEqual(requests, []);
 });
 
-test("knowledge library rich content editor renders existing table evidence blocks without the table textarea editor", () => {
+test("knowledge library rich content editor renders existing table evidence blocks with localized revision status", () => {
   const markup = renderToStaticMarkup(
     <KnowledgeLibraryRichContentEditor
       blocks={[
@@ -198,7 +198,7 @@ test("knowledge library rich content editor renders existing table evidence bloc
             table_evidence_asset_id: "asset-1",
             table_evidence_revision_id: "table-revision-1",
             binding_id: "binding-1",
-            revision_status: "confirmed",
+            revision_status: "pending",
           },
         },
       ]}
@@ -210,7 +210,8 @@ test("knowledge library rich content editor renders existing table evidence bloc
   assert.match(markup, /asset-1/u);
   assert.match(markup, /table-revision-1/u);
   assert.match(markup, /binding-1/u);
-  assert.match(markup, /confirmed/u);
+  assert.match(markup, /待确认/u);
+  assert.doesNotMatch(markup, />pending</u);
   assert.doesNotMatch(markup, /表格内容（支持直接粘贴 Excel \/ WPS）/u);
 });
 

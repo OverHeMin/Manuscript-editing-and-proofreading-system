@@ -521,8 +521,25 @@ function KnowledgeLibraryTableEvidenceBlockSummary({
       </div>
       <div>
         <dt>Status</dt>
-        <dd>{payload.revision_status || "未加载"}</dd>
+        <dd>{formatTableEvidenceRevisionStatus(payload.revision_status)}</dd>
       </div>
     </dl>
   );
+}
+
+function formatTableEvidenceRevisionStatus(
+  status: Partial<KnowledgeTableEvidenceBlockPayload>["revision_status"],
+): string {
+  switch (status) {
+    case "pending":
+      return "待确认";
+    case "confirmed":
+      return "已确认";
+    case "needs_review":
+      return "需复核";
+    case undefined:
+      return "未加载";
+    default:
+      return status;
+  }
 }
