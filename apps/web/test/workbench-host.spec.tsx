@@ -237,10 +237,10 @@ test("workbench host routes legacy learning-review hashes into the rule-center l
     "#learning-review?manuscriptId=manuscript-42&reviewedCaseSnapshotId=snapshot-42",
   );
 
-  assert.match(markup, /template-governance-recovery-route/u);
-  assert.match(markup, /data-mode="rule-center-recovery"/u);
-  assert.match(markup, /\u8f6c\u89c4\u5219\u7ad9/u);
-  assert.match(markup, /\u56de\u6d41\u5019\u9009\u8f6c\u89c4\u5219/u);
+  assert.match(markup, /rule-center-v2/u);
+  assert.match(markup, /data-active-section="recovery"/u);
+  assert.match(markup, /data-v2-queue-section="recovery"/u);
+  assert.match(markup, /\u89c4\u5219\u5de5\u4f5c\u53f0/u);
   assert.match(
     markup,
     /workbench-header-focus-card[\s\S]*?\u89c4\u5219\u4e2d\u5fc3/u,
@@ -254,62 +254,71 @@ test("knowledge reviewer legacy learning-review hashes resolve to the live rule 
     "knowledge_reviewer",
   );
 
-  assert.match(markup, /template-governance-recovery-route/u);
-  assert.match(markup, /data-mode="rule-center-recovery"/u);
+  assert.match(markup, /rule-center-v2/u);
+  assert.match(markup, /data-active-section="recovery"/u);
+  assert.match(markup, /data-v2-queue-section="recovery"/u);
   assert.match(
     markup,
     /workbench-header-focus-card[\s\S]*?\u89c4\u5219\u4e2d\u5fc3/u,
   );
   assert.doesNotMatch(markup, /learning-review-compat/u);
-  return;
-  assert.doesNotMatch(markup, /learning-review-compat/u);
 });
 
-test("workbench host runtime render routes rule center overview hashes to the overview page", async () => {
+test("workbench host runtime render routes rule center overview hashes to the V2 dashboard", async () => {
   const markup = await renderWorkbenchHostAtHash(
     "#template-governance?templateGovernanceView=overview",
   );
 
-  assert.match(markup, /template-governance-overview-page/u);
-  assert.match(markup, /查看待审核/u);
+  assert.match(markup, /rule-center-v2/u);
+  assert.match(markup, /data-active-section="dashboard"/u);
+  assert.match(markup, /\u89c4\u5219\u5de5\u4f5c\u53f0/u);
+  assert.doesNotMatch(markup, /template-governance-overview-page/u);
   assert.doesNotMatch(markup, /rule-package-workbench-columns/u);
 });
 
-test("workbench host defaults bare rule center hashes to the overview page", async () => {
+test("workbench host defaults bare rule center hashes to the V2 dashboard", async () => {
   const markup = await renderWorkbenchHostAtHash("#template-governance");
 
-  assert.match(markup, /template-governance-overview-page/u);
-  assert.match(markup, /template-governance-overview-main/u);
+  assert.match(markup, /rule-center-v2/u);
+  assert.match(markup, /data-active-section="dashboard"/u);
+  assert.doesNotMatch(markup, /template-governance-overview-page/u);
+  assert.doesNotMatch(markup, /template-governance-overview-main/u);
   assert.doesNotMatch(markup, /rule-package-workbench-columns/u);
 });
 
-test("workbench host runtime render routes rule center extraction hashes to the extraction ledger entry surface", async () => {
+test("workbench host runtime render routes rule center extraction hashes to the V2 extraction section", async () => {
   const markup = await renderWorkbenchHostAtHash(
     "#template-governance?templateGovernanceView=extraction-ledger",
   );
 
-  assert.match(markup, /template-governance-extraction-ledger-page/u);
-  assert.match(markup, /新建提取任务/u);
+  assert.match(markup, /rule-center-v2/u);
+  assert.match(markup, /data-active-section="extraction"/u);
+  assert.match(markup, /data-v2-queue-section="extraction"/u);
+  assert.match(markup, /\u5bfc\u5165\u63d0\u53d6\u4efb\u52a1/u);
+  assert.doesNotMatch(markup, /template-governance-extraction-ledger-page/u);
   assert.doesNotMatch(markup, /rule-package-workbench-columns/u);
 });
 
-test("workbench host runtime render routes rule center overview hashes to the overview page", async () => {
+test("workbench host runtime render routes rule center overview hashes to the V2 dashboard after duplicate route lookup", async () => {
   const markup = await renderWorkbenchHostAtHash(
     "#template-governance?templateGovernanceView=overview",
   );
 
-  assert.match(markup, /template-governance-overview-page/u);
-  assert.match(markup, /查看待审核/u);
+  assert.match(markup, /rule-center-v2/u);
+  assert.match(markup, /data-active-section="dashboard"/u);
+  assert.doesNotMatch(markup, /template-governance-overview-page/u);
   assert.doesNotMatch(markup, /rule-package-workbench-columns/u);
 });
 
-test("workbench host runtime render routes rule center extraction hashes to the extraction ledger entry surface", async () => {
+test("workbench host runtime render routes rule center extraction hashes to the V2 extraction section after duplicate route lookup", async () => {
   const markup = await renderWorkbenchHostAtHash(
     "#template-governance?templateGovernanceView=extraction-ledger",
   );
 
-  assert.match(markup, /template-governance-extraction-ledger-page/u);
-  assert.match(markup, /新建提取任务/u);
+  assert.match(markup, /rule-center-v2/u);
+  assert.match(markup, /data-active-section="extraction"/u);
+  assert.match(markup, /data-v2-queue-section="extraction"/u);
+  assert.doesNotMatch(markup, /template-governance-extraction-ledger-page/u);
   assert.doesNotMatch(markup, /rule-package-workbench-columns/u);
 });
 

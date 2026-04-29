@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createBrowserHttpClient } from "../../lib/browser-http-client.ts";
 import type {
   RuleCenterMode,
@@ -43,6 +43,7 @@ export interface TemplateGovernanceV2WorkbenchPageProps {
   initialLearningCandidates?: readonly LearningCandidateViewModel[];
   initialReviewItems?: readonly ReviewItemViewModel[];
   initialSectionData?: TemplateGovernanceV2SectionData | null;
+  advancedCompatibilityPanel?: ReactNode;
 }
 
 export function TemplateGovernanceV2WorkbenchPage({
@@ -55,6 +56,7 @@ export function TemplateGovernanceV2WorkbenchPage({
   initialLearningCandidates = [],
   initialReviewItems = [],
   initialSectionData = null,
+  advancedCompatibilityPanel,
 }: TemplateGovernanceV2WorkbenchPageProps) {
   const initialRouteState = useMemo(
     () =>
@@ -78,6 +80,12 @@ export function TemplateGovernanceV2WorkbenchPage({
   const [sectionData, setSectionData] =
     useState<TemplateGovernanceV2SectionData | null>(initialSectionData);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRouteState(initialRouteState);
+    setSectionData(initialSectionData);
+    setLoadError(null);
+  }, [initialRouteState, initialSectionData]);
 
   useEffect(() => {
     if (initialSectionData) {
@@ -140,10 +148,19 @@ export function TemplateGovernanceV2WorkbenchPage({
       onCommand={handleCommand}
       detailPanel={
         <TemplateGovernanceV2DetailPanel
+          controller={controller}
           data={sectionData}
           routeState={routeState}
           initialSelectedLearningCandidateId={initialSelectedLearningCandidateId}
           initialSelectedReviewItemId={initialSelectedReviewItemId}
+          advancedCompatibilityPanel={advancedCompatibilityPanel}
+          onCloseRuleWizard={() => {
+            setRouteState(createRouteStateForSection("rules"));
+          }}
+          onRuleWizardComplete={() => {
+            setRouteState(createRouteStateForSection("rules"));
+            setSectionData(null);
+          }}
         />
       }
     >

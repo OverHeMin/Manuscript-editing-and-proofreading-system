@@ -1,29 +1,51 @@
+import { useState, type ReactNode } from "react";
 import { RuleLearningPane } from "./rule-learning-pane.tsx";
 import { RulePlatformReleasePanel } from "./rule-platform-release-panel.tsx";
 import { TemplateGovernanceRuleWizard } from "./template-governance-rule-wizard.tsx";
-import { createRuleWizardState } from "./template-governance-rule-wizard-state.ts";
+import {
+  createRuleWizardEntryFormState,
+  type RuleWizardEntryFormState,
+  type RuleWizardReleaseAction,
+} from "./template-governance-rule-wizard-api.ts";
+import {
+  advanceRuleWizardState,
+  createRuleWizardState,
+  rewindRuleWizardState,
+  type RuleWizardState,
+} from "./template-governance-rule-wizard-state.ts";
+import type { TemplateGovernanceWorkbenchController } from "./template-governance-controller.ts";
 import { TemplateGovernanceV2AdvancedPanel } from "./template-governance-v2-advanced-panel.tsx";
 import type { TemplateGovernanceV2SectionData } from "./template-governance-v2-data.ts";
 import type { TemplateGovernanceV2RouteState } from "./template-governance-v2-types.ts";
 
 export interface TemplateGovernanceV2DetailPanelProps {
+  controller: TemplateGovernanceWorkbenchController;
   data: TemplateGovernanceV2SectionData | null;
   routeState: TemplateGovernanceV2RouteState;
   initialSelectedLearningCandidateId?: string;
   initialSelectedReviewItemId?: string;
+  advancedCompatibilityPanel?: ReactNode;
+  onCloseRuleWizard?: () => void;
+  onRuleWizardComplete?: () => void;
 }
 
 export function TemplateGovernanceV2DetailPanel({
+  controller,
   data,
   routeState,
   initialSelectedLearningCandidateId,
   initialSelectedReviewItemId,
+  advancedCompatibilityPanel,
+  onCloseRuleWizard,
+  onRuleWizardComplete,
 }: TemplateGovernanceV2DetailPanelProps) {
   if (routeState.panel === "rule-wizard") {
     return (
       <div data-v2-detail-panel="rule-wizard">
-        <TemplateGovernanceRuleWizard
-          state={createRuleWizardState("create")}
+        <TemplateGovernanceV2RuleWizardPanel
+          controller={controller}
+          onClose={onCloseRuleWizard}
+          onComplete={onRuleWizardComplete}
         />
       </div>
     );
@@ -66,7 +88,7 @@ export function TemplateGovernanceV2DetailPanel({
   if (routeState.section === "advanced") {
     return (
       <div data-v2-detail-panel="advanced-compatibility">
-        <TemplateGovernanceV2AdvancedPanel />
+        {advancedCompatibilityPanel ?? <TemplateGovernanceV2AdvancedPanel />}
       </div>
     );
   }
@@ -170,5 +192,112 @@ export function TemplateGovernanceV2DetailPanel({
     <div data-v2-detail-panel={routeState.panel}>
       <p className="template-governance-empty">未选择项目</p>
     </div>
+  );
+}
+
+interface TemplateGovernanceV2RuleWizardPanelProps {
+  controller: TemplateGovernanceWorkbenchController;
+  onClose?: () => void;
+  onComplete?: () => void;
+}
+
+function TemplateGovernanceV2RuleWizardPanel({
+  controller,
+  onClose,
+  onComplete,
+}: TemplateGovernanceV2RuleWizardPanelProps) {
+  const [wizardState, setWizardState] = useState<RuleWizardState>(() =>
+    createRuleWizardState("create"),
+  );
+  const [entryFormState, setEntryFormState] = useState<RuleWizardEntryFormState>(() =>
+    createRuleWizardEntryFormState(),
+  );
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  async function handleSaveDraft() {
+    if (isSaving) {
+      return;
+    }
+
+    if (wizardState.step !== "entry" && wizardState.draftRevisionId) {
+      setWizardState((current) => ({ ...current, dirty: false }));
+      setStatusMessage("规则草稿已暂存。");
+      setErrorMessage(null);
+      return;
+    }
+
+    setIsSaving(true);
+    setErrorMessage(null);
+
+    try {
+      const result = await controller.saveRuleWizardEntryDraft({
+        form: entryFormState,
+        draftAssetId: wizardState.draftAssetId,
+        draftRevisionId: wizardState.draftRevisionId,
+      });
+      setWizardState((current) => ({
+        ...current,
+        dirty: false,
+        draftAssetId: result.draftAssetId,
+        draftRevisionId: result.draftRevisionId,
+      }));
+      setStatusMessage("规则草稿已暂存。");
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : "规则录入草稿保存失败",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function handleEntryFormChange(nextValue: RuleWizardEntryFormState) {
+    setEntryFormState(nextValue);
+    setWizardState((current) => ({ ...current, dirty: true }));
+    setStatusMessage(null);
+    setErrorMessage(null);
+  }
+
+  function handleComplete(_input?: { releaseAction?: RuleWizardReleaseAction }) {
+    setWizardState(createRuleWizardState("create"));
+    setEntryFormState(createRuleWizardEntryFormState());
+    setStatusMessage(null);
+    setErrorMessage(null);
+    onComplete?.();
+  }
+
+  return (
+    <>
+      {statusMessage ? (
+        <p className="template-governance-status" data-v2-rule-wizard-status="success">
+          {statusMessage}
+        </p>
+      ) : null}
+      {errorMessage ? (
+        <p className="template-governance-error" data-v2-rule-wizard-status="error" role="alert">
+          {errorMessage}
+        </p>
+      ) : null}
+      <TemplateGovernanceRuleWizard
+        state={wizardState}
+        entryFormState={entryFormState}
+        onEntryFormChange={handleEntryFormChange}
+        onBack={onClose}
+        onPrevious={() => {
+          setWizardState((current) => rewindRuleWizardState(current));
+        }}
+        onNext={() => {
+          setWizardState((current) => advanceRuleWizardState(current));
+        }}
+        onSaveDraft={() => {
+          void handleSaveDraft();
+        }}
+        onComplete={handleComplete}
+      />
+    </>
   );
 }

@@ -108,6 +108,8 @@ import {
   type TemplateGovernanceWorkbenchFilters,
   type TemplateGovernanceWorkbenchOverview,
 } from "./template-governance-controller.ts";
+import { TemplateGovernanceV2WorkbenchPage } from "./template-governance-v2-workbench-page.tsx";
+import type { TemplateGovernanceV2SectionData } from "./template-governance-v2-data.ts";
 import {
   buildTemplateGovernanceOverviewFallbackPendingItems,
   buildTemplateGovernanceOverviewFallbackUpdates,
@@ -356,7 +358,72 @@ export interface TemplateGovernanceWorkbenchPageProps {
   initialSelectedReviewItemId?: string;
 }
 
-export function TemplateGovernanceWorkbenchPage({
+export function TemplateGovernanceWorkbenchPage(
+  props: TemplateGovernanceWorkbenchPageProps,
+) {
+  const {
+    controller = defaultController,
+    actorRole = "admin",
+    initialOverview = null,
+    initialMode,
+    initialView = "overview",
+    initialSelectedRuleLedgerRowId,
+    prefilledManuscriptId,
+    prefilledReviewedCaseSnapshotId,
+    initialRulePackageWorkspace = null,
+    initialLearningCandidates = [],
+    initialSelectedLearningCandidateId,
+    initialReviewItems = [],
+    initialSelectedReviewItemId,
+  } = props;
+  const effectiveMode =
+    initialMode === "learning" ||
+    initialMode === "ai-intake" ||
+    initialView === "authoring"
+      ? initialMode ?? "authoring"
+      : undefined;
+  const advancedCompatibilityPanel =
+    initialView === "classic" ? (
+      <TemplateGovernanceLegacyWorkbenchPage
+        controller={controller}
+        actorRole={actorRole}
+        initialOverview={initialOverview}
+        initialMode={initialMode}
+        initialView="classic"
+        initialSelectedRuleLedgerRowId={initialSelectedRuleLedgerRowId}
+        prefilledManuscriptId={prefilledManuscriptId}
+        prefilledReviewedCaseSnapshotId={prefilledReviewedCaseSnapshotId}
+        initialRulePackageWorkspace={initialRulePackageWorkspace}
+        initialLearningCandidates={initialLearningCandidates}
+        initialSelectedLearningCandidateId={initialSelectedLearningCandidateId}
+        initialReviewItems={initialReviewItems}
+        initialSelectedReviewItemId={initialSelectedReviewItemId}
+      />
+    ) : undefined;
+
+  return (
+    <TemplateGovernanceV2WorkbenchPage
+      controller={controller}
+      initialMode={effectiveMode}
+      initialView={initialView}
+      initialSelectedRuleLedgerRowId={initialSelectedRuleLedgerRowId}
+      initialSelectedLearningCandidateId={initialSelectedLearningCandidateId}
+      initialSelectedReviewItemId={initialSelectedReviewItemId}
+      initialLearningCandidates={initialLearningCandidates}
+      initialReviewItems={initialReviewItems}
+      initialSectionData={createInitialTemplateGovernanceV2SectionData({
+        initialOverview,
+        initialMode: effectiveMode,
+        initialView,
+        initialLearningCandidates,
+        initialReviewItems,
+      })}
+      advancedCompatibilityPanel={advancedCompatibilityPanel}
+    />
+  );
+}
+
+export function TemplateGovernanceLegacyWorkbenchPage({
   controller = defaultController,
   actorRole = "admin",
   initialOverview = null,
@@ -2602,6 +2669,49 @@ export function TemplateGovernanceWorkbenchPage({
       )}
     </section>
   );
+}
+
+function createInitialTemplateGovernanceV2SectionData(input: {
+  initialOverview: TemplateGovernanceWorkbenchOverview | null;
+  initialMode?: TemplateGovernanceWorkbenchMode;
+  initialView: TemplateGovernanceView;
+  initialLearningCandidates: readonly LearningCandidateViewModel[];
+  initialReviewItems: readonly ReviewItemViewModel[];
+}): TemplateGovernanceV2SectionData | null {
+  if (input.initialMode === "learning") {
+    return {
+      section: "recovery",
+      candidates: [...input.initialLearningCandidates],
+      reviewItems: [...input.initialReviewItems],
+    };
+  }
+
+  if (!input.initialOverview) {
+    return null;
+  }
+
+  if (input.initialView === "classic") {
+    return {
+      section: "advanced",
+      overview: input.initialOverview,
+    };
+  }
+
+  if (input.initialMode === "ai-intake") {
+    return {
+      section: "ai-intake",
+      overview: input.initialOverview,
+    };
+  }
+
+  if (input.initialView === "overview") {
+    return {
+      section: "dashboard",
+      overview: input.initialOverview,
+    };
+  }
+
+  return null;
 }
 
 function TemplateGovernanceOverviewRoute({
