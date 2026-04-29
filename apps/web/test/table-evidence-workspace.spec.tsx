@@ -58,7 +58,7 @@ test("TableEvidenceWorkspace exposes source, corrected, diff, fidelity, and conf
         confirmation_status: "pending",
         created_at: "2026-04-29T00:00:00.000Z",
       }}
-      onSavePatch={() => Promise.resolve()}
+      onSavePatch={() => Promise.resolve(buildRevision())}
       onConfirm={() => Promise.resolve()}
       onBind={() => Promise.resolve()}
     />,
@@ -166,6 +166,64 @@ test("run text operation uses the paragraph that owns the selected run", async (
   assert.equal(corrected.grid_cells[0]?.paragraphs[1]?.runs[0]?.text, "second updated");
 });
 
+test("workspace confirmation confirms the revision returned by patch save", async () => {
+  const tableEvidenceWorkspace = await import(
+    "../src/features/table-evidence/table-evidence-workspace.tsx"
+  );
+  const confirmTableEvidenceWorkspaceRevision = (
+    tableEvidenceWorkspace as {
+      confirmTableEvidenceWorkspaceRevision?: (input: {
+        patch: TableCorrectionPatch;
+        invisibleCharsConfirmed: boolean;
+        specialSymbolsConfirmed: boolean;
+        onSavePatch: (patch: TableCorrectionPatch) => Promise<TableEvidenceRevision>;
+        onConfirm: (input: {
+          revisionId: string;
+          invisibleCharsConfirmed: boolean;
+          specialSymbolsConfirmed: boolean;
+        }) => Promise<void>;
+      }) => Promise<void>;
+    }
+  ).confirmTableEvidenceWorkspaceRevision;
+
+  assert.equal(typeof confirmTableEvidenceWorkspaceRevision, "function");
+
+  const patch: TableCorrectionPatch = { patch_id: "patch-unsaved", operations: [] };
+  const confirmedInputs: Array<{
+    revisionId: string;
+    invisibleCharsConfirmed: boolean;
+    specialSymbolsConfirmed: boolean;
+  }> = [];
+
+  await confirmTableEvidenceWorkspaceRevision({
+    patch,
+    invisibleCharsConfirmed: true,
+    specialSymbolsConfirmed: true,
+    onSavePatch: (savedPatch) => {
+      assert.equal(savedPatch, patch);
+      return Promise.resolve(
+        buildRevision({
+          id: "rev-patched",
+          revision_no: 2,
+          correction_patch: savedPatch,
+        }),
+      );
+    },
+    onConfirm: (input) => {
+      confirmedInputs.push(input);
+      return Promise.resolve();
+    },
+  });
+
+  assert.deepEqual(confirmedInputs, [
+    {
+      revisionId: "rev-patched",
+      invisibleCharsConfirmed: true,
+      specialSymbolsConfirmed: true,
+    },
+  ]);
+});
+
 test("structure toolbar disables incomplete structure mutation actions", () => {
   const html = renderToStaticMarkup(
     <TableEvidenceWorkspace
@@ -182,7 +240,7 @@ test("structure toolbar disables incomplete structure mutation actions", () => {
       })}
       onBind={() => Promise.resolve()}
       onConfirm={() => Promise.resolve()}
-      onSavePatch={() => Promise.resolve()}
+      onSavePatch={() => Promise.resolve(buildRevision())}
     />,
   );
 
@@ -263,7 +321,7 @@ test("workspace disables confirmation for each independent blocking reason", () 
         revision={entry.revision}
         onBind={() => Promise.resolve()}
         onConfirm={() => Promise.resolve()}
-        onSavePatch={() => Promise.resolve()}
+        onSavePatch={() => Promise.resolve(buildRevision())}
       />,
     );
 
@@ -288,7 +346,7 @@ test("workspace allows confirmation when needs_review only reflects now-satisfie
       })}
       onBind={() => Promise.resolve()}
       onConfirm={() => Promise.resolve()}
-      onSavePatch={() => Promise.resolve()}
+      onSavePatch={() => Promise.resolve(buildRevision())}
     />,
   );
 
@@ -313,7 +371,7 @@ test("workspace exposes stale patch errors and disables save and confirm", () =>
       })}
       onBind={() => Promise.resolve()}
       onConfirm={() => Promise.resolve()}
-      onSavePatch={() => Promise.resolve()}
+      onSavePatch={() => Promise.resolve(buildRevision())}
     />,
   );
 

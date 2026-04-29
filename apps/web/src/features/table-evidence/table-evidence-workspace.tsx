@@ -26,8 +26,9 @@ export type TableEvidenceWorkspaceViewMode = "source" | "corrected" | "diff";
 export interface TableEvidenceWorkspaceProps {
   asset: TableEvidenceAsset;
   revision: TableEvidenceRevision;
-  onSavePatch: (patch: TableCorrectionPatch) => Promise<void>;
+  onSavePatch: (patch: TableCorrectionPatch) => Promise<TableEvidenceRevision>;
   onConfirm: (input: {
+    revisionId: string;
     invisibleCharsConfirmed: boolean;
     specialSymbolsConfirmed: boolean;
   }) => Promise<void>;
@@ -105,8 +106,13 @@ export function TableEvidenceWorkspace({
     if (confirmDisabled) {
       return;
     }
-    await onSavePatch(localPatch);
-    await onConfirm({ invisibleCharsConfirmed, specialSymbolsConfirmed });
+    await confirmTableEvidenceWorkspaceRevision({
+      patch: localPatch,
+      invisibleCharsConfirmed,
+      specialSymbolsConfirmed,
+      onSavePatch,
+      onConfirm,
+    });
   }
 
   async function handleBind() {
@@ -244,6 +250,25 @@ export function TableEvidenceWorkspace({
       </div>
     </section>
   );
+}
+
+export async function confirmTableEvidenceWorkspaceRevision(input: {
+  patch: TableCorrectionPatch;
+  invisibleCharsConfirmed: boolean;
+  specialSymbolsConfirmed: boolean;
+  onSavePatch: (patch: TableCorrectionPatch) => Promise<TableEvidenceRevision>;
+  onConfirm: (input: {
+    revisionId: string;
+    invisibleCharsConfirmed: boolean;
+    specialSymbolsConfirmed: boolean;
+  }) => Promise<void>;
+}): Promise<void> {
+  const savedRevision = await input.onSavePatch(input.patch);
+  await input.onConfirm({
+    revisionId: savedRevision.id,
+    invisibleCharsConfirmed: input.invisibleCharsConfirmed,
+    specialSymbolsConfirmed: input.specialSymbolsConfirmed,
+  });
 }
 
 export function buildCorrectedSnapshot(input: {
