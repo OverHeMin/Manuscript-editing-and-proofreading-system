@@ -1,0 +1,15 @@
+export type {
+  ConfirmedAiTablePackage,
+  ConfirmedTableSnapshot,
+  TableCorrectionPatch,
+  TableEvidenceAsset,
+  TableEvidenceBinding,
+  TableEvidenceBindingRole,
+  TableEvidenceBindingTargetType,
+  TableEvidenceConfirmationStatus,
+  TableEvidenceFidelityStatus,
+  TableEvidenceSourceFile,
+  TableEvidenceRevision,
+  TableFidelityReport,
+  TableSourceSnapshot,
+} from "@medical/contracts";
