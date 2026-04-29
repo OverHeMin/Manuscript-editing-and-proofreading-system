@@ -2368,26 +2368,17 @@ function collectTableReviewGateFailures(
 
   const payload = block.content_payload;
   const tableSemantics = asOptionalRecord(block.table_semantics);
-  const exactCaptureAuthoritative =
-    readRecordBoolean(tableSemantics, "exact_capture_authoritative") === true;
   const failureCodes = uniqueDefinedStrings([
     ...readRecordStringArray(tableSemantics, "exact_capture_failure_codes"),
     ...readRecordStringArray(payload, "exact_capture_failure_codes"),
   ]);
-  const hasFailureCodeMetadata =
-    hasRecordKey(tableSemantics, "exact_capture_failure_codes") ||
-    hasRecordKey(payload, "exact_capture_failure_codes");
-
-  if (exactCaptureAuthoritative || (hasFailureCodeMetadata && failureCodes.length === 0)) {
-    return [];
-  }
 
   const detailSuffix =
     failureCodes.length > 0
       ? ` (${failureCodes.join(", ")})`
-      : " (missing exact-capture confirmation)";
+      : " (confirmed Word table evidence required)";
   return [
-    `Table block #${block.order_no} is not authoritative exact capture${detailSuffix}`,
+    `Table block #${block.order_no} must be replaced with confirmed Word table evidence${detailSuffix}`,
   ];
 }
 
@@ -2456,22 +2447,7 @@ function collectImageReviewGateFailures(
 }
 
 function requiresTableReviewGate(block: KnowledgeContentBlockRecord): boolean {
-  if (block.block_type !== "table_block") {
-    return false;
-  }
-
-  const payload = block.content_payload;
-  const tableSemantics = asOptionalRecord(block.table_semantics);
-
-  return (
-    hasRecordKey(payload, "capture_mode") ||
-    hasRecordKey(payload, "capture_environment") ||
-    hasRecordKey(payload, "source_application") ||
-    hasRecordKey(payload, "exact_capture_failure_codes") ||
-    hasRecordKey(tableSemantics, "capture_mode") ||
-    hasRecordKey(tableSemantics, "exact_capture_authoritative") ||
-    hasRecordKey(tableSemantics, "exact_capture_failure_codes")
-  );
+  return block.block_type === "table_block";
 }
 
 function requiresVisualSymbolReviewGate(block: KnowledgeContentBlockRecord): boolean {
@@ -2507,27 +2483,12 @@ function asOptionalRecord(
     : undefined;
 }
 
-function hasRecordKey(
-  value: Record<string, unknown> | undefined,
-  key: string,
-): boolean {
-  return value != null && Object.prototype.hasOwnProperty.call(value, key);
-}
-
 function readRecordString(
   value: Record<string, unknown> | undefined,
   key: string,
 ): string {
   const candidate = value?.[key];
   return typeof candidate === "string" ? candidate : "";
-}
-
-function readRecordBoolean(
-  value: Record<string, unknown> | undefined,
-  key: string,
-): boolean | undefined {
-  const candidate = value?.[key];
-  return typeof candidate === "boolean" ? candidate : undefined;
 }
 
 function readRecordStringArray(

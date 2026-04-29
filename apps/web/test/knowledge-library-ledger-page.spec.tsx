@@ -316,7 +316,7 @@ test("knowledge library ledger page renders the temporary three-tab board for ne
   assert.match(markup, /data-block-action="add-text"/u);
   assert.match(markup, /data-block-action="add-table-evidence"/u);
   assert.match(markup, /data-table-evidence-client-state="unavailable"/u);
-  assert.match(markup, /data-block-action="add-table"/u);
+  assert.doesNotMatch(markup, /data-block-action="add-table"/u);
   assert.match(markup, /data-block-action="add-image"/u);
   assert.doesNotMatch(markup, /上传 Word 表格证据/u);
   assert.doesNotMatch(markup, /draft-revision/u);

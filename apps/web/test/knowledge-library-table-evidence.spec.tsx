@@ -23,17 +23,17 @@ test("knowledge library rich content editor exposes Word table evidence entry in
   assert.match(markup, /Word 表格证据/u);
   assert.doesNotMatch(markup, /保证级粘贴/u);
   assert.match(markup, /data-block-action="add-table-evidence"/u);
-  assert.match(markup, /data-block-action="add-table"/u);
+  assert.doesNotMatch(markup, /data-block-action="add-table"/u);
 });
 
-test("knowledge library rich content editor keeps add-table action for ordinary table blocks", () => {
+test("knowledge library rich content editor does not create new ordinary table blocks", () => {
   assert.equal(
     createKnowledgeLibraryContentBlockForAction({
       blocks: [],
       action: "add-table",
       currentRevisionId: "knowledge-revision-1",
-    }).block_type,
-    "table_block",
+    }),
+    null,
   );
 
   assert.equal(

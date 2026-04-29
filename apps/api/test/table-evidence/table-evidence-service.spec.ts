@@ -690,6 +690,32 @@ test("saving a correction patch appends a new active revision instead of overwri
   assert.equal(asset?.active_revision_id, "rev-2");
 });
 
+test("saving a correction patch rejects inactive revisions", async () => {
+  const repository = new InMemoryTableEvidenceRepository();
+  const ids = ["asset-1", "rev-1", "patch-1", "rev-2", "rev-3"];
+  const service = createMockedService({
+    repository,
+    ids,
+    sourceFile: createSourceFile(),
+    sourceSnapshot: createOneCellSourceSnapshot(),
+  });
+
+  await service.createAssetFromDocxUpload(createUploadInput());
+  await service.saveCorrectionPatch({
+    revisionId: "rev-1",
+    patch: createShortenHcyPatch("patch-updated"),
+  });
+
+  await assert.rejects(
+    () =>
+      service.saveCorrectionPatch({
+        revisionId: "rev-1",
+        patch: createShortenHcyPatch("patch-stale"),
+      }),
+    /not the active revision/i,
+  );
+});
+
 test("confirming a revision appends a new active revision with an authoritative package", async () => {
   const repository = new InMemoryTableEvidenceRepository();
   const ids = ["asset-1", "rev-1", "patch-1", "rev-2", "package-1"];
@@ -722,9 +748,39 @@ test("confirming a revision appends a new active revision with an authoritative 
   assert.equal(asset?.active_revision_id, "rev-2");
 });
 
+test("confirming a revision rejects inactive revisions after a newer patch is active", async () => {
+  const repository = new InMemoryTableEvidenceRepository();
+  const ids = ["asset-1", "rev-1", "patch-1", "rev-2", "rev-3", "package-1"];
+  const service = createMockedService({
+    repository,
+    ids,
+    sourceFile: createSourceFile(),
+    sourceSnapshot: createOneCellSourceSnapshot(),
+  });
+
+  await service.createAssetFromDocxUpload(createUploadInput());
+  await service.saveCorrectionPatch({
+    revisionId: "rev-1",
+    patch: createShortenHcyPatch("patch-updated"),
+  });
+
+  await assert.rejects(
+    () =>
+      service.confirmRevision({
+        revisionId: "rev-1",
+        actorId: "user-1",
+        confirmations: {
+          invisibleCharsConfirmed: true,
+          specialSymbolsConfirmed: true,
+        },
+      }),
+    /not the active revision/i,
+  );
+});
+
 test("DOCX uploads persist a pending revision for every extracted table", async () => {
   const repository = new InMemoryTableEvidenceRepository();
-  const ids = ["asset-1", "rev-1", "patch-1", "rev-2", "patch-2"];
+  const ids = ["asset-1", "rev-1", "patch-1", "asset-2", "rev-2", "patch-2"];
   const firstTable = createOneCellSourceSnapshot();
   const secondTable: TableSourceSnapshot = {
     ...createTextOnlySourceSnapshot(),
@@ -754,20 +810,36 @@ test("DOCX uploads persist a pending revision for every extracted table", async 
   });
 
   const created = await service.createAssetFromDocxUpload(createUploadInput());
+  const createdWithAssets = created as typeof created & {
+    assets?: Array<typeof created.asset>;
+  };
 
   assert.equal(created.tables.length, 2);
+  assert.deepEqual(
+    createdWithAssets.assets?.map((asset) => asset.id),
+    ["asset-1", "asset-2"],
+  );
+  assert.deepEqual(
+    createdWithAssets.assets?.map((asset) => asset.active_revision_id),
+    ["rev-1", "rev-2"],
+  );
   assert.deepEqual(
     created.revisions.map((revision) => revision.source_snapshot.table_id),
     ["table-1", "table-2"],
   );
   assert.deepEqual(
     created.revisions.map((revision) => revision.revision_no),
-    [1, 2],
+    [1, 1],
   );
-  const persisted = await repository.listRevisionsForAsset("asset-1");
+  const firstAssetRevisions = await repository.listRevisionsForAsset("asset-1");
+  const secondAssetRevisions = await repository.listRevisionsForAsset("asset-2");
   assert.deepEqual(
-    persisted.map((revision) => revision.source_snapshot.table_id).sort(),
-    ["table-1", "table-2"],
+    firstAssetRevisions.map((revision) => revision.source_snapshot.table_id),
+    ["table-1"],
+  );
+  assert.deepEqual(
+    secondAssetRevisions.map((revision) => revision.source_snapshot.table_id),
+    ["table-2"],
   );
 });
 
@@ -1117,6 +1189,23 @@ function createUploadInput() {
     mimeType: DOCX_MIME,
     fileContentBase64: Buffer.from("fake").toString("base64"),
     actorId: "user-1",
+  };
+}
+
+function createShortenHcyPatch(patchId: string) {
+  return {
+    patch_id: patchId,
+    operations: [
+      {
+        op: "replace_run_text" as const,
+        cell_id: "cell-r0-c0",
+        paragraph_id: "p-1",
+        run_id: "run-1",
+        before_text: "Hcy–L⁻¹",
+        after_text: "Hcy",
+        after_codepoints: ["0048", "0063", "0079"],
+      },
+    ],
   };
 }
 

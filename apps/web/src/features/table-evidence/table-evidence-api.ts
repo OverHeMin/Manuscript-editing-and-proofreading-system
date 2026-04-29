@@ -29,6 +29,7 @@ export interface CreateTableEvidenceFromDocxUploadInput {
 export interface CreateTableEvidenceFromDocxUploadResponse {
   sourceFile: TableEvidenceSourceFile;
   asset: TableEvidenceAsset;
+  assets: TableEvidenceAsset[];
   revisions: TableEvidenceRevision[];
   tables: TableSourceSnapshot[];
 }

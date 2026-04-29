@@ -274,3 +274,47 @@ test("table evidence block normalizer trims ids and drops empty binding id", asy
   });
   assert.equal(normalized.blocks[0]?.tableSemantics, undefined);
 });
+
+test("legacy authoritative table blocks cannot bypass confirmed table evidence gates", async () => {
+  const { service } = createKnowledgeTableEvidenceHarness();
+  const created = await service.createLibraryDraft({
+    title: "Legacy table block cannot claim authority",
+    canonicalText:
+      "Client-side exact capture flags must not replace confirmed Word table evidence.",
+    knowledgeKind: "reference",
+    moduleScope: "editing",
+    manuscriptTypes: ["clinical_study"],
+  });
+
+  await service.replaceRevisionContentBlocks(created.selected_revision.id, {
+    blocks: [
+      {
+        blockType: "table_block",
+        orderNo: 0,
+        contentPayload: {
+          rows: [["指标", "值"]],
+          capture_mode: "html_table_clipboard",
+          exact_capture_failure_codes: [],
+        },
+        tableSemantics: {
+          snapshot_type: "table_style_snapshot",
+          exact_capture_authoritative: true,
+          exact_capture_failure_codes: [],
+        },
+      },
+    ],
+  });
+
+  await assert.rejects(
+    () =>
+      service.submitRevisionForReview({
+        revisionId: created.selected_revision.id,
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof KnowledgeRevisionReviewGateError);
+      assert.equal(error.failures.length, 1);
+      assert.match(error.failures[0]?.message ?? "", /confirmed Word table evidence/i);
+      return true;
+    },
+  );
+});

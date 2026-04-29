@@ -860,6 +860,64 @@ test("compile-to-draft locks exact table evidence revision ids into rule linkage
   ]);
 });
 
+test("compile-to-draft locks table evidence revision ids from source ids when package payload is omitted", async () => {
+  const checkedRevisionIds: string[] = [];
+  const harness = createRulePackageCompileHarness({
+    tableEvidenceService: {
+      assertConfirmedRevision: async (revisionId) => {
+        checkedRevisionIds.push(revisionId);
+        return { id: revisionId } as never;
+      },
+    },
+  });
+  await seedCompileContext(harness);
+
+  const packageDraft = buildThreeLineTablePackageDraft();
+  packageDraft.ai_intake_metadata = {
+    source_kind: "manual_description",
+    ai_understanding_summary: "Table header units preserve confirmed table package evidence.",
+    recommended_governance_layer: "template_family",
+    target_object: "table",
+    trigger: "confirmed table header",
+    action: "inspect exact table header unit style",
+    scope: {
+      module_scope: "editing",
+      manuscript_types: ["clinical_study"],
+      sections: ["results"],
+    },
+    evidence: [
+      {
+        kind: "confirmed_table_package",
+        source_id: " rev-source-only ",
+        authority: "authoritative",
+      },
+    ],
+    confidence: {
+      overall: 0.98,
+    },
+    uncertainties: [],
+  };
+
+  const result = await harness.service.compileToDraft({
+    actorRole: "admin",
+    source: {
+      sourceKind: "reviewed_case",
+      reviewedCaseSnapshotId: "reviewed-case-1",
+    },
+    packageDrafts: [packageDraft],
+    templateFamilyId: "family-1",
+    journalTemplateId: "journal-alpha",
+    module: "editing",
+  });
+
+  const rules = await harness.repository.listRulesByRuleSetId(result.rule_set_id);
+
+  assert.deepEqual(rules[0]?.linkage_payload?.table_evidence_revision_ids, [
+    "rev-source-only",
+  ]);
+  assert.deepEqual(checkedRevisionIds, ["rev-source-only"]);
+});
+
 test("compile-to-draft rejects blank table evidence revision ids before lookup", async () => {
   const checkedRevisionIds: string[] = [];
   const harness = createRulePackageCompileHarness({

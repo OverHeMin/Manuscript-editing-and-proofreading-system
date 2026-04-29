@@ -58,6 +58,7 @@ export class TableEvidenceService {
   async createAssetFromDocxUpload(input: CreateTableEvidenceSourceFileInput): Promise<{
     sourceFile: Awaited<ReturnType<TableEvidenceSourceFileService["createSourceFile"]>>;
     asset: TableEvidenceAsset;
+    assets: TableEvidenceAsset[];
     revisions: TableEvidenceRevision[];
     tables: TableSourceSnapshot[];
   }> {
@@ -81,27 +82,28 @@ export class TableEvidenceService {
     }
 
     const timestamp = this.now().toISOString();
-    const asset: TableEvidenceAsset = {
-      id: this.createId(),
-      title: inferAssetTitle(sourceFile.file_name, tables[0]),
-      source_file_asset_id: sourceFile.id,
-      source_file_name: sourceFile.file_name,
-      source_kind: "docx_upload",
-      parser: workerResult.parser,
-      parser_version: workerResult.parser_version,
-      fidelity_status: "pending",
-      created_by: input.actorId,
-      created_at: timestamp,
-      updated_at: timestamp,
-    };
-    await this.repository.saveAsset(asset);
-
+    const assets: TableEvidenceAsset[] = [];
     const revisions: TableEvidenceRevision[] = [];
     for (const [index, table] of tables.entries()) {
+      const asset: TableEvidenceAsset = {
+        id: this.createId(),
+        title: inferAssetTitle(sourceFile.file_name, table, index, tables.length),
+        source_file_asset_id: sourceFile.id,
+        source_file_name: sourceFile.file_name,
+        source_kind: "docx_upload",
+        parser: workerResult.parser,
+        parser_version: workerResult.parser_version,
+        fidelity_status: "pending",
+        created_by: input.actorId,
+        created_at: timestamp,
+        updated_at: timestamp,
+      };
+      await this.repository.saveAsset(asset);
+
       const revision: TableEvidenceRevision = {
         id: this.createId(),
         table_evidence_asset_id: asset.id,
-        revision_no: index + 1,
+        revision_no: 1,
         source_snapshot: table,
         correction_patch: { patch_id: this.createId(), operations: [] },
         fidelity_report: buildFidelityReport(table, {
@@ -115,17 +117,24 @@ export class TableEvidenceService {
       };
       await this.repository.saveRevision(revision);
       revisions.push(revision);
+
+      const activeAsset = {
+        ...asset,
+        active_revision_id: revision.id,
+      };
+      await this.repository.saveAsset(activeAsset);
+      assets.push(activeAsset);
     }
 
-    const activeAsset = {
-      ...asset,
-      active_revision_id: revisions[0]?.id,
-    };
-    await this.repository.saveAsset(activeAsset);
+    const primaryAsset = assets[0];
+    if (!primaryAsset) {
+      throw new Error("No extractable tables were found in the DOCX upload.");
+    }
 
     return {
       sourceFile,
-      asset: activeAsset,
+      asset: primaryAsset,
+      assets,
       revisions,
       tables,
     };
@@ -137,6 +146,7 @@ export class TableEvidenceService {
   }): Promise<TableEvidenceRevision> {
     const revision = await this.requireRevision(input.revisionId);
     const asset = await this.requireAsset(revision.table_evidence_asset_id);
+    assertRevisionIsActive(asset, revision);
     const timestamp = this.now().toISOString();
     const updated: TableEvidenceRevision = {
       id: this.createId(),
@@ -177,6 +187,7 @@ export class TableEvidenceService {
   }): Promise<TableEvidenceRevision> {
     const revision = await this.requireRevision(input.revisionId);
     const asset = await this.requireAsset(revision.table_evidence_asset_id);
+    assertRevisionIsActive(asset, revision);
     const confirmedSnapshot = applyTableCorrectionPatch({
       sourceSnapshot: revision.source_snapshot,
       patch: revision.correction_patch,
@@ -364,11 +375,29 @@ function normalizeUnsupportedFactGroups(sourceSnapshot: TableSourceSnapshot): st
     : [];
 }
 
-function inferAssetTitle(fileName: string, sourceSnapshot: TableSourceSnapshot): string {
-  return (
+function assertRevisionIsActive(
+  asset: TableEvidenceAsset,
+  revision: TableEvidenceRevision,
+): void {
+  if (asset.active_revision_id === revision.id) {
+    return;
+  }
+
+  throw new Error(
+    `Table evidence revision ${revision.id} is not the active revision for asset ${asset.id}.`,
+  );
+}
+
+function inferAssetTitle(
+  fileName: string,
+  sourceSnapshot: TableSourceSnapshot,
+  tableIndex = 0,
+  tableCount = 1,
+): string {
+  const title =
     sourceSnapshot.caption?.text ||
     sourceSnapshot.grid_cells.find((cell) => cell.role === "header")?.text ||
     path.basename(fileName, path.extname(fileName)) ||
-    sourceSnapshot.table_id
-  );
+    sourceSnapshot.table_id;
+  return tableCount > 1 ? `${title} #${tableIndex + 1}` : title;
 }

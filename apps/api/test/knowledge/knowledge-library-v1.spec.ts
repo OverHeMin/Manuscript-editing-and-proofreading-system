@@ -951,7 +951,7 @@ test("non-authoritative table exact-capture evidence cannot be submitted for rev
   assert.equal(detail.selected_revision.status, "draft");
 });
 
-test("authoritative table exact-capture evidence completes the review lifecycle", async () => {
+test("authoritative legacy table exact-capture evidence cannot replace confirmed table evidence", async () => {
   const { service } = createKnowledgeLibraryHarness();
 
   const created = await service.createLibraryDraft({
@@ -966,14 +966,14 @@ test("authoritative table exact-capture evidence completes the review lifecycle"
     blocks: [buildAuthoritativeTableBlock()],
   });
 
-  const submitted = await service.submitRevisionForReview(created.selected_revision.id);
-  const approved = await service.approveRevision(
-    created.selected_revision.id,
-    "knowledge_reviewer",
+  await assert.rejects(
+    () => service.submitRevisionForReview(created.selected_revision.id),
+    (error) => {
+      assert.ok(error instanceof KnowledgeRevisionReviewGateError);
+      assert.match(error.message, /confirmed Word table evidence/);
+      return true;
+    },
   );
-
-  assert.equal(submitted.selected_revision.status, "pending_review");
-  assert.equal(approved.selected_revision.status, "approved");
 });
 
 test("pending visual-symbol evidence can be submitted but cannot be approved", async () => {

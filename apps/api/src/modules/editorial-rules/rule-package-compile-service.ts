@@ -1524,7 +1524,10 @@ function buildCompiledKnowledgeMetadata(input: {
 function extractTableEvidenceRevisionIds(packageDraft: RulePackageDraft): string[] {
   const rawRevisionIds = (packageDraft.ai_intake_metadata?.evidence ?? [])
     .filter((evidence) => evidence.kind === "confirmed_table_package")
-    .map((evidence) => evidence.confirmed_table_package?.revision_id);
+    .map(
+      (evidence) =>
+        evidence.confirmed_table_package?.revision_id ?? evidence.source_id,
+    );
 
   return normalizeTableEvidenceRevisionIds(rawRevisionIds);
 }

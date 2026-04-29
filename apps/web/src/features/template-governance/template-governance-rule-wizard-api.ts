@@ -1705,17 +1705,11 @@ function createRuleWizardTableEvidenceGateItem(
 
   const tableSemantics = asRuleWizardOptionalRecord(block.table_semantics);
   const payload = asRuleWizardOptionalRecord(block.content_payload) ?? {};
-  const exactCaptureAuthoritative =
-    readRuleWizardRecordBoolean(tableSemantics, "exact_capture_authoritative") === true;
   const failureCodes = uniqueRuleWizardStrings([
     ...readRuleWizardRecordStringArray(tableSemantics, "exact_capture_failure_codes"),
     ...readRuleWizardRecordStringArray(payload, "exact_capture_failure_codes"),
   ]);
-  const hasFailureMetadata =
-    hasRuleWizardRecordKey(tableSemantics, "exact_capture_failure_codes") ||
-    hasRuleWizardRecordKey(payload, "exact_capture_failure_codes");
-  const isReady =
-    exactCaptureAuthoritative || (hasFailureMetadata && failureCodes.length === 0);
+  const isReady = false;
   const blocking = releaseAction !== "save_draft" && !isReady;
   const statusLabel = blocking
     ? releaseAction === "publish_now"
@@ -1729,9 +1723,7 @@ function createRuleWizardTableEvidenceGateItem(
   const detail =
     failureCodes.length > 0
       ? failureCodes.map(formatRuleWizardTableFailureCodeLabel).join(" / ")
-      : isReady
-        ? "已满足权威 exact-capture。"
-        : "缺少 exact-capture 确认。";
+      : "请改用已确认的 Word 表格证据。";
 
   return {
     blockId: block.id,
@@ -1796,22 +1788,7 @@ function createRuleWizardImageEvidenceGateItem(
 function requiresRuleWizardTableEvidenceGate(
   block: KnowledgeContentBlockViewModel,
 ): boolean {
-  if (block.block_type !== "table_block") {
-    return false;
-  }
-
-  const payload = asRuleWizardOptionalRecord(block.content_payload);
-  const tableSemantics = asRuleWizardOptionalRecord(block.table_semantics);
-
-  return (
-    hasRuleWizardRecordKey(payload, "capture_mode") ||
-    hasRuleWizardRecordKey(payload, "capture_environment") ||
-    hasRuleWizardRecordKey(payload, "source_application") ||
-    hasRuleWizardRecordKey(payload, "exact_capture_failure_codes") ||
-    hasRuleWizardRecordKey(tableSemantics, "capture_mode") ||
-    hasRuleWizardRecordKey(tableSemantics, "exact_capture_authoritative") ||
-    hasRuleWizardRecordKey(tableSemantics, "exact_capture_failure_codes")
-  );
+  return block.block_type === "table_block";
 }
 
 function requiresRuleWizardVisualSymbolEvidenceGate(
@@ -1936,27 +1913,12 @@ function asRuleWizardOptionalRecord(
     : undefined;
 }
 
-function hasRuleWizardRecordKey(
-  value: Record<string, unknown> | undefined,
-  key: string,
-): boolean {
-  return value != null && Object.prototype.hasOwnProperty.call(value, key);
-}
-
 function readRuleWizardRecordString(
   value: Record<string, unknown> | undefined,
   key: string,
 ): string {
   const candidate = value?.[key];
   return typeof candidate === "string" ? candidate : "";
-}
-
-function readRuleWizardRecordBoolean(
-  value: Record<string, unknown> | undefined,
-  key: string,
-): boolean | undefined {
-  const candidate = value?.[key];
-  return typeof candidate === "boolean" ? candidate : undefined;
 }
 
 function readRuleWizardRecordStringArray(

@@ -49,7 +49,7 @@ test("knowledge library evidence gate blocks submit review when exact-capture or
   assert.match(summary.blockingMessage ?? "", /表格块 #1/u);
 });
 
-test("knowledge library evidence gate keeps draft save non-blocking and marks ready submit-review evidence", () => {
+test("knowledge library evidence gate keeps draft save non-blocking and blocks legacy table authority flags", () => {
   const saveDraftSummary = createKnowledgeLibraryEvidenceGateSummary({
     releaseAction: "save_draft",
     blocks: [
@@ -116,11 +116,13 @@ test("knowledge library evidence gate keeps draft save non-blocking and marks re
   });
 
   assert.equal(readySubmitSummary.itemCount, 2);
-  assert.equal(readySubmitSummary.hasBlockingIssues, false);
-  assert.equal(readySubmitSummary.readyItemCount, 2);
-  assert.equal(readySubmitSummary.items[0]?.statusLabel, "可提交审核");
+  assert.equal(readySubmitSummary.hasBlockingIssues, true);
+  assert.equal(readySubmitSummary.readyItemCount, 1);
+  assert.equal(readySubmitSummary.blockingItemCount, 1);
+  assert.equal(readySubmitSummary.items[0]?.statusLabel, "阻断提交审核");
+  assert.match(readySubmitSummary.items[0]?.detail ?? "", /Word 表格证据/u);
   assert.equal(readySubmitSummary.items[1]?.statusLabel, "可提交审核");
-  assert.equal(readySubmitSummary.blockingMessage, null);
+  assert.match(readySubmitSummary.blockingMessage ?? "", /表格块 #1/u);
 });
 
 test("knowledge library evidence gate allows confirmed table evidence blocks", () => {
