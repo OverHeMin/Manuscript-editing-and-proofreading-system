@@ -155,9 +155,17 @@ test("editing workbench saves a journal template context before running editing"
   };
   expect(manuscript.current_journal_template_id).toBe(prepared.journalTemplateId);
 
-  await page.getByRole("button", { name: "执行编辑" }).click();
+  await Promise.all([
+    page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/v1/modules/editing/run") && response.ok(),
+    ),
+    page.getByRole("button", { name: "执行编辑" }).click(),
+  ]);
 
-  await expect(page.locator("body")).toContainText("已生成编辑稿件");
+  await expect(page.locator("body")).toContainText("已生成编辑稿件", {
+    timeout: 15_000,
+  });
   await expect(page.locator("body")).toContainText(prepared.journalName);
 });
 

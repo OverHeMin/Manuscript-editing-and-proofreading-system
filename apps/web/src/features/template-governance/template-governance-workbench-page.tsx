@@ -407,6 +407,8 @@ export function TemplateGovernanceWorkbenchPage(
       initialMode={effectiveMode}
       initialView={initialView}
       initialSelectedRuleLedgerRowId={initialSelectedRuleLedgerRowId}
+      prefilledManuscriptId={prefilledManuscriptId}
+      prefilledReviewedCaseSnapshotId={prefilledReviewedCaseSnapshotId}
       initialSelectedLearningCandidateId={initialSelectedLearningCandidateId}
       initialSelectedReviewItemId={initialSelectedReviewItemId}
       initialLearningCandidates={initialLearningCandidates}

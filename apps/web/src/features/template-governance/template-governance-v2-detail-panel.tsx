@@ -22,6 +22,8 @@ export interface TemplateGovernanceV2DetailPanelProps {
   controller: TemplateGovernanceWorkbenchController;
   data: TemplateGovernanceV2SectionData | null;
   routeState: TemplateGovernanceV2RouteState;
+  prefilledManuscriptId?: string;
+  prefilledReviewedCaseSnapshotId?: string;
   initialSelectedLearningCandidateId?: string;
   initialSelectedReviewItemId?: string;
   advancedCompatibilityPanel?: ReactNode;
@@ -33,6 +35,8 @@ export function TemplateGovernanceV2DetailPanel({
   controller,
   data,
   routeState,
+  prefilledManuscriptId,
+  prefilledReviewedCaseSnapshotId,
   initialSelectedLearningCandidateId,
   initialSelectedReviewItemId,
   advancedCompatibilityPanel,
@@ -59,6 +63,8 @@ export function TemplateGovernanceV2DetailPanel({
         data-initial-review-item-id={initialSelectedReviewItemId}
       >
         <RuleLearningPane
+          prefilledManuscriptId={prefilledManuscriptId}
+          prefilledReviewedCaseSnapshotId={prefilledReviewedCaseSnapshotId}
           initialCandidates={data.candidates}
           initialSelectedCandidateId={initialSelectedLearningCandidateId}
           initialReviewItems={data.reviewItems}

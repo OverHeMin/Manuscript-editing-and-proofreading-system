@@ -38,6 +38,8 @@ export interface TemplateGovernanceV2WorkbenchPageProps {
   initialMode?: RuleCenterMode;
   initialView?: TemplateGovernanceView;
   initialSelectedRuleLedgerRowId?: string;
+  prefilledManuscriptId?: string;
+  prefilledReviewedCaseSnapshotId?: string;
   initialSelectedLearningCandidateId?: string;
   initialSelectedReviewItemId?: string;
   initialLearningCandidates?: readonly LearningCandidateViewModel[];
@@ -51,6 +53,8 @@ export function TemplateGovernanceV2WorkbenchPage({
   initialMode,
   initialView = "overview",
   initialSelectedRuleLedgerRowId,
+  prefilledManuscriptId,
+  prefilledReviewedCaseSnapshotId,
   initialSelectedLearningCandidateId,
   initialSelectedReviewItemId,
   initialLearningCandidates = [],
@@ -151,6 +155,8 @@ export function TemplateGovernanceV2WorkbenchPage({
           controller={controller}
           data={sectionData}
           routeState={routeState}
+          prefilledManuscriptId={prefilledManuscriptId}
+          prefilledReviewedCaseSnapshotId={prefilledReviewedCaseSnapshotId}
           initialSelectedLearningCandidateId={initialSelectedLearningCandidateId}
           initialSelectedReviewItemId={initialSelectedReviewItemId}
           advancedCompatibilityPanel={advancedCompatibilityPanel}

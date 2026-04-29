@@ -60,6 +60,23 @@ test("rule center V2 page keeps recovery candidate and review handoffs in the V2
   assert.match(reviewMarkup, /data-initial-review-item-id="review-1"/u);
 });
 
+test("rule center V2 recovery handoff preserves manuscript context", () => {
+  const markup = renderToStaticMarkup(
+    <TemplateGovernanceV2WorkbenchPage
+      initialView="rule-ledger"
+      initialMode="learning"
+      prefilledManuscriptId="manuscript-v2-1"
+      prefilledReviewedCaseSnapshotId="snapshot-v2-1"
+      initialSelectedLearningCandidateId="candidate-1"
+      initialSectionData={createRecoveryData()}
+    />,
+  );
+
+  assert.match(markup, /data-active-section="recovery"/u);
+  assert.match(markup, /回流来源稿件：manuscript-v2-1/u);
+  assert.match(markup, /复核快照：snapshot-v2-1/u);
+});
+
 test("rule center V2 page renders advanced compatibility inside the V2 shell", () => {
   const markup = renderToStaticMarkup(
     <TemplateGovernanceV2WorkbenchPage
