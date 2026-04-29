@@ -314,8 +314,13 @@ test("knowledge library ledger page renders the temporary three-tab board for ne
   assert.match(markup, /data-entry-toggle="more-info"/u);
   assert.match(markup, /knowledge-library-rich-content-editor/u);
   assert.match(markup, /data-block-action="add-text"/u);
+  assert.match(markup, /data-block-action="add-table-evidence"/u);
+  assert.match(markup, /data-table-evidence-client-state="unavailable"/u);
   assert.match(markup, /data-block-action="add-table"/u);
   assert.match(markup, /data-block-action="add-image"/u);
+  assert.doesNotMatch(markup, /上传 Word 表格证据/u);
+  assert.doesNotMatch(markup, /draft-revision/u);
+  assert.doesNotMatch(markup, /local-draft/u);
   assert.match(markup, /knowledge-library-attachment-field/u);
   assert.match(markup, /knowledge-library-entry-form__footer/u);
   assert.match(markup, /data-board-action="cancel-create"/u);
@@ -335,6 +340,12 @@ test("knowledge library ledger page switches the board footer to save and submit
 
   assert.match(markup, /knowledge-library-entry-form/u);
   assert.match(markup, /data-board-tab="basic"/u);
+  assert.match(markup, /data-block-action="add-table-evidence"/u);
+  assert.match(markup, /data-table-evidence-client-state="available"/u);
+  assert.doesNotMatch(
+    markup,
+    /Word 表格证据需要连接表格证据客户端或提供已确认证据列表后才能添加/u,
+  );
   assert.match(markup, /data-board-action="cancel-edit"/u);
   assert.match(markup, /data-board-action="save-draft"/u);
   assert.match(markup, /data-board-action="submit-review"/u);

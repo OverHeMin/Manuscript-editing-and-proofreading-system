@@ -28,6 +28,7 @@ import type {
   KnowledgeUploadInput,
   KnowledgeUploadViewModel,
 } from "./types.ts";
+import type { TableEvidenceHttpClient } from "../table-evidence/index.ts";
 import type { KnowledgeLibraryLedgerComposer } from "./knowledge-library-ledger-composer.ts";
 import type { KnowledgeLibraryEvidenceGateSummary } from "./knowledge-library-evidence-gate.ts";
 import {
@@ -73,6 +74,7 @@ export interface KnowledgeLibraryEntryFormProps {
   onUploadImage?: (
     input: KnowledgeUploadInput,
   ) => Promise<KnowledgeUploadViewModel | void>;
+  tableEvidenceClient?: TableEvidenceHttpClient;
   onSelectFiles: (files: readonly File[]) => void;
   onRemoveAttachment: (blockId: string) => void;
   onAttachmentCaptionChange: (blockId: string, value: string) => void;
@@ -128,6 +130,7 @@ export function KnowledgeLibraryEntryForm({
   onRunAiPrefill,
   onContentBlocksChange,
   onUploadImage,
+  tableEvidenceClient,
   onSelectFiles,
   onRemoveAttachment,
   onAttachmentCaptionChange,
@@ -466,6 +469,8 @@ export function KnowledgeLibraryEntryForm({
             blocks={contentBlocks}
             onChange={onContentBlocksChange}
             onUploadImage={onUploadImage}
+            tableEvidenceClient={hasPersistedDraft ? tableEvidenceClient : undefined}
+            currentRevisionId={composer.persistedRevisionId ?? undefined}
           />
           <KnowledgeLibraryAttachmentField
             attachments={attachments}

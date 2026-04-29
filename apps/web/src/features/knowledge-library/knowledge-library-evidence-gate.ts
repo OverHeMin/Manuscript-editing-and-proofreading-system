@@ -60,6 +60,10 @@ function createKnowledgeLibraryEvidenceGateItems(
     return item ? [item] : [];
   }
 
+  if (block.block_type === "table_evidence_block") {
+    return [createKnowledgeLibraryTableEvidenceRevisionGateItem(block, releaseAction)];
+  }
+
   if (block.block_type === "image_block") {
     const item = createKnowledgeLibraryImageEvidenceGateItem(block, releaseAction);
     return item ? [item] : [];
@@ -102,6 +106,37 @@ function createKnowledgeLibraryTableEvidenceGateItem(
     blockType: block.block_type,
     orderNo: block.order_no,
     title: `表格块 #${block.order_no + 1}`,
+    statusLabel: formatKnowledgeLibraryEvidenceStatusLabel({
+      releaseAction,
+      blocking,
+      isReady,
+    }),
+    detail: formatKnowledgeLibraryNonBlockingDetail({
+      releaseAction,
+      isReady,
+      detail,
+    }),
+    blocking,
+  };
+}
+
+function createKnowledgeLibraryTableEvidenceRevisionGateItem(
+  block: KnowledgeContentBlockViewModel,
+  releaseAction: KnowledgeLibraryEvidenceGateAction,
+): KnowledgeLibraryEvidenceGateItem {
+  const payload = asKnowledgeLibraryOptionalRecord(block.content_payload) ?? {};
+  const revisionStatus = readKnowledgeLibraryRecordString(payload, "revision_status");
+  const isReady = revisionStatus === "confirmed";
+  const blocking = releaseAction === "submit_review" && !isReady;
+  const detail = isReady
+    ? "表格证据状态已确认。"
+    : `表格证据状态未确认${revisionStatus ? `：${revisionStatus}` : "：未加载"}`;
+
+  return {
+    blockId: block.id,
+    blockType: block.block_type,
+    orderNo: block.order_no,
+    title: `Word 表格证据 #${block.order_no + 1}`,
     statusLabel: formatKnowledgeLibraryEvidenceStatusLabel({
       releaseAction,
       blocking,

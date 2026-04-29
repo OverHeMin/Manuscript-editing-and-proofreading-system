@@ -1,16 +1,59 @@
+import { useState } from "react";
+import {
+  bindTableEvidenceRevision,
+  TableEvidencePicker,
+  type TableEvidenceHttpClient,
+  type TableEvidencePickerItem,
+  TableEvidenceUploadEntry,
+} from "../table-evidence/index.ts";
 import { KnowledgeLibraryBlockImageEditor } from "./knowledge-library-block-image-editor.tsx";
 import { KnowledgeLibraryBlockTableEditor } from "./knowledge-library-block-table-editor.tsx";
 import type {
   KnowledgeContentBlockType,
   KnowledgeContentBlockViewModel,
+  KnowledgeTableEvidenceBlockPayload,
   KnowledgeUploadInput,
   KnowledgeUploadViewModel,
 } from "./types.ts";
+
+export interface KnowledgeTableEvidenceBlockSelection {
+  assetId: string;
+  revisionId: string;
+  revisionStatus?: KnowledgeTableEvidenceBlockPayload["revision_status"];
+}
+
+export interface AppendKnowledgeLibraryTableEvidenceBlockInput {
+  blocks: readonly KnowledgeContentBlockViewModel[];
+  selection: KnowledgeTableEvidenceBlockSelection;
+  currentRevisionId?: string;
+  client?: TableEvidenceHttpClient;
+}
+
+export type KnowledgeLibraryContentBlockAction =
+  | "add-text"
+  | "add-table"
+  | "add-table-evidence"
+  | "add-image";
+
+export interface CreateKnowledgeLibraryContentBlockForActionInput {
+  blocks: readonly KnowledgeContentBlockViewModel[];
+  action: KnowledgeLibraryContentBlockAction;
+  currentRevisionId?: string;
+}
+
+export interface HandleKnowledgeLibraryTableEvidenceSelectionInput
+  extends AppendKnowledgeLibraryTableEvidenceBlockInput {
+  onChange: (blocks: KnowledgeContentBlockViewModel[]) => void;
+  onError: (message: string) => void;
+}
 
 export interface KnowledgeLibraryRichContentEditorProps {
   blocks: readonly KnowledgeContentBlockViewModel[];
   onChange: (blocks: KnowledgeContentBlockViewModel[]) => void;
   onUploadImage?: (input: KnowledgeUploadInput) => Promise<KnowledgeUploadViewModel | void>;
+  tableEvidenceClient?: TableEvidenceHttpClient;
+  tableEvidencePickerItems?: TableEvidencePickerItem[];
+  currentRevisionId?: string;
   compact?: boolean;
 }
 
@@ -18,8 +61,29 @@ export function KnowledgeLibraryRichContentEditor({
   blocks,
   onChange,
   onUploadImage,
+  tableEvidenceClient,
+  tableEvidencePickerItems = [],
+  currentRevisionId,
   compact = false,
 }: KnowledgeLibraryRichContentEditorProps) {
+  const [isTableEvidenceOpen, setIsTableEvidenceOpen] = useState(false);
+  const [tableEvidenceErrorMessage, setTableEvidenceErrorMessage] = useState<string | null>(
+    null,
+  );
+  const tableEvidenceClientState =
+    tableEvidenceClient || tableEvidencePickerItems.length > 0 ? "available" : "unavailable";
+
+  async function appendTableEvidenceBlock(selection: KnowledgeTableEvidenceBlockSelection) {
+    await handleKnowledgeLibraryTableEvidenceSelection({
+      blocks,
+      selection,
+      currentRevisionId,
+      client: tableEvidenceClient,
+      onChange,
+      onError: setTableEvidenceErrorMessage,
+    });
+  }
+
   return (
     <section
       className="knowledge-library-rich-content-editor"
@@ -37,6 +101,7 @@ export function KnowledgeLibraryRichContentEditor({
       {compact ? null : (
         <div className="knowledge-library-rich-content-editor__guidance">
           <p>表格支持直接粘贴 Excel / WPS，每一行会自动拆分为多列。</p>
+          <p>Word 表格证据用于接入已确认的表格资产，普通表格仍可作为低保真材料补充。</p>
           <p>图片块可以上传截图、图表或扫描件，上传后再补充图片说明。</p>
           <p>如果只想补充图注、表注或规则备注，用“添加补充文字”就可以。</p>
         </div>
@@ -46,24 +111,105 @@ export function KnowledgeLibraryRichContentEditor({
         <button
           type="button"
           data-block-action="add-text"
-          onClick={() => onChange(addBlock(blocks, "text_block"))}
+          onClick={() => {
+            const nextBlock = createKnowledgeLibraryContentBlockForAction({
+              blocks,
+              action: "add-text",
+              currentRevisionId,
+            });
+            if (nextBlock) {
+              onChange([...blocks, nextBlock]);
+            }
+          }}
         >
           添加补充文字
         </button>
         <button
           type="button"
+          data-block-action="add-table-evidence"
+          onClick={() => setIsTableEvidenceOpen((current) => !current)}
+        >
+          Word 表格证据
+        </button>
+        <button
+          type="button"
           data-block-action="add-table"
-          onClick={() => onChange(addBlock(blocks, "table_block"))}
+          onClick={() => {
+            const nextBlock = createKnowledgeLibraryContentBlockForAction({
+              blocks,
+              action: "add-table",
+              currentRevisionId,
+            });
+            if (nextBlock) {
+              onChange([...blocks, nextBlock]);
+            }
+          }}
         >
           添加表格
         </button>
         <button
           type="button"
           data-block-action="add-image"
-          onClick={() => onChange(addBlock(blocks, "image_block"))}
+          onClick={() => {
+            const nextBlock = createKnowledgeLibraryContentBlockForAction({
+              blocks,
+              action: "add-image",
+              currentRevisionId,
+            });
+            if (nextBlock) {
+              onChange([...blocks, nextBlock]);
+            }
+          }}
         >
           添加图片或截图
         </button>
+      </div>
+
+      <div
+        className="knowledge-library-rich-content-editor__table-evidence"
+        data-table-evidence-client-state={tableEvidenceClientState}
+      >
+        {tableEvidenceErrorMessage ? (
+          <p role="alert">{tableEvidenceErrorMessage}</p>
+        ) : null}
+
+        {isTableEvidenceOpen && !tableEvidenceClient && tableEvidencePickerItems.length === 0 ? (
+          <p>Word 表格证据需要连接表格证据客户端或提供已确认证据列表后才能添加。</p>
+        ) : null}
+
+        {isTableEvidenceOpen && tableEvidenceClient ? (
+          <TableEvidenceUploadEntry
+            client={tableEvidenceClient}
+            onCreated={(response) => {
+              const revision = response.revisions[0];
+              if (!revision) {
+                return;
+              }
+              void appendTableEvidenceBlock({
+                assetId: response.asset.id,
+                revisionId: revision.id,
+                revisionStatus: revision.confirmation_status,
+              });
+            }}
+          />
+        ) : null}
+
+        {isTableEvidenceOpen && tableEvidencePickerItems.length > 0 ? (
+          <TableEvidencePicker
+            items={tableEvidencePickerItems}
+            onPick={(selection) => {
+              const pickedItem = tableEvidencePickerItems.find(
+                (item) =>
+                  item.asset.id === selection.assetId &&
+                  item.revision.id === selection.revisionId,
+              );
+              void appendTableEvidenceBlock({
+                ...selection,
+                revisionStatus: pickedItem?.revision.confirmation_status,
+              });
+            }}
+          />
+        ) : null}
       </div>
 
       <div className="knowledge-library-rich-content-editor__list">
@@ -151,6 +297,10 @@ export function KnowledgeLibraryRichContentEditor({
                 onUploadImage={onUploadImage}
               />
             ) : null}
+
+            {block.block_type === "table_evidence_block" ? (
+              <KnowledgeLibraryTableEvidenceBlockSummary block={block} />
+            ) : null}
           </article>
         ))}
       </div>
@@ -158,29 +308,44 @@ export function KnowledgeLibraryRichContentEditor({
   );
 }
 
-function addBlock(
-  blocks: readonly KnowledgeContentBlockViewModel[],
-  blockType: KnowledgeContentBlockType,
-): KnowledgeContentBlockViewModel[] {
-  const nextOrder = blocks.length;
-  const revisionId = blocks[0]?.revision_id ?? "draft-revision";
+export function createKnowledgeLibraryContentBlockForAction({
+  blocks,
+  action,
+  currentRevisionId,
+}: CreateKnowledgeLibraryContentBlockForActionInput): KnowledgeContentBlockViewModel | null {
+  switch (action) {
+    case "add-text":
+      return createKnowledgeLibraryContentBlock(blocks, "text_block", currentRevisionId);
+    case "add-table":
+      return createKnowledgeLibraryContentBlock(blocks, "table_block", currentRevisionId);
+    case "add-image":
+      return createKnowledgeLibraryContentBlock(blocks, "image_block", currentRevisionId);
+    case "add-table-evidence":
+      return null;
+  }
+}
 
-  return [
-    ...blocks,
-    {
-      id: `block-${nextOrder + 1}`,
-      revision_id: revisionId,
-      block_type: blockType,
-      order_no: nextOrder,
-      status: "active",
-      content_payload:
-        blockType === "table_block"
-          ? { rows: [["列 1", "列 2"]] }
-          : blockType === "image_block"
-            ? {}
-            : { text: "" },
-    },
-  ];
+function createKnowledgeLibraryContentBlock(
+  blocks: readonly KnowledgeContentBlockViewModel[],
+  blockType: Exclude<KnowledgeContentBlockType, "table_evidence_block">,
+  currentRevisionId?: string,
+): KnowledgeContentBlockViewModel {
+  const nextOrder = blocks.length;
+  const revisionId = currentRevisionId ?? blocks[0]?.revision_id ?? "draft-revision";
+
+  return {
+    id: `block-${nextOrder + 1}`,
+    revision_id: revisionId,
+    block_type: blockType,
+    order_no: nextOrder,
+    status: "active",
+    content_payload:
+      blockType === "table_block"
+        ? { rows: [["列 1", "列 2"]] }
+        : blockType === "image_block"
+          ? {}
+          : { text: "" },
+  };
 }
 
 function replaceBlock(
@@ -228,9 +393,108 @@ function formatBlockTitle(blockType: KnowledgeContentBlockType): string {
       return "文字块";
     case "table_block":
       return "表格块";
+    case "table_evidence_block":
+      return "Word 表格证据";
     case "image_block":
       return "图片块";
     default:
       return blockType;
   }
+}
+
+export async function appendKnowledgeLibraryTableEvidenceBlock({
+  blocks,
+  selection,
+  currentRevisionId,
+  client,
+}: AppendKnowledgeLibraryTableEvidenceBlockInput): Promise<
+  KnowledgeContentBlockViewModel[]
+> {
+  const nextOrder = blocks.length;
+  const revisionId = normalizeKnowledgeLibraryTableEvidenceRevisionId(currentRevisionId);
+  const binding =
+    client
+      ? await bindTableEvidenceRevision(client, {
+          revisionId: selection.revisionId,
+          targetType: "knowledge_revision",
+          targetId: revisionId,
+          bindingRole: "source_evidence",
+        })
+      : null;
+
+  const payload: KnowledgeTableEvidenceBlockPayload = {
+    table_evidence_asset_id: selection.assetId,
+    table_evidence_revision_id: selection.revisionId,
+    ...(binding?.body.id ? { binding_id: binding.body.id } : {}),
+    ...(selection.revisionStatus ? { revision_status: selection.revisionStatus } : {}),
+  };
+
+  return [
+    ...blocks,
+    {
+      id: `block-${nextOrder + 1}`,
+      revision_id: revisionId,
+      block_type: "table_evidence_block",
+      order_no: nextOrder,
+      status: "active",
+      content_payload: payload,
+    },
+  ];
+}
+
+function normalizeKnowledgeLibraryTableEvidenceRevisionId(
+  currentRevisionId: string | undefined,
+): string {
+  const revisionId = currentRevisionId?.trim() ?? "";
+  if (
+    revisionId.length === 0 ||
+    revisionId === "draft-revision" ||
+    revisionId === "local-draft"
+  ) {
+    throw new Error("请先保存草稿后再添加 Word 表格证据");
+  }
+
+  return revisionId;
+}
+
+export async function handleKnowledgeLibraryTableEvidenceSelection({
+  onChange,
+  onError,
+  ...input
+}: HandleKnowledgeLibraryTableEvidenceSelectionInput): Promise<void> {
+  try {
+    const nextBlocks = await appendKnowledgeLibraryTableEvidenceBlock(input);
+    onChange(nextBlocks);
+  } catch (error) {
+    onError(error instanceof Error ? error.message : "表格证据绑定失败");
+  }
+}
+
+function KnowledgeLibraryTableEvidenceBlockSummary({
+  block,
+}: {
+  block: KnowledgeContentBlockViewModel;
+}) {
+  const payload = block.content_payload as Partial<KnowledgeTableEvidenceBlockPayload>;
+
+  return (
+    <dl className="knowledge-library-rich-content-editor__table-evidence-summary">
+      <div>
+        <dt>Asset</dt>
+        <dd>{payload.table_evidence_asset_id || "未选择"}</dd>
+      </div>
+      <div>
+        <dt>Revision</dt>
+        <dd>{payload.table_evidence_revision_id || "未选择"}</dd>
+      </div>
+      <div>
+        <dt>Binding</dt>
+        <dd>{payload.binding_id || "未绑定"}</dd>
+      </div>
+      <div>
+        <dt>Status</dt>
+        <dd>{payload.revision_status || "未加载"}</dd>
+      </div>
+    </dl>
+  );
 }

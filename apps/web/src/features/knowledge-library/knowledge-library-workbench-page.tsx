@@ -1577,6 +1577,10 @@ export function KnowledgeLibraryWorkbenchPage({
               blocks={contentBlocksDraft}
               onChange={setContentBlocksDraft}
               onUploadImage={handleUploadImage}
+              tableEvidenceClient={
+                viewModel?.selectedRevisionId ? defaultHttpClient : undefined
+              }
+              currentRevisionId={viewModel?.selectedRevisionId ?? undefined}
             />
             <div className="knowledge-library-actions knowledge-library-rich-content-save">
               <button

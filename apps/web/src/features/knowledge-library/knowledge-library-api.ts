@@ -175,7 +175,9 @@ export function replaceKnowledgeRevisionContentBlocks(
         blockType: block.block_type,
         orderNo: block.order_no,
         contentPayload: block.content_payload,
-        ...(block.table_semantics ? { tableSemantics: block.table_semantics } : {}),
+        ...(block.block_type !== "table_evidence_block" && block.table_semantics
+          ? { tableSemantics: block.table_semantics }
+          : {}),
         ...(block.image_understanding ? { imageUnderstanding: block.image_understanding } : {}),
       })),
     },

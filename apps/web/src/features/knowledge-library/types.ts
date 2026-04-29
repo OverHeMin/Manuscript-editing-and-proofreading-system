@@ -87,7 +87,18 @@ export type KnowledgeSemanticStatus =
   | "confirmed"
   | "stale";
 
-export type KnowledgeContentBlockType = "text_block" | "table_block" | "image_block";
+export type KnowledgeContentBlockType =
+  | "text_block"
+  | "table_block"
+  | "image_block"
+  | "table_evidence_block";
+
+export interface KnowledgeTableEvidenceBlockPayload extends Record<string, unknown> {
+  table_evidence_asset_id: string;
+  table_evidence_revision_id: string;
+  binding_id?: string;
+  revision_status?: "pending" | "confirmed" | "needs_review";
+}
 
 export interface KnowledgeContentBlockViewModel {
   id: string;
