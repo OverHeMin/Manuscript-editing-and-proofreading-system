@@ -6,7 +6,7 @@ const titleFieldLabel = "\u6807\u9898";
 const canonicalTextFieldLabel =
   "\u7b80\u8981\u8bf4\u660e\u6216\u6807\u51c6\u7b54\u6848";
 
-test("knowledge library can upload, confirm, and bind DOCX table evidence", async ({
+test("knowledge library can upload pending DOCX table evidence for confirmation", async ({
   page,
   request,
 }) => {
@@ -78,7 +78,7 @@ test("knowledge library can upload, confirm, and bind DOCX table evidence", asyn
     "\u8868\u683c\u8bc1\u636e\u72b6\u6001\u672a\u786e\u8ba4\uff1apending",
   );
   expect(uploadCalled).toBeTruthy();
-  expect(bindingCalled).toBeTruthy();
+  expect(bindingCalled).toBeFalsy();
 });
 
 async function loginApiSession(
