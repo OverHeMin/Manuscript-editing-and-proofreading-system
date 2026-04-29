@@ -408,7 +408,7 @@ def build_grid_cells(
             )
             cell_payload = {
                 "id": cell_id,
-                "text": (raw_cell.get("text") or "").strip(),
+                "text": raw_cell.get("text") if isinstance(raw_cell.get("text"), str) else "",
                 "row_index": row_index,
                 "column_index": column_index,
                 "row_span": row_span,
@@ -472,9 +472,19 @@ def materialize_paragraph_snapshots(value: object, prefix: str) -> list[dict]:
         snapshots.append(
             {
                 "id": paragraph_id,
-                "text": entry.get("text") or "",
+                "text": entry.get("text") if isinstance(entry.get("text"), str) else "",
                 "style": normalize_paragraph_style_evidence(entry.get("style")),
                 "fragments": fragments,
+                **(
+                    {"paragraph_boundary_after": entry.get("paragraph_boundary_after")}
+                    if isinstance(entry.get("paragraph_boundary_after"), bool)
+                    else {}
+                ),
+                **(
+                    {"paragraph_boundary": entry.get("paragraph_boundary")}
+                    if is_paragraph_boundary(entry.get("paragraph_boundary"))
+                    else {}
+                ),
             }
         )
     return snapshots
@@ -491,7 +501,9 @@ def materialize_inline_fragments(value: object, prefix: str) -> list[dict]:
         fragment = {
             "id": f"{prefix}-fragment-{index}",
             "kind": normalize_fragment_kind(entry.get("kind")),
-            "text": entry.get("text") or "",
+            "text": entry.get("text") if isinstance(entry.get("text"), str) else "",
+            "codepoints": normalize_string_list(entry.get("codepoints")),
+            "invisible_chars": normalize_invisible_chars(entry.get("invisible_chars")),
             "style": normalize_inline_style_evidence(entry.get("style")),
         }
         if entry.get("symbol_font"):
@@ -514,6 +526,50 @@ def normalize_fragment_kind(value: object) -> str:
     if value in {"text", "symbol", "tab", "line_break", "object"}:
         return value  # type: ignore[return-value]
     return "text"
+
+
+def normalize_string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [entry for entry in value if isinstance(entry, str)]
+
+
+def normalize_invisible_chars(value: object) -> list[dict]:
+    if not isinstance(value, list):
+        return []
+
+    entries: list[dict] = []
+    for entry in value:
+        if not isinstance(entry, dict):
+            continue
+        kind = entry.get("kind")
+        codepoint = entry.get("codepoint")
+        offset = entry.get("offset")
+        length = entry.get("length")
+        if (
+            isinstance(kind, str)
+            and isinstance(codepoint, str)
+            and isinstance(offset, int)
+            and isinstance(length, int)
+        ):
+            entries.append(
+                {
+                    "kind": kind,
+                    "codepoint": codepoint,
+                    "offset": offset,
+                    "length": length,
+                }
+            )
+    return entries
+
+
+def is_paragraph_boundary(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    return (
+        value.get("kind") == "paragraph_boundary"
+        and value.get("codepoint") == "PARA"
+    )
 
 
 def normalize_inline_style_evidence(value: object) -> dict:

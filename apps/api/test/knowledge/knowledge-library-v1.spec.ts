@@ -169,6 +169,8 @@ function buildDocumentTableSnapshot(): DocumentStructureTableSnapshot {
                 id: "frag-1",
                 kind: "text",
                 text: "年龄",
+                codepoints: [],
+                invisible_chars: [],
                 style: {
                   font_family: styleFact,
                   font_size_pt: { availability: "authoritative", value: 10.5 },

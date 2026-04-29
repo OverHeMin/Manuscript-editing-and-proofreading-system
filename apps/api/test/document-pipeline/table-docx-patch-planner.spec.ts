@@ -216,6 +216,8 @@ function buildFragment(
     id,
     kind: "text" as const,
     text,
+    codepoints: [],
+    invisible_chars: [],
     style: {
       font_family: styleFact(input.fontFamily ?? "Times New Roman"),
       font_size_pt: styleFact(input.fontSizePt ?? 10.5),

@@ -509,3 +509,132 @@ def test_document_xml_marks_ocr_image_tables_for_manual_review():
     assert grid_cell["object_evidence"][0]["object_kind"] == "ocr_image_table"
     assert grid_cell["paragraphs"][0]["fragments"][0]["kind"] == "object"
     assert grid_cell["paragraphs"][0]["fragments"][0]["object_kind"] == "ocr_image_table"
+
+
+def test_docx_table_fragments_preserve_invisible_characters_and_dashes():
+    document_xml = """
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                xmlns:xml="http://www.w3.org/XML/1998/namespace">
+      <w:body>
+        <w:tbl>
+          <w:tr>
+            <w:tc>
+              <w:p>
+                <w:r><w:t xml:space="preserve"> A  B\u00a0C\u3000D–E—F−G </w:t></w:r>
+                <w:r><w:tab/></w:r>
+                <w:r><w:br/></w:r>
+                <w:r><w:t>H</w:t></w:r>
+              </w:p>
+              <w:p><w:r><w:t>next</w:t></w:r></w:p>
+            </w:tc>
+          </w:tr>
+        </w:tbl>
+      </w:body>
+    </w:document>
+    """
+
+    table = extract_structure_from_document_xml(document_xml)["tables"][0]["semantic"]
+    cell = table["grid_cells"][0]
+    fragments = cell["paragraphs"][0]["fragments"]
+
+    assert fragments[0]["text"] == " A  B\u00a0C\u3000D–E—F−G "
+    assert fragments[0]["codepoints"] == [
+        "0020", "0041", "0020", "0020", "0042", "00A0", "0043", "3000",
+        "0044", "2013", "0045", "2014", "0046", "2212", "0047", "0020",
+    ]
+    assert any(item["kind"] == "leading_space" for item in fragments[0]["invisible_chars"])
+    assert any(item["kind"] == "consecutive_space" for item in fragments[0]["invisible_chars"])
+    assert any(item["kind"] == "nbsp" for item in fragments[0]["invisible_chars"])
+    assert any(item["kind"] == "full_width_space" for item in fragments[0]["invisible_chars"])
+    assert fragments[1]["kind"] == "tab"
+    assert fragments[1]["codepoints"] == ["0009"]
+    assert any(item["kind"] == "tab" for item in fragments[1]["invisible_chars"])
+    assert fragments[2]["kind"] == "line_break"
+    assert fragments[2]["codepoints"] == ["000A"]
+    assert any(item["kind"] == "line_break" for item in fragments[2]["invisible_chars"])
+    assert fragments[3]["text"] == "H"
+    assert fragments[3]["invisible_chars"] == []
+    assert cell["paragraphs"][0]["paragraph_boundary_after"] is True
+    assert cell["paragraphs"][0]["paragraph_boundary"] == {
+        "kind": "paragraph_boundary",
+        "codepoint": "PARA",
+    }
+
+
+def test_docx_table_symbol_fragment_preserves_original_symbol_fields():
+    document_xml = """
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>
+        <w:tbl>
+          <w:tr>
+            <w:tc>
+              <w:p>
+                <w:r>
+                  <w:sym w:font="Symbol" w:char="03BC"/>
+                </w:r>
+              </w:p>
+            </w:tc>
+          </w:tr>
+        </w:tbl>
+      </w:body>
+    </w:document>
+    """
+
+    table = extract_structure_from_document_xml(document_xml)["tables"][0]["semantic"]
+    fragment = table["grid_cells"][0]["paragraphs"][0]["fragments"][0]
+
+    assert fragment["kind"] == "symbol"
+    assert fragment["text"] == "μ"
+    assert fragment["codepoints"] == ["03BC"]
+    assert fragment["symbol_font"] == "Symbol"
+    assert fragment["symbol_char"] == "03BC"
+
+
+def test_docx_table_cell_text_preserves_blank_paragraph_boundaries():
+    document_xml = """
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                xmlns:xml="http://www.w3.org/XML/1998/namespace">
+      <w:body>
+        <w:tbl>
+          <w:tr>
+            <w:tc>
+              <w:p><w:r><w:t>A</w:t></w:r></w:p>
+              <w:p><w:r><w:t xml:space="preserve">   </w:t></w:r></w:p>
+              <w:p><w:r><w:t>B</w:t></w:r></w:p>
+            </w:tc>
+          </w:tr>
+        </w:tbl>
+      </w:body>
+    </w:document>
+    """
+
+    table = extract_structure_from_document_xml(document_xml)["tables"][0]["semantic"]
+    cell = table["grid_cells"][0]
+
+    assert cell["text"] == "A\n   \nB"
+    assert cell["display_text"] == "A\n   \nB"
+    assert cell["normalized_text"] == "A B"
+
+
+def test_docx_table_cell_text_preserves_whitespace_only_cell():
+    document_xml = """
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                xmlns:xml="http://www.w3.org/XML/1998/namespace">
+      <w:body>
+        <w:tbl>
+          <w:tr>
+            <w:tc>
+              <w:p><w:r><w:t xml:space="preserve">   </w:t></w:r></w:p>
+            </w:tc>
+          </w:tr>
+        </w:tbl>
+      </w:body>
+    </w:document>
+    """
+
+    table = extract_structure_from_document_xml(document_xml)["tables"][0]["semantic"]
+    cell = table["grid_cells"][0]
+
+    assert cell["text"] == "   "
+    assert cell["display_text"] == "   "
+    assert cell["normalized_text"] == ""

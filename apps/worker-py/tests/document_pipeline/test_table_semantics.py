@@ -304,3 +304,39 @@ def test_build_table_semantic_snapshot_surfaces_grid_cell_rich_style_evidence():
     assert snapshot["grid_cells"][0]["style_evidence"]["italic"]["availability"] == "mixed"
     assert snapshot["grid_cells"][0]["paragraphs"][0]["fragments"][0]["kind"] == "symbol"
     assert snapshot["grid_cells"][0]["paragraphs"][0]["fragments"][0]["text"] == "α"
+
+
+def test_table_semantics_uses_fragment_text_without_trimming_guarantee_fields():
+    raw_rows = [[{
+        "text": " A\u00a0 ",
+        "paragraphs": [{
+            "id": "p-1",
+            "text": " A\u00a0 ",
+            "paragraph_boundary_after": True,
+            "fragments": [{
+                "id": "r-1",
+                "kind": "text",
+                "text": " A\u00a0 ",
+                "codepoints": ["0020", "0041", "00A0", "0020"],
+                "invisible_chars": [
+                    {"kind": "leading_space", "offset": 0, "length": 1, "codepoint": "0020"},
+                    {"kind": "nbsp", "offset": 2, "length": 1, "codepoint": "00A0"},
+                    {"kind": "trailing_space", "offset": 3, "length": 1, "codepoint": "0020"},
+                ],
+                "style": {},
+            }],
+        }],
+    }]]
+
+    snapshot = build_table_semantic_snapshot(
+        table_index=1,
+        rows=raw_rows,
+        caption=None,
+        caption_paragraphs=[],
+        notes=[],
+        note_paragraphs=[],
+        border_hints={},
+    )
+
+    assert snapshot["grid_cells"][0]["text"] == " A\u00a0 "
+    assert snapshot["grid_cells"][0]["paragraphs"][0]["fragments"][0]["text"] == " A\u00a0 "

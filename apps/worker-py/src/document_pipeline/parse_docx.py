@@ -466,6 +466,57 @@ def extract_paragraph_snapshot(node: ET.Element) -> dict:
         "text": text,
         "style": extract_paragraph_style_evidence(node),
         "fragments": fragments,
+        "paragraph_boundary_after": True,
+        "paragraph_boundary": {"kind": "paragraph_boundary", "codepoint": "PARA"},
+    }
+
+
+def codepoints_for_text(text: str) -> list[str]:
+    return [f"{ord(character):04X}" for character in text]
+
+
+def classify_invisible_chars(text: str) -> list[dict]:
+    entries: list[dict] = []
+    previous_space_offset: int | None = None
+
+    for offset, character in enumerate(text):
+        codepoint = f"{ord(character):04X}"
+        kind: str | None = None
+        if character == " ":
+            kind = "space"
+        elif character == "\u3000":
+            kind = "full_width_space"
+        elif character == "\u00a0":
+            kind = "nbsp"
+        elif character == "\t":
+            kind = "tab"
+        elif character == "\n":
+            kind = "line_break"
+
+        if kind is not None:
+            entries.append({"kind": kind, "codepoint": codepoint, "offset": offset, "length": 1})
+
+        if character == " ":
+            if offset == 0:
+                entries.append({"kind": "leading_space", "codepoint": codepoint, "offset": offset, "length": 1})
+            if offset == len(text) - 1:
+                entries.append({"kind": "trailing_space", "codepoint": codepoint, "offset": offset, "length": 1})
+            if previous_space_offset == offset - 1:
+                entries.append({"kind": "consecutive_space", "codepoint": codepoint, "offset": previous_space_offset, "length": 2})
+            previous_space_offset = offset
+        else:
+            previous_space_offset = None
+
+    return entries
+
+
+def build_inline_fragment(**fragment: object) -> dict:
+    text = fragment.get("text") if isinstance(fragment.get("text"), str) else ""
+    return {
+        **fragment,
+        "text": text,
+        "codepoints": codepoints_for_text(text),
+        "invisible_chars": classify_invisible_chars(text),
     }
 
 
@@ -492,63 +543,63 @@ def extract_run_fragments(run: ET.Element) -> list[dict]:
             text = child.text or ""
             if text:
                 fragments.append(
-                    {
-                        "kind": "text",
-                        "text": text,
-                        "style": style,
-                    }
+                    build_inline_fragment(
+                        kind="text",
+                        text=text,
+                        style=style,
+                    )
                 )
             continue
         if child.tag == qualify("tab"):
             fragments.append(
-                {
-                    "kind": "tab",
-                    "text": "\t",
-                    "style": style,
-                }
+                build_inline_fragment(
+                    kind="tab",
+                    text="\t",
+                    style=style,
+                )
             )
             continue
         if child.tag == qualify("br") or child.tag == qualify("cr"):
             fragments.append(
-                {
-                    "kind": "line_break",
-                    "text": "\n",
-                    "style": style,
-                }
+                build_inline_fragment(
+                    kind="line_break",
+                    text="\n",
+                    style=style,
+                )
             )
             continue
         if child.tag == qualify("sym"):
             symbol_char = (child.attrib.get(qualify("char")) or "").strip()
             symbol_font = (child.attrib.get(qualify("font")) or "").strip() or None
             fragments.append(
-                {
-                    "kind": "symbol",
-                    "text": decode_symbol_text(symbol_char),
-                    "symbol_char": symbol_char or None,
-                    "symbol_font": symbol_font,
-                    "style": extract_run_style_evidence(
+                build_inline_fragment(
+                    kind="symbol",
+                    text=decode_symbol_text(symbol_char),
+                    symbol_char=symbol_char or None,
+                    symbol_font=symbol_font,
+                    style=extract_run_style_evidence(
                         run, symbol_font_override=symbol_font
                     ),
-                }
+                )
             )
             continue
         if local_name(child.tag) in OBJECT_EVIDENCE_TAGS:
             kind = classify_object_kind(child)
             evidence_text = extract_object_evidence_text(child)
             fragments.append(
-                {
-                    "kind": "object",
-                    "text": "",
-                    "object_kind": kind,
-                    "original_tag": local_name(child.tag),
+                build_inline_fragment(
+                    kind="object",
+                    text="",
+                    object_kind=kind,
+                    original_tag=local_name(child.tag),
                     **(
                         {"relationship_id": relationship_id}
                         if (relationship_id := extract_object_relationship_id(child))
                         else {}
                     ),
                     **({"evidence_text": evidence_text} if evidence_text else {}),
-                    "style": style,
-                }
+                    style=style,
+                )
             )
 
     return fragments
@@ -622,7 +673,7 @@ def extract_table_dimensions(
         raw_row: list[dict] = []
         for cell_index, cell in enumerate(cells):
             paragraphs = extract_table_cell_paragraphs(cell)
-            display_text = build_table_cell_display_text(paragraphs)
+            cell_text = build_table_cell_display_text(paragraphs)
             cell_objects = extract_table_cell_object_evidence(
                 cell,
                 table_index=table_index,
@@ -633,13 +684,13 @@ def extract_table_dimensions(
             objects.extend(
                 cell_objects
             )
-            text = display_text.strip()
+            text = normalize_table_cell_text(cell_text)
             text_row.append(text)
             raw_row.append(
                 {
-                    "text": text,
-                    "display_text": display_text,
-                    "normalized_text": normalize_table_cell_text(display_text),
+                    "text": cell_text,
+                    "display_text": cell_text,
+                    "normalized_text": normalize_table_cell_text(cell_text),
                     "raw_xml_text": ET.tostring(cell, encoding="unicode"),
                     "style_runs": flatten_table_cell_style_runs(paragraphs),
                     "column_span": extract_grid_span(cell),
@@ -671,9 +722,19 @@ def extract_table_dimensions(
 
 def build_table_cell_display_text(paragraphs: list[dict]) -> str:
     return "\n".join(
-        paragraph.get("text", "")
+        build_table_cell_paragraph_text(paragraph)
         for paragraph in paragraphs
-        if (paragraph.get("text") or "").strip()
+    )
+
+
+def build_table_cell_paragraph_text(paragraph: dict) -> str:
+    fragments = paragraph.get("fragments")
+    if not isinstance(fragments, list):
+        return paragraph.get("text", "") if isinstance(paragraph.get("text"), str) else ""
+    return "".join(
+        fragment.get("text", "")
+        for fragment in fragments
+        if isinstance(fragment, dict)
     )
 
 

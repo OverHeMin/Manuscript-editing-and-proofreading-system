@@ -138,6 +138,13 @@ export interface DocumentStructureTableInlineFragment {
   id: string;
   kind: "text" | "symbol" | "tab" | "line_break" | "object";
   text: string;
+  codepoints: string[];
+  invisible_chars: Array<{
+    kind: string;
+    codepoint: string;
+    offset: number;
+    length: number;
+  }>;
   style: DocumentStructureTableInlineStyleEvidence;
   symbol_font?: string;
   symbol_char?: string;
@@ -153,6 +160,11 @@ export interface DocumentStructureTableParagraphSnapshot {
   text: string;
   style: DocumentStructureTableParagraphStyleEvidence;
   fragments: DocumentStructureTableInlineFragment[];
+  paragraph_boundary_after?: boolean;
+  paragraph_boundary?: {
+    kind: "paragraph_boundary";
+    codepoint: "PARA";
+  };
 }
 
 export interface DocumentStructureTableCellStyleEvidence {

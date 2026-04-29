@@ -73,6 +73,8 @@ test("document pipeline api returns semantic table snapshots from the structure 
                         id: "table-1-caption-paragraph-0-fragment-0",
                         kind: "text",
                         text: "表1 基线特征比较",
+                        codepoints: [],
+                        invisible_chars: [],
                         style: {
                           font_family: fact("宋体"),
                           font_size_pt: fact(12),
@@ -109,6 +111,8 @@ test("document pipeline api returns semantic table snapshots from the structure 
                         id: "table-1-note-zone-paragraph-0-fragment-0",
                         kind: "text",
                         text: "*P<0.05 vs control",
+                        codepoints: [],
+                        invisible_chars: [],
                         style: {
                           font_family: fact("宋体"),
                           font_size_pt: fact(10.5),
@@ -193,6 +197,8 @@ test("document pipeline api returns semantic table snapshots from the structure 
                           id: "footnote-1-paragraph-0-fragment-0",
                           kind: "text",
                           text: "*P<0.05 vs control",
+                          codepoints: [],
+                          invisible_chars: [],
                           style: {
                             font_family: fact("宋体"),
                             font_size_pt: fact(10.5),
@@ -257,6 +263,8 @@ test("document pipeline api returns semantic table snapshots from the structure 
                           id: "table-1-cell-1-1-paragraph-0-fragment-0",
                           kind: "symbol",
                           text: "α",
+                          codepoints: [],
+                          invisible_chars: [],
                           symbol_font: "Symbol",
                           symbol_char: "03B1",
                           style: {
@@ -271,6 +279,8 @@ test("document pipeline api returns semantic table snapshots from the structure 
                           id: "table-1-cell-1-1-paragraph-0-fragment-1",
                           kind: "text",
                           text: "=0.05",
+                          codepoints: [],
+                          invisible_chars: [],
                           style: {
                             font_family: fact("Times New Roman"),
                             font_size_pt: fact(10.5),
