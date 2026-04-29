@@ -133,6 +133,14 @@ import {
   PostgresKnowledgeRetrievalRepository,
 } from "../modules/knowledge-retrieval/index.ts";
 import {
+  createTableEvidenceApi,
+  LocalTableEvidenceSourceFileService,
+  PostgresTableEvidenceRepository,
+  PythonTableEvidenceWorkerAdapter,
+  TableEvidenceService,
+  type TableEvidenceSourceFileService,
+} from "../modules/table-evidence/index.ts";
+import {
   createLearningApi,
   LearningService,
   PostgresLearningCandidateRepository,
@@ -321,6 +329,9 @@ export function createPersistentGovernanceRuntime(
   const knowledgeRepository = new PostgresKnowledgeRepository({
     client: options.client,
   });
+  const tableEvidenceRepository = new PostgresTableEvidenceRepository({
+    client: options.client,
+  });
   const knowledgeRetrievalRepository = new PostgresKnowledgeRetrievalRepository({
     client: options.client,
   });
@@ -481,6 +492,17 @@ export function createPersistentGovernanceRuntime(
     createContext: (client) => ({
       repository: new PostgresHarnessDatasetRepository({ client }),
     }),
+  });
+
+  const tableEvidenceSourceFileService: TableEvidenceSourceFileService =
+    new LocalTableEvidenceSourceFileService({
+      repository: tableEvidenceRepository,
+      rootDir: uploadRootDir,
+    });
+  const tableEvidenceService = new TableEvidenceService({
+    repository: tableEvidenceRepository,
+    sourceFileService: tableEvidenceSourceFileService,
+    workerAdapter: new PythonTableEvidenceWorkerAdapter(),
   });
 
   const documentAssetService = new DocumentAssetService({
@@ -1108,6 +1130,9 @@ export function createPersistentGovernanceRuntime(
       usageMetricsService: new KnowledgeUsageMetricsService({
         executionTrackingRepository,
       }),
+    }),
+    tableEvidenceApi: createTableEvidenceApi({
+      tableEvidenceService,
     }),
     feedbackGovernanceApi: createFeedbackGovernanceApi({
       feedbackGovernanceService,

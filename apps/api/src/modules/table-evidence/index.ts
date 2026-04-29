@@ -7,3 +7,4 @@ export * from "./table-evidence-worker-adapter.ts";
 export * from "./table-evidence-patch-service.ts";
 export * from "./table-evidence-package-builder.ts";
 export * from "./table-evidence-service.ts";
+export * from "./table-evidence-api.ts";
