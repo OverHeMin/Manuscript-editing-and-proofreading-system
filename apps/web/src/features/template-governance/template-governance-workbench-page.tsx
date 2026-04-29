@@ -108,6 +108,8 @@ import {
   type TemplateGovernanceWorkbenchFilters,
   type TemplateGovernanceWorkbenchOverview,
 } from "./template-governance-controller.ts";
+import { TemplateGovernanceV2WorkbenchPage } from "./template-governance-v2-workbench-page.tsx";
+import type { TemplateGovernanceV2SectionData } from "./template-governance-v2-data.ts";
 import {
   buildTemplateGovernanceOverviewFallbackPendingItems,
   buildTemplateGovernanceOverviewFallbackUpdates,
@@ -167,6 +169,17 @@ import {
   type RuleWizardEntryFormState,
   type RuleWizardReleaseAction,
 } from "./template-governance-rule-wizard-api.ts";
+import { executeExtractionCandidateAction } from "./template-governance-extraction-candidate-actions.ts";
+import {
+  createRuleWizardCandidateHandoffViewModel,
+  createRuleWizardEntryFormStateFromAiDraft,
+  createRuleWizardEntryFormStateFromLearningCandidate,
+  createRuleWizardEntryFormStateFromRuleLedgerRow,
+  isRuleCenterLearningCandidate,
+  normalizeLearningCandidateManuscriptType,
+  normalizeLearningCandidateModule,
+  resolveRuleWizardCandidateTitle,
+} from "./template-governance-rule-wizard-handoff.ts";
 import {
   formatRulePackageKindLabel,
   formatTemplateGovernanceConfidencePolicyLabel,
@@ -185,11 +198,12 @@ import {
   formatTemplateGovernanceRuleTypeLabel,
   formatTemplateGovernanceSeverityLabel,
 } from "./template-governance-display.ts";
-import {
-  createContentModuleIntakePayload,
-  createTemplateIntakePayload,
-  readExtractionCandidateIntakeRecord,
-} from "./template-governance-extraction-intake.ts";
+
+export { executeExtractionCandidateAction } from "./template-governance-extraction-candidate-actions.ts";
+export {
+  createRuleWizardEntryFormStateFromAiDraft,
+  createRuleWizardEntryFormStateFromRuleLedgerRow,
+} from "./template-governance-rule-wizard-handoff.ts";
 
 if (typeof document !== "undefined") {
   void import("./template-governance-workbench.css");
@@ -344,7 +358,74 @@ export interface TemplateGovernanceWorkbenchPageProps {
   initialSelectedReviewItemId?: string;
 }
 
-export function TemplateGovernanceWorkbenchPage({
+export function TemplateGovernanceWorkbenchPage(
+  props: TemplateGovernanceWorkbenchPageProps,
+) {
+  const {
+    controller = defaultController,
+    actorRole = "admin",
+    initialOverview = null,
+    initialMode,
+    initialView = "overview",
+    initialSelectedRuleLedgerRowId,
+    prefilledManuscriptId,
+    prefilledReviewedCaseSnapshotId,
+    initialRulePackageWorkspace = null,
+    initialLearningCandidates = [],
+    initialSelectedLearningCandidateId,
+    initialReviewItems = [],
+    initialSelectedReviewItemId,
+  } = props;
+  const effectiveMode =
+    initialMode === "learning" ||
+    initialMode === "ai-intake" ||
+    initialView === "authoring"
+      ? initialMode ?? "authoring"
+      : undefined;
+  const advancedCompatibilityPanel =
+    initialView === "classic" ? (
+      <TemplateGovernanceLegacyWorkbenchPage
+        controller={controller}
+        actorRole={actorRole}
+        initialOverview={initialOverview}
+        initialMode={initialMode}
+        initialView="classic"
+        initialSelectedRuleLedgerRowId={initialSelectedRuleLedgerRowId}
+        prefilledManuscriptId={prefilledManuscriptId}
+        prefilledReviewedCaseSnapshotId={prefilledReviewedCaseSnapshotId}
+        initialRulePackageWorkspace={initialRulePackageWorkspace}
+        initialLearningCandidates={initialLearningCandidates}
+        initialSelectedLearningCandidateId={initialSelectedLearningCandidateId}
+        initialReviewItems={initialReviewItems}
+        initialSelectedReviewItemId={initialSelectedReviewItemId}
+      />
+    ) : undefined;
+
+  return (
+    <TemplateGovernanceV2WorkbenchPage
+      controller={controller}
+      initialMode={effectiveMode}
+      initialView={initialView}
+      initialSelectedRuleLedgerRowId={initialSelectedRuleLedgerRowId}
+      prefilledManuscriptId={prefilledManuscriptId}
+      prefilledReviewedCaseSnapshotId={prefilledReviewedCaseSnapshotId}
+      initialSelectedLearningCandidateId={initialSelectedLearningCandidateId}
+      initialSelectedReviewItemId={initialSelectedReviewItemId}
+      initialLearningCandidates={initialLearningCandidates}
+      initialReviewItems={initialReviewItems}
+      initialSectionData={createInitialTemplateGovernanceV2SectionData({
+        initialOverview,
+        initialMode: effectiveMode,
+        initialView,
+        initialLearningCandidates,
+        initialReviewItems,
+      })}
+      advancedCompatibilityPanel={advancedCompatibilityPanel}
+    />
+  );
+}
+
+export function TemplateGovernanceLegacyWorkbenchPage({
   controller = defaultController,
   actorRole = "admin",
   initialOverview = null,
@@ -2592,6 +2673,49 @@ export function TemplateGovernanceWorkbenchPage({
   );
 }
 
+function createInitialTemplateGovernanceV2SectionData(input: {
+  initialOverview: TemplateGovernanceWorkbenchOverview | null;
+  initialMode?: TemplateGovernanceWorkbenchMode;
+  initialView: TemplateGovernanceView;
+  initialLearningCandidates: readonly LearningCandidateViewModel[];
+  initialReviewItems: readonly ReviewItemViewModel[];
+}): TemplateGovernanceV2SectionData | null {
+  if (input.initialMode === "learning") {
+    return {
+      section: "recovery",
+      candidates: [...input.initialLearningCandidates],
+      reviewItems: [...input.initialReviewItems],
+    };
+  }
+
+  if (!input.initialOverview) {
+    return null;
+  }
+
+  if (input.initialView === "classic") {
+    return {
+      section: "advanced",
+      overview: input.initialOverview,
+    };
+  }
+
+  if (input.initialMode === "ai-intake") {
+    return {
+      section: "ai-intake",
+      overview: input.initialOverview,
+    };
+  }
+
+  if (input.initialView === "overview") {
+    return {
+      section: "dashboard",
+      overview: input.initialOverview,
+    };
+  }
+
+  return null;
+}
+
 function TemplateGovernanceOverviewRoute({
   controller,
   initialOverview,
@@ -3633,109 +3757,6 @@ function TemplateGovernanceExtractionLedgerRoute({
   );
 }
 
-export async function executeExtractionCandidateAction(input: {
-  controller: Pick<
-    TemplateGovernanceWorkbenchController,
-    | "updateExtractionTaskCandidateAndReload"
-    | "createContentModuleDraftFromCandidateAndReload"
-    | "createTemplateCompositionDraftFromCandidateAndReload"
-  >;
-  taskId: string;
-  candidate: ExtractionTaskCandidateViewModel;
-  values: TemplateGovernanceCandidateConfirmationFormValues;
-  confirmationStatus: TemplateGovernanceCandidateConfirmationFormValues["confirmationStatus"];
-  successMessage: string;
-}): Promise<{
-  ledger: TemplateGovernanceExtractionLedgerViewModel;
-  statusMessage?: string;
-  errorMessage?: string;
-}> {
-  const confirmed = await input.controller.updateExtractionTaskCandidateAndReload({
-    taskId: input.taskId,
-    candidateId: input.candidate.id,
-    input: toCandidateUpdateInput(
-      input.candidate,
-      input.values,
-      input.confirmationStatus,
-    ),
-  });
-
-  if (input.confirmationStatus !== "confirmed") {
-    return {
-      ledger: confirmed.ledger,
-      statusMessage: input.successMessage,
-    };
-  }
-
-  const confirmedCandidate =
-    selectExtractionCandidate(confirmed.ledger, input.candidate.id) ?? input.candidate;
-  const existingIntake = readExtractionCandidateIntakeRecord(confirmedCandidate);
-  if (existingIntake) {
-    return {
-      ledger: confirmed.ledger,
-      statusMessage: `候选语义已更新，当前已关联${formatExtractionIntakeDraftLabel(existingIntake.target_kind)}草稿：${existingIntake.target_name}。`,
-    };
-  }
-
-  if (input.values.suggestedDestination === "template") {
-    const { templateComposition } =
-      await input.controller.createTemplateCompositionDraftFromCandidateAndReload({
-        taskId: input.taskId,
-        candidateId: input.candidate.id,
-      });
-    const { ledger } = await input.controller.updateExtractionTaskCandidateAndReload({
-      taskId: input.taskId,
-      candidateId: input.candidate.id,
-      input: {
-        intakePayload: createTemplateIntakePayload(templateComposition),
-      },
-    });
-    return {
-      ledger,
-      statusMessage: `候选已确认，并已入库到大模板草稿：${templateComposition.name}。`,
-    };
-  }
-
-  const moduleClass: GovernedContentModuleClass =
-    input.values.suggestedDestination === "medical_module"
-      ? "medical_specialized"
-      : "general";
-  const { contentModule } =
-    await input.controller.createContentModuleDraftFromCandidateAndReload({
-      taskId: input.taskId,
-      candidateId: input.candidate.id,
-      moduleClass,
-    });
-  const { ledger } = await input.controller.updateExtractionTaskCandidateAndReload({
-    taskId: input.taskId,
-    candidateId: input.candidate.id,
-    input: {
-      intakePayload: createContentModuleIntakePayload(contentModule),
-    },
-  });
-  return {
-    ledger,
-    statusMessage: `候选已确认，并已入库到${formatExtractionIntakeDraftLabel(
-      input.values.suggestedDestination,
-    )}草稿：${contentModule.name}。`,
-  };
-}
-
-function formatExtractionIntakeDraftLabel(
-  value: "general_module" | "medical_module" | "template",
-): string {
-  switch (value) {
-    case "general_module":
-      return "通用包";
-    case "medical_module":
-      return "医学专用包";
-    case "template":
-      return "大模板";
-    default:
-      return formatTemplateGovernanceExtractionDestinationLabel(value);
-  }
-}
-
 function mergeRuleLedgerWithLearningCandidates(
   ledger: TemplateGovernanceRuleLedgerViewModel,
   learningCandidates: readonly LearningCandidateViewModel[],
@@ -3796,72 +3817,6 @@ function createRuleLedgerRowFromLearningCandidate(
   };
 }
 
-export function createRuleWizardEntryFormStateFromRuleLedgerRow(
-  row: TemplateGovernanceRuleLedgerRow,
-): RuleWizardEntryFormState | null {
-  if (
-    row.asset_kind !== "recycled_candidate" ||
-    row.learning_candidate == null ||
-    !isRuleCenterLearningCandidate(row.learning_candidate)
-  ) {
-    return null;
-  }
-
-  return createRuleWizardEntryFormStateFromLearningCandidate(row.learning_candidate);
-}
-
-export function createRuleWizardEntryFormStateFromAiDraft(
-  response: RuleAiIntakeDraftResponseViewModel,
-): RuleWizardEntryFormState {
-  const draft = response.draft;
-  const sourceBasis = draft.evidence
-    .map((item) => item.text?.trim())
-    .filter((text): text is string => Boolean(text))
-    .join("\n");
-  const uncertaintyNotes = draft.uncertainties.map((item) => `不确定点：${item}`);
-  const similarityNotes = response.similar_rule_matches.map((match) =>
-    `相似规则：${match.title}（${match.kind}）${match.rationale}`,
-  );
-  const warningNotes = (response.warnings ?? []).map((warning) => `AI 提示：${warning}`);
-
-  return createRuleWizardEntryFormState({
-    title:
-      draft.new_template_candidate?.title?.trim() ||
-      draft.target_object.trim() ||
-      "AI 生成规则草稿",
-    moduleScope:
-      draft.scope.module_scope && draft.scope.module_scope !== "any"
-        ? draft.scope.module_scope
-        : "any",
-    manuscriptTypes: draft.scope.manuscript_types ?? "any",
-    sourceType: "other",
-    contributor: "AI 草稿生成",
-    ruleBody: [
-      draft.ai_understanding_summary,
-      `命中条件：${draft.trigger}`,
-      `执行动作：${draft.action}`,
-    ]
-      .filter((line) => line.trim().length > 0)
-      .join("\n"),
-    sourceBasis,
-    sections: draft.scope.sections ?? [],
-    riskTags: [
-      "ai_generated_rule_draft",
-      draft.recommended_governance_layer,
-      response.template_match.status,
-      ...(response.similar_rule_matches.length > 0
-        ? ["similarity_manual_review"]
-        : []),
-    ],
-    packageHints: [
-      draft.recommended_template_id,
-      response.template_match.template_id,
-    ].filter((value): value is string => Boolean(value?.trim())),
-    candidateOnly: true,
-    conflictNotes: [...uncertaintyNotes, ...similarityNotes, ...warningNotes].join("\n"),
-  });
-}
-
 function resolveInitialRuleWizardMode(
   selectedLearningCandidateId: string | undefined,
   learningCandidates: readonly LearningCandidateViewModel[],
@@ -3877,127 +3832,6 @@ function resolveInitialRuleWizardMode(
   )
     ? "candidate"
     : "create";
-}
-
-function resolveRuleWizardCandidateTitle(
-  candidate: LearningCandidateViewModel | null,
-): string | undefined {
-  if (!candidate) {
-    return undefined;
-  }
-
-  return candidate.title?.trim() || candidate.proposal_text?.trim() || candidate.id;
-}
-
-function createRuleWizardCandidateHandoffViewModel(
-  candidate: LearningCandidateViewModel,
-  input: {
-    prefilledManuscriptId?: string;
-    prefilledReviewedCaseSnapshotId?: string;
-  },
-): RuleWizardCandidateHandoffViewModel {
-  return {
-    learningCandidateId: candidate.id,
-    sourceLabel: resolveLearningCandidateProvenanceLabel(candidate.governed_provenance_kind),
-    moduleLabel: formatTemplateGovernanceModuleLabel(
-      normalizeLearningCandidateModule(candidate.module),
-    ),
-    manuscriptTypeLabel: formatTemplateGovernanceManuscriptTypeLabel(
-      normalizeLearningCandidateManuscriptType(candidate.manuscript_type),
-    ),
-    statusLabel: resolveLearningCandidateStatusLabel(candidate.status),
-    manuscriptId: input.prefilledManuscriptId?.trim() || null,
-    reviewedCaseSnapshotId: input.prefilledReviewedCaseSnapshotId?.trim() || null,
-    sourceAssetLabel: resolveLearningCandidateSourceAssetLabel(
-      candidate.governed_provenance_kind,
-    ),
-    sourceAssetId:
-      candidate.snapshot_asset_id ??
-      candidate.human_final_asset_id ??
-      candidate.annotated_asset_id ??
-      null,
-    suggestedTemplateFamilyId: candidate.suggested_template_family_id ?? null,
-    suggestedJournalTemplateId: candidate.suggested_journal_template_id ?? null,
-    proposalText: candidate.proposal_text?.trim() || null,
-    evidenceSummary: extractLearningCandidatePayloadText(
-      candidate.candidate_payload,
-      "evidence_summary",
-    ),
-    beforeFragment: extractLearningCandidatePayloadText(
-      candidate.candidate_payload,
-      "before_fragment",
-    ),
-    afterFragment: extractLearningCandidatePayloadText(
-      candidate.candidate_payload,
-      "after_fragment",
-    ),
-  };
-}
-
-function resolveLearningCandidateProvenanceLabel(
-  value: LearningCandidateViewModel["governed_provenance_kind"],
-): string {
-  switch (value) {
-    case "human_feedback":
-      return "人工反馈命中";
-    case "evaluation_experiment":
-      return "评测实验回流";
-    case "reviewed_case_snapshot":
-      return "复核快照回流";
-    case "residual_issue":
-      return "残差问题回流";
-    default:
-      return "学习候选回流";
-  }
-}
-
-function resolveLearningCandidateSourceAssetLabel(
-  value: LearningCandidateViewModel["governed_provenance_kind"],
-): string {
-  switch (value) {
-    case "reviewed_case_snapshot":
-    case "residual_issue":
-      return "快照资产";
-    case "human_feedback":
-      return "来源资产";
-    case "evaluation_experiment":
-      return "证据资产";
-    default:
-      return "来源资产";
-  }
-}
-
-function resolveLearningCandidateStatusLabel(
-  value: LearningCandidateViewModel["status"],
-): string {
-  switch (value) {
-    case "draft":
-      return "草稿";
-    case "pending_review":
-      return "待审核";
-    case "approved":
-      return "已通过";
-    case "rejected":
-      return "已驳回";
-    case "archived":
-      return "已归档";
-    default:
-      return value;
-  }
-}
-
-function extractLearningCandidatePayloadText(
-  payload: LearningCandidateViewModel["candidate_payload"],
-  key: string,
-): string | null {
-  if (!payload || typeof payload !== "object") {
-    return null;
-  }
-
-  const candidate = (payload as Record<string, unknown>)[key];
-  return typeof candidate === "string" && candidate.trim().length > 0
-    ? candidate
-    : null;
 }
 
 export function resolveRuleLedgerCategoryAfterWizardCompletion(
@@ -4030,39 +3864,6 @@ function resolveRuleWizardCompletionMessage(
   }
 }
 
-function createRuleWizardEntryFormStateFromLearningCandidate(
-  candidate: LearningCandidateViewModel,
-): RuleWizardEntryFormState {
-  const payload = candidate.candidate_payload;
-
-  return createRuleWizardEntryFormState({
-    title: candidate.title ?? "未命名回流候选",
-    moduleScope: normalizeLearningCandidateModule(candidate.module),
-    manuscriptTypes: normalizeLearningCandidateManuscriptType(candidate.manuscript_type),
-    sourceType: "internal_case",
-    contributor: candidate.created_by,
-    ruleBody: candidate.proposal_text ?? "",
-    positiveExample:
-      payload && typeof payload === "object" && "after_fragment" in payload
-        ? String(payload.after_fragment ?? "")
-        : "",
-    negativeExample:
-      payload && typeof payload === "object" && "before_fragment" in payload
-        ? String(payload.before_fragment ?? "")
-        : "",
-    sourceBasis:
-      payload && typeof payload === "object" && "evidence_summary" in payload
-        ? String(payload.evidence_summary ?? "")
-        : "",
-  });
-}
-
-function isRuleCenterLearningCandidate(
-  candidate: LearningCandidateViewModel | null | undefined,
-): candidate is LearningCandidateViewModel & { type: "rule_candidate" } {
-  return candidate?.type === "rule_candidate";
-}
-
 function isRuleCenterRecoverySeedItem(item: ReviewItemViewModel): boolean {
   if (item.source_kind === "governed_hit") {
     return true;
@@ -4073,21 +3874,6 @@ function isRuleCenterRecoverySeedItem(item: ReviewItemViewModel): boolean {
   }
 
   return item.type === "rule_candidate";
-}
-
-function normalizeLearningCandidateModule(value: string): RuleWizardEntryFormState["moduleScope"] {
-  switch (value) {
-    case "screening":
-    case "editing":
-    case "proofreading":
-      return value;
-    default:
-      return "any";
-  }
-}
-
-function normalizeLearningCandidateManuscriptType(value: string): string {
-  return value.trim().length > 0 ? value : "any";
 }
 
 function TemplateGovernanceContentModuleLedgerRoute({

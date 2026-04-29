@@ -16,6 +16,7 @@ const {
 );
 const {
   TemplateGovernanceWorkbenchPage,
+  TemplateGovernanceLegacyWorkbenchPage,
   createKnowledgeDraftFormState,
   createKnowledgeDraftInput,
   createRuleWizardEntryFormStateFromAiDraft,
@@ -238,7 +239,7 @@ function buildExtractionLedgerFixture(candidate = buildExtractionCandidateFixtur
 }
 
 test("template governance workbench page renders the package-first rule center while keeping journal-aware governance panels", () => {
-  const Page = TemplateGovernanceWorkbenchPage as unknown as (
+  const Page = TemplateGovernanceLegacyWorkbenchPage as unknown as (
     props: Record<string, unknown>,
   ) => React.ReactElement;
   const markup = renderToStaticMarkup(
@@ -570,7 +571,7 @@ test("template governance workbench page renders the package-first rule center w
 });
 
 test("template governance workbench page labels selected knowledge bindings by real scope", () => {
-  const Page = TemplateGovernanceWorkbenchPage as unknown as (
+  const Page = TemplateGovernanceLegacyWorkbenchPage as unknown as (
     props: Record<string, unknown>,
   ) => React.ReactElement;
   const selectedKnowledgeItem = {
@@ -902,8 +903,28 @@ test("table proofreading guidance cards use Chinese metadata labels instead of r
   assert.doesNotMatch(markup, /expert_opinion/u);
 });
 
-test("template governance overview keeps rule ledger as the daily-driver entry", () => {
+test("template governance workbench delegates visible routes to V2 shell", () => {
   const Page = TemplateGovernanceWorkbenchPage as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const routes = ["overview", "rule-ledger", "extraction-ledger", "classic"] as const;
+
+  for (const initialView of routes) {
+    const markup = renderToStaticMarkup(
+      <Page
+        controller={{}}
+        initialView={initialView}
+      />,
+    );
+
+    assert.match(markup, /rule-center-v2/u);
+    assert.doesNotMatch(markup, /template-governance-overview-page/u);
+    assert.doesNotMatch(markup, /template-governance-extraction-ledger-page/u);
+  }
+});
+
+test("template governance overview keeps rule ledger as the daily-driver entry", () => {
+  const Page = TemplateGovernanceLegacyWorkbenchPage as unknown as (
     props: Record<string, unknown>,
   ) => React.ReactElement;
   const markup = renderToStaticMarkup(
@@ -956,7 +977,7 @@ test("template governance overview keeps rule ledger as the daily-driver entry",
 });
 
 test("template governance rule ledger can open directly with the AI draft panel", () => {
-  const Page = TemplateGovernanceWorkbenchPage as unknown as (
+  const Page = TemplateGovernanceLegacyWorkbenchPage as unknown as (
     props: Record<string, unknown>,
   ) => React.ReactElement;
   const markup = renderToStaticMarkup(
@@ -977,7 +998,7 @@ test("template governance rule ledger can open directly with the AI draft panel"
 });
 
 test("template governance overview surfaces unified review, Harness, and writeback operations", () => {
-  const Page = TemplateGovernanceWorkbenchPage as unknown as (
+  const Page = TemplateGovernanceLegacyWorkbenchPage as unknown as (
     props: Record<string, unknown>,
   ) => React.ReactElement;
   const markup = renderToStaticMarkup(
@@ -1138,7 +1159,7 @@ test("template governance overview surfaces unified review, Harness, and writeba
 });
 
 test("template governance workbench renders release lifecycle controls and blocked Harness gate reasons for the selected rule set", () => {
-  const Page = TemplateGovernanceWorkbenchPage as unknown as (
+  const Page = TemplateGovernanceLegacyWorkbenchPage as unknown as (
     props: Record<string, unknown>,
   ) => React.ReactElement;
   const markup = renderToStaticMarkup(
@@ -1405,7 +1426,7 @@ test("template governance workbench renders release lifecycle controls and block
 });
 
 test("template governance workbench page opens the shared rule wizard when authoring is requested directly", () => {
-  const Page = TemplateGovernanceWorkbenchPage as unknown as (
+  const Page = TemplateGovernanceLegacyWorkbenchPage as unknown as (
     props: Record<string, unknown>,
   ) => React.ReactElement;
   const markup = renderToStaticMarkup(
@@ -1578,7 +1599,7 @@ test("template governance knowledge draft hydration restores structured arrays",
 });
 
 test("template governance workbench page renders the unified rule ledger when rule-ledger is the selected view", () => {
-  const Page = TemplateGovernanceWorkbenchPage as unknown as (
+  const Page = TemplateGovernanceLegacyWorkbenchPage as unknown as (
     props: Record<string, unknown>,
   ) => React.ReactElement;
   const markup = renderToStaticMarkup(
@@ -1612,7 +1633,7 @@ test("template governance workbench page renders the unified rule ledger when ru
 });
 
 test("template governance workbench page folds learning candidates into the rule ledger handoff", () => {
-  const Page = TemplateGovernanceWorkbenchPage as unknown as (
+  const Page = TemplateGovernanceLegacyWorkbenchPage as unknown as (
     props: Record<string, unknown>,
   ) => React.ReactElement;
   const markup = renderToStaticMarkup(

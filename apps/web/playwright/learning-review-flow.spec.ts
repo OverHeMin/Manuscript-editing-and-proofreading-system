@@ -242,9 +242,17 @@ test("admin can complete the governed learning review flow from manuscript hando
       waitUntil: "domcontentloaded",
     },
   );
-  await expect(page.getByRole("heading", { name: "回流候选转规则" })).toBeVisible();
-  await expect(page.locator("body")).toContainText("规则中心 · 统一复核中心");
-  await expect(page.locator("body")).toContainText(`稿件 ${manuscriptId}`);
+  await expect(page.getByRole("heading", { name: "规则工作台" })).toBeVisible();
+  await expect(page.locator(".rule-center-v2")).toHaveAttribute(
+    "data-active-section",
+    "recovery",
+  );
+  await expect(
+    page.getByRole("navigation", { name: "规则中心分区" }).getByRole("button", {
+      name: /^回流/,
+    }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("heading", { name: "统一复核队列" })).toBeVisible();
   await expect(page.locator("body")).toContainText(`回流来源稿件：${manuscriptId}`);
   await expect(page.locator("body")).toContainText("回流候选");
 
