@@ -671,6 +671,7 @@ export function createPersistentGovernanceRuntime(
     verificationOpsRepository,
     projectionService: editorialRuleProjectionService,
     activationMetricsService: editorialRuleActivationMetricsService,
+    tableEvidenceService,
   });
   const editorialRuleResolutionService = new EditorialRuleResolutionService({
     repository: editorialRuleRepository,
@@ -694,6 +695,7 @@ export function createPersistentGovernanceRuntime(
     repository: editorialRuleRepository,
     resolutionService: editorialRuleResolutionService,
     editorialRuleService,
+    tableEvidenceService,
   });
   const toolGatewayService = new ToolGatewayService({
     repository: toolGatewayRepository,

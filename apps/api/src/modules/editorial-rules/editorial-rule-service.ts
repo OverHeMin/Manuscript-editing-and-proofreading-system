@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { PermissionGuard } from "../../auth/permission-guard.ts";
 import type { RoleKey } from "../../users/roles.ts";
+import type { TableEvidenceService } from "../table-evidence/table-evidence-service.ts";
 import type { TemplateFamilyRepository } from "../templates/template-repository.ts";
 import type { VerificationOpsRepository } from "../verification-ops/verification-ops-repository.ts";
 import type { EditorialRuleProjectionService } from "./editorial-rule-projection-service.ts";
@@ -86,6 +87,7 @@ export interface EditorialRuleServiceOptions {
       ruleSetId: string,
     ) => Promise<EditorialRuleReleaseComparisonSummary>;
   };
+  tableEvidenceService?: Pick<TableEvidenceService, "assertConfirmedRevision">;
   permissionGuard?: PermissionGuard;
   createId?: () => string;
 }
@@ -125,11 +127,24 @@ export class EditorialRuleSetNotFoundError extends Error {
 }
 
 export class EditorialRuleSetStatusTransitionError extends Error {
-  constructor(ruleSetId: string, fromStatus: string, toStatus: string) {
+  readonly failure_code?: string;
+  readonly failures?: Array<{ code: string; revision_id?: string }>;
+
+  constructor(
+    ruleSetId: string,
+    fromStatus: string,
+    toStatus: string,
+    options?: {
+      failureCode?: string;
+      failures?: Array<{ code: string; revision_id?: string }>;
+    },
+  ) {
     super(
       `Editorial rule set ${ruleSetId} cannot transition from ${fromStatus} to ${toStatus}.`,
     );
     this.name = "EditorialRuleSetStatusTransitionError";
+    this.failure_code = options?.failureCode;
+    this.failures = options?.failures;
   }
 }
 
@@ -167,6 +182,10 @@ export class EditorialRuleService {
       ruleSetId: string,
     ) => Promise<EditorialRuleReleaseComparisonSummary>;
   };
+  private readonly tableEvidenceService?: Pick<
+    TableEvidenceService,
+    "assertConfirmedRevision"
+  >;
   private readonly permissionGuard: PermissionGuard;
   private readonly createId: () => string;
 
@@ -176,6 +195,7 @@ export class EditorialRuleService {
     this.verificationOpsRepository = options.verificationOpsRepository;
     this.projectionService = options.projectionService;
     this.activationMetricsService = options.activationMetricsService;
+    this.tableEvidenceService = options.tableEvidenceService;
     this.permissionGuard = options.permissionGuard ?? new PermissionGuard();
     this.createId = options.createId ?? (() => randomUUID());
   }
@@ -251,6 +271,7 @@ export class EditorialRuleService {
       );
     }
 
+    await this.assertLinkedTableEvidenceRevisionsConfirmed(ruleSet, "published");
     await this.archiveRelatedRuleSets(ruleSet, ["published", "active"]);
 
     const published: EditorialRuleSetRecord = {
@@ -446,6 +467,7 @@ export class EditorialRuleService {
       }
     }
 
+    await this.assertLinkedTableEvidenceRevisionsConfirmed(ruleSet, "active");
     const rollbackTarget = await this.findLatestRollbackTarget(ruleSet);
     await this.archiveRelatedRuleSets(ruleSet, ["published", "active"]);
 
@@ -474,6 +496,10 @@ export class EditorialRuleService {
 
     const rollbackTarget = await this.findRollbackTarget(ruleSet);
     if (rollbackTarget) {
+      await this.assertLinkedTableEvidenceRevisionsConfirmed(
+        rollbackTarget,
+        "active",
+      );
       const restored: EditorialRuleSetRecord = {
         ...rollbackTarget,
         status: "active",
@@ -602,6 +628,91 @@ export class EditorialRuleService {
       );
     }
   }
+
+  private async assertLinkedTableEvidenceRevisionsConfirmed(
+    ruleSet: EditorialRuleSetRecord,
+    targetStatus: "published" | "active",
+  ): Promise<void> {
+    const rules = await this.repository.listRulesByRuleSetId(ruleSet.id);
+    const normalized = normalizeTableEvidenceRevisionIds(
+      rules.flatMap(
+        (rule) => rule.linkage_payload?.table_evidence_revision_ids ?? [],
+      ),
+    );
+    if (normalized.hasInvalid) {
+      throw createTableEvidenceRevisionTransitionError(
+        ruleSet,
+        targetStatus,
+        undefined,
+        "table_evidence_revision_id_invalid",
+      );
+    }
+    const revisionIds = normalized.revisionIds;
+    if (revisionIds.length === 0) {
+      return;
+    }
+
+    if (!this.tableEvidenceService) {
+      throw createTableEvidenceRevisionTransitionError(
+        ruleSet,
+        targetStatus,
+        revisionIds[0],
+        "table_evidence_revision_not_confirmed",
+      );
+    }
+
+    for (const revisionId of revisionIds) {
+      try {
+        await this.tableEvidenceService.assertConfirmedRevision(revisionId);
+      } catch {
+        throw createTableEvidenceRevisionTransitionError(
+          ruleSet,
+          targetStatus,
+          revisionId,
+          "table_evidence_revision_not_confirmed",
+        );
+      }
+    }
+  }
+}
+
+function createTableEvidenceRevisionTransitionError(
+  ruleSet: EditorialRuleSetRecord,
+  targetStatus: "published" | "active",
+  revisionId: string | undefined,
+  failureCode:
+    | "table_evidence_revision_not_confirmed"
+    | "table_evidence_revision_id_invalid",
+): EditorialRuleSetStatusTransitionError {
+  return new EditorialRuleSetStatusTransitionError(
+    ruleSet.id,
+    ruleSet.status,
+    targetStatus,
+    {
+      failureCode,
+      failures: [
+        {
+          code: failureCode,
+          ...(revisionId ? { revision_id: revisionId } : {}),
+        },
+      ],
+    },
+  );
+}
+
+function normalizeTableEvidenceRevisionIds(
+  revisionIds: string[],
+): { revisionIds: string[]; hasInvalid: boolean } {
+  const normalizedRevisionIds: string[] = [];
+  for (const revisionId of revisionIds) {
+    const normalizedRevisionId = revisionId.trim();
+    if (!normalizedRevisionId) {
+      return { revisionIds: [], hasInvalid: true };
+    }
+    normalizedRevisionIds.push(normalizedRevisionId);
+  }
+
+  return { revisionIds: [...new Set(normalizedRevisionIds)], hasInvalid: false };
 }
 
 function sameEditorialRuleSetScope(

@@ -1,4 +1,8 @@
-import type { RuleAiParsingRequest, RuleAiParsingResponse } from "@medical/contracts";
+import type {
+  RuleAiEvidenceItem,
+  RuleAiParsingRequest,
+  RuleAiParsingResponse,
+} from "@medical/contracts";
 import type { AiGatewayService } from "../ai-gateway/ai-gateway-service.ts";
 import type { AiProviderRuntimeService } from "../ai-provider-runtime/ai-provider-runtime-service.ts";
 import { RuleAiIntakeUnavailableError } from "./rule-ai-intake-service.ts";
@@ -21,6 +25,13 @@ export class RuleAiParsingService {
       );
     }
 
+    const tableEvidenceWarnings = buildTableEvidenceWarnings(input);
+    if (isPublishParseMode(input) && tableEvidenceWarnings.length > 0) {
+      throw new RuleAiIntakeUnavailableError(
+        "table_evidence_not_authoritative",
+      );
+    }
+
     if (!this.generator) {
       throw new RuleAiIntakeUnavailableError("Rule AI parsing is unavailable.");
     }
@@ -32,7 +43,10 @@ export class RuleAiParsingService {
       findings: parsed.findings ?? [],
       similar_rule_matches: parsed.similar_rule_matches ?? [],
       requires_human_confirmation: parsed.requires_human_confirmation,
-      warnings: parsed.warnings ?? [],
+      warnings: uniqueWarnings([
+        ...(parsed.warnings ?? []),
+        ...tableEvidenceWarnings,
+      ]),
     };
   }
 }
@@ -64,6 +78,7 @@ export class OpenAiRuleAiParsingGenerator implements RuleAiParsingGenerator {
     const runtime =
       await this.aiProviderRuntimeService.resolveSelectionRuntime(selection);
 
+    const promptParts = buildRuleAiPromptParts(input);
     const response = await this.fetchImpl(runtime.primary.request_url, {
       method: "POST",
       headers: runtime.primary.headers,
@@ -94,6 +109,7 @@ export class OpenAiRuleAiParsingGenerator implements RuleAiParsingGenerator {
                 warnings: ["string"],
               },
               input,
+              ...(promptParts.length > 0 ? { prompt_parts: promptParts } : {}),
             }),
           },
         ],
@@ -129,6 +145,64 @@ export class OpenAiRuleAiParsingGenerator implements RuleAiParsingGenerator {
       );
     }
   }
+}
+
+function buildRuleAiPromptParts(input: RuleAiParsingRequest): string[] {
+  const promptParts: string[] = [];
+  for (const evidence of input.rule_fields.evidence ?? []) {
+    if (
+      evidence.kind !== "confirmed_table_package" ||
+      !evidence.confirmed_table_package
+    ) {
+      continue;
+    }
+
+    const packageJson = JSON.stringify(evidence.confirmed_table_package);
+    promptParts.push(
+      [
+        "Confirmed table package:",
+        packageJson,
+        "Rules:",
+        "- Treat confirmed_table_package as authoritative only when authority is authoritative.",
+        "- Do not collapse U+002D, U+2013, U+2014, U+2212.",
+        "- Do not collapse U+0020, U+3000, U+00A0, tabs, line breaks, or paragraph boundaries.",
+        "- Use runs.style.superscript and runs.style.subscript for unit interpretation.",
+      ].join("\n"),
+    );
+  }
+  return promptParts;
+}
+
+function buildTableEvidenceWarnings(input: RuleAiParsingRequest): string[] {
+  return (input.rule_fields.evidence ?? []).some(isNonAuthoritativeTableEvidence)
+    ? ["table_evidence_not_authoritative"]
+    : [];
+}
+
+function isNonAuthoritativeTableEvidence(evidence: RuleAiEvidenceItem): boolean {
+  return (
+    evidence.kind === "confirmed_table_package" &&
+    (evidence.authority !== "authoritative" ||
+      evidence.confirmed_table_package?.authority !== "authoritative")
+  );
+}
+
+function isPublishParseMode(input: RuleAiParsingRequest): boolean {
+  if (input.parse_mode) {
+    return input.parse_mode === "publish" || input.parse_mode === "final";
+  }
+
+  const mode = (input as RuleAiParsingRequest & {
+    parseMode?: string;
+    reviewMode?: string;
+    mode?: string;
+  }).parseMode ?? (input as { reviewMode?: string }).reviewMode ??
+    (input as { mode?: string }).mode;
+  return mode === "publish" || mode === "final";
+}
+
+function uniqueWarnings(warnings: string[]): string[] {
+  return [...new Set(warnings)];
 }
 
 function extractOpenAiCompatibleContent(body: {

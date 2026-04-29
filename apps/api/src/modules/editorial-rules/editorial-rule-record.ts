@@ -105,6 +105,7 @@ export interface EditorialRuleLinkagePayload {
   source_snapshot_asset_id?: string;
   projected_knowledge_item_ids?: string[];
   evidence_package_ids?: string[];
+  table_evidence_revision_ids?: string[];
   target_model_block_ids?: string[];
   overrides_rule_ids?: string[];
 }

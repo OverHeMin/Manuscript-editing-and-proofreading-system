@@ -5,12 +5,22 @@ import { EditorialRuleResolutionService } from "../../src/modules/editorial-rule
 import { InMemoryEditorialRuleRepository } from "../../src/modules/editorial-rules/in-memory-editorial-rule-repository.ts";
 import { EditorialRuleService } from "../../src/modules/editorial-rules/editorial-rule-service.ts";
 import { RulePackageCompileService } from "../../src/modules/editorial-rules/rule-package-compile-service.ts";
+import type { TableEvidenceService } from "../../src/modules/table-evidence/table-evidence-service.ts";
 import { InMemoryTemplateFamilyRepository } from "../../src/modules/templates/in-memory-template-family-repository.ts";
-import type { RulePackageDraft } from "@medical/contracts";
+import type { ConfirmedAiTablePackage, RulePackageDraft } from "@medical/contracts";
 
-function createRulePackageCompileHarness() {
+function createRulePackageCompileHarness(input: {
+  tableEvidenceService?: Pick<TableEvidenceService, "assertConfirmedRevision"> | null;
+} = {}) {
   const repository = new InMemoryEditorialRuleRepository();
   const templateFamilyRepository = new InMemoryTemplateFamilyRepository();
+  const tableEvidenceService =
+    input.tableEvidenceService === null
+      ? undefined
+      : input.tableEvidenceService ?? {
+          assertConfirmedRevision: async (revisionId: string) =>
+            ({ id: revisionId }) as never,
+        };
   const editorialRuleService = new EditorialRuleService({
     repository,
     templateFamilyRepository,
@@ -37,6 +47,9 @@ function createRulePackageCompileHarness() {
     repository,
     editorialRuleService,
     resolutionService,
+    ...(tableEvidenceService ? { tableEvidenceService } : {}),
+  } as ConstructorParameters<typeof RulePackageCompileService>[0] & {
+    tableEvidenceService?: Pick<TableEvidenceService, "assertConfirmedRevision">;
   });
 
   return {
@@ -793,6 +806,167 @@ test("compile-to-draft writes confirmed semantic fields into explanation, projec
   assert.ok(rules.every((rule) => rule.evidence_level === "low"));
 });
 
+test("compile-to-draft locks exact table evidence revision ids into rule linkage metadata", async () => {
+  const checkedRevisionIds: string[] = [];
+  const harness = createRulePackageCompileHarness({
+    tableEvidenceService: {
+      assertConfirmedRevision: async (revisionId) => {
+        checkedRevisionIds.push(revisionId);
+        return { id: revisionId } as never;
+      },
+    },
+  });
+  await seedCompileContext(harness);
+
+  const packageDraft = buildThreeLineTablePackageDraft();
+  attachConfirmedTableEvidenceIntake(packageDraft, [
+    {
+      revisionId: " rev-locked-1 ",
+      assetId: "asset-should-not-be-locked",
+    },
+    {
+      revisionId: "rev-locked-1",
+      assetId: "asset-duplicate-should-not-be-locked",
+    },
+    {
+      revisionId: "rev-locked-2",
+      assetId: "asset-should-not-be-locked-2",
+    },
+  ]);
+
+  const result = await harness.service.compileToDraft({
+    actorRole: "admin",
+    source: {
+      sourceKind: "reviewed_case",
+      reviewedCaseSnapshotId: "reviewed-case-1",
+    },
+    packageDrafts: [packageDraft],
+    templateFamilyId: "family-1",
+    journalTemplateId: "journal-alpha",
+    module: "editing",
+  });
+
+  const rules = await harness.repository.listRulesByRuleSetId(result.rule_set_id);
+
+  assert.equal(rules.length, 1);
+  assert.deepEqual(rules[0]?.linkage_payload?.table_evidence_revision_ids, [
+    "rev-locked-1",
+    "rev-locked-2",
+  ]);
+  assert.deepEqual(checkedRevisionIds, ["rev-locked-1", "rev-locked-2"]);
+  assert.notDeepEqual(rules[0]?.linkage_payload?.table_evidence_revision_ids, [
+    "asset-should-not-be-locked",
+    "asset-should-not-be-locked-2",
+  ]);
+});
+
+test("compile-to-draft rejects blank table evidence revision ids before lookup", async () => {
+  const checkedRevisionIds: string[] = [];
+  const harness = createRulePackageCompileHarness({
+    tableEvidenceService: {
+      assertConfirmedRevision: async (revisionId) => {
+        checkedRevisionIds.push(revisionId);
+        return { id: revisionId } as never;
+      },
+    },
+  });
+  await seedCompileContext(harness);
+
+  const packageDraft = buildThreeLineTablePackageDraft();
+  attachConfirmedTableEvidenceIntake(packageDraft, [
+    {
+      revisionId: "   ",
+      assetId: "asset-blank",
+    },
+  ]);
+
+  await assert.rejects(
+    () =>
+      harness.service.compileToDraft({
+        actorRole: "admin",
+        source: {
+          sourceKind: "reviewed_case",
+          reviewedCaseSnapshotId: "reviewed-case-1",
+        },
+        packageDrafts: [packageDraft],
+        templateFamilyId: "family-1",
+        journalTemplateId: "journal-alpha",
+        module: "editing",
+      }),
+    /table_evidence_revision_id_invalid/u,
+  );
+  assert.deepEqual(checkedRevisionIds, []);
+});
+
+test("compile-to-draft rejects linked table evidence revisions without a confirmation dependency", async () => {
+  const harness = createRulePackageCompileHarness({
+    tableEvidenceService: null,
+  });
+  await seedCompileContext(harness);
+
+  const packageDraft = buildThreeLineTablePackageDraft();
+  attachConfirmedTableEvidenceIntake(packageDraft, [
+    {
+      revisionId: "rev-linked-without-dependency",
+      assetId: "asset-1",
+    },
+  ]);
+
+  await assert.rejects(
+    () =>
+      harness.service.compileToDraft({
+        actorRole: "admin",
+        source: {
+          sourceKind: "reviewed_case",
+          reviewedCaseSnapshotId: "reviewed-case-1",
+        },
+        packageDrafts: [packageDraft],
+        templateFamilyId: "family-1",
+        journalTemplateId: "journal-alpha",
+        module: "editing",
+      }),
+    /table_evidence_revision_not_confirmed/u,
+  );
+});
+
+test("compile-to-draft rejects linked table evidence revisions that are not confirmed", async () => {
+  const checkedRevisionIds: string[] = [];
+  const harness = createRulePackageCompileHarness({
+    tableEvidenceService: {
+      assertConfirmedRevision: async (revisionId) => {
+        checkedRevisionIds.push(revisionId);
+        throw new Error("revision is pending");
+      },
+    },
+  });
+  await seedCompileContext(harness);
+
+  const packageDraft = buildThreeLineTablePackageDraft();
+  attachConfirmedTableEvidenceIntake(packageDraft, [
+    {
+      revisionId: "rev-pending-compile",
+      assetId: "asset-1",
+    },
+  ]);
+
+  await assert.rejects(
+    () =>
+      harness.service.compileToDraft({
+        actorRole: "admin",
+        source: {
+          sourceKind: "reviewed_case",
+          reviewedCaseSnapshotId: "reviewed-case-1",
+        },
+        packageDrafts: [packageDraft],
+        templateFamilyId: "family-1",
+        journalTemplateId: "journal-alpha",
+        module: "editing",
+      }),
+    /table_evidence_revision_not_confirmed/u,
+  );
+  assert.deepEqual(checkedRevisionIds, ["rev-pending-compile"]);
+});
+
 test("compile-to-draft keeps unconfirmed boundaries out of high-confidence projection metadata", async () => {
   const harness = createRulePackageCompileHarness();
   await seedCompileContext(harness);
@@ -935,3 +1109,93 @@ test("terminology, statement, and manuscript-structure packages compile into ded
   assert.equal(rules[1]?.execution_mode, "inspect");
   assert.equal(rules[2]?.execution_mode, "inspect");
 });
+
+function attachConfirmedTableEvidenceIntake(
+  packageDraft: RulePackageDraft,
+  revisions: Array<{ revisionId: string; assetId: string }>,
+): void {
+  packageDraft.ai_intake_metadata = {
+    source_kind: "manual_description",
+    ai_understanding_summary: "Table header units preserve confirmed table package evidence.",
+    recommended_governance_layer: "template_family",
+    target_object: "table",
+    trigger: "confirmed table header",
+    action: "inspect exact table header unit style",
+    scope: {
+      module_scope: "editing",
+      manuscript_types: ["clinical_study"],
+      sections: ["results"],
+    },
+    evidence: revisions.map(({ revisionId, assetId }) => ({
+      kind: "confirmed_table_package",
+      source_id: assetId,
+      authority: "authoritative",
+      confirmed_table_package: buildConfirmedTablePackage({
+        revisionId,
+        assetId,
+      }),
+    })),
+    confidence: {
+      overall: 0.98,
+    },
+    uncertainties: [],
+  };
+}
+
+function buildConfirmedTablePackage(input: {
+  revisionId: string;
+  assetId: string;
+}): ConfirmedAiTablePackage {
+  return {
+    package_id: `pkg-${input.revisionId}`,
+    asset_id: input.assetId,
+    revision_id: input.revisionId,
+    revision_no: 1,
+    source_file_asset_id: "file-1",
+    authority: "authoritative",
+    confirmation_status: "confirmed",
+    fidelity_status: "confirmed",
+    confirmed_by_human: true,
+    parser: "python_docx_ooxml",
+    parser_version: "table-evidence-v1",
+    source_snapshot_hash: "sha256-source",
+    confirmed_snapshot_hash: "sha256-confirmed",
+    ai_table_package_hash: "sha256-package",
+    notes: [],
+    structure: {
+      row_count: 1,
+      column_count: 1,
+      header_depth: 1,
+      merged_cells: [],
+    },
+    cells: [
+      {
+        cell_id: "cell-1",
+        row: 0,
+        column: 0,
+        rowspan: 1,
+        colspan: 1,
+        role: "header",
+        text: "Hcy (umol L-1)",
+        codepoints: [],
+        paragraphs: [],
+        runs: [],
+        header_path: ["Hcy (umol L-1)"],
+        row_header_path: [],
+        column_header_path: ["Hcy (umol L-1)"],
+        invisible_chars: [],
+        style_summary: {
+          script_positions: ["baseline", "superscript"],
+        },
+      },
+    ],
+    fidelity_report: {
+      status: "confirmed",
+      failure_codes: [],
+      unsupported_fact_groups: [],
+      required_confirmations: [],
+      invisible_chars_confirmed: true,
+      special_symbols_confirmed: true,
+    },
+  };
+}

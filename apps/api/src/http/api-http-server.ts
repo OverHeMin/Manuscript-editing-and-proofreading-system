@@ -191,6 +191,7 @@ import {
   RuleAiIntakeService,
   RuleAiIntakeUnavailableError,
   RuleAiParsingService,
+  RulePackageCompileTableEvidenceRevisionError,
 } from "../modules/editorial-rules/index.ts";
 import {
   createEditingApi,
@@ -1826,6 +1827,7 @@ export function createInMemoryApiRuntime(input: {
     verificationOpsRepository,
     projectionService: editorialRuleProjectionService,
     activationMetricsService: editorialRuleActivationMetricsService,
+    tableEvidenceService,
   });
   const editorialRuleResolutionService = new EditorialRuleResolutionService({
     repository: editorialRuleRepository,
@@ -1849,6 +1851,7 @@ export function createInMemoryApiRuntime(input: {
     repository: editorialRuleRepository,
     resolutionService: editorialRuleResolutionService,
     editorialRuleService,
+    tableEvidenceService,
   });
   const toolGatewayService = new ToolGatewayService({
     repository: toolGatewayRepository,
@@ -10061,6 +10064,30 @@ export function mapErrorToHttpResponse(
     ];
   }
 
+  if (error instanceof EditorialRuleSetStatusTransitionError) {
+    return [
+      409,
+      {
+        error: "state_conflict",
+        message: error.message,
+        ...(error.failure_code ? { failure_code: error.failure_code } : {}),
+        ...(error.failures ? { failures: error.failures } : {}),
+      },
+    ];
+  }
+
+  if (error instanceof RulePackageCompileTableEvidenceRevisionError) {
+    return [
+      409,
+      {
+        error: "state_conflict",
+        code: error.code,
+        ...(error.revision_id ? { revision_id: error.revision_id } : {}),
+        message: error.message,
+      },
+    ];
+  }
+
   if (
     error instanceof KnowledgeStatusTransitionError ||
     error instanceof LearningCandidateGovernedProvenanceRequiredError ||
@@ -10084,7 +10111,6 @@ export function mapErrorToHttpResponse(
     error instanceof ModelRoutingGovernanceStatusTransitionError ||
     error instanceof ManuscriptQualityPackageStatusTransitionError ||
     error instanceof PromptSkillRegistryStatusTransitionError ||
-    error instanceof EditorialRuleSetStatusTransitionError ||
     error instanceof EditorialRuleSetNotEditableError ||
     error instanceof RuntimeBindingCompatibilityError ||
     error instanceof RuntimeBindingDependencyStateError ||

@@ -87,6 +87,7 @@ const intakeResponseCheck: RuleAiIntakeDraftResponse = {
 };
 
 const parsingRequestCheck: RuleAiParsingRequest = {
+  parse_mode: "publish",
   rule_fields: {
     title: "摘要缩写规范",
     rule_body: "摘要首次出现英文缩写时使用中文全称（英文缩写）。",

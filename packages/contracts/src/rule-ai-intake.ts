@@ -121,6 +121,7 @@ export interface RuleAiIntakeDraftResponse {
 }
 
 export interface RuleAiParsingRequest {
+  parse_mode?: "draft" | "publish" | "final";
   rule_fields: {
     title?: string;
     rule_body: string;
