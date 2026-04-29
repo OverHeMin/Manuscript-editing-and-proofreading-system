@@ -1,13 +1,21 @@
 import { useState } from "react";
 import {
   bindTableEvidenceRevision,
+  confirmTableEvidenceRevision,
+  saveTableEvidenceCorrectionPatch,
   TableEvidencePicker,
+  TableEvidenceWorkspace,
   type TableEvidenceBindingRole,
   type TableEvidenceBindingTargetType,
+  type TableCorrectionPatch,
+  type TableEvidenceAsset,
   type TableEvidenceHttpClient,
   type TableEvidencePickerItem,
+  type TableEvidenceRevision,
+  type TableSourceSnapshot,
   TableEvidenceUploadEntry,
   type ConfirmedAiTablePackage,
+  type CreateTableEvidenceFromDocxUploadResponse,
 } from "../table-evidence/index.ts";
 import { KnowledgeLibraryBlockImageEditor } from "./knowledge-library-block-image-editor.tsx";
 import { KnowledgeLibraryBlockTableEditor } from "./knowledge-library-block-table-editor.tsx";
@@ -24,6 +32,12 @@ export interface KnowledgeTableEvidenceBlockSelection {
   revisionId: string;
   revisionStatus?: KnowledgeTableEvidenceBlockPayload["revision_status"];
   confirmedTablePackage?: ConfirmedAiTablePackage;
+}
+
+export interface KnowledgeLibraryUploadedTableEvidenceSelection {
+  asset: TableEvidenceAsset;
+  revision: TableEvidenceRevision;
+  table: TableSourceSnapshot;
 }
 
 export interface AppendKnowledgeLibraryTableEvidenceBlockInput {
@@ -83,8 +97,17 @@ export function KnowledgeLibraryRichContentEditor({
   const [tableEvidenceErrorMessage, setTableEvidenceErrorMessage] = useState<string | null>(
     null,
   );
+  const [
+    uploadedTableEvidenceSelections,
+    setUploadedTableEvidenceSelections,
+  ] = useState<KnowledgeLibraryUploadedTableEvidenceSelection[]>([]);
+  const [selectedUploadedTableId, setSelectedUploadedTableId] = useState<string | null>(null);
   const tableEvidenceClientState =
     tableEvidenceClient || tableEvidencePickerItems.length > 0 ? "available" : "unavailable";
+  const selectedUploadedTableEvidence =
+    uploadedTableEvidenceSelections.find(
+      (selection) => selection.table.table_id === selectedUploadedTableId,
+    ) ?? uploadedTableEvidenceSelections[0];
 
   async function appendTableEvidenceBlock(selection: KnowledgeTableEvidenceBlockSelection) {
     await handleKnowledgeLibraryTableEvidenceSelection({
@@ -98,6 +121,78 @@ export function KnowledgeLibraryRichContentEditor({
       onError: setTableEvidenceErrorMessage,
       onTableEvidenceBlockAdded,
     });
+  }
+
+  function replaceUploadedTableEvidenceRevision(
+    tableId: string,
+    revision: TableEvidenceRevision,
+  ) {
+    setUploadedTableEvidenceSelections((current) =>
+      current.map((selection) =>
+        selection.table.table_id === tableId
+          ? {
+              ...selection,
+              asset: {
+                ...selection.asset,
+                active_revision_id: revision.id,
+                fidelity_status: revision.fidelity_report.status,
+              },
+              revision,
+              table: revision.source_snapshot,
+            }
+          : selection,
+      ),
+    );
+    setSelectedUploadedTableId(revision.source_snapshot.table_id);
+  }
+
+  async function saveUploadedTableEvidencePatch(
+    selection: KnowledgeLibraryUploadedTableEvidenceSelection,
+    patch: TableCorrectionPatch,
+  ): Promise<TableEvidenceRevision> {
+    if (!tableEvidenceClient) {
+      throw new Error("Word 表格证据客户端不可用");
+    }
+
+    const response = await saveTableEvidenceCorrectionPatch(
+      tableEvidenceClient,
+      selection.revision.id,
+      { patch },
+    );
+    replaceUploadedTableEvidenceRevision(selection.table.table_id, response.body);
+    return response.body;
+  }
+
+  async function confirmUploadedTableEvidenceRevision(input: {
+    selection: KnowledgeLibraryUploadedTableEvidenceSelection;
+    revisionId: string;
+    invisibleCharsConfirmed: boolean;
+    specialSymbolsConfirmed: boolean;
+  }): Promise<void> {
+    if (!tableEvidenceClient) {
+      throw new Error("Word 表格证据客户端不可用");
+    }
+
+    try {
+      const response = await confirmTableEvidenceRevision(tableEvidenceClient, input.revisionId, {
+        confirmations: {
+          invisibleCharsConfirmed: input.invisibleCharsConfirmed,
+          specialSymbolsConfirmed: input.specialSymbolsConfirmed,
+        },
+      });
+      const confirmedRevision = response.body;
+      replaceUploadedTableEvidenceRevision(input.selection.table.table_id, confirmedRevision);
+      await appendTableEvidenceBlock({
+        assetId: confirmedRevision.table_evidence_asset_id,
+        revisionId: confirmedRevision.id,
+        revisionStatus: confirmedRevision.confirmation_status,
+        confirmedTablePackage: confirmedRevision.ai_table_package,
+      });
+    } catch (error) {
+      setTableEvidenceErrorMessage(
+        error instanceof Error ? error.message : "表格证据确认失败",
+      );
+    }
   }
 
   return (
@@ -180,17 +275,45 @@ export function KnowledgeLibraryRichContentEditor({
           <TableEvidenceUploadEntry
             client={tableEvidenceClient}
             onCreated={(response) => {
-              const revision = response.revisions[0];
-              if (!revision) {
+              const selections =
+                getKnowledgeLibraryUploadedTableEvidenceSelections(response);
+              setUploadedTableEvidenceSelections(selections);
+              const firstSelection = selections[0];
+              setSelectedUploadedTableId(firstSelection?.table.table_id ?? null);
+              if (!firstSelection) {
+                setTableEvidenceErrorMessage("未识别到可用的 Word 表格证据");
                 return;
               }
-              void appendTableEvidenceBlock({
-                assetId: response.asset.id,
-                revisionId: revision.id,
-                revisionStatus: revision.confirmation_status,
-                confirmedTablePackage: revision.ai_table_package,
-              });
+              setTableEvidenceErrorMessage(null);
             }}
+            onSelectTable={setSelectedUploadedTableId}
+            selectedTableId={selectedUploadedTableId ?? undefined}
+          />
+        ) : null}
+
+        {isTableEvidenceOpen && tableEvidenceClient && selectedUploadedTableEvidence ? (
+          <TableEvidenceWorkspace
+            asset={selectedUploadedTableEvidence.asset}
+            bindingRole={tableEvidenceBindingRole}
+            bindingTargetId={currentRevisionId}
+            bindingTargetLabel={formatTableEvidenceBindingTargetLabel(
+              tableEvidenceBindingTargetType,
+            )}
+            bindingTargetType={tableEvidenceBindingTargetType}
+            key={selectedUploadedTableEvidence.revision.id}
+            revision={selectedUploadedTableEvidence.revision}
+            onSavePatch={(patch) =>
+              saveUploadedTableEvidencePatch(selectedUploadedTableEvidence, patch)
+            }
+            onConfirm={(input) =>
+              confirmUploadedTableEvidenceRevision({
+                selection: selectedUploadedTableEvidence,
+                ...input,
+              })
+            }
+            onBind={(input) =>
+              bindTableEvidenceRevision(tableEvidenceClient, input).then(() => undefined)
+            }
           />
         ) : null}
 
@@ -326,6 +449,54 @@ export function createKnowledgeLibraryContentBlockForAction({
     case "add-table-evidence":
       return null;
   }
+}
+
+export function getKnowledgeLibraryUploadedTableEvidenceSelections(
+  response: CreateTableEvidenceFromDocxUploadResponse,
+): KnowledgeLibraryUploadedTableEvidenceSelection[] {
+  const assetsById = new Map(response.assets.map((asset) => [asset.id, asset]));
+  assetsById.set(response.asset.id, response.asset);
+
+  const revisionsByTableId = new Map<string, TableEvidenceRevision>();
+  for (const revision of response.revisions) {
+    revisionsByTableId.set(revision.source_snapshot.table_id, revision);
+  }
+
+  const selections: KnowledgeLibraryUploadedTableEvidenceSelection[] = [];
+  const seenRevisionIds = new Set<string>();
+  for (const table of response.tables) {
+    const revision = revisionsByTableId.get(table.table_id);
+    if (!revision) {
+      continue;
+    }
+
+    const asset = assetsById.get(revision.table_evidence_asset_id);
+    if (!asset) {
+      continue;
+    }
+
+    selections.push({ asset, revision, table });
+    seenRevisionIds.add(revision.id);
+  }
+
+  for (const revision of response.revisions) {
+    if (seenRevisionIds.has(revision.id)) {
+      continue;
+    }
+
+    const asset = assetsById.get(revision.table_evidence_asset_id);
+    if (!asset) {
+      continue;
+    }
+
+    selections.push({
+      asset,
+      revision,
+      table: revision.source_snapshot,
+    });
+  }
+
+  return selections;
 }
 
 function createKnowledgeLibraryContentBlock(
@@ -535,5 +706,19 @@ function formatTableEvidenceRevisionStatus(
       return "未加载";
     default:
       return status;
+  }
+}
+
+function formatTableEvidenceBindingTargetLabel(
+  targetType: TableEvidenceBindingTargetType,
+): string {
+  switch (targetType) {
+    case "rule_draft":
+      return "规则草稿 ID";
+    case "editorial_rule":
+      return "规则 ID";
+    case "knowledge_revision":
+    default:
+      return "知识版本 ID";
   }
 }

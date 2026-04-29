@@ -662,16 +662,17 @@ def extract_table_dimensions(
     table_index: int,
     source_zone: str,
 ) -> tuple[int, int, list[list[str]], list[list[dict]], dict, list[dict]]:
-    rows = node.findall("./w:tr", NS)
+    layout_rows = extract_table_cell_layout_rows(node)
     cell_rows: list[list[str]] = []
     raw_rows: list[list[dict]] = []
     objects: list[dict] = []
 
-    for row_index, row in enumerate(rows):
-        cells = row.findall("./w:tc", NS)
+    for row_index, row_layout in enumerate(layout_rows):
         text_row: list[str] = []
         raw_row: list[dict] = []
-        for cell_index, cell in enumerate(cells):
+        for cell_layout in row_layout:
+            cell = cell_layout["node"]
+            cell_index = int(cell_layout["cell_index"])
             paragraphs = extract_table_cell_paragraphs(cell)
             cell_text = build_table_cell_display_text(paragraphs)
             cell_objects = extract_table_cell_object_evidence(
@@ -693,8 +694,11 @@ def extract_table_dimensions(
                     "normalized_text": normalize_table_cell_text(cell_text),
                     "raw_xml_text": ET.tostring(cell, encoding="unicode"),
                     "style_runs": flatten_table_cell_style_runs(paragraphs),
-                    "column_span": extract_grid_span(cell),
-                    "row_span": extract_row_span(cell),
+                    "grid_column_index": cell_layout["column_index"],
+                    "column_span": cell_layout["column_span"],
+                    "row_span": cell_layout["row_span"],
+                    "vertical_merge_continuation": "vertical_merge_origin"
+                    in cell_layout,
                     "borders": extract_cell_border_hints(cell),
                     "vertical_alignment": extract_cell_vertical_alignment(cell),
                     "text_direction": extract_cell_text_direction(cell),
@@ -718,6 +722,70 @@ def extract_table_dimensions(
         extract_table_border_hints(node),
         objects,
     )
+
+
+def extract_table_cell_layout_rows(node: ET.Element) -> list[list[dict]]:
+    layout_rows: list[list[dict]] = []
+    for row_index, row in enumerate(node.findall("./w:tr", NS)):
+        column_index = 0
+        layout_row: list[dict] = []
+        for cell_index, cell in enumerate(row.findall("./w:tc", NS)):
+            column_span = extract_grid_span(cell)
+            vertical_merge = extract_vertical_merge_state(cell)
+            layout_row.append(
+                {
+                    "node": cell,
+                    "row_index": row_index,
+                    "cell_index": cell_index,
+                    "column_index": column_index,
+                    "column_span": column_span,
+                    "row_span": 1,
+                    "vertical_merge": vertical_merge,
+                }
+            )
+            column_index += column_span
+        layout_rows.append(layout_row)
+
+    for row_index, layout_row in enumerate(layout_rows):
+        for cell_layout in layout_row:
+            if cell_layout["vertical_merge"] != "restart":
+                continue
+
+            row_span = 1
+            column_index = int(cell_layout["column_index"])
+            column_span = int(cell_layout["column_span"])
+            for following_row in layout_rows[row_index + 1 :]:
+                continuation = find_vertical_merge_continuation(
+                    following_row,
+                    column_index=column_index,
+                    column_span=column_span,
+                )
+                if continuation is None:
+                    break
+                row_span += 1
+                continuation["vertical_merge_origin"] = (
+                    row_index,
+                    column_index,
+                )
+            cell_layout["row_span"] = row_span
+
+    return layout_rows
+
+
+def find_vertical_merge_continuation(
+    layout_row: list[dict],
+    *,
+    column_index: int,
+    column_span: int,
+) -> dict | None:
+    for cell_layout in layout_row:
+        if (
+            cell_layout["vertical_merge"] == "continue"
+            and int(cell_layout["column_index"]) == column_index
+            and int(cell_layout["column_span"]) == column_span
+        ):
+            return cell_layout
+    return None
 
 
 def build_table_cell_display_text(paragraphs: list[dict]) -> str:
@@ -866,11 +934,15 @@ def extract_grid_span(node: ET.Element) -> int:
         return 1
 
 
-def extract_row_span(node: ET.Element) -> int:
+def extract_vertical_merge_state(node: ET.Element) -> str:
     vertical_merge = node.find("./w:tcPr/w:vMerge", NS)
     if vertical_merge is None:
-        return 1
-    return 2
+        return "none"
+
+    value = (vertical_merge.attrib.get(qualify("val")) or "").strip().lower()
+    if value == "restart":
+        return "restart"
+    return "continue"
 
 
 def extract_cell_vertical_alignment(node: ET.Element) -> str | None:

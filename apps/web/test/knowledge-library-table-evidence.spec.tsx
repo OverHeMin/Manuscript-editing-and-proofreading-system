@@ -7,6 +7,7 @@ const {
   KnowledgeLibraryRichContentEditor,
   createKnowledgeLibraryContentBlockForAction,
   appendKnowledgeLibraryTableEvidenceBlock,
+  getKnowledgeLibraryUploadedTableEvidenceSelections,
   handleKnowledgeLibraryTableEvidenceSelection,
 } = await import(
   "../src/features/knowledge-library/knowledge-library-rich-content-editor.tsx"
@@ -43,6 +44,43 @@ test("knowledge library rich content editor does not create new ordinary table b
       currentRevisionId: "knowledge-revision-1",
     }),
     null,
+  );
+});
+
+test("knowledge library upload response exposes every parsed table as a selectable revision", () => {
+  const selections = getKnowledgeLibraryUploadedTableEvidenceSelections({
+    sourceFile: {
+      id: "file-1",
+      storage_key: "table-evidence/file-1.docx",
+      file_name: "tables.docx",
+      mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      byte_length: 17,
+      sha256: "hash",
+      uploaded_by: "user-1",
+      uploaded_at: "2026-04-29T00:00:00.000Z",
+    },
+    asset: buildTableEvidenceAsset("asset-1", "rev-1"),
+    assets: [
+      buildTableEvidenceAsset("asset-1", "rev-1"),
+      buildTableEvidenceAsset("asset-2", "rev-2"),
+    ],
+    revisions: [
+      buildTableEvidenceRevision("rev-1", "asset-1", "table-1"),
+      buildTableEvidenceRevision("rev-2", "asset-2", "table-2"),
+    ],
+    tables: [buildTableSourceSnapshot("table-1"), buildTableSourceSnapshot("table-2")],
+  });
+
+  assert.deepEqual(
+    selections.map((selection) => ({
+      assetId: selection.asset.id,
+      revisionId: selection.revision.id,
+      tableId: selection.table.table_id,
+    })),
+    [
+      { assetId: "asset-1", revisionId: "rev-1", tableId: "table-1" },
+      { assetId: "asset-2", revisionId: "rev-2", tableId: "table-2" },
+    ],
   );
 });
 
@@ -109,6 +147,59 @@ test("knowledge library rich content editor appends table evidence block from a 
     },
   });
 });
+
+function buildTableEvidenceAsset(id: string, activeRevisionId: string) {
+  return {
+    id,
+    title: id,
+    source_file_asset_id: "file-1",
+    source_file_name: "tables.docx",
+    source_kind: "docx_upload" as const,
+    parser: "python_docx_ooxml" as const,
+    parser_version: "table-evidence-v1",
+    active_revision_id: activeRevisionId,
+    fidelity_status: "pending" as const,
+    created_by: "user-1",
+    created_at: "2026-04-29T00:00:00.000Z",
+    updated_at: "2026-04-29T00:00:00.000Z",
+  };
+}
+
+function buildTableEvidenceRevision(id: string, assetId: string, tableId: string) {
+  return {
+    id,
+    table_evidence_asset_id: assetId,
+    revision_no: 1,
+    source_snapshot: buildTableSourceSnapshot(tableId),
+    correction_patch: { patch_id: `patch-${id}`, operations: [] },
+    fidelity_report: {
+      status: "pending" as const,
+      failure_codes: [],
+      unsupported_fact_groups: [],
+      required_confirmations: [],
+      invisible_chars_confirmed: false,
+      special_symbols_confirmed: false,
+    },
+    confirmation_status: "pending" as const,
+    created_at: "2026-04-29T00:00:00.000Z",
+  };
+}
+
+function buildTableSourceSnapshot(tableId: string) {
+  return {
+    snapshot_id: `source-${tableId}`,
+    table_id: tableId,
+    source_file_asset_id: "file-1",
+    parser: "python_docx_ooxml" as const,
+    parser_version: "table-evidence-v1",
+    row_count: 1,
+    column_count: 1,
+    notes: [],
+    object_evidence: [],
+    warnings: [],
+    grid_cells: [],
+  };
+}
 
 test("knowledge library rich content editor inserts pending table evidence without attempting a backend bind", async () => {
   const requests: unknown[] = [];

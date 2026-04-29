@@ -354,6 +354,24 @@ test("workspace allows confirmation when needs_review only reflects now-satisfie
   assert.match(html, /data-confirm-disabled="false"/);
 });
 
+test("workspace labels configured binding target type", () => {
+  const html = renderToStaticMarkup(
+    <TableEvidenceWorkspace
+      asset={buildAsset()}
+      bindingTargetId="rule-draft-1"
+      bindingTargetLabel="规则草稿 ID"
+      bindingTargetType="rule_draft"
+      revision={buildRevision()}
+      onBind={() => Promise.resolve()}
+      onConfirm={() => Promise.resolve()}
+      onSavePatch={() => Promise.resolve(buildRevision())}
+    />,
+  );
+
+  assert.match(html, /规则草稿 ID/);
+  assert.match(html, /value="rule-draft-1"/);
+});
+
 test("workspace exposes stale patch errors and disables save and confirm", () => {
   const html = renderToStaticMarkup(
     <TableEvidenceWorkspace

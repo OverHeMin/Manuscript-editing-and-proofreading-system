@@ -638,3 +638,59 @@ def test_docx_table_cell_text_preserves_whitespace_only_cell():
     assert cell["text"] == "   "
     assert cell["display_text"] == "   "
     assert cell["normalized_text"] == ""
+
+
+def test_docx_table_vertical_merge_restart_continue_sets_full_row_span():
+    document_xml = """
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>
+        <w:tbl>
+          <w:tr>
+            <w:tc>
+              <w:tcPr><w:vMerge w:val="restart"/></w:tcPr>
+              <w:p><w:r><w:t>Group</w:t></w:r></w:p>
+            </w:tc>
+            <w:tc><w:p><w:r><w:t>Baseline</w:t></w:r></w:p></w:tc>
+          </w:tr>
+          <w:tr>
+            <w:tc>
+              <w:tcPr><w:vMerge/></w:tcPr>
+              <w:p/>
+            </w:tc>
+            <w:tc><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc>
+          </w:tr>
+          <w:tr>
+            <w:tc>
+              <w:tcPr><w:vMerge w:val="continue"/></w:tcPr>
+              <w:p/>
+            </w:tc>
+            <w:tc><w:p><w:r><w:t>B</w:t></w:r></w:p></w:tc>
+          </w:tr>
+        </w:tbl>
+      </w:body>
+    </w:document>
+    """
+
+    table = extract_structure_from_document_xml(document_xml)["tables"][0]["semantic"]
+    grid_cells = table["grid_cells"]
+    merged_cell = next(
+        cell
+        for cell in grid_cells
+        if cell["row_index"] == 0 and cell["column_index"] == 0
+    )
+
+    assert table["column_count"] == 2
+    assert merged_cell["text"] == "Group"
+    assert merged_cell["row_span"] == 3
+    assert not any(
+        cell["row_index"] > 0 and cell["column_index"] == 0
+        for cell in grid_cells
+    )
+    assert any(
+        cell["row_index"] == 1 and cell["column_index"] == 1 and cell["text"] == "A"
+        for cell in grid_cells
+    )
+    assert any(
+        cell["row_index"] == 2 and cell["column_index"] == 1 and cell["text"] == "B"
+        for cell in grid_cells
+    )

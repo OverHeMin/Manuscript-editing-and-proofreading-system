@@ -276,6 +276,9 @@ def build_merged_relations(table_id: str, rows: list[list[dict]]) -> list[dict]:
 
     for row_index, row in enumerate(rows):
         for cell_index, cell in enumerate(row):
+            if cell.get("vertical_merge_continuation"):
+                continue
+
             column_span = int(cell.get("column_span") or 1)
             row_span = int(cell.get("row_span") or 1)
             if column_span <= 1 and row_span <= 1:
@@ -399,8 +402,13 @@ def build_grid_cells(
     for row_index, row in enumerate(rows):
         column_index = 0
         for raw_cell in row:
+            column_index = read_grid_column_index(raw_cell, column_index)
             row_span = int(raw_cell.get("row_span") or 1)
             column_span = int(raw_cell.get("column_span") or 1)
+            if raw_cell.get("vertical_merge_continuation"):
+                column_index += column_span
+                continue
+
             cell_id = f"{table_id}-cell-{row_index}-{column_index}"
             paragraphs = materialize_paragraph_snapshots(
                 raw_cell.get("paragraphs"),
@@ -446,6 +454,14 @@ def build_grid_cells(
             column_index += column_span
 
     return grid_cells, cell_id_by_position
+
+
+def read_grid_column_index(raw_cell: dict, fallback: int) -> int:
+    value = raw_cell.get("grid_column_index")
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return fallback
 
 
 def infer_grid_cell_role(*, row_index: int, column_index: int, header_depth: int) -> str:

@@ -6,13 +6,18 @@ const titleFieldLabel = "\u6807\u9898";
 const canonicalTextFieldLabel =
   "\u7b80\u8981\u8bf4\u660e\u6216\u6807\u51c6\u7b54\u6848";
 
-test("knowledge library can upload pending DOCX table evidence for confirmation", async ({
+test("knowledge library can upload, select, confirm, and bind DOCX table evidence", async ({
   page,
   request,
 }) => {
   const title = `knowledge-table-evidence-${Date.now()}`;
   let uploadCalled = false;
+  let patchCalled = false;
+  let confirmCalled = false;
   let bindingCalled = false;
+  let patchRequestBody: unknown = null;
+  let confirmRequestBody: unknown = null;
+  let bindingRequestBody: unknown = null;
 
   await loginBrowserSession(page, request, "dev.admin");
   await page.route("**/api/v1/knowledge/duplicate-check", async (route) => {
@@ -32,14 +37,41 @@ test("knowledge library can upload pending DOCX table evidence for confirmation"
       });
     },
   );
+  await page.route("**/api/v1/table-evidence/revisions/*/patch", async (route) => {
+    patchCalled = true;
+    patchRequestBody = route.request().postDataJSON();
+    await route.fulfill({
+      status: 200,
+      json: createPendingTableEvidenceRevision({
+        id: "rev-2-patched",
+        assetId: "asset-2",
+        tableId: "table-2",
+        revisionNo: 2,
+      }),
+    });
+  });
+  await page.route("**/api/v1/table-evidence/revisions/*/confirm", async (route) => {
+    confirmCalled = true;
+    confirmRequestBody = route.request().postDataJSON();
+    await route.fulfill({
+      status: 200,
+      json: createConfirmedTableEvidenceRevision({
+        id: "rev-2-confirmed",
+        assetId: "asset-2",
+        tableId: "table-2",
+        revisionNo: 3,
+      }),
+    });
+  });
   await page.route("**/api/v1/table-evidence/bindings", async (route) => {
     bindingCalled = true;
+    bindingRequestBody = route.request().postDataJSON();
     await route.fulfill({
       status: 200,
       json: {
         id: "binding-1",
-        table_evidence_asset_id: "asset-1",
-        table_evidence_revision_id: "rev-1",
+        table_evidence_asset_id: "asset-2",
+        table_evidence_revision_id: "rev-2-confirmed",
         target_type: "knowledge_revision",
         target_id: "knowledge-revision-1",
         binding_role: "source_evidence",
@@ -64,21 +96,53 @@ test("knowledge library can upload pending DOCX table evidence for confirmation"
   await expect(page.getByRole("heading", { name: "\u4e0a\u4f20 Word \u8868\u683c\u8bc1\u636e" })).toBeVisible();
 
   await page.locator('[data-table-evidence-upload-input="true"]').setInputFiles({
-    name: "table.docx",
+    name: "tables.docx",
     mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     buffer: Buffer.from("fake docx content"),
   });
 
-  await expect(page.locator(".table-evidence-table-list")).toContainText("Table 1");
-  await expect(page.locator(".table-evidence-table-list")).toContainText("table.docx");
+  await expect(page.locator(".table-evidence-table-list")).toContainText("表格 2");
+  await page.locator('[data-table-id="table-2"]').click();
+  await expect(page.locator(".table-evidence-workspace")).toBeVisible();
+  await expect(page.locator(".table-evidence-workspace")).toHaveAttribute(
+    "data-asset-id",
+    "asset-2",
+  );
+  await expect(page.locator(".table-evidence-workspace")).toContainText("Table 2");
+
+  await page.locator('[data-confirmation-kind="invisible_chars"]').check();
+  await page.locator('[data-confirmation-kind="special_symbols"]').check();
+  await page.getByRole("button", { name: "确认表格证据" }).click();
+
   await expect(page.locator('[data-block-type="table_evidence_block"]')).toContainText(
-    "\u5f85\u786e\u8ba4",
+    "\u5df2\u786e\u8ba4",
   );
   await expect(page.locator('[data-entry-evidence-gate="knowledge"]')).toContainText(
-    "\u8868\u683c\u8bc1\u636e\u72b6\u6001\u672a\u786e\u8ba4\uff1apending",
+    "\u8868\u683c\u8bc1\u636e\u72b6\u6001\u5df2\u786e\u8ba4",
   );
   expect(uploadCalled).toBeTruthy();
-  expect(bindingCalled).toBeFalsy();
+  expect(patchCalled).toBeTruthy();
+  expect(confirmCalled).toBeTruthy();
+  expect(bindingCalled).toBeTruthy();
+  expect(patchRequestBody).toMatchObject({
+    patch: {
+      operations: [
+        { op: "confirm_invisible_chars" },
+        { op: "confirm_special_symbols" },
+      ],
+    },
+  });
+  expect(confirmRequestBody).toEqual({
+    confirmations: {
+      invisibleCharsConfirmed: true,
+      specialSymbolsConfirmed: true,
+    },
+  });
+  expect(bindingRequestBody).toMatchObject({
+    revisionId: "rev-2-confirmed",
+    targetType: "knowledge_revision",
+    bindingRole: "source_evidence",
+  });
 });
 
 async function loginApiSession(
@@ -125,71 +189,177 @@ function createPendingTableEvidenceResponse() {
     sourceFile: {
       id: "file-1",
       storage_key: "table-evidence/file-1.docx",
-      file_name: "table.docx",
+      file_name: "tables.docx",
       mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       byte_length: 17,
       sha256: "hash",
       uploaded_by: "user-1",
       uploaded_at: "2026-04-29T00:00:00.000Z",
     },
-    asset: {
-      id: "asset-1",
-      title: "Table 1",
-      source_file_asset_id: "file-1",
-      source_file_name: "table.docx",
-      source_kind: "docx_upload",
-      parser: "python_docx_ooxml",
-      parser_version: "table-evidence-v1",
-      active_revision_id: "rev-1",
-      fidelity_status: "pending",
-      created_by: "user-1",
-      created_at: "2026-04-29T00:00:00.000Z",
-      updated_at: "2026-04-29T00:00:00.000Z",
-    },
+    asset: createTableEvidenceAsset("asset-1", "rev-1", "Table 1"),
+    assets: [
+      createTableEvidenceAsset("asset-1", "rev-1", "Table 1"),
+      createTableEvidenceAsset("asset-2", "rev-2", "Table 2"),
+    ],
     revisions: [
-      {
+      createPendingTableEvidenceRevision({
         id: "rev-1",
-        table_evidence_asset_id: "asset-1",
-        revision_no: 1,
-        source_snapshot: {
-          snapshot_id: "source-1",
-          table_id: "table-1",
-          source_file_asset_id: "file-1",
-          parser: "python_docx_ooxml",
-          parser_version: "table-evidence-v1",
-          row_count: 1,
-          column_count: 1,
-          notes: [],
-          object_evidence: [],
-          warnings: [],
-          grid_cells: [],
-        },
-        correction_patch: { patch_id: "patch-1", operations: [] },
-        fidelity_report: {
-          status: "pending",
-          failure_codes: [],
-          unsupported_fact_groups: [],
-          required_confirmations: ["invisible_chars", "special_symbols"],
-          invisible_chars_confirmed: false,
-          special_symbols_confirmed: false,
-        },
-        confirmation_status: "pending",
-        created_at: "2026-04-29T00:00:00.000Z",
-      },
+        assetId: "asset-1",
+        tableId: "table-1",
+      }),
+      createPendingTableEvidenceRevision({
+        id: "rev-2",
+        assetId: "asset-2",
+        tableId: "table-2",
+      }),
     ],
     tables: [
+      createTableSourceSnapshot("table-1", "Baseline"),
+      createTableSourceSnapshot("table-2", "Endpoint"),
+    ],
+  };
+}
+
+function createTableEvidenceAsset(
+  id: string,
+  activeRevisionId: string,
+  title: string,
+) {
+  return {
+    id,
+    title,
+    source_file_asset_id: "file-1",
+    source_file_name: "tables.docx",
+    source_kind: "docx_upload",
+    parser: "python_docx_ooxml",
+    parser_version: "table-evidence-v1",
+    active_revision_id: activeRevisionId,
+    fidelity_status: "pending",
+    created_by: "user-1",
+    created_at: "2026-04-29T00:00:00.000Z",
+    updated_at: "2026-04-29T00:00:00.000Z",
+  };
+}
+
+function createPendingTableEvidenceRevision(input: {
+  id: string;
+  assetId: string;
+  tableId: string;
+  revisionNo?: number;
+}) {
+  return {
+    id: input.id,
+    table_evidence_asset_id: input.assetId,
+    revision_no: input.revisionNo ?? 1,
+    source_snapshot: createTableSourceSnapshot(
+      input.tableId,
+      input.tableId === "table-2" ? "Endpoint" : "Baseline",
+    ),
+    correction_patch: { patch_id: `patch-${input.id}`, operations: [] },
+    fidelity_report: {
+      status: "pending",
+      failure_codes: [],
+      unsupported_fact_groups: [],
+      required_confirmations: ["invisible_chars", "special_symbols"],
+      invisible_chars_confirmed: false,
+      special_symbols_confirmed: false,
+    },
+    confirmation_status: "pending",
+    created_at: "2026-04-29T00:00:00.000Z",
+  };
+}
+
+function createConfirmedTableEvidenceRevision(input: {
+  id: string;
+  assetId: string;
+  tableId: string;
+  revisionNo: number;
+}) {
+  const sourceSnapshot = createTableSourceSnapshot(input.tableId, "Endpoint");
+  const fidelityReport = {
+    status: "confirmed",
+    failure_codes: [],
+    unsupported_fact_groups: [],
+    required_confirmations: ["invisible_chars", "special_symbols"],
+    invisible_chars_confirmed: true,
+    special_symbols_confirmed: true,
+  };
+  return {
+    ...createPendingTableEvidenceRevision(input),
+    confirmation_status: "confirmed",
+    confirmed_at: "2026-04-29T00:00:00.000Z",
+    confirmed_by: "dev.admin",
+    fidelity_report: fidelityReport,
+    confirmed_snapshot: {
+      snapshot_id: `confirmed-${input.tableId}`,
+      source_snapshot_id: sourceSnapshot.snapshot_id,
+      row_count: sourceSnapshot.row_count,
+      column_count: sourceSnapshot.column_count,
+      notes: sourceSnapshot.notes,
+      grid_cells: sourceSnapshot.grid_cells,
+    },
+    ai_table_package: {
+      package_id: "pkg-2",
+      asset_id: input.assetId,
+      revision_id: input.id,
+      revision_no: input.revisionNo,
+      source_file_asset_id: "file-1",
+      authority: "authoritative",
+      confirmation_status: "confirmed",
+      fidelity_status: "confirmed",
+      confirmed_by_human: true,
+      confirmed_by: "dev.admin",
+      confirmed_at: "2026-04-29T00:00:00.000Z",
+      parser: "python_docx_ooxml",
+      parser_version: "table-evidence-v1",
+      source_snapshot_hash: "source-hash",
+      confirmed_snapshot_hash: "confirmed-hash",
+      ai_table_package_hash: "package-hash",
+      notes: [],
+      structure: {
+        row_count: sourceSnapshot.row_count,
+        column_count: sourceSnapshot.column_count,
+        header_depth: 1,
+        merged_cells: [],
+      },
+      cells: sourceSnapshot.grid_cells,
+      fidelity_report: fidelityReport,
+    },
+  };
+}
+
+function createTableSourceSnapshot(tableId: string, text: string) {
+  return {
+    snapshot_id: `source-${tableId}`,
+    table_id: tableId,
+    source_file_asset_id: "file-1",
+    parser: "python_docx_ooxml",
+    parser_version: "table-evidence-v1",
+    row_count: 1,
+    column_count: 1,
+    notes: [],
+    object_evidence: [],
+    warnings: [],
+    grid_cells: [
       {
-        snapshot_id: "source-1",
-        table_id: "table-1",
-        source_file_asset_id: "file-1",
-        parser: "python_docx_ooxml",
-        parser_version: "table-evidence-v1",
-        row_count: 1,
-        column_count: 1,
-        notes: [],
-        object_evidence: [],
-        warnings: [],
-        grid_cells: [],
+        cell_id: `${tableId}-cell-1`,
+        row: 0,
+        column: 0,
+        rowspan: 1,
+        colspan: 1,
+        role: "data",
+        text,
+        display_text: text,
+        codepoints: Array.from(text).map((char) =>
+          char.codePointAt(0)?.toString(16).toUpperCase().padStart(4, "0") ?? "",
+        ),
+        paragraphs: [],
+        runs: [],
+        header_path: [],
+        row_header_path: [],
+        column_header_path: [],
+        invisible_chars: [],
+        style_summary: {},
       },
     ],
   };

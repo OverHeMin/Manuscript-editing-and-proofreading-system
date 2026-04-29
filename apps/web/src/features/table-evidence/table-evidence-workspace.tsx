@@ -26,6 +26,10 @@ export type TableEvidenceWorkspaceViewMode = "source" | "corrected" | "diff";
 export interface TableEvidenceWorkspaceProps {
   asset: TableEvidenceAsset;
   revision: TableEvidenceRevision;
+  bindingRole?: TableEvidenceBindingRole;
+  bindingTargetId?: string;
+  bindingTargetLabel?: string;
+  bindingTargetType?: TableEvidenceBindingTargetType;
   onSavePatch: (patch: TableCorrectionPatch) => Promise<TableEvidenceRevision>;
   onConfirm: (input: {
     revisionId: string;
@@ -43,6 +47,10 @@ export interface TableEvidenceWorkspaceProps {
 export function TableEvidenceWorkspace({
   asset,
   revision,
+  bindingRole = "source_evidence",
+  bindingTargetId: initialBindingTargetId = "",
+  bindingTargetLabel = "知识版本 ID",
+  bindingTargetType = "knowledge_revision",
   onSavePatch,
   onConfirm,
   onBind,
@@ -59,7 +67,7 @@ export function TableEvidenceWorkspace({
   const [specialSymbolsConfirmed, setSpecialSymbolsConfirmed] = useState(
     revision.fidelity_report.special_symbols_confirmed,
   );
-  const [bindingTargetId, setBindingTargetId] = useState("");
+  const [bindingTargetId, setBindingTargetId] = useState(initialBindingTargetId);
 
   const correctedPreview = useMemo(
     () =>
@@ -121,9 +129,9 @@ export function TableEvidenceWorkspace({
     }
     await onBind({
       revisionId: revision.id,
-      targetType: "knowledge_revision",
+      targetType: bindingTargetType,
       targetId: bindingTargetId.trim(),
-      bindingRole: "source_evidence",
+      bindingRole,
     });
   }
 
@@ -235,7 +243,7 @@ export function TableEvidenceWorkspace({
           <section className="table-evidence-panel table-evidence-binding-panel">
             <h3>绑定</h3>
             <label>
-              知识版本 ID
+              {bindingTargetLabel}
               <input
                 data-binding-target-id="true"
                 onChange={(event) => setBindingTargetId(event.currentTarget.value)}

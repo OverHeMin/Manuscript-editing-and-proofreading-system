@@ -10,11 +10,15 @@ import { TableEvidenceTableList } from "./table-evidence-table-list.tsx";
 export interface TableEvidenceUploadEntryProps {
   client: TableEvidenceHttpClient;
   onCreated?: (response: CreateTableEvidenceFromDocxUploadResponse) => void;
+  onSelectTable?: (tableId: string) => void;
+  selectedTableId?: string;
 }
 
 export function TableEvidenceUploadEntry({
   client,
   onCreated,
+  onSelectTable,
+  selectedTableId,
 }: TableEvidenceUploadEntryProps) {
   const [response, setResponse] = useState<CreateTableEvidenceFromDocxUploadResponse | null>(
     null,
@@ -79,7 +83,9 @@ export function TableEvidenceUploadEntry({
       {response ? (
         <TableEvidenceTableList
           asset={response.asset}
+          onSelectTable={onSelectTable}
           revisions={response.revisions}
+          selectedTableId={selectedTableId}
           tables={response.tables}
         />
       ) : null}

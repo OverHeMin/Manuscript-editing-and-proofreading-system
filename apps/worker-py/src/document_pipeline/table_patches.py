@@ -9,6 +9,7 @@ from .parse_docx import (
     extract_grid_span,
     extract_node_text,
     extract_paragraph_snapshot,
+    extract_table_cell_layout_rows,
     extract_table_cell_paragraphs,
     extract_table_border_hints,
     is_table_caption,
@@ -978,11 +979,11 @@ def clone_anchor(anchor: dict) -> dict:
 
 
 def _extract_raw_rows(table_node: ET.Element) -> list[list[dict]]:
-    rows = table_node.findall("./w:tr", NS)
     raw_rows: list[list[dict]] = []
-    for row in rows:
+    for layout_row in extract_table_cell_layout_rows(table_node):
         raw_row: list[dict] = []
-        for cell in row.findall("./w:tc", NS):
+        for cell_layout in layout_row:
+            cell = cell_layout["node"]
             paragraphs = extract_table_cell_paragraphs(cell)
             raw_row.append(
                 {
@@ -991,8 +992,11 @@ def _extract_raw_rows(table_node: ET.Element) -> list[list[dict]]:
                         for paragraph in paragraphs
                         if (paragraph.get("text") or "").strip()
                     ).strip(),
-                    "column_span": extract_grid_span(cell),
-                    "row_span": _extract_row_span(cell),
+                    "grid_column_index": cell_layout["column_index"],
+                    "column_span": cell_layout["column_span"],
+                    "row_span": cell_layout["row_span"],
+                    "vertical_merge_continuation": "vertical_merge_origin"
+                    in cell_layout,
                     "borders": _extract_cell_borders(cell),
                     "vertical_alignment": extract_cell_vertical_alignment(cell),
                     "paragraphs": paragraphs,
@@ -1010,13 +1014,6 @@ def _expand_table_rows_with_nodes(table_node: ET.Element) -> list[list[ET.Elemen
             expanded_row.extend([cell] * extract_grid_span(cell))
         expanded_rows.append(expanded_row)
     return expanded_rows
-
-
-def _extract_row_span(cell_node: ET.Element) -> int:
-    vertical_merge = cell_node.find("./w:tcPr/w:vMerge", NS)
-    if vertical_merge is None:
-        return 1
-    return 2
 
 
 def _extract_cell_borders(cell_node: ET.Element) -> dict:
