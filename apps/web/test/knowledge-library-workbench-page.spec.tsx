@@ -272,6 +272,12 @@ test("knowledge library workbench page renders the ledger grid shell and record 
   assert.match(markup, /语义层/);
   assert.match(markup, /knowledge-library-grid-table/);
   assert.match(markup, /knowledge-library-record-drawer/);
+  assert.match(markup, /data-block-action="add-table-evidence"/u);
+  assert.match(markup, /data-table-evidence-client-state="available"/u);
+  assert.doesNotMatch(
+    markup,
+    /Word 表格证据需要连接表格证据客户端或提供已确认证据列表后才能添加/u,
+  );
   assert.match(markup, /editor\.zh/);
   assert.match(markup, /Primary endpoint rule draft/);
   assert.match(markup, /knowledge-1-revision-2/);
@@ -282,6 +288,86 @@ test("knowledge library workbench page renders the ledger grid shell and record 
 test("new knowledge-library draft state defaults to reference instead of rule", () => {
   assert.equal(typeof createKnowledgeLibraryFormState, "function");
   assert.equal(createKnowledgeLibraryFormState(null).knowledgeKind, "reference");
+});
+
+test("classic knowledge workbench disables table evidence binding without a selected revision", () => {
+  const markup = renderToStaticMarkup(
+    <KnowledgeLibraryWorkbenchPage
+      initialViewModel={{
+        library: [
+          {
+            id: "knowledge-1",
+            title: "Primary endpoint rule",
+            knowledge_kind: "rule",
+            status: "draft",
+            module_scope: "screening",
+            manuscript_types: ["clinical_study"],
+            selected_revision_id: "knowledge-1-revision-2",
+            content_block_count: 0,
+          },
+        ],
+        visibleLibrary: [
+          {
+            id: "knowledge-1",
+            title: "Primary endpoint rule",
+            knowledge_kind: "rule",
+            status: "draft",
+            module_scope: "screening",
+            manuscript_types: ["clinical_study"],
+            selected_revision_id: "knowledge-1-revision-2",
+            content_block_count: 0,
+          },
+        ],
+        filters: {
+          searchText: "",
+          queryMode: "keyword",
+        },
+        selectedAssetId: "knowledge-1",
+        selectedRevisionId: null,
+        selectedSummary: {
+          id: "knowledge-1",
+          title: "Primary endpoint rule",
+          knowledge_kind: "rule",
+          status: "draft",
+          module_scope: "screening",
+          manuscript_types: ["clinical_study"],
+          selected_revision_id: "knowledge-1-revision-2",
+          content_block_count: 0,
+        },
+        detail: {
+          asset: {
+            id: "knowledge-1",
+            status: "active",
+            current_revision_id: "knowledge-1-revision-2",
+            created_at: "2026-04-08T08:00:00.000Z",
+            updated_at: "2026-04-08T08:30:00.000Z",
+          },
+          selected_revision: {
+            id: "knowledge-1-revision-2",
+            asset_id: "knowledge-1",
+            revision_no: 2,
+            status: "draft",
+            title: "Primary endpoint rule draft",
+            canonical_text: "Clinical studies must define the primary endpoint.",
+            knowledge_kind: "rule",
+            routing: {
+              module_scope: "screening",
+              manuscript_types: ["clinical_study"],
+            },
+            content_blocks: [],
+            bindings: [],
+            created_at: "2026-04-08T08:30:00.000Z",
+            updated_at: "2026-04-08T08:30:00.000Z",
+          },
+          revisions: [],
+        },
+      }}
+    />,
+  );
+
+  assert.match(markup, /data-block-action="add-table-evidence"/u);
+  assert.match(markup, /data-table-evidence-client-state="unavailable"/u);
+  assert.doesNotMatch(markup, /data-table-evidence-client-state="available"/u);
 });
 
 test("legacy knowledge workbench keeps historical rule edits under a compatibility projection label", () => {

@@ -466,6 +466,57 @@ def extract_paragraph_snapshot(node: ET.Element) -> dict:
         "text": text,
         "style": extract_paragraph_style_evidence(node),
         "fragments": fragments,
+        "paragraph_boundary_after": True,
+        "paragraph_boundary": {"kind": "paragraph_boundary", "codepoint": "PARA"},
+    }
+
+
+def codepoints_for_text(text: str) -> list[str]:
+    return [f"{ord(character):04X}" for character in text]
+
+
+def classify_invisible_chars(text: str) -> list[dict]:
+    entries: list[dict] = []
+    previous_space_offset: int | None = None
+
+    for offset, character in enumerate(text):
+        codepoint = f"{ord(character):04X}"
+        kind: str | None = None
+        if character == " ":
+            kind = "space"
+        elif character == "\u3000":
+            kind = "full_width_space"
+        elif character == "\u00a0":
+            kind = "nbsp"
+        elif character == "\t":
+            kind = "tab"
+        elif character == "\n":
+            kind = "line_break"
+
+        if kind is not None:
+            entries.append({"kind": kind, "codepoint": codepoint, "offset": offset, "length": 1})
+
+        if character == " ":
+            if offset == 0:
+                entries.append({"kind": "leading_space", "codepoint": codepoint, "offset": offset, "length": 1})
+            if offset == len(text) - 1:
+                entries.append({"kind": "trailing_space", "codepoint": codepoint, "offset": offset, "length": 1})
+            if previous_space_offset == offset - 1:
+                entries.append({"kind": "consecutive_space", "codepoint": codepoint, "offset": previous_space_offset, "length": 2})
+            previous_space_offset = offset
+        else:
+            previous_space_offset = None
+
+    return entries
+
+
+def build_inline_fragment(**fragment: object) -> dict:
+    text = fragment.get("text") if isinstance(fragment.get("text"), str) else ""
+    return {
+        **fragment,
+        "text": text,
+        "codepoints": codepoints_for_text(text),
+        "invisible_chars": classify_invisible_chars(text),
     }
 
 
@@ -492,63 +543,63 @@ def extract_run_fragments(run: ET.Element) -> list[dict]:
             text = child.text or ""
             if text:
                 fragments.append(
-                    {
-                        "kind": "text",
-                        "text": text,
-                        "style": style,
-                    }
+                    build_inline_fragment(
+                        kind="text",
+                        text=text,
+                        style=style,
+                    )
                 )
             continue
         if child.tag == qualify("tab"):
             fragments.append(
-                {
-                    "kind": "tab",
-                    "text": "\t",
-                    "style": style,
-                }
+                build_inline_fragment(
+                    kind="tab",
+                    text="\t",
+                    style=style,
+                )
             )
             continue
         if child.tag == qualify("br") or child.tag == qualify("cr"):
             fragments.append(
-                {
-                    "kind": "line_break",
-                    "text": "\n",
-                    "style": style,
-                }
+                build_inline_fragment(
+                    kind="line_break",
+                    text="\n",
+                    style=style,
+                )
             )
             continue
         if child.tag == qualify("sym"):
             symbol_char = (child.attrib.get(qualify("char")) or "").strip()
             symbol_font = (child.attrib.get(qualify("font")) or "").strip() or None
             fragments.append(
-                {
-                    "kind": "symbol",
-                    "text": decode_symbol_text(symbol_char),
-                    "symbol_char": symbol_char or None,
-                    "symbol_font": symbol_font,
-                    "style": extract_run_style_evidence(
+                build_inline_fragment(
+                    kind="symbol",
+                    text=decode_symbol_text(symbol_char),
+                    symbol_char=symbol_char or None,
+                    symbol_font=symbol_font,
+                    style=extract_run_style_evidence(
                         run, symbol_font_override=symbol_font
                     ),
-                }
+                )
             )
             continue
         if local_name(child.tag) in OBJECT_EVIDENCE_TAGS:
             kind = classify_object_kind(child)
             evidence_text = extract_object_evidence_text(child)
             fragments.append(
-                {
-                    "kind": "object",
-                    "text": "",
-                    "object_kind": kind,
-                    "original_tag": local_name(child.tag),
+                build_inline_fragment(
+                    kind="object",
+                    text="",
+                    object_kind=kind,
+                    original_tag=local_name(child.tag),
                     **(
                         {"relationship_id": relationship_id}
                         if (relationship_id := extract_object_relationship_id(child))
                         else {}
                     ),
                     **({"evidence_text": evidence_text} if evidence_text else {}),
-                    "style": style,
-                }
+                    style=style,
+                )
             )
 
     return fragments
@@ -611,18 +662,19 @@ def extract_table_dimensions(
     table_index: int,
     source_zone: str,
 ) -> tuple[int, int, list[list[str]], list[list[dict]], dict, list[dict]]:
-    rows = node.findall("./w:tr", NS)
+    layout_rows = extract_table_cell_layout_rows(node)
     cell_rows: list[list[str]] = []
     raw_rows: list[list[dict]] = []
     objects: list[dict] = []
 
-    for row_index, row in enumerate(rows):
-        cells = row.findall("./w:tc", NS)
+    for row_index, row_layout in enumerate(layout_rows):
         text_row: list[str] = []
         raw_row: list[dict] = []
-        for cell_index, cell in enumerate(cells):
+        for cell_layout in row_layout:
+            cell = cell_layout["node"]
+            cell_index = int(cell_layout["cell_index"])
             paragraphs = extract_table_cell_paragraphs(cell)
-            display_text = build_table_cell_display_text(paragraphs)
+            cell_text = build_table_cell_display_text(paragraphs)
             cell_objects = extract_table_cell_object_evidence(
                 cell,
                 table_index=table_index,
@@ -633,17 +685,20 @@ def extract_table_dimensions(
             objects.extend(
                 cell_objects
             )
-            text = display_text.strip()
+            text = normalize_table_cell_text(cell_text)
             text_row.append(text)
             raw_row.append(
                 {
-                    "text": text,
-                    "display_text": display_text,
-                    "normalized_text": normalize_table_cell_text(display_text),
+                    "text": cell_text,
+                    "display_text": cell_text,
+                    "normalized_text": normalize_table_cell_text(cell_text),
                     "raw_xml_text": ET.tostring(cell, encoding="unicode"),
                     "style_runs": flatten_table_cell_style_runs(paragraphs),
-                    "column_span": extract_grid_span(cell),
-                    "row_span": extract_row_span(cell),
+                    "grid_column_index": cell_layout["column_index"],
+                    "column_span": cell_layout["column_span"],
+                    "row_span": cell_layout["row_span"],
+                    "vertical_merge_continuation": "vertical_merge_origin"
+                    in cell_layout,
                     "borders": extract_cell_border_hints(cell),
                     "vertical_alignment": extract_cell_vertical_alignment(cell),
                     "text_direction": extract_cell_text_direction(cell),
@@ -669,11 +724,85 @@ def extract_table_dimensions(
     )
 
 
+def extract_table_cell_layout_rows(node: ET.Element) -> list[list[dict]]:
+    layout_rows: list[list[dict]] = []
+    for row_index, row in enumerate(node.findall("./w:tr", NS)):
+        column_index = 0
+        layout_row: list[dict] = []
+        for cell_index, cell in enumerate(row.findall("./w:tc", NS)):
+            column_span = extract_grid_span(cell)
+            vertical_merge = extract_vertical_merge_state(cell)
+            layout_row.append(
+                {
+                    "node": cell,
+                    "row_index": row_index,
+                    "cell_index": cell_index,
+                    "column_index": column_index,
+                    "column_span": column_span,
+                    "row_span": 1,
+                    "vertical_merge": vertical_merge,
+                }
+            )
+            column_index += column_span
+        layout_rows.append(layout_row)
+
+    for row_index, layout_row in enumerate(layout_rows):
+        for cell_layout in layout_row:
+            if cell_layout["vertical_merge"] != "restart":
+                continue
+
+            row_span = 1
+            column_index = int(cell_layout["column_index"])
+            column_span = int(cell_layout["column_span"])
+            for following_row in layout_rows[row_index + 1 :]:
+                continuation = find_vertical_merge_continuation(
+                    following_row,
+                    column_index=column_index,
+                    column_span=column_span,
+                )
+                if continuation is None:
+                    break
+                row_span += 1
+                continuation["vertical_merge_origin"] = (
+                    row_index,
+                    column_index,
+                )
+            cell_layout["row_span"] = row_span
+
+    return layout_rows
+
+
+def find_vertical_merge_continuation(
+    layout_row: list[dict],
+    *,
+    column_index: int,
+    column_span: int,
+) -> dict | None:
+    for cell_layout in layout_row:
+        if (
+            cell_layout["vertical_merge"] == "continue"
+            and int(cell_layout["column_index"]) == column_index
+            and int(cell_layout["column_span"]) == column_span
+        ):
+            return cell_layout
+    return None
+
+
 def build_table_cell_display_text(paragraphs: list[dict]) -> str:
     return "\n".join(
-        paragraph.get("text", "")
+        build_table_cell_paragraph_text(paragraph)
         for paragraph in paragraphs
-        if (paragraph.get("text") or "").strip()
+    )
+
+
+def build_table_cell_paragraph_text(paragraph: dict) -> str:
+    fragments = paragraph.get("fragments")
+    if not isinstance(fragments, list):
+        return paragraph.get("text", "") if isinstance(paragraph.get("text"), str) else ""
+    return "".join(
+        fragment.get("text", "")
+        for fragment in fragments
+        if isinstance(fragment, dict)
     )
 
 
@@ -805,11 +934,15 @@ def extract_grid_span(node: ET.Element) -> int:
         return 1
 
 
-def extract_row_span(node: ET.Element) -> int:
+def extract_vertical_merge_state(node: ET.Element) -> str:
     vertical_merge = node.find("./w:tcPr/w:vMerge", NS)
     if vertical_merge is None:
-        return 1
-    return 2
+        return "none"
+
+    value = (vertical_merge.attrib.get(qualify("val")) or "").strip().lower()
+    if value == "restart":
+        return "restart"
+    return "continue"
 
 
 def extract_cell_vertical_alignment(node: ET.Element) -> str | None:

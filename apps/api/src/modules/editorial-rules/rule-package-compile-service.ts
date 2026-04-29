@@ -24,6 +24,7 @@ import {
   EditorialRuleSetNotFoundError,
 } from "./editorial-rule-service.ts";
 import type { EditorialRuleRepository } from "./editorial-rule-repository.ts";
+import type { TableEvidenceService } from "../table-evidence/table-evidence-service.ts";
 import type {
   CompileRulePackagesToDraftInput,
   CompileRulePackagesToDraftResult,
@@ -70,17 +71,47 @@ export interface RulePackageCompileServiceOptions {
   repository: EditorialRuleRepository;
   resolutionService: Pick<EditorialRuleResolutionService, "resolve">;
   editorialRuleService: EditorialRuleService;
+  tableEvidenceService?: Pick<TableEvidenceService, "assertConfirmedRevision">;
+}
+
+export class RulePackageCompileTableEvidenceRevisionError extends Error {
+  readonly code:
+    | "table_evidence_revision_not_confirmed"
+    | "table_evidence_revision_id_invalid";
+  readonly revision_id?: string;
+
+  constructor(
+    revisionId?: string,
+    code:
+      | "table_evidence_revision_not_confirmed"
+      | "table_evidence_revision_id_invalid" =
+      "table_evidence_revision_not_confirmed",
+  ) {
+    super(
+      revisionId
+        ? `${code}: ${revisionId}`
+        : code,
+    );
+    this.name = "RulePackageCompileTableEvidenceRevisionError";
+    this.code = code;
+    this.revision_id = revisionId;
+  }
 }
 
 export class RulePackageCompileService {
   private readonly repository: EditorialRuleRepository;
   private readonly resolutionService: Pick<EditorialRuleResolutionService, "resolve">;
   private readonly editorialRuleService: EditorialRuleService;
+  private readonly tableEvidenceService?: Pick<
+    TableEvidenceService,
+    "assertConfirmedRevision"
+  >;
 
   constructor(options: RulePackageCompileServiceOptions) {
     this.repository = options.repository;
     this.resolutionService = options.resolutionService;
     this.editorialRuleService = options.editorialRuleService;
+    this.tableEvidenceService = options.tableEvidenceService;
   }
 
   async previewCompile(
@@ -115,6 +146,7 @@ export class RulePackageCompileService {
     input: CompileRulePackagesToDraftInput,
   ): Promise<CompileRulePackagesToDraftResult> {
     const preview = await this.previewCompile(input);
+    await this.assertTableEvidenceRevisionsConfirmed(input.packageDrafts);
     const previewByPackageId = new Map(
       preview.packages.map((entry) => [entry.package_id, entry]),
     );
@@ -259,6 +291,27 @@ export class RulePackageCompileService {
         skippedPackages,
       }),
     };
+  }
+
+  private async assertTableEvidenceRevisionsConfirmed(
+    packageDrafts: RulePackageDraft[],
+  ): Promise<void> {
+    const revisionIds = [...new Set(packageDrafts.flatMap(extractTableEvidenceRevisionIds))];
+    if (revisionIds.length === 0) {
+      return;
+    }
+
+    if (!this.tableEvidenceService) {
+      throw new RulePackageCompileTableEvidenceRevisionError(revisionIds[0]);
+    }
+
+    for (const revisionId of revisionIds) {
+      try {
+        await this.tableEvidenceService.assertConfirmedRevision(revisionId);
+      } catch {
+        throw new RulePackageCompileTableEvidenceRevisionError(revisionId);
+      }
+    }
   }
 }
 
@@ -1379,6 +1432,7 @@ function buildCompiledKnowledgeMetadata(input: {
   linkagePayload?: {
     source_learning_candidate_id?: string;
     source_snapshot_asset_id?: string;
+    table_evidence_revision_ids?: string[];
   };
   projectionPayload?: {
     projection_kind: "rule";
@@ -1419,6 +1473,9 @@ function buildCompiledKnowledgeMetadata(input: {
     hasConfirmedEvidence: evidenceExamples.length > 0,
     hasConfirmedBoundaries: Boolean(notAppliesWhen?.length),
   });
+  const tableEvidenceRevisionIds = extractTableEvidenceRevisionIds(
+    input.packageDraft,
+  );
 
   return {
     explanationPayload:
@@ -1443,6 +1500,9 @@ function buildCompiledKnowledgeMetadata(input: {
     linkagePayload: {
       source_learning_candidate_id: input.packageDraft.package_id,
       source_snapshot_asset_id: sourceId,
+      ...(tableEvidenceRevisionIds.length > 0
+        ? { table_evidence_revision_ids: tableEvidenceRevisionIds }
+        : {}),
     },
     projectionPayload:
       summary || primaryExample
@@ -1459,6 +1519,39 @@ function buildCompiledKnowledgeMetadata(input: {
         : undefined,
     ...(evidenceLevel ? { evidenceLevel } : {}),
   };
+}
+
+function extractTableEvidenceRevisionIds(packageDraft: RulePackageDraft): string[] {
+  const rawRevisionIds = (packageDraft.ai_intake_metadata?.evidence ?? [])
+    .filter((evidence) => evidence.kind === "confirmed_table_package")
+    .map(
+      (evidence) =>
+        evidence.confirmed_table_package?.revision_id ?? evidence.source_id,
+    );
+
+  return normalizeTableEvidenceRevisionIds(rawRevisionIds);
+}
+
+function normalizeTableEvidenceRevisionIds(
+  revisionIds: Array<string | undefined>,
+): string[] {
+  const normalizedRevisionIds: string[] = [];
+  for (const revisionId of revisionIds) {
+    if (typeof revisionId !== "string") {
+      continue;
+    }
+
+    const normalizedRevisionId = revisionId.trim();
+    if (!normalizedRevisionId) {
+      throw new RulePackageCompileTableEvidenceRevisionError(
+        undefined,
+        "table_evidence_revision_id_invalid",
+      );
+    }
+    normalizedRevisionIds.push(normalizedRevisionId);
+  }
+
+  return [...new Set(normalizedRevisionIds)];
 }
 
 function buildRationaleText(input: {

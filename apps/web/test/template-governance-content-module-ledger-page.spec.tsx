@@ -141,6 +141,84 @@ test("general package ledger renders reusable package table and default rule det
   assert.match(markup, /编辑默认规则/u);
 });
 
+test("package ledger renders Word table evidence blocks with revision and status", () => {
+  const markup = renderToStaticMarkup(
+    <TemplateGovernanceContentModuleLedgerPage
+      ledgerKind="general"
+      viewModel={{
+        modules: [
+          {
+            id: "general-module-1",
+            module_class: "general",
+            name: "三线表规则包",
+            category: "table",
+            manuscript_type_scope: ["clinical_study"],
+            execution_module_scope: ["editing"],
+            summary: "统一表格格式。",
+            template_usage_count: 1,
+            status: "draft",
+            created_at: "2026-04-13T12:00:00.000Z",
+            updated_at: "2026-04-13T12:00:00.000Z",
+          },
+        ],
+        selectedModuleId: "general-module-1",
+        selectedModule: {
+          id: "general-module-1",
+          module_class: "general",
+          name: "三线表规则包",
+          category: "table",
+          manuscript_type_scope: ["clinical_study"],
+          execution_module_scope: ["editing"],
+          summary: "统一表格格式。",
+          template_usage_count: 1,
+          status: "draft",
+          created_at: "2026-04-13T12:00:00.000Z",
+          updated_at: "2026-04-13T12:00:00.000Z",
+        },
+        summary: {
+          totalCount: 1,
+          draftCount: 1,
+          publishedCount: 0,
+        },
+        selectedModuleRules: [
+          {
+            assetId: "knowledge-asset-1",
+            revisionId: "knowledge-revision-1",
+            title: "三线表证据规则",
+            summary: "表格证据必须锁定。",
+            status: "approved",
+            moduleScope: "editing",
+            manuscriptTypes: ["clinical_study"],
+            bindingKind: "general_package",
+            updatedAt: "2026-04-15T12:00:00.000Z",
+            canonicalText: "表格证据必须锁定。",
+            contentBlocks: [
+              {
+                id: "block-1",
+                revision_id: "knowledge-revision-1",
+                block_type: "table_evidence_block",
+                order_no: 0,
+                status: "active",
+                content_payload: {
+                  table_evidence_asset_id: "table-asset-1",
+                  table_evidence_revision_id: "table-revision-1",
+                  revision_status: "confirmed",
+                },
+              },
+            ],
+            bindings: [],
+          },
+        ],
+      }}
+    />,
+  );
+
+  assert.match(markup, /Word 表格证据/u);
+  assert.match(markup, /table-revision-1/u);
+  assert.match(markup, /confirmed/u);
+  assert.doesNotMatch(markup, /当前文本块还没有内容/u);
+});
+
 test("medical package ledger renders inline edit form and search results when requested", () => {
   const searchState: TemplateGovernanceLedgerSearchState = {
     mode: "results",

@@ -10,7 +10,7 @@ type Assert<T extends true> = T;
 type _KnowledgeContentBlockType = Assert<
   IsEqual<
     KnowledgeContentBlock["block_type"],
-    "text_block" | "table_block" | "image_block"
+    "text_block" | "table_block" | "table_evidence_block" | "image_block"
   >
 >;
 
@@ -20,7 +20,7 @@ type _KnowledgeContentBlockShape = Assert<
     {
       id: string;
       revision_id: string;
-      block_type: "text_block" | "table_block" | "image_block";
+      block_type: "text_block" | "table_block" | "table_evidence_block" | "image_block";
       order_no: number;
       status: "active" | "archived";
       content_payload: Record<string, unknown>;

@@ -1,9 +1,15 @@
 import type { KnowledgeSourceType } from "../knowledge/index.ts";
 import { KnowledgeLibraryRichContentEditor } from "../knowledge-library/knowledge-library-rich-content-editor.tsx";
 import type {
+  KnowledgeContentBlockViewModel,
   KnowledgeUploadInput,
   KnowledgeUploadViewModel,
 } from "../knowledge-library/types.ts";
+import type {
+  TableEvidenceHttpClient,
+  TableEvidencePickerItem,
+  ConfirmedAiTablePackage,
+} from "../table-evidence/index.ts";
 import type { ManuscriptModule, ManuscriptType } from "../manuscripts/types.ts";
 import {
   EDITORIAL_KNOWLEDGE_SOURCE_TYPE_OPTIONS,
@@ -30,6 +36,9 @@ export interface TemplateGovernanceRuleWizardStepEntryProps {
   value: RuleWizardEntryFormState;
   onChange: (nextValue: RuleWizardEntryFormState) => void;
   onUploadImage?: (input: KnowledgeUploadInput) => Promise<KnowledgeUploadViewModel | void>;
+  tableEvidenceClient?: TableEvidenceHttpClient;
+  tableEvidencePickerItems?: TableEvidencePickerItem[];
+  draftRevisionId?: string;
 }
 
 const moduleOptions: ReadonlyArray<ManuscriptModule | "any"> =
@@ -47,7 +56,16 @@ export function TemplateGovernanceRuleWizardStepEntry({
   value,
   onChange,
   onUploadImage,
+  tableEvidenceClient,
+  tableEvidencePickerItems = [],
+  draftRevisionId,
 }: TemplateGovernanceRuleWizardStepEntryProps) {
+  const hasRealDraftRevisionId = isRealDraftRevisionId(draftRevisionId);
+  const enabledTableEvidenceClient = hasRealDraftRevisionId ? tableEvidenceClient : undefined;
+  const enabledTableEvidencePickerItems = hasRealDraftRevisionId
+    ? tableEvidencePickerItems
+    : [];
+
   return (
     <article className="template-governance-card template-governance-ledger-section">
       <header className="template-governance-ledger-section-header">
@@ -168,8 +186,26 @@ export function TemplateGovernanceRuleWizardStepEntry({
             </header>
             <KnowledgeLibraryRichContentEditor
               blocks={value.supplementalBlocks ?? []}
-              onChange={(supplementalBlocks) => onChange({ ...value, supplementalBlocks })}
+              onChange={(supplementalBlocks) =>
+                onChange({
+                  ...value,
+                  supplementalBlocks,
+                  tableEvidenceRevisionIds: collectTableEvidenceRevisionIds(
+                    [],
+                    supplementalBlocks,
+                  ),
+                  confirmedTablePackages: collectConfirmedTablePackages(
+                    [],
+                    supplementalBlocks,
+                  ),
+                })
+              }
               onUploadImage={onUploadImage}
+              tableEvidenceClient={enabledTableEvidenceClient}
+              tableEvidencePickerItems={enabledTableEvidencePickerItems}
+              currentRevisionId={hasRealDraftRevisionId ? draftRevisionId : undefined}
+              tableEvidenceBindingTargetType="rule_draft"
+              tableEvidenceBindingRole="source_evidence"
               compact
             />
           </section>
@@ -300,6 +336,67 @@ export function TemplateGovernanceRuleWizardStepEntry({
       </div>
     </article>
   );
+}
+
+function isRealDraftRevisionId(value: string | undefined): value is string {
+  const revisionId = value?.trim() ?? "";
+  return (
+    revisionId.length > 0 &&
+    revisionId !== "draft-revision" &&
+    revisionId !== "local-draft"
+  );
+}
+
+function collectTableEvidenceRevisionIds(
+  current: readonly string[],
+  blocks: readonly KnowledgeContentBlockViewModel[],
+): string[] {
+  const revisionIds = blocks
+    .filter((block) => block.block_type === "table_evidence_block")
+    .map((block) =>
+      typeof block.content_payload.table_evidence_revision_id === "string"
+        ? block.content_payload.table_evidence_revision_id
+        : "",
+    );
+
+  return [...new Set([...current, ...revisionIds].filter((value) => value.trim().length > 0))];
+}
+
+function collectConfirmedTablePackages(
+  current: readonly ConfirmedAiTablePackage[],
+  blocks: readonly KnowledgeContentBlockViewModel[],
+): ConfirmedAiTablePackage[] {
+  const seen = new Set<string>();
+  const merged: ConfirmedAiTablePackage[] = [];
+
+  for (const tablePackage of [
+    ...current,
+    ...blocks
+      .filter((block) => block.block_type === "table_evidence_block")
+      .map((block) => asConfirmedTablePackage(block.content_payload.confirmed_table_package))
+      .filter((tablePackage): tablePackage is ConfirmedAiTablePackage => tablePackage != null),
+  ]) {
+    if (seen.has(tablePackage.revision_id)) {
+      continue;
+    }
+
+    seen.add(tablePackage.revision_id);
+    merged.push(tablePackage);
+  }
+
+  return merged;
+}
+
+function asConfirmedTablePackage(value: unknown): ConfirmedAiTablePackage | null {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const candidate = value as Partial<ConfirmedAiTablePackage>;
+  return typeof candidate.revision_id === "string" &&
+    typeof candidate.authority === "string"
+    ? (value as ConfirmedAiTablePackage)
+    : null;
 }
 
 function RuleWizardMultiSelectField(props: {

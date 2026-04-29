@@ -154,6 +154,8 @@ function buildSupportedMedicalTable(): DocumentStructureTableSnapshot {
                 id: "frag-1",
                 kind: "text",
                 text: "年龄",
+                codepoints: [],
+                invisible_chars: [],
                 style: {
                   font_family: authoritativeString,
                   font_size_pt: authoritativeNumber,

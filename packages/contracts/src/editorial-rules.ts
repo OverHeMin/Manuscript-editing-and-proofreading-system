@@ -62,6 +62,7 @@ export interface EditorialRuleLinkagePayload {
   source_snapshot_asset_id?: string;
   projected_knowledge_item_ids?: string[];
   overrides_rule_ids?: string[];
+  table_evidence_revision_ids?: string[];
 }
 
 export interface EditorialRuleProjectionPayload {

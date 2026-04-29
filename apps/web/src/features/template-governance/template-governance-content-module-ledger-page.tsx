@@ -477,6 +477,30 @@ function renderRuleBlock(block: TemplateGovernanceContentModuleRuleSummary["cont
     );
   }
 
+  if (block.block_type === "table_evidence_block") {
+    const revisionId =
+      typeof block.content_payload.table_evidence_revision_id === "string"
+        ? block.content_payload.table_evidence_revision_id
+        : "未选择";
+    const revisionStatus =
+      typeof block.content_payload.revision_status === "string"
+        ? block.content_payload.revision_status
+        : "未加载";
+
+    return (
+      <dl className="template-governance-detail-grid">
+        <div>
+          <dt>Revision</dt>
+          <dd>{revisionId}</dd>
+        </div>
+        <div>
+          <dt>Status</dt>
+          <dd>{revisionStatus}</dd>
+        </div>
+      </dl>
+    );
+  }
+
   const label =
     typeof block.content_payload.label === "string" ? block.content_payload.label : "";
   const text =
@@ -493,6 +517,8 @@ function formatRuleBlockTitle(
       return "文本内容";
     case "table_block":
       return "表格内容";
+    case "table_evidence_block":
+      return "Word 表格证据";
     case "image_block":
       return "图片内容";
     default:

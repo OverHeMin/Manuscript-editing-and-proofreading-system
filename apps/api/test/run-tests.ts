@@ -32,9 +32,16 @@ const selectedFiles =
   scopeFilters.length === 0
     ? specFiles
     : specFiles.filter((filePath) => {
-        const normalized = filePath.toLowerCase();
+        const packagePath = path
+          .join(path.basename(packageRoot), path.relative(packageRoot, filePath))
+          .toLowerCase();
+        const relativePath = path.relative(testRoot, filePath).toLowerCase();
 
-        return scopeFilters.some((scope) => normalized.includes(`${path.sep}${scope}${path.sep}`) || normalized.includes(scope));
+        return scopeFilters.some(
+          (scope) =>
+            relativePath.includes(`${path.sep}${scope}${path.sep}`) ||
+            packagePath.includes(scope),
+        );
       });
 
 if (selectedFiles.length === 0) {
@@ -46,17 +53,25 @@ if (selectedFiles.length === 0) {
   process.exit(1);
 }
 
-const result = spawnSync(
-  process.execPath,
-  ["--import", "tsx", "--test", ...selectedFiles],
-  {
-    cwd: packageRoot,
-    stdio: "inherit",
-  },
-);
+let exitStatus = 0;
 
-if (result.error) {
-  throw result.error;
+for (const selectedFile of selectedFiles) {
+  const result = spawnSync(
+    process.execPath,
+    ["--import", "tsx", "--test", selectedFile],
+    {
+      cwd: packageRoot,
+      stdio: "inherit",
+    },
+  );
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  if ((result.status ?? 1) !== 0) {
+    exitStatus = result.status ?? 1;
+  }
 }
 
-process.exit(result.status ?? 1);
+process.exit(exitStatus);

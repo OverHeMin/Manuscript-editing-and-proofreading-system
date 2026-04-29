@@ -1,5 +1,6 @@
 import type { ManuscriptType } from "./manuscript.js";
 import type { ModuleType } from "./templates.js";
+import type { ConfirmedAiTablePackage } from "./table-evidence.js";
 
 export type RuleAiIntakeSourceKind = "manual_description";
 
@@ -44,10 +45,12 @@ export interface RuleAiEvidenceItem {
     | "document_excerpt"
     | "diff_excerpt"
     | "table_snapshot"
+    | "confirmed_table_package"
     | "image_understanding";
   text?: string;
   source_id?: string;
   authority?: "authoritative" | "review_required" | "unavailable";
+  confirmed_table_package?: ConfirmedAiTablePackage;
 }
 
 export interface RuleAiConfidenceMap {
@@ -118,6 +121,7 @@ export interface RuleAiIntakeDraftResponse {
 }
 
 export interface RuleAiParsingRequest {
+  parse_mode?: "draft" | "publish" | "final";
   rule_fields: {
     title?: string;
     rule_body: string;

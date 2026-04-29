@@ -82,9 +82,8 @@ if (typeof document !== "undefined") {
   void import("./knowledge-library-ledger-page.css");
 }
 
-const defaultController = createKnowledgeLibraryWorkbenchController(
-  createBrowserHttpClient(),
-);
+const defaultHttpClient = createBrowserHttpClient();
+const defaultController = createKnowledgeLibraryWorkbenchController(defaultHttpClient);
 
 interface LedgerBindingCatalog {
   templateFamilyOptions: SearchableMultiSelectOption[];
@@ -1061,6 +1060,9 @@ export function KnowledgeLibraryLedgerPage({
               )
             }
             onUploadImage={(input) => handleUploadInlineImage(input)}
+            tableEvidenceClient={
+              composer.persistedRevisionId ? defaultHttpClient : undefined
+            }
             onSelectFiles={(files) => void handleUploadFiles(files)}
             onRemoveAttachment={(blockId) =>
               setComposer((current) =>

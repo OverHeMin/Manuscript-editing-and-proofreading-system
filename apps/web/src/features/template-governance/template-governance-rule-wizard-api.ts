@@ -44,6 +44,7 @@ import type {
   ManuscriptQualityPackageKind,
   ManuscriptQualityPackageViewModel,
 } from "../manuscript-quality-packages/types.ts";
+import type { ConfirmedAiTablePackage } from "../table-evidence/index.ts";
 import {
   formatQualityPackageBindingDisplayLabel,
   formatQualityPackageExactBindingLabel,
@@ -73,6 +74,8 @@ export interface RuleWizardEntryFormState {
   packageHints: string[];
   candidateOnly: boolean;
   conflictNotes: string;
+  tableEvidenceRevisionIds: string[];
+  confirmedTablePackages: ConfirmedAiTablePackage[];
   supplementalBlocks?: KnowledgeContentBlockViewModel[];
 }
 
@@ -93,6 +96,8 @@ export interface RuleWizardEntryFormStateInput {
   packageHints?: RuleWizardStringListInput;
   candidateOnly?: boolean;
   conflictNotes?: string;
+  tableEvidenceRevisionIds?: RuleWizardStringListInput;
+  confirmedTablePackages?: readonly ConfirmedAiTablePackage[];
   supplementalBlocks?: readonly KnowledgeContentBlockViewModel[];
 }
 
@@ -216,6 +221,14 @@ export interface RuleWizardPublishFormState {
   reviewNote: string;
 }
 
+export interface RuleWizardPublishRevisionBody {
+  actorRole: "admin";
+  reviewNote?: string;
+  linkagePayload?: {
+    table_evidence_revision_ids?: string[];
+  };
+}
+
 export interface RuleWizardBindingDraftResult {
   detail: KnowledgeAssetDetailViewModel;
   bindingInputs: KnowledgeRevisionBindingInput[];
@@ -243,6 +256,11 @@ export interface RuleWizardEvidenceGateSummary {
 export function createRuleWizardEntryFormState(
   input: RuleWizardEntryFormStateInput = {},
 ): RuleWizardEntryFormState {
+  const supplementalBlocks = normalizeSupplementalBlocks(
+    input.supplementalBlocks ?? [],
+    "draft-revision",
+    0,
+  );
   return {
     title: input.title ?? "",
     moduleScope: input.moduleScope ?? "editing",
@@ -262,11 +280,15 @@ export function createRuleWizardEntryFormState(
     packageHints: normalizeRuleWizardStringList(input.packageHints),
     candidateOnly: input.candidateOnly ?? false,
     conflictNotes: input.conflictNotes ?? "",
-    supplementalBlocks: normalizeSupplementalBlocks(
-      input.supplementalBlocks ?? [],
-      "draft-revision",
-      0,
+    tableEvidenceRevisionIds: mergeRuleWizardStringLists(
+      normalizeRuleWizardStringList(input.tableEvidenceRevisionIds),
+      collectTableEvidenceRevisionIdsFromBlocks(supplementalBlocks),
     ),
+    confirmedTablePackages: mergeConfirmedTablePackages(
+      input.confirmedTablePackages ?? [],
+      collectConfirmedTablePackagesFromBlocks(supplementalBlocks),
+    ),
+    supplementalBlocks,
   };
 }
 
@@ -361,8 +383,8 @@ export function createRuleWizardAiParsingInput(
   form: RuleWizardEntryFormState | RuleWizardEntryFormStateInput,
 ): RuleAiParsingRequestViewModel {
   const normalizedForm = createRuleWizardEntryFormState(form);
-  const evidence =
-    normalizedForm.sourceBasis.trim().length > 0
+  const evidence = [
+    ...(normalizedForm.sourceBasis.trim().length > 0
       ? [
           {
             kind: "user_description" as const,
@@ -370,7 +392,14 @@ export function createRuleWizardAiParsingInput(
             authority: "review_required" as const,
           },
         ]
-      : undefined;
+      : []),
+    ...normalizedForm.confirmedTablePackages.map((tablePackage) => ({
+      kind: "confirmed_table_package" as const,
+      source_id: tablePackage.revision_id,
+      authority: tablePackage.authority,
+      confirmed_table_package: tablePackage,
+    })),
+  ];
 
   return {
     rule_fields: {
@@ -379,7 +408,7 @@ export function createRuleWizardAiParsingInput(
       module_scope: toRuleAiParsingModuleScope(normalizedForm.moduleScope),
       manuscript_types: normalizedForm.manuscriptTypes,
       sections: normalizedForm.sections,
-      ...(evidence ? { evidence } : {}),
+      ...(evidence.length > 0 ? { evidence } : {}),
     },
   };
 }
@@ -852,17 +881,36 @@ export async function publishRuleWizardRevision(
   client: KnowledgeLibraryHttpClient,
   revisionId: string,
   reviewNote?: string,
+  form?: RuleWizardEntryFormState | RuleWizardEntryFormStateInput,
 ): Promise<KnowledgeAssetDetailViewModel> {
   return (
     await client.request<KnowledgeAssetDetailViewModel>({
       method: "POST",
       url: `/api/v1/knowledge/revisions/${revisionId}/approve`,
-      body: {
-        actorRole: "admin",
-        reviewNote,
-      },
+      body: createRuleWizardPublishRevisionBody({ reviewNote, form }),
     })
   ).body;
+}
+
+export function createRuleWizardPublishRevisionBody(input: {
+  reviewNote?: string;
+  form?: RuleWizardEntryFormState | RuleWizardEntryFormStateInput;
+}): RuleWizardPublishRevisionBody {
+  const tableEvidenceRevisionIds = input.form
+    ? createRuleWizardEntryFormState(input.form).tableEvidenceRevisionIds
+    : [];
+
+  return {
+    actorRole: "admin",
+    reviewNote: input.reviewNote,
+    ...(tableEvidenceRevisionIds.length > 0
+      ? {
+          linkagePayload: {
+            table_evidence_revision_ids: tableEvidenceRevisionIds,
+          },
+        }
+      : {}),
+  };
 }
 
 function createLegacyRuleDraftContentBlocks(
@@ -1527,6 +1575,10 @@ function createRuleWizardEvidenceGateItems(
   block: KnowledgeContentBlockViewModel,
   releaseAction: RuleWizardReleaseAction,
 ): RuleWizardEvidenceGateItem[] {
+  if (block.block_type === "table_evidence_block") {
+    return [createRuleWizardTableEvidenceBlockGateItem(block, releaseAction)];
+  }
+
   if (block.block_type === "table_block") {
     const item = createRuleWizardTableEvidenceGateItem(block, releaseAction);
     return item ? [item] : [];
@@ -1540,6 +1592,109 @@ function createRuleWizardEvidenceGateItems(
   return [];
 }
 
+function mergeRuleWizardStringLists(
+  left: readonly string[],
+  right: readonly string[],
+): string[] {
+  return [...new Set([...left, ...right].map((value) => value.trim()))].filter(
+    (value) => value.length > 0,
+  );
+}
+
+function collectTableEvidenceRevisionIdsFromBlocks(
+  blocks: readonly KnowledgeContentBlockViewModel[],
+): string[] {
+  return blocks
+    .filter((block) => block.block_type === "table_evidence_block")
+    .map((block) => {
+      const payload = asRuleWizardOptionalRecord(block.content_payload);
+      return readRuleWizardRecordString(payload, "table_evidence_revision_id");
+    })
+    .filter((revisionId) => revisionId.length > 0);
+}
+
+function collectConfirmedTablePackagesFromBlocks(
+  blocks: readonly KnowledgeContentBlockViewModel[],
+): ConfirmedAiTablePackage[] {
+  return blocks
+    .filter((block) => block.block_type === "table_evidence_block")
+    .map((block) => asConfirmedTablePackage(block.content_payload.confirmed_table_package))
+    .filter((tablePackage): tablePackage is ConfirmedAiTablePackage => tablePackage != null);
+}
+
+function mergeConfirmedTablePackages(
+  left: readonly ConfirmedAiTablePackage[],
+  right: readonly ConfirmedAiTablePackage[],
+): ConfirmedAiTablePackage[] {
+  const seen = new Set<string>();
+  const merged: ConfirmedAiTablePackage[] = [];
+
+  for (const tablePackage of [...left, ...right]) {
+    if (seen.has(tablePackage.revision_id)) {
+      continue;
+    }
+
+    seen.add(tablePackage.revision_id);
+    merged.push(tablePackage);
+  }
+
+  return merged;
+}
+
+function asConfirmedTablePackage(value: unknown): ConfirmedAiTablePackage | null {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const candidate = value as Partial<ConfirmedAiTablePackage>;
+  return typeof candidate.revision_id === "string" &&
+    typeof candidate.authority === "string"
+    ? (value as ConfirmedAiTablePackage)
+    : null;
+}
+
+function createRuleWizardTableEvidenceBlockGateItem(
+  block: KnowledgeContentBlockViewModel,
+  releaseAction: RuleWizardReleaseAction,
+): RuleWizardEvidenceGateItem {
+  const payload = asRuleWizardOptionalRecord(block.content_payload) ?? {};
+  const revisionId = readRuleWizardRecordString(payload, "table_evidence_revision_id");
+  const revisionStatus = readRuleWizardRecordString(payload, "revision_status");
+  const failures = [
+    ...(revisionId.length === 0 ? ["缺少表格证据 revision id"] : []),
+    ...(revisionStatus !== "confirmed" ? ["表格证据状态未确认"] : []),
+  ];
+  const blocking = releaseAction !== "save_draft" && failures.length > 0;
+  const statusLabel = blocking
+    ? releaseAction === "publish_now"
+      ? "阻断直接发布"
+      : "阻断提交审核"
+    : failures.length > 0
+      ? "需复核"
+      : releaseAction === "publish_now"
+        ? "可直接发布"
+        : releaseAction === "submit_review"
+          ? "可提交审核"
+          : "草稿可保存";
+  const detail =
+    failures.length > 0
+      ? failures.join(" / ")
+      : `表格证据已确认：${revisionId}`;
+
+  return {
+    blockId: block.id,
+    blockType: block.block_type,
+    orderNo: block.order_no,
+    title: `Word 表格证据 #${block.order_no + 1}`,
+    statusLabel,
+    detail:
+      releaseAction === "save_draft" && failures.length > 0
+        ? `当前可先存草稿，正式提交前仍需补齐：${detail}`
+        : detail,
+    blocking,
+  };
+}
+
 function createRuleWizardTableEvidenceGateItem(
   block: KnowledgeContentBlockViewModel,
   releaseAction: RuleWizardReleaseAction,
@@ -1550,17 +1705,11 @@ function createRuleWizardTableEvidenceGateItem(
 
   const tableSemantics = asRuleWizardOptionalRecord(block.table_semantics);
   const payload = asRuleWizardOptionalRecord(block.content_payload) ?? {};
-  const exactCaptureAuthoritative =
-    readRuleWizardRecordBoolean(tableSemantics, "exact_capture_authoritative") === true;
   const failureCodes = uniqueRuleWizardStrings([
     ...readRuleWizardRecordStringArray(tableSemantics, "exact_capture_failure_codes"),
     ...readRuleWizardRecordStringArray(payload, "exact_capture_failure_codes"),
   ]);
-  const hasFailureMetadata =
-    hasRuleWizardRecordKey(tableSemantics, "exact_capture_failure_codes") ||
-    hasRuleWizardRecordKey(payload, "exact_capture_failure_codes");
-  const isReady =
-    exactCaptureAuthoritative || (hasFailureMetadata && failureCodes.length === 0);
+  const isReady = false;
   const blocking = releaseAction !== "save_draft" && !isReady;
   const statusLabel = blocking
     ? releaseAction === "publish_now"
@@ -1574,9 +1723,7 @@ function createRuleWizardTableEvidenceGateItem(
   const detail =
     failureCodes.length > 0
       ? failureCodes.map(formatRuleWizardTableFailureCodeLabel).join(" / ")
-      : isReady
-        ? "已满足权威 exact-capture。"
-        : "缺少 exact-capture 确认。";
+      : "请改用已确认的 Word 表格证据。";
 
   return {
     blockId: block.id,
@@ -1641,22 +1788,7 @@ function createRuleWizardImageEvidenceGateItem(
 function requiresRuleWizardTableEvidenceGate(
   block: KnowledgeContentBlockViewModel,
 ): boolean {
-  if (block.block_type !== "table_block") {
-    return false;
-  }
-
-  const payload = asRuleWizardOptionalRecord(block.content_payload);
-  const tableSemantics = asRuleWizardOptionalRecord(block.table_semantics);
-
-  return (
-    hasRuleWizardRecordKey(payload, "capture_mode") ||
-    hasRuleWizardRecordKey(payload, "capture_environment") ||
-    hasRuleWizardRecordKey(payload, "source_application") ||
-    hasRuleWizardRecordKey(payload, "exact_capture_failure_codes") ||
-    hasRuleWizardRecordKey(tableSemantics, "capture_mode") ||
-    hasRuleWizardRecordKey(tableSemantics, "exact_capture_authoritative") ||
-    hasRuleWizardRecordKey(tableSemantics, "exact_capture_failure_codes")
-  );
+  return block.block_type === "table_block";
 }
 
 function requiresRuleWizardVisualSymbolEvidenceGate(
@@ -1781,27 +1913,12 @@ function asRuleWizardOptionalRecord(
     : undefined;
 }
 
-function hasRuleWizardRecordKey(
-  value: Record<string, unknown> | undefined,
-  key: string,
-): boolean {
-  return value != null && Object.prototype.hasOwnProperty.call(value, key);
-}
-
 function readRuleWizardRecordString(
   value: Record<string, unknown> | undefined,
   key: string,
 ): string {
   const candidate = value?.[key];
   return typeof candidate === "string" ? candidate : "";
-}
-
-function readRuleWizardRecordBoolean(
-  value: Record<string, unknown> | undefined,
-  key: string,
-): boolean | undefined {
-  const candidate = value?.[key];
-  return typeof candidate === "boolean" ? candidate : undefined;
 }
 
 function readRuleWizardRecordStringArray(

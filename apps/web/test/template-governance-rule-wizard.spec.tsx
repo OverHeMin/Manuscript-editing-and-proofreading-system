@@ -204,7 +204,8 @@ test("rule wizard shell renders shared step navigation and closeout actions", ()
   assert.match(markup, /来源依据/u);
   assert.match(markup, /展开高级标签/u);
   assert.match(markup, /添加补充文字/u);
-  assert.match(markup, /添加表格/u);
+  assert.match(markup, /Word 表格证据/u);
+  assert.doesNotMatch(markup, /data-block-action="add-table"/u);
   assert.match(markup, /添加图片或截图/u);
   assert.doesNotMatch(markup, /先带入候选并整理规则草稿/u);
   assert.doesNotMatch(markup, /当前步骤聚焦/u);
@@ -923,6 +924,36 @@ test("rule wizard evidence gate summary blocks non-authoritative exact-capture t
   assert.equal(summary.items[0]?.statusLabel, "阻断提交审核");
   assert.match(summary.items[0]?.detail ?? "", /不是权威 exact-capture/u);
   assert.match(summary.blockingMessage ?? "", /表格块 #1/u);
+});
+
+test("rule wizard evidence gate summary blocks legacy authoritative table flags before review submission", () => {
+  const summary = createRuleWizardEvidenceGateSummary({
+    releaseAction: "submit_review",
+    blocks: [
+      {
+        id: "table-block-1",
+        revision_id: "knowledge-1-revision-1",
+        block_type: "table_block",
+        order_no: 0,
+        status: "active",
+        content_payload: {
+          rows: [["列 1", "列 2"]],
+          capture_mode: "html_table_clipboard",
+          exact_capture_failure_codes: [],
+        },
+        table_semantics: {
+          snapshot_type: "table_style_snapshot",
+          exact_capture_authoritative: true,
+          exact_capture_failure_codes: [],
+        },
+      },
+    ],
+  });
+
+  assert.equal(summary.hasBlockingIssues, true);
+  assert.equal(summary.blockingItemCount, 1);
+  assert.equal(summary.items[0]?.statusLabel, "阻断提交审核");
+  assert.match(summary.items[0]?.detail ?? "", /Word 表格证据/u);
 });
 
 test("rule wizard evidence gate summary allows pending-review symbol snapshots for review but blocks direct publish", () => {

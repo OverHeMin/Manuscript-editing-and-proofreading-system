@@ -49,7 +49,7 @@ test("knowledge library evidence gate blocks submit review when exact-capture or
   assert.match(summary.blockingMessage ?? "", /表格块 #1/u);
 });
 
-test("knowledge library evidence gate keeps draft save non-blocking and marks ready submit-review evidence", () => {
+test("knowledge library evidence gate keeps draft save non-blocking and blocks legacy table authority flags", () => {
   const saveDraftSummary = createKnowledgeLibraryEvidenceGateSummary({
     releaseAction: "save_draft",
     blocks: [
@@ -116,9 +116,91 @@ test("knowledge library evidence gate keeps draft save non-blocking and marks re
   });
 
   assert.equal(readySubmitSummary.itemCount, 2);
-  assert.equal(readySubmitSummary.hasBlockingIssues, false);
-  assert.equal(readySubmitSummary.readyItemCount, 2);
-  assert.equal(readySubmitSummary.items[0]?.statusLabel, "可提交审核");
+  assert.equal(readySubmitSummary.hasBlockingIssues, true);
+  assert.equal(readySubmitSummary.readyItemCount, 1);
+  assert.equal(readySubmitSummary.blockingItemCount, 1);
+  assert.equal(readySubmitSummary.items[0]?.statusLabel, "阻断提交审核");
+  assert.match(readySubmitSummary.items[0]?.detail ?? "", /Word 表格证据/u);
   assert.equal(readySubmitSummary.items[1]?.statusLabel, "可提交审核");
-  assert.equal(readySubmitSummary.blockingMessage, null);
+  assert.match(readySubmitSummary.blockingMessage ?? "", /表格块 #1/u);
+});
+
+test("knowledge library evidence gate allows confirmed table evidence blocks", () => {
+  const summary = createKnowledgeLibraryEvidenceGateSummary({
+    releaseAction: "submit_review",
+    blocks: [
+      {
+        id: "table-evidence-1",
+        revision_id: "revision-1",
+        block_type: "table_evidence_block",
+        order_no: 0,
+        status: "active",
+        content_payload: {
+          table_evidence_asset_id: "asset-1",
+          table_evidence_revision_id: "table-revision-1",
+          revision_status: "confirmed",
+        },
+      },
+    ],
+  });
+
+  assert.equal(summary.itemCount, 1);
+  assert.equal(summary.hasBlockingIssues, false);
+  assert.equal(summary.readyItemCount, 1);
+  assert.equal(summary.items[0]?.statusLabel, "可提交审核");
+});
+
+test("knowledge library evidence gate blocks unconfirmed or unloaded table evidence status", () => {
+  const summary = createKnowledgeLibraryEvidenceGateSummary({
+    releaseAction: "submit_review",
+    blocks: [
+      {
+        id: "table-evidence-1",
+        revision_id: "revision-1",
+        block_type: "table_evidence_block",
+        order_no: 0,
+        status: "active",
+        content_payload: {
+          table_evidence_asset_id: "asset-1",
+          table_evidence_revision_id: "table-revision-1",
+          revision_status: "pending",
+        },
+      },
+      {
+        id: "table-evidence-2",
+        revision_id: "revision-1",
+        block_type: "table_evidence_block",
+        order_no: 1,
+        status: "active",
+        content_payload: {
+          table_evidence_asset_id: "asset-2",
+          table_evidence_revision_id: "table-revision-2",
+          revision_status: "needs_review",
+        },
+      },
+      {
+        id: "table-evidence-3",
+        revision_id: "revision-1",
+        block_type: "table_evidence_block",
+        order_no: 2,
+        status: "active",
+        content_payload: {
+          table_evidence_asset_id: "asset-3",
+          table_evidence_revision_id: "table-revision-3",
+        },
+        table_semantics: {
+          exact_capture_authoritative: true,
+        },
+      },
+    ],
+  });
+
+  assert.equal(summary.itemCount, 3);
+  assert.equal(summary.blockingItemCount, 3);
+  assert.equal(summary.hasBlockingIssues, true);
+  assert.match(summary.items[0]?.detail ?? "", /表格证据状态未确认/u);
+  assert.match(summary.items[1]?.detail ?? "", /表格证据状态未确认/u);
+  assert.match(summary.items[2]?.detail ?? "", /表格证据状态未确认/u);
+  assert.doesNotMatch(summary.items[2]?.detail ?? "", /exact-capture/u);
+  assert.match(summary.blockingMessage ?? "", /高精度证据/u);
 });

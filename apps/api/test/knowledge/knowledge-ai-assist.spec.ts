@@ -128,6 +128,66 @@ test("knowledge ai assist returns semantic patch suggestions without mutating th
   assert.equal(afterRevision.selected_revision.summary, "Initial summary");
 });
 
+test("knowledge ai assist passes confirmed table evidence packages to the generator", async () => {
+  const { repository, knowledgeService } = createKnowledgeAiAssistHarness();
+  const created = await knowledgeService.createLibraryDraft({
+    title: "Three-line table rule",
+    canonicalText: "Clinical tables should preserve confirmed rich table evidence.",
+    knowledgeKind: "reference",
+    moduleScope: "editing",
+    manuscriptTypes: ["clinical_study"],
+  });
+  const confirmedPackage = {
+    authority: "authoritative",
+    table_evidence_revision_id: "rev-confirmed",
+    facts: {
+      layout: {
+        preserve_boundaries: true,
+      },
+    },
+  };
+  let capturedInput: Record<string, unknown> | undefined;
+
+  const service = new KnowledgeAiAssistService({
+    repository,
+    tableEvidenceService: {
+      async assertConfirmedRevision() {
+        throw new Error("not used in this test");
+      },
+      async resolveConfirmedPackagesForTarget(targetType, targetId) {
+        assert.equal(targetType, "knowledge_revision");
+        assert.equal(targetId, created.selected_revision.id);
+        return [confirmedPackage] as never;
+      },
+    },
+    generator: {
+      async createIntakeSuggestion() {
+        throw new Error("not used in this test");
+      },
+      async assistSemanticLayer(input) {
+        capturedInput = input as unknown as Record<string, unknown>;
+        return {
+          suggestedSemanticLayer: {
+            pageSummary: "Use confirmed package evidence only.",
+          },
+          warnings: [],
+        };
+      },
+    },
+  });
+
+  await service.assistSemanticLayer({
+    revisionId: created.selected_revision.id,
+    instructionText: "Summarize confirmed table handling.",
+  });
+
+  assert.deepEqual(capturedInput?.confirmedTablePackages, [confirmedPackage]);
+  assert.match(
+    String(capturedInput?.tableEvidenceInstruction ?? ""),
+    /Use confirmed_table_packages as authoritative table evidence/u,
+  );
+});
+
 test("knowledge ai assist fails with an explicit unavailable error when no generator is configured", async () => {
   const { repository } = createKnowledgeAiAssistHarness();
   const service = new KnowledgeAiAssistService({
@@ -143,6 +203,107 @@ test("knowledge ai assist fails with an explicit unavailable error when no gener
       assert.ok(error instanceof KnowledgeAiAssistUnavailableError);
       return true;
     },
+  );
+});
+
+test("openai knowledge ai assist includes confirmed table evidence packages in semantic requests", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+  const confirmedPackage = {
+    authority: "authoritative",
+    table_evidence_revision_id: "rev-confirmed",
+    facts: {
+      typography: {
+        preserve_superscript: true,
+      },
+    },
+  };
+  const generator = new OpenAiKnowledgeAiAssistGenerator({
+    aiGatewayService: {
+      async resolveModelSelection() {
+        return {} as never;
+      },
+    },
+    aiProviderRuntimeService: {
+      async resolveSelectionRuntime() {
+        return {
+          primary: {
+            request_url: "http://example.test/v1/chat/completions",
+            headers: {
+              Authorization: "Bearer test-key",
+              "Content-Type": "application/json",
+            },
+            model_name: "gpt-4o-mini",
+          },
+        } as never;
+      },
+    },
+    fetch: async (_url, init) => {
+      capturedBody = JSON.parse(String(init?.body ?? "{}")) as Record<
+        string,
+        unknown
+      >;
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  suggestedSemanticLayer: {
+                    pageSummary: "Operator-ready semantic summary",
+                  },
+                  warnings: [],
+                }),
+              },
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      );
+    },
+  });
+
+  await generator.assistSemanticLayer({
+    revision: {
+      id: "revision-1",
+      asset_id: "knowledge-1",
+      revision_no: 1,
+      status: "draft",
+      title: "Three-line table rule",
+      canonical_text: "Clinical tables should preserve confirmed rich table evidence.",
+      knowledge_kind: "reference",
+      routing: {
+        module_scope: "editing",
+        manuscript_types: ["clinical_study"],
+      },
+      created_at: "2026-04-13T09:00:00.000Z",
+      updated_at: "2026-04-13T09:00:00.000Z",
+    },
+    contentBlocks: [],
+    instructionText: "Analyze confirmed table evidence.",
+    confirmedTablePackages: [confirmedPackage] as never,
+    tableEvidenceInstruction:
+      "Use confirmed_table_packages as authoritative table evidence.",
+  });
+
+  if (!capturedBody) {
+    throw new Error("Expected AI request payload to be captured.");
+  }
+  const messages = (capturedBody as { messages: Array<Record<string, unknown>> })
+    .messages;
+  const userPayload = JSON.parse(String(messages[1]?.content ?? "{}")) as Record<
+    string,
+    unknown
+  >;
+
+  assert.deepEqual(userPayload.confirmed_table_packages, [confirmedPackage]);
+  assert.match(
+    String(userPayload.table_evidence_instruction ?? ""),
+    /Use confirmed_table_packages as authoritative table evidence/u,
   );
 });
 

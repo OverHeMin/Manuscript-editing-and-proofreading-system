@@ -769,7 +769,7 @@ function normalizeGridCells(
     const inferredRole = readOptionalString(record.inferred_role);
     const gridCell: DocumentStructureTableGridCell = {
       id,
-      text: readOptionalString(record.text) ?? "",
+      text: readGuaranteeString(record.text) ?? "",
       row_index: readOptionalNumber(record.row_index) ?? 0,
       column_index: readOptionalNumber(record.column_index) ?? 0,
       row_span: readOptionalNumber(record.row_span) ?? 1,
@@ -784,7 +784,7 @@ function normalizeGridCells(
       style_evidence: normalizeCellStyleEvidence(record.style_evidence),
       paragraphs: normalizeParagraphSnapshots(record.paragraphs) ?? [],
     };
-    const displayText = readOptionalString(record.display_text);
+    const displayText = readGuaranteeString(record.display_text);
     const normalizedText = readOptionalString(record.normalized_text);
     const rawXmlText = readOptionalString(record.raw_xml_text);
     const styleRuns = normalizeTableStyleRuns(record.style_runs);
@@ -898,12 +898,19 @@ function normalizeParagraphSnapshots(
   value.forEach((entry, index) => {
     const record = isRecord(entry) ? entry : {};
     const paragraphId = readOptionalString(record.id) ?? `paragraph-${index + 1}`;
-    paragraphs.push({
+    const paragraph: DocumentStructureTableParagraphSnapshot = {
       id: paragraphId,
-      text: readOptionalString(record.text) ?? "",
+      text: readGuaranteeString(record.text) ?? "",
       style: normalizeParagraphStyleEvidence(record.style),
       fragments: normalizeInlineFragments(record.fragments, paragraphId) ?? [],
-    });
+    };
+    if (typeof record.paragraph_boundary_after === "boolean") {
+      paragraph.paragraph_boundary_after = record.paragraph_boundary_after;
+    }
+    if (isParagraphBoundary(record.paragraph_boundary)) {
+      paragraph.paragraph_boundary = record.paragraph_boundary;
+    }
+    paragraphs.push(paragraph);
   });
 
   return paragraphs;
@@ -922,7 +929,7 @@ function normalizeInlineFragments(
   value.forEach((entry, index) => {
     const record = isRecord(entry) ? entry : {};
     const kind = readOptionalString(record.kind);
-    fragments.push({
+    const fragment: DocumentStructureTableInlineFragment = {
       id: readOptionalString(record.id) ?? `${paragraphId}-fragment-${index + 1}`,
       kind:
         kind === "text" ||
@@ -932,7 +939,9 @@ function normalizeInlineFragments(
         kind === "object"
           ? kind
           : "text",
-      text: typeof record.text === "string" ? record.text : "",
+      text: readGuaranteeString(record.text) ?? "",
+      codepoints: normalizeStringArray(record.codepoints),
+      invisible_chars: normalizeInvisibleChars(record.invisible_chars),
       style: normalizeInlineStyleEvidence(record.style),
       ...(readOptionalString(record.symbol_font)
         ? { symbol_font: readOptionalString(record.symbol_font) }
@@ -959,7 +968,8 @@ function normalizeInlineFragments(
       ...(readOptionalString(record.evidence_text)
         ? { evidence_text: readOptionalString(record.evidence_text) }
         : {}),
-    });
+    };
+    fragments.push(fragment);
   });
 
   return fragments;
@@ -1148,6 +1158,50 @@ function normalizeStringArray(value: unknown): string[] {
   return value
     .map((entry) => readOptionalString(entry))
     .filter((entry): entry is string => Boolean(entry));
+}
+
+function normalizeInvisibleChars(
+  value: unknown,
+): NonNullable<DocumentStructureTableInlineFragment["invisible_chars"]> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry) => {
+      const record = isRecord(entry) ? entry : {};
+      const kind = readOptionalString(record.kind);
+      const codepoint = readOptionalString(record.codepoint);
+      const offset = readOptionalNumber(record.offset);
+      const length = readOptionalNumber(record.length);
+      if (
+        kind === undefined ||
+        codepoint === undefined ||
+        offset === undefined ||
+        length === undefined
+      ) {
+        return undefined;
+      }
+      return { kind, codepoint, offset, length };
+    })
+    .filter(
+      (
+        entry,
+      ): entry is NonNullable<
+        DocumentStructureTableInlineFragment["invisible_chars"]
+      >[number] => Boolean(entry),
+    );
+}
+
+function isParagraphBoundary(
+  value: unknown,
+): value is NonNullable<DocumentStructureTableParagraphSnapshot["paragraph_boundary"]> {
+  const record = isRecord(value) ? value : {};
+  return record.kind === "paragraph_boundary" && record.codepoint === "PARA";
+}
+
+function readGuaranteeString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
 }
 
 function readOptionalString(value: unknown): string | undefined {

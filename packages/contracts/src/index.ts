@@ -2,6 +2,7 @@ export * from "./manuscript.js";
 export * from "./assets.js";
 export * from "./document-pipeline.js";
 export * from "./table-semantics.js";
+export * from "./table-evidence.js";
 export * from "./agent-tooling.js";
 export * from "./templates.js";
 export * from "./knowledge.js";

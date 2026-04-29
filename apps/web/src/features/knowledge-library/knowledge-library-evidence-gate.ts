@@ -60,6 +60,10 @@ function createKnowledgeLibraryEvidenceGateItems(
     return item ? [item] : [];
   }
 
+  if (block.block_type === "table_evidence_block") {
+    return [createKnowledgeLibraryTableEvidenceRevisionGateItem(block, releaseAction)];
+  }
+
   if (block.block_type === "image_block") {
     const item = createKnowledgeLibraryImageEvidenceGateItem(block, releaseAction);
     return item ? [item] : [];
@@ -78,30 +82,53 @@ function createKnowledgeLibraryTableEvidenceGateItem(
 
   const tableSemantics = asKnowledgeLibraryOptionalRecord(block.table_semantics);
   const payload = asKnowledgeLibraryOptionalRecord(block.content_payload) ?? {};
-  const exactCaptureAuthoritative =
-    readKnowledgeLibraryRecordBoolean(tableSemantics, "exact_capture_authoritative") === true;
   const failureCodes = uniqueKnowledgeLibraryStrings([
     ...readKnowledgeLibraryRecordStringArray(tableSemantics, "exact_capture_failure_codes"),
     ...readKnowledgeLibraryRecordStringArray(payload, "exact_capture_failure_codes"),
   ]);
-  const hasFailureMetadata =
-    hasKnowledgeLibraryRecordKey(tableSemantics, "exact_capture_failure_codes") ||
-    hasKnowledgeLibraryRecordKey(payload, "exact_capture_failure_codes");
-  const isReady =
-    exactCaptureAuthoritative || (hasFailureMetadata && failureCodes.length === 0);
+  const isReady = false;
   const blocking = releaseAction === "submit_review" && !isReady;
   const detail =
     failureCodes.length > 0
       ? failureCodes.map(formatKnowledgeLibraryTableFailureCodeLabel).join(" / ")
-      : isReady
-        ? "已满足权威 exact-capture。"
-        : "缺少 exact-capture 确认。";
+      : "请改用已确认的 Word 表格证据。";
 
   return {
     blockId: block.id,
     blockType: block.block_type,
     orderNo: block.order_no,
     title: `表格块 #${block.order_no + 1}`,
+    statusLabel: formatKnowledgeLibraryEvidenceStatusLabel({
+      releaseAction,
+      blocking,
+      isReady,
+    }),
+    detail: formatKnowledgeLibraryNonBlockingDetail({
+      releaseAction,
+      isReady,
+      detail,
+    }),
+    blocking,
+  };
+}
+
+function createKnowledgeLibraryTableEvidenceRevisionGateItem(
+  block: KnowledgeContentBlockViewModel,
+  releaseAction: KnowledgeLibraryEvidenceGateAction,
+): KnowledgeLibraryEvidenceGateItem {
+  const payload = asKnowledgeLibraryOptionalRecord(block.content_payload) ?? {};
+  const revisionStatus = readKnowledgeLibraryRecordString(payload, "revision_status");
+  const isReady = revisionStatus === "confirmed";
+  const blocking = releaseAction === "submit_review" && !isReady;
+  const detail = isReady
+    ? "表格证据状态已确认。"
+    : `表格证据状态未确认${revisionStatus ? `：${revisionStatus}` : "：未加载"}`;
+
+  return {
+    blockId: block.id,
+    blockType: block.block_type,
+    orderNo: block.order_no,
+    title: `Word 表格证据 #${block.order_no + 1}`,
     statusLabel: formatKnowledgeLibraryEvidenceStatusLabel({
       releaseAction,
       blocking,
@@ -195,22 +222,7 @@ function formatKnowledgeLibraryNonBlockingDetail(input: {
 function requiresKnowledgeLibraryTableEvidenceGate(
   block: KnowledgeContentBlockViewModel,
 ): boolean {
-  if (block.block_type !== "table_block") {
-    return false;
-  }
-
-  const payload = asKnowledgeLibraryOptionalRecord(block.content_payload);
-  const tableSemantics = asKnowledgeLibraryOptionalRecord(block.table_semantics);
-
-  return (
-    hasKnowledgeLibraryRecordKey(payload, "capture_mode") ||
-    hasKnowledgeLibraryRecordKey(payload, "capture_environment") ||
-    hasKnowledgeLibraryRecordKey(payload, "source_application") ||
-    hasKnowledgeLibraryRecordKey(payload, "exact_capture_failure_codes") ||
-    hasKnowledgeLibraryRecordKey(tableSemantics, "capture_mode") ||
-    hasKnowledgeLibraryRecordKey(tableSemantics, "exact_capture_authoritative") ||
-    hasKnowledgeLibraryRecordKey(tableSemantics, "exact_capture_failure_codes")
-  );
+  return block.block_type === "table_block";
 }
 
 function requiresKnowledgeLibraryVisualSymbolEvidenceGate(
@@ -333,27 +345,12 @@ function asKnowledgeLibraryOptionalRecord(
     : undefined;
 }
 
-function hasKnowledgeLibraryRecordKey(
-  value: Record<string, unknown> | undefined,
-  key: string,
-): boolean {
-  return value != null && Object.prototype.hasOwnProperty.call(value, key);
-}
-
 function readKnowledgeLibraryRecordString(
   value: Record<string, unknown> | undefined,
   key: string,
 ): string {
   const candidate = value?.[key];
   return typeof candidate === "string" ? candidate : "";
-}
-
-function readKnowledgeLibraryRecordBoolean(
-  value: Record<string, unknown> | undefined,
-  key: string,
-): boolean | undefined {
-  const candidate = value?.[key];
-  return typeof candidate === "boolean" ? candidate : undefined;
 }
 
 function readKnowledgeLibraryRecordStringArray(

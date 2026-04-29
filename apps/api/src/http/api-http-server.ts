@@ -191,6 +191,7 @@ import {
   RuleAiIntakeService,
   RuleAiIntakeUnavailableError,
   RuleAiParsingService,
+  RulePackageCompileTableEvidenceRevisionError,
 } from "../modules/editorial-rules/index.ts";
 import {
   createEditingApi,
@@ -260,6 +261,14 @@ import {
   InMemoryKnowledgeRetrievalRepository,
   KnowledgeRetrievalService,
 } from "../modules/knowledge-retrieval/index.ts";
+import {
+  createTableEvidenceApi,
+  InMemoryTableEvidenceRepository,
+  LocalTableEvidenceSourceFileService,
+  PythonTableEvidenceWorkerAdapter,
+  TableEvidenceService,
+  type TableEvidenceSourceFileService,
+} from "../modules/table-evidence/index.ts";
 import {
   createLearningApi,
   InMemoryLearningCandidateRepository,
@@ -867,6 +876,25 @@ type HttpRouteMatch =
     }
   | {
       route: "knowledge-create-table-evidence-package";
+    }
+  | {
+      route: "table-evidence-create-asset-from-docx-upload";
+    }
+  | {
+      route: "table-evidence-save-correction-patch";
+      revisionId: string;
+    }
+  | {
+      route: "table-evidence-confirm-revision";
+      revisionId: string;
+    }
+  | {
+      route: "table-evidence-bind-revision";
+    }
+  | {
+      route: "table-evidence-list-target-packages";
+      targetType: "knowledge_revision" | "editorial_rule" | "rule_draft";
+      targetId: string;
     }
   | {
       route: "knowledge-ai-intake";
@@ -1507,6 +1535,7 @@ export interface ApiServerRuntime {
   harnessDatasetApi: ReturnType<typeof createHarnessDatasetApi>;
   harnessIntegrationApi: ReturnType<typeof createHarnessIntegrationApi>;
   knowledgeApi: ReturnType<typeof createKnowledgeApi>;
+  tableEvidenceApi: ReturnType<typeof createTableEvidenceApi>;
   feedbackGovernanceApi: ReturnType<typeof createFeedbackGovernanceApi>;
   humanReviewRepository?: HumanReviewRepository;
   humanReviewApi: ReturnType<typeof createHumanReviewApi>;
@@ -1619,6 +1648,7 @@ export function createInMemoryApiRuntime(input: {
   const reviewedCaseSnapshotRepository = new InMemoryReviewedCaseSnapshotRepository();
   const learningCandidateRepository = new InMemoryLearningCandidateRepository();
   const knowledgeRepository = new InMemoryKnowledgeRepository();
+  const tableEvidenceRepository = new InMemoryTableEvidenceRepository();
   const knowledgeReviewActionRepository =
     new InMemoryKnowledgeReviewActionRepository();
   const feedbackGovernanceRepository = new InMemoryFeedbackGovernanceRepository();
@@ -1664,6 +1694,21 @@ export function createInMemoryApiRuntime(input: {
     counters.set(prefix, nextValue);
     return `${prefix}-${nextValue}`;
   };
+
+  const tableEvidenceSourceFileService: TableEvidenceSourceFileService =
+    new LocalTableEvidenceSourceFileService({
+      repository: tableEvidenceRepository,
+      rootDir: input.uploadRootDir,
+      createId: () => nextId("table-evidence-source-file"),
+      now: () => new Date(),
+    });
+  const tableEvidenceService = new TableEvidenceService({
+    repository: tableEvidenceRepository,
+    sourceFileService: tableEvidenceSourceFileService,
+    workerAdapter: new PythonTableEvidenceWorkerAdapter(),
+    createId: () => nextId("table-evidence"),
+    now: () => new Date(),
+  });
 
   const documentAssetService = new DocumentAssetService({
     assetRepository,
@@ -1782,6 +1827,7 @@ export function createInMemoryApiRuntime(input: {
     verificationOpsRepository,
     projectionService: editorialRuleProjectionService,
     activationMetricsService: editorialRuleActivationMetricsService,
+    tableEvidenceService,
   });
   const editorialRuleResolutionService = new EditorialRuleResolutionService({
     repository: editorialRuleRepository,
@@ -1805,6 +1851,7 @@ export function createInMemoryApiRuntime(input: {
     repository: editorialRuleRepository,
     resolutionService: editorialRuleResolutionService,
     editorialRuleService,
+    tableEvidenceService,
   });
   const toolGatewayService = new ToolGatewayService({
     repository: toolGatewayRepository,
@@ -2045,6 +2092,7 @@ export function createInMemoryApiRuntime(input: {
   const knowledgeService = new KnowledgeService({
     repository: knowledgeRepository,
     reviewActionRepository: knowledgeReviewActionRepository,
+    tableEvidenceService,
     learningCandidateRepository,
     knowledgeRetrievalRepository,
     knowledgeRetrievalService,
@@ -2067,6 +2115,7 @@ export function createInMemoryApiRuntime(input: {
   });
   const knowledgeAiAssistService = new KnowledgeAiAssistService({
     repository: knowledgeRepository,
+    tableEvidenceService,
     generator: {
       async createIntakeSuggestion() {
         return {
@@ -2141,6 +2190,7 @@ export function createInMemoryApiRuntime(input: {
     existingRules: createRuleAiSimilarityLedgerResolver(editorialRuleRepository),
   });
   const ruleAiParsingService = new RuleAiParsingService({
+    tableEvidenceService,
     generator: {
       async parseRule(input) {
         return {
@@ -2412,6 +2462,9 @@ export function createInMemoryApiRuntime(input: {
       usageMetricsService: new KnowledgeUsageMetricsService({
         executionTrackingRepository,
       }),
+    }),
+    tableEvidenceApi: createTableEvidenceApi({
+      tableEvidenceService,
     }),
     feedbackGovernanceApi: createFeedbackGovernanceApi({
       feedbackGovernanceService,
@@ -6332,6 +6385,63 @@ async function handleRoute(
           typeof runtime.knowledgeApi.createTableEvidencePackage
         >[0],
       );
+    case "table-evidence-create-asset-from-docx-upload": {
+      const session = await requirePermission(req, runtime, "knowledge.review");
+      const body = (await readJsonBody(req)) as Omit<
+        Parameters<typeof runtime.tableEvidenceApi.createAssetFromDocxUpload>[0],
+        "actorId"
+      > & {
+        actorId?: string;
+      };
+
+      return runtime.tableEvidenceApi.createAssetFromDocxUpload({
+        ...body,
+        actorId: session.user.id,
+      });
+    }
+    case "table-evidence-save-correction-patch": {
+      await requirePermission(req, runtime, "knowledge.review");
+      const body = (await readJsonBody(req)) as Omit<
+        Parameters<typeof runtime.tableEvidenceApi.saveCorrectionPatch>[0],
+        "revisionId"
+      > & {
+        revisionId?: string;
+      };
+
+      return runtime.tableEvidenceApi.saveCorrectionPatch({
+        ...body,
+        revisionId: routeMatch.revisionId,
+      });
+    }
+    case "table-evidence-confirm-revision": {
+      const session = await requirePermission(req, runtime, "knowledge.review");
+      const body = (await readJsonBody(req)) as Omit<
+        Parameters<typeof runtime.tableEvidenceApi.confirmRevision>[0],
+        "revisionId" | "actorId"
+      > & {
+        revisionId?: string;
+        actorId?: string;
+      };
+
+      return runtime.tableEvidenceApi.confirmRevision({
+        ...body,
+        revisionId: routeMatch.revisionId,
+        actorId: session.user.id,
+      });
+    }
+    case "table-evidence-bind-revision":
+      await requirePermission(req, runtime, "knowledge.review");
+      return runtime.tableEvidenceApi.bindRevision(
+        (await readJsonBody(req)) as Parameters<
+          typeof runtime.tableEvidenceApi.bindRevision
+        >[0],
+      );
+    case "table-evidence-list-target-packages":
+      await requirePermission(req, runtime, "knowledge.review");
+      return runtime.tableEvidenceApi.listConfirmedPackagesForTarget({
+        targetType: routeMatch.targetType,
+        targetId: routeMatch.targetId,
+      });
     case "knowledge-ai-intake":
       await requirePermission(req, runtime, "knowledge.review");
       return runtime.knowledgeApi.createAiIntakeSuggestion(
@@ -8771,6 +8881,51 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
     return { route: "knowledge-create-table-evidence-package" };
   }
 
+  if (
+    method === "POST" &&
+    path === "/api/v1/table-evidence/assets/from-docx-upload"
+  ) {
+    return { route: "table-evidence-create-asset-from-docx-upload" };
+  }
+
+  const tableEvidencePatchMatch = path.match(
+    /^\/api\/v1\/table-evidence\/revisions\/([^/]+)\/patch$/,
+  );
+  if (method === "POST" && tableEvidencePatchMatch) {
+    return {
+      route: "table-evidence-save-correction-patch",
+      revisionId: tableEvidencePatchMatch[1],
+    };
+  }
+
+  const tableEvidenceConfirmMatch = path.match(
+    /^\/api\/v1\/table-evidence\/revisions\/([^/]+)\/confirm$/,
+  );
+  if (method === "POST" && tableEvidenceConfirmMatch) {
+    return {
+      route: "table-evidence-confirm-revision",
+      revisionId: tableEvidenceConfirmMatch[1],
+    };
+  }
+
+  if (method === "POST" && path === "/api/v1/table-evidence/bindings") {
+    return { route: "table-evidence-bind-revision" };
+  }
+
+  const tableEvidenceTargetPackagesMatch = path.match(
+    /^\/api\/v1\/table-evidence\/targets\/(knowledge_revision|editorial_rule|rule_draft)\/([^/]+)\/packages$/,
+  );
+  if (method === "GET" && tableEvidenceTargetPackagesMatch) {
+    return {
+      route: "table-evidence-list-target-packages",
+      targetType: tableEvidenceTargetPackagesMatch[1] as
+        | "knowledge_revision"
+        | "editorial_rule"
+        | "rule_draft",
+      targetId: tableEvidenceTargetPackagesMatch[2],
+    };
+  }
+
   if (method === "POST" && path === "/api/v1/knowledge/uploads") {
     return { route: "knowledge-upload-image" };
   }
@@ -9910,6 +10065,30 @@ export function mapErrorToHttpResponse(
     ];
   }
 
+  if (error instanceof EditorialRuleSetStatusTransitionError) {
+    return [
+      409,
+      {
+        error: "state_conflict",
+        message: error.message,
+        ...(error.failure_code ? { failure_code: error.failure_code } : {}),
+        ...(error.failures ? { failures: error.failures } : {}),
+      },
+    ];
+  }
+
+  if (error instanceof RulePackageCompileTableEvidenceRevisionError) {
+    return [
+      409,
+      {
+        error: "state_conflict",
+        code: error.code,
+        ...(error.revision_id ? { revision_id: error.revision_id } : {}),
+        message: error.message,
+      },
+    ];
+  }
+
   if (
     error instanceof KnowledgeStatusTransitionError ||
     error instanceof LearningCandidateGovernedProvenanceRequiredError ||
@@ -9933,7 +10112,6 @@ export function mapErrorToHttpResponse(
     error instanceof ModelRoutingGovernanceStatusTransitionError ||
     error instanceof ManuscriptQualityPackageStatusTransitionError ||
     error instanceof PromptSkillRegistryStatusTransitionError ||
-    error instanceof EditorialRuleSetStatusTransitionError ||
     error instanceof EditorialRuleSetNotEditableError ||
     error instanceof RuntimeBindingCompatibilityError ||
     error instanceof RuntimeBindingDependencyStateError ||
@@ -9974,6 +10152,19 @@ export function mapErrorToHttpResponse(
     return [409, { error: "state_conflict", message: error.message }];
   }
 
+  if (error instanceof KnowledgeRevisionReviewGateError) {
+    return [
+      400,
+      {
+        error: "invalid_request",
+        message: error.message,
+        revisionId: error.revisionId,
+        phase: error.phase,
+        failures: error.failures,
+      },
+    ];
+  }
+
   if (
       error instanceof LearningHumanFinalAssetRequiredError ||
       error instanceof DocumentPreviewSaveBackNotAllowedError ||
@@ -9981,7 +10172,6 @@ export function mapErrorToHttpResponse(
       error instanceof OnlyOfficeSaveBackInvalidCallbackError ||
       error instanceof KnowledgeContentBlockOrderError ||
       error instanceof KnowledgeContentBlockPayloadInvalidError ||
-      error instanceof KnowledgeRevisionReviewGateError ||
       error instanceof LearningDeidentificationRequiredError ||
     error instanceof LearningCandidateEvidenceRequiredError ||
     error instanceof LearningSnapshotDeidentificationRequiredError ||

@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mapErrorToHttpResponse } from "../../src/http/api-http-server.ts";
 import { AiProviderRuntimeConfigurationError } from "../../src/modules/ai-provider-runtime/index.ts";
+import { EditorialRuleSetStatusTransitionError } from "../../src/modules/editorial-rules/editorial-rule-service.ts";
+import { RulePackageCompileTableEvidenceRevisionError } from "../../src/modules/editorial-rules/rule-package-compile-service.ts";
 import { KnowledgeRevisionReviewGateError } from "../../src/modules/knowledge/index.ts";
 import { ModuleTemplateFamilyNotConfiguredError } from "../../src/modules/shared/module-run-support.ts";
 
@@ -40,10 +42,15 @@ test("missing template family failures map to an actionable state conflict respo
   });
 });
 
-test("knowledge review gate failures map to invalid_request", () => {
+test("knowledge review gate failures map to structured invalid_request details", () => {
   const [status, body] = mapErrorToHttpResponse(
     new KnowledgeRevisionReviewGateError("revision-1", "approve", [
-      "Table block #1 is not authoritative exact capture",
+      {
+        code: "table_evidence_revision_not_confirmed",
+        message: "Table evidence block #0 revision rev-pending is not confirmed",
+        block_id: "block-1",
+        revision_id: "rev-pending",
+      },
     ]),
   );
 
@@ -51,6 +58,58 @@ test("knowledge review gate failures map to invalid_request", () => {
   assert.deepEqual(body, {
     error: "invalid_request",
     message:
-      "Knowledge revision revision-1 cannot be approved: Table block #1 is not authoritative exact capture.",
+      "Knowledge revision revision-1 cannot be approved: Table evidence block #0 revision rev-pending is not confirmed.",
+    revisionId: "revision-1",
+    phase: "approve",
+    failures: [
+      {
+        code: "table_evidence_revision_not_confirmed",
+        message: "Table evidence block #0 revision rev-pending is not confirmed",
+        block_id: "block-1",
+        revision_id: "rev-pending",
+      },
+    ],
+  });
+});
+
+test("editorial rule transition table evidence failures preserve structured details", () => {
+  const [status, body] = mapErrorToHttpResponse(
+    new EditorialRuleSetStatusTransitionError("rule-set-1", "draft", "published", {
+      failureCode: "table_evidence_revision_not_confirmed",
+      failures: [
+        {
+          code: "table_evidence_revision_not_confirmed",
+          revision_id: "rev-pending",
+        },
+      ],
+    }),
+  );
+
+  assert.equal(status, 409);
+  assert.deepEqual(body, {
+    error: "state_conflict",
+    message:
+      "Editorial rule set rule-set-1 cannot transition from draft to published.",
+    failure_code: "table_evidence_revision_not_confirmed",
+    failures: [
+      {
+        code: "table_evidence_revision_not_confirmed",
+        revision_id: "rev-pending",
+      },
+    ],
+  });
+});
+
+test("rule package compile table evidence failures map to structured state conflict details", () => {
+  const [status, body] = mapErrorToHttpResponse(
+    new RulePackageCompileTableEvidenceRevisionError("rev-pending"),
+  );
+
+  assert.equal(status, 409);
+  assert.deepEqual(body, {
+    error: "state_conflict",
+    code: "table_evidence_revision_not_confirmed",
+    revision_id: "rev-pending",
+    message: "table_evidence_revision_not_confirmed: rev-pending",
   });
 });

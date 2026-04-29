@@ -133,6 +133,14 @@ import {
   PostgresKnowledgeRetrievalRepository,
 } from "../modules/knowledge-retrieval/index.ts";
 import {
+  createTableEvidenceApi,
+  LocalTableEvidenceSourceFileService,
+  PostgresTableEvidenceRepository,
+  PythonTableEvidenceWorkerAdapter,
+  TableEvidenceService,
+  type TableEvidenceSourceFileService,
+} from "../modules/table-evidence/index.ts";
+import {
   createLearningApi,
   LearningService,
   PostgresLearningCandidateRepository,
@@ -321,6 +329,9 @@ export function createPersistentGovernanceRuntime(
   const knowledgeRepository = new PostgresKnowledgeRepository({
     client: options.client,
   });
+  const tableEvidenceRepository = new PostgresTableEvidenceRepository({
+    client: options.client,
+  });
   const knowledgeRetrievalRepository = new PostgresKnowledgeRetrievalRepository({
     client: options.client,
   });
@@ -481,6 +492,17 @@ export function createPersistentGovernanceRuntime(
     createContext: (client) => ({
       repository: new PostgresHarnessDatasetRepository({ client }),
     }),
+  });
+
+  const tableEvidenceSourceFileService: TableEvidenceSourceFileService =
+    new LocalTableEvidenceSourceFileService({
+      repository: tableEvidenceRepository,
+      rootDir: uploadRootDir,
+    });
+  const tableEvidenceService = new TableEvidenceService({
+    repository: tableEvidenceRepository,
+    sourceFileService: tableEvidenceSourceFileService,
+    workerAdapter: new PythonTableEvidenceWorkerAdapter(),
   });
 
   const documentAssetService = new DocumentAssetService({
@@ -649,6 +671,7 @@ export function createPersistentGovernanceRuntime(
     verificationOpsRepository,
     projectionService: editorialRuleProjectionService,
     activationMetricsService: editorialRuleActivationMetricsService,
+    tableEvidenceService,
   });
   const editorialRuleResolutionService = new EditorialRuleResolutionService({
     repository: editorialRuleRepository,
@@ -672,6 +695,7 @@ export function createPersistentGovernanceRuntime(
     repository: editorialRuleRepository,
     resolutionService: editorialRuleResolutionService,
     editorialRuleService,
+    tableEvidenceService,
   });
   const toolGatewayService = new ToolGatewayService({
     repository: toolGatewayRepository,
@@ -736,6 +760,7 @@ export function createPersistentGovernanceRuntime(
     existingRules: createRuleAiSimilarityLedgerResolver(editorialRuleRepository),
   });
   const ruleAiParsingService = new RuleAiParsingService({
+    tableEvidenceService,
     generator: new OpenAiRuleAiParsingGenerator({
       aiGatewayService,
       aiProviderRuntimeService,
@@ -811,6 +836,7 @@ export function createPersistentGovernanceRuntime(
   const knowledgeService = new KnowledgeService({
     repository: knowledgeRepository,
     reviewActionRepository: knowledgeReviewActionRepository,
+    tableEvidenceService,
     learningCandidateRepository,
     knowledgeRetrievalRepository,
     knowledgeRetrievalService,
@@ -838,6 +864,7 @@ export function createPersistentGovernanceRuntime(
   });
   const knowledgeAiAssistService = new KnowledgeAiAssistService({
     repository: knowledgeRepository,
+    tableEvidenceService,
     generator: new OpenAiKnowledgeAiAssistGenerator({
       aiGatewayService,
       aiProviderRuntimeService,
@@ -1108,6 +1135,9 @@ export function createPersistentGovernanceRuntime(
       usageMetricsService: new KnowledgeUsageMetricsService({
         executionTrackingRepository,
       }),
+    }),
+    tableEvidenceApi: createTableEvidenceApi({
+      tableEvidenceService,
     }),
     feedbackGovernanceApi: createFeedbackGovernanceApi({
       feedbackGovernanceService,
