@@ -481,6 +481,7 @@ export function TemplateGovernanceRuleWizard({
           defaultRuleWizardClient,
           state.draftRevisionId,
           publishFormState.reviewNote,
+          entryFormState,
         );
       }
 
@@ -626,6 +627,7 @@ export function TemplateGovernanceRuleWizard({
         bindingFormState,
         publishFormState,
         evidenceGateSummary,
+        draftRevisionId: state.draftRevisionId,
         isSemanticBusy,
         isBindingBusy,
         semanticErrorMessage,
@@ -681,6 +683,7 @@ function renderWizardBody(input: {
   bindingFormState: RuleWizardBindingFormState;
   publishFormState: RuleWizardPublishFormState;
   evidenceGateSummary: ReturnType<typeof createRuleWizardEvidenceGateSummary>;
+  draftRevisionId?: string;
   isSemanticBusy: boolean;
   isBindingBusy: boolean;
   semanticErrorMessage: string | null;
@@ -702,6 +705,8 @@ function renderWizardBody(input: {
           onUploadImage={async (payload) =>
             (await uploadKnowledgeImage(defaultRuleWizardClient, payload)).body
           }
+          tableEvidenceClient={input.draftRevisionId ? defaultRuleWizardClient : undefined}
+          draftRevisionId={input.draftRevisionId}
         />
       );
     case "semantic":

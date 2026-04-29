@@ -2,9 +2,12 @@ import { useState } from "react";
 import {
   bindTableEvidenceRevision,
   TableEvidencePicker,
+  type TableEvidenceBindingRole,
+  type TableEvidenceBindingTargetType,
   type TableEvidenceHttpClient,
   type TableEvidencePickerItem,
   TableEvidenceUploadEntry,
+  type ConfirmedAiTablePackage,
 } from "../table-evidence/index.ts";
 import { KnowledgeLibraryBlockImageEditor } from "./knowledge-library-block-image-editor.tsx";
 import { KnowledgeLibraryBlockTableEditor } from "./knowledge-library-block-table-editor.tsx";
@@ -20,6 +23,7 @@ export interface KnowledgeTableEvidenceBlockSelection {
   assetId: string;
   revisionId: string;
   revisionStatus?: KnowledgeTableEvidenceBlockPayload["revision_status"];
+  confirmedTablePackage?: ConfirmedAiTablePackage;
 }
 
 export interface AppendKnowledgeLibraryTableEvidenceBlockInput {
@@ -27,6 +31,8 @@ export interface AppendKnowledgeLibraryTableEvidenceBlockInput {
   selection: KnowledgeTableEvidenceBlockSelection;
   currentRevisionId?: string;
   client?: TableEvidenceHttpClient;
+  tableEvidenceBindingTargetType?: TableEvidenceBindingTargetType;
+  tableEvidenceBindingRole?: TableEvidenceBindingRole;
 }
 
 export type KnowledgeLibraryContentBlockAction =
@@ -45,6 +51,7 @@ export interface HandleKnowledgeLibraryTableEvidenceSelectionInput
   extends AppendKnowledgeLibraryTableEvidenceBlockInput {
   onChange: (blocks: KnowledgeContentBlockViewModel[]) => void;
   onError: (message: string) => void;
+  onTableEvidenceBlockAdded?: (block: KnowledgeContentBlockViewModel) => void;
 }
 
 export interface KnowledgeLibraryRichContentEditorProps {
@@ -54,6 +61,9 @@ export interface KnowledgeLibraryRichContentEditorProps {
   tableEvidenceClient?: TableEvidenceHttpClient;
   tableEvidencePickerItems?: TableEvidencePickerItem[];
   currentRevisionId?: string;
+  tableEvidenceBindingTargetType?: TableEvidenceBindingTargetType;
+  tableEvidenceBindingRole?: TableEvidenceBindingRole;
+  onTableEvidenceBlockAdded?: (block: KnowledgeContentBlockViewModel) => void;
   compact?: boolean;
 }
 
@@ -64,6 +74,9 @@ export function KnowledgeLibraryRichContentEditor({
   tableEvidenceClient,
   tableEvidencePickerItems = [],
   currentRevisionId,
+  tableEvidenceBindingTargetType = "knowledge_revision",
+  tableEvidenceBindingRole = "source_evidence",
+  onTableEvidenceBlockAdded,
   compact = false,
 }: KnowledgeLibraryRichContentEditorProps) {
   const [isTableEvidenceOpen, setIsTableEvidenceOpen] = useState(false);
@@ -79,8 +92,11 @@ export function KnowledgeLibraryRichContentEditor({
       selection,
       currentRevisionId,
       client: tableEvidenceClient,
+      tableEvidenceBindingTargetType,
+      tableEvidenceBindingRole,
       onChange,
       onError: setTableEvidenceErrorMessage,
+      onTableEvidenceBlockAdded,
     });
   }
 
@@ -189,6 +205,7 @@ export function KnowledgeLibraryRichContentEditor({
                 assetId: response.asset.id,
                 revisionId: revision.id,
                 revisionStatus: revision.confirmation_status,
+                confirmedTablePackage: revision.ai_table_package,
               });
             }}
           />
@@ -206,6 +223,7 @@ export function KnowledgeLibraryRichContentEditor({
               void appendTableEvidenceBlock({
                 ...selection,
                 revisionStatus: pickedItem?.revision.confirmation_status,
+                confirmedTablePackage: pickedItem?.revision.ai_table_package,
               });
             }}
           />
@@ -407,6 +425,8 @@ export async function appendKnowledgeLibraryTableEvidenceBlock({
   selection,
   currentRevisionId,
   client,
+  tableEvidenceBindingTargetType = "knowledge_revision",
+  tableEvidenceBindingRole = "source_evidence",
 }: AppendKnowledgeLibraryTableEvidenceBlockInput): Promise<
   KnowledgeContentBlockViewModel[]
 > {
@@ -416,9 +436,9 @@ export async function appendKnowledgeLibraryTableEvidenceBlock({
     client
       ? await bindTableEvidenceRevision(client, {
           revisionId: selection.revisionId,
-          targetType: "knowledge_revision",
+          targetType: tableEvidenceBindingTargetType,
           targetId: revisionId,
-          bindingRole: "source_evidence",
+          bindingRole: tableEvidenceBindingRole,
         })
       : null;
 
@@ -427,6 +447,9 @@ export async function appendKnowledgeLibraryTableEvidenceBlock({
     table_evidence_revision_id: selection.revisionId,
     ...(binding?.body.id ? { binding_id: binding.body.id } : {}),
     ...(selection.revisionStatus ? { revision_status: selection.revisionStatus } : {}),
+    ...(selection.confirmedTablePackage
+      ? { confirmed_table_package: selection.confirmedTablePackage }
+      : {}),
   };
 
   return [
@@ -460,10 +483,15 @@ function normalizeKnowledgeLibraryTableEvidenceRevisionId(
 export async function handleKnowledgeLibraryTableEvidenceSelection({
   onChange,
   onError,
+  onTableEvidenceBlockAdded,
   ...input
 }: HandleKnowledgeLibraryTableEvidenceSelectionInput): Promise<void> {
   try {
     const nextBlocks = await appendKnowledgeLibraryTableEvidenceBlock(input);
+    const addedBlock = nextBlocks[nextBlocks.length - 1];
+    if (addedBlock?.block_type === "table_evidence_block") {
+      onTableEvidenceBlockAdded?.(addedBlock);
+    }
     onChange(nextBlocks);
   } catch (error) {
     onError(error instanceof Error ? error.message : "表格证据绑定失败");
