@@ -230,11 +230,11 @@ export function HarnessControlWorkbench(props: HarnessControlWorkbenchProps) {
       <header className="harness-control-header">
         <div className="harness-control-header-copy">
           <p className="harness-control-breadcrumb">
-            管理区 / Harness 控制 / {modeConfig.label}
+            管理区 / 验证治理 / {modeConfig.label}
           </p>
           <div className="harness-control-title-row">
             <div>
-              <h2>Harness 控制</h2>
+              <h2>验证治理</h2>
               <p>{modeConfig.summary}</p>
             </div>
             <button
@@ -262,14 +262,14 @@ export function HarnessControlWorkbench(props: HarnessControlWorkbenchProps) {
             </p>
           ) : null}
         </div>
-        <div className="harness-control-active-strip" aria-label="当前 Active">
-          <span>当前 Active</span>
+        <div className="harness-control-active-strip" aria-label="当前生效环境">
+          <span>当前生效环境</span>
           <strong>{describeActiveEnvironment(activeEnvironment)}</strong>
           <small>{describeCandidateDiff(harnessPreview)}</small>
         </div>
       </header>
 
-      <nav className="harness-control-mode-tabs" aria-label="Harness 任务模式">
+      <nav className="harness-control-mode-tabs" aria-label="验证任务模式">
         {harnessModeOptions.map((option) => (
           <button
             key={option.mode}
@@ -385,7 +385,7 @@ export function HarnessControlWorkbench(props: HarnessControlWorkbenchProps) {
             <p>真实执行面板</p>
             <h3>候选预览、运行发起、激活与回滚</h3>
             <span>
-              这里复用现有 Harness 控制能力；复杂绑定和危险动作集中在展开后的执行区。
+              这里复用现有验证治理能力；复杂绑定和危险动作集中在展开后的执行区。
             </span>
           </div>
           <HarnessOperatorSection
@@ -721,7 +721,7 @@ function ModeResultsPanel(props: {
         <h3>A/B 验收结果</h3>
         <p>{describeAbAcceptanceSummary(props.latestHistoryEntry, props.defaultComparison)}</p>
         <p>
-          激活和回滚只在展开真实执行面板后出现，并继续走现有 Harness 控制面能力。
+          激活和回滚只在展开真实执行面板后出现，并继续走现有验证治理能力。
         </p>
       </article>
       <HistoryList
@@ -984,7 +984,7 @@ function createHarnessWorkflowInput(input: {
     if (input.activeEnvironment == null) {
       return {
         kind: "unavailable",
-        reason: "当前 Active 尚未加载，无法发起回归巡检。",
+        reason: "当前生效环境尚未加载，无法发起回归巡检。",
       };
     }
 
@@ -1059,7 +1059,7 @@ function createHarnessWorkflowInput(input: {
 
   return {
     kind: "unavailable",
-    reason: "当前模式不需要发起 Harness 运行。",
+    reason: "当前模式不需要发起验证运行。",
   };
 }
 
@@ -1071,7 +1071,7 @@ function describeWorkflowReadiness(
   }
 
   if (workflowInput.kind === "regression_inspection") {
-    return "将使用当前 Active 作为单路候选绑定，生成回归巡检证据包。";
+    return "将使用当前生效环境作为单路候选绑定，生成回归巡检证据包。";
   }
 
   if (workflowInput.kind === "release_gate") {
@@ -1310,5 +1310,5 @@ function formatSuiteTypeLabel(suiteType: string) {
 }
 
 function toHarnessControlErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Harness 当前 Active 范围加载失败。";
+  return error instanceof Error ? error.message : "验证治理当前生效范围加载失败。";
 }

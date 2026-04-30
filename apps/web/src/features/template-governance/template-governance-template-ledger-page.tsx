@@ -222,6 +222,10 @@ export function TemplateGovernanceTemplateLedgerPage({
         <TemplateGovernanceTemplateForm
           mode={formMode}
           initialValues={formValues}
+          moduleOptions={{
+            generalModules: viewModel.generalModules,
+            medicalModules: viewModel.medicalModules,
+          }}
           isBusy={isBusy}
           onChange={onFormChange}
           onCancel={onFormCancel}

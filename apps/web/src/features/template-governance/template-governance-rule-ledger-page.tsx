@@ -281,15 +281,15 @@ export function TemplateGovernanceRuleLedgerPage({
 
       <article className="template-governance-card template-governance-ledger-section">
         <header className="template-governance-ledger-section-header">
-          <h2>统一规则资产表</h2>
+          <h2>规则总表</h2>
         </header>
         <div className="template-governance-ledger-table-shell">
           <table className="template-governance-ledger-table">
             <thead>
               <tr>
                 {bulkState.isOpen ? <th>选择</th> : null}
-                <th>资产名称</th>
-                <th>资产类别</th>
+                <th>规则名称</th>
+                <th>来源类型</th>
                 <th>适用模块</th>
                 <th>稿件类型</th>
                 <th>语义状态</th>
@@ -367,11 +367,11 @@ export function TemplateGovernanceRuleLedgerPage({
           </header>
           <div className="template-governance-detail-grid">
             <div>
-              <span>资产名称</span>
+              <span>规则名称</span>
               <p>{viewModel.selectedRow.title}</p>
             </div>
             <div>
-              <span>资产类别</span>
+              <span>来源类型</span>
               <p>{formatRuleLedgerCategoryLabel(viewModel.selectedRow.asset_kind)}</p>
             </div>
             <div>

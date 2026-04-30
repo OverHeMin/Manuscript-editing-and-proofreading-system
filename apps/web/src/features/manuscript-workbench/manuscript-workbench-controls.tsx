@@ -125,8 +125,8 @@ export function ManuscriptWorkbenchControls({
   const showScaffoldHeader = layout !== "drawer";
   const utilitiesDescription =
     mode === "proofreading"
-      ? "导出当前资产、刷新最新任务，或在需要时打开校对工作台。"
-      : "导出当前资产、刷新最新任务，或在需要时发布人工终稿。";
+      ? "导出当前文件、刷新最新任务，或在需要时打开校对工作台。"
+      : "导出当前文件、刷新最新任务，或在需要时发布人工终稿。";
   const utilitiesPrimaryActionLabel =
     mode === "proofreading" ? "打开校对工作台" : "发布人工终稿";
 
@@ -239,7 +239,7 @@ export function ManuscriptWorkbenchControls({
                   disabled={busy || !utilities.canExport}
                   onClick={() => utilities.onExport()}
                 >
-                  导出当前资产
+                  导出当前文件
                 </button>
                 <button
                   type="button"
@@ -254,7 +254,7 @@ export function ManuscriptWorkbenchControls({
                     disabled={busy || !utilities.canOpenHarnessMatrix}
                     onClick={() => utilities.onOpenHarnessMatrix?.()}
                   >
-                    Harness Matrix
+                    验证矩阵
                   </button>
                 ) : null}
               </div>

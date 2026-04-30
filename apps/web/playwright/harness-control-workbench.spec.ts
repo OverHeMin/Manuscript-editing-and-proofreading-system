@@ -25,7 +25,7 @@ test("admin can run the compact harness control workbench across all task modes"
     waitUntil: "domcontentloaded",
   });
   await waitForHarnessWorkbench(page, "release_gate");
-  await expect(page.getByRole("heading", { name: "Harness 控制" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "验证治理" })).toBeVisible();
   await expect(page.locator(".harness-control-mode-tabs")).toContainText("A/B 验收");
   await expect(page.locator(".harness-control-mode-tabs")).toContainText("回归巡检");
   await expect(page.locator(".harness-control-mode-tabs")).toContainText("发布门");
@@ -54,7 +54,7 @@ test("admin can run the compact harness control workbench across all task modes"
   await page.getByRole("button", { name: "回归巡检" }).click();
   await waitForHarnessWorkbench(page, "regression_inspection");
   await expect(page.locator(".harness-control-workbench")).toContainText(
-    "将使用当前 Active 作为单路候选绑定",
+    "将使用当前生效环境作为单路候选绑定",
   );
   await expect(page.locator('[data-harness-primary-action="regression_inspection"]')).toBeEnabled();
   await page.locator('[data-harness-primary-action="regression_inspection"]').click();

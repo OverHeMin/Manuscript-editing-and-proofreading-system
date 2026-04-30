@@ -194,7 +194,7 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
     `#template-governance?manuscriptId=${manuscriptId}` +
     "&templateGovernanceView=rule-ledger&ruleCenterMode=learning";
 
-  await page.getByRole("button", { name: "导出当前资产" }).click();
+  await page.getByRole("button", { name: "导出当前文件" }).click();
   await expect(page.locator("body")).toContainText("已准备导出");
   await expect(page.locator("body")).toContainText("导出文件名");
   await expect(page.locator("body")).toContainText("人工终稿.docx");

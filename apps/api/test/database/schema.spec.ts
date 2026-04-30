@@ -933,6 +933,31 @@ test("database schema exposes the editorial rule learning writeback target", { c
   });
 });
 
+test("database schema exposes knowledge review archive and restore actions", { concurrency: false }, async () => {
+  await withMigratedSchemaClient(async (client) => {
+    const enumLabelsResult = await client.query<{ enumlabel: string }>(
+      `
+        select enumlabel
+        from pg_enum
+        where enumtypid = 'knowledge_review_action'::regtype
+        order by enumsortorder
+      `,
+    );
+
+    assert.deepEqual(
+      enumLabelsResult.rows.map((row) => row.enumlabel),
+      [
+        "submitted_for_review",
+        "approved",
+        "rejected",
+        "archived",
+        "restored",
+      ],
+      "Expected knowledge review actions to include archive and restore for recycle-bin auditing.",
+    );
+  });
+});
+
 test("database schema exposes online execution regression suite types", { concurrency: false }, async () => {
   await withMigratedSchemaClient(async (client) => {
     const enumLabelsResult = await client.query<{ enumlabel: string }>(
@@ -1182,6 +1207,8 @@ test("migration bookkeeping tracks the repo migration ledger in release order", 
       "0057_proofreading_pass_runs.sql",
       "0058_human_review_diff_ledger.sql",
       "0059_knowledge_hit_logs_item_index.sql",
+      "0060_table_evidence_assets.sql",
+      "0061_knowledge_review_action_archive_restore.sql",
     ],
     "Expected the repository migration ledger to include the current release-reliability schema set.",
   );
@@ -1833,6 +1860,264 @@ test("migrate repairs legacy 0028 rule-library databases by restoring editorial 
           checksum: getMigrationChecksum(
             "0041_manuscript_type_detection_summary.sql",
           ),
+        },
+      ]);
+    } finally {
+      await verificationClient.end();
+    }
+  });
+});
+
+test("migrate repairs legacy 0030 knowledge-governance databases by restoring archive review actions", { concurrency: false }, async () => {
+  await withTemporaryDatabase(async (databaseUrl) => {
+    const client = new Client({ connectionString: databaseUrl });
+    await client.connect();
+
+    try {
+      await applyRepositoryMigrationsThrough(client, "0030_knowledge_library_v1_revision_governance.sql");
+      const legacyKnowledgeReviewActionChecksum = getMigrationChecksum(
+        "0030_knowledge_library_v1_revision_governance.sql",
+      );
+
+      await client.query("begin");
+      try {
+        await client.query(
+          `
+            update schema_migrations
+            set checksum = $1
+            where version = $2
+          `,
+          [
+            legacyKnowledgeReviewActionChecksum,
+            "0030_knowledge_library_v1_revision_governance.sql",
+          ],
+        );
+        await client.query("commit");
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      }
+
+      const beforeRepairEnum = await client.query<{ enumlabel: string }>(
+        `
+          select enumlabel
+          from pg_enum e
+          join pg_type t on t.oid = e.enumtypid
+          where t.typname = 'knowledge_review_action'
+            and enumlabel in ('archived', 'restored')
+          order by enumlabel
+        `,
+      );
+
+      assert.deepEqual(
+        beforeRepairEnum.rows,
+        [],
+        "Expected the legacy 0030 fixture to miss archive/restore review actions before repair.",
+      );
+    } finally {
+      await client.end();
+    }
+
+    const rerunMigration = runMigrateProcess(databaseUrl);
+    assert.equal(
+      rerunMigration.status,
+      0,
+      `Expected migrate to repair legacy 0030 knowledge-governance databases.\n${rerunMigration.stdout}\n${rerunMigration.stderr}`,
+    );
+
+    const verificationClient = new Client({ connectionString: databaseUrl });
+    await verificationClient.connect();
+
+    try {
+      const enumResult = await verificationClient.query<{ enumlabel: string }>(
+        `
+          select enumlabel
+          from pg_enum e
+          join pg_type t on t.oid = e.enumtypid
+          where t.typname = 'knowledge_review_action'
+            and enumlabel in ('archived', 'restored')
+          order by enumlabel
+        `,
+      );
+      const migrationResult = await verificationClient.query<{ version: string; checksum: string }>(
+        `
+          select version, checksum
+          from schema_migrations
+          where version in (
+            '0030_knowledge_library_v1_revision_governance.sql',
+            '0031_knowledge_duplicate_detection_acknowledgements.sql',
+            '0032_ai_provider_control_plane.sql',
+            '0033_knowledge_library_rich_space.sql',
+            '0034_harness_control_plane_p0.sql',
+            '0035_harness_control_plane_rollback_history.sql',
+            '0036_execution_snapshot_quality_findings_summary.sql',
+            '0037_manuscript_quality_package_governance.sql',
+            '0038_manuscript_quality_runtime_refs.sql',
+            '0039_rule_package_extraction_tasks.sql',
+            '0040_rule_center_content_modules_and_template_compositions.sql',
+            '0041_manuscript_type_detection_summary.sql',
+            '0042_rule_center_package_binding_kinds.sql',
+            '0043_learning_candidate_review_actions.sql',
+            '0043_rule_wizard_knowledge_item_binding_kind.sql',
+            '0044_proofreading_residual_learning_v1.sql',
+            '0045_governed_hit_review_items.sql',
+            '0046_governed_hit_review_items_feedback_nullable.sql',
+            '0047_rule_execution_hit_posture.sql',
+            '0048_rule_platform_scope_release_governance.sql',
+            '0049_rule_activation_metrics.sql',
+            '0050_online_execution_regression.sql',
+            '0051_residual_manual_review_pending_status.sql',
+            '0052_journal_template_target_model_versioning.sql',
+            '0053_manuscript_editing_slot_governance_summary.sql',
+            '0054_manuscript_editing_completion_gate_summary.sql',
+            '0055_knowledge_evidence_package_foundation.sql',
+            '0056_editorial_rule_automation_governance.sql',
+            '0057_proofreading_pass_runs.sql',
+            '0058_human_review_diff_ledger.sql',
+            '0059_knowledge_hit_logs_item_index.sql',
+            '0060_table_evidence_assets.sql',
+            '0061_knowledge_review_action_archive_restore.sql'
+          )
+          order by version
+        `,
+      );
+
+      assert.deepEqual(enumResult.rows, [
+        { enumlabel: "archived" },
+        { enumlabel: "restored" },
+      ]);
+      assert.deepEqual(migrationResult.rows, [
+        {
+          version: "0030_knowledge_library_v1_revision_governance.sql",
+          checksum: getMigrationChecksum("0030_knowledge_library_v1_revision_governance.sql"),
+        },
+        {
+          version: "0031_knowledge_duplicate_detection_acknowledgements.sql",
+          checksum: getMigrationChecksum("0031_knowledge_duplicate_detection_acknowledgements.sql"),
+        },
+        {
+          version: "0032_ai_provider_control_plane.sql",
+          checksum: getMigrationChecksum("0032_ai_provider_control_plane.sql"),
+        },
+        {
+          version: "0033_knowledge_library_rich_space.sql",
+          checksum: getMigrationChecksum("0033_knowledge_library_rich_space.sql"),
+        },
+        {
+          version: "0034_harness_control_plane_p0.sql",
+          checksum: getMigrationChecksum("0034_harness_control_plane_p0.sql"),
+        },
+        {
+          version: "0035_harness_control_plane_rollback_history.sql",
+          checksum: getMigrationChecksum("0035_harness_control_plane_rollback_history.sql"),
+        },
+        {
+          version: "0036_execution_snapshot_quality_findings_summary.sql",
+          checksum: getMigrationChecksum("0036_execution_snapshot_quality_findings_summary.sql"),
+        },
+        {
+          version: "0037_manuscript_quality_package_governance.sql",
+          checksum: getMigrationChecksum("0037_manuscript_quality_package_governance.sql"),
+        },
+        {
+          version: "0038_manuscript_quality_runtime_refs.sql",
+          checksum: getMigrationChecksum("0038_manuscript_quality_runtime_refs.sql"),
+        },
+        {
+          version: "0039_rule_package_extraction_tasks.sql",
+          checksum: getMigrationChecksum("0039_rule_package_extraction_tasks.sql"),
+        },
+        {
+          version: "0040_rule_center_content_modules_and_template_compositions.sql",
+          checksum: getMigrationChecksum("0040_rule_center_content_modules_and_template_compositions.sql"),
+        },
+        {
+          version: "0041_manuscript_type_detection_summary.sql",
+          checksum: getMigrationChecksum("0041_manuscript_type_detection_summary.sql"),
+        },
+        {
+          version: "0042_rule_center_package_binding_kinds.sql",
+          checksum: getMigrationChecksum("0042_rule_center_package_binding_kinds.sql"),
+        },
+        {
+          version: "0043_learning_candidate_review_actions.sql",
+          checksum: getMigrationChecksum("0043_learning_candidate_review_actions.sql"),
+        },
+        {
+          version: "0043_rule_wizard_knowledge_item_binding_kind.sql",
+          checksum: getMigrationChecksum("0043_rule_wizard_knowledge_item_binding_kind.sql"),
+        },
+        {
+          version: "0044_proofreading_residual_learning_v1.sql",
+          checksum: getMigrationChecksum("0044_proofreading_residual_learning_v1.sql"),
+        },
+        {
+          version: "0045_governed_hit_review_items.sql",
+          checksum: getMigrationChecksum("0045_governed_hit_review_items.sql"),
+        },
+        {
+          version: "0046_governed_hit_review_items_feedback_nullable.sql",
+          checksum: getMigrationChecksum("0046_governed_hit_review_items_feedback_nullable.sql"),
+        },
+        {
+          version: "0047_rule_execution_hit_posture.sql",
+          checksum: getMigrationChecksum("0047_rule_execution_hit_posture.sql"),
+        },
+        {
+          version: "0048_rule_platform_scope_release_governance.sql",
+          checksum: getMigrationChecksum("0048_rule_platform_scope_release_governance.sql"),
+        },
+        {
+          version: "0049_rule_activation_metrics.sql",
+          checksum: getMigrationChecksum("0049_rule_activation_metrics.sql"),
+        },
+        {
+          version: "0050_online_execution_regression.sql",
+          checksum: getMigrationChecksum("0050_online_execution_regression.sql"),
+        },
+        {
+          version: "0051_residual_manual_review_pending_status.sql",
+          checksum: getMigrationChecksum("0051_residual_manual_review_pending_status.sql"),
+        },
+        {
+          version: "0052_journal_template_target_model_versioning.sql",
+          checksum: getMigrationChecksum("0052_journal_template_target_model_versioning.sql"),
+        },
+        {
+          version: "0053_manuscript_editing_slot_governance_summary.sql",
+          checksum: getMigrationChecksum("0053_manuscript_editing_slot_governance_summary.sql"),
+        },
+        {
+          version: "0054_manuscript_editing_completion_gate_summary.sql",
+          checksum: getMigrationChecksum("0054_manuscript_editing_completion_gate_summary.sql"),
+        },
+        {
+          version: "0055_knowledge_evidence_package_foundation.sql",
+          checksum: getMigrationChecksum("0055_knowledge_evidence_package_foundation.sql"),
+        },
+        {
+          version: "0056_editorial_rule_automation_governance.sql",
+          checksum: getMigrationChecksum("0056_editorial_rule_automation_governance.sql"),
+        },
+        {
+          version: "0057_proofreading_pass_runs.sql",
+          checksum: getMigrationChecksum("0057_proofreading_pass_runs.sql"),
+        },
+        {
+          version: "0058_human_review_diff_ledger.sql",
+          checksum: getMigrationChecksum("0058_human_review_diff_ledger.sql"),
+        },
+        {
+          version: "0059_knowledge_hit_logs_item_index.sql",
+          checksum: getMigrationChecksum("0059_knowledge_hit_logs_item_index.sql"),
+        },
+        {
+          version: "0060_table_evidence_assets.sql",
+          checksum: getMigrationChecksum("0060_table_evidence_assets.sql"),
+        },
+        {
+          version: "0061_knowledge_review_action_archive_restore.sql",
+          checksum: getMigrationChecksum("0061_knowledge_review_action_archive_restore.sql"),
         },
       ]);
     } finally {

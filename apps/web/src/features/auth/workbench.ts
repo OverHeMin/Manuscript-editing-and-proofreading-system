@@ -128,8 +128,8 @@ export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
   },
   {
     id: "evaluation-workbench",
-    label: "Harness 控制",
-    navLabel: "Harness 控制",
+    label: "验证治理",
+    navLabel: "验证治理",
     navGroup: "governance",
     placement: "admin",
     surfaces: ["web"],
@@ -137,8 +137,8 @@ export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
   },
   {
     id: "harness-datasets",
-    label: "Harness 数据集",
-    navLabel: "Harness 数据集",
+    label: "验证样本集",
+    navLabel: "验证样本集",
     navGroup: "governance",
     placement: "admin",
     surfaces: ["web"],
@@ -146,8 +146,8 @@ export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
   },
   {
     id: "manuscript-harness",
-    label: "稿件 Harness",
-    navLabel: "稿件 Harness",
+    label: "稿件验证矩阵",
+    navLabel: "稿件验证矩阵",
     navGroup: "governance",
     placement: "admin",
     surfaces: ["web"],
@@ -226,7 +226,7 @@ export const WORKBENCH_SHELL_TARGETS: readonly WorkbenchShellTargetDescriptor[] 
   {
     key: "management-harness",
     workbenchId: "evaluation-workbench",
-    label: "Harness 控制",
+    label: "验证治理",
     group: "management",
     harnessMode: "ab_acceptance",
   },

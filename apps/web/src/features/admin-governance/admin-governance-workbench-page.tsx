@@ -65,7 +65,7 @@ export function AdminGovernanceWorkbenchPage({
     return (
       <article className="workbench-placeholder" role="status">
         <h2>正在加载管理总览</h2>
-        <p>正在汇总 AI 接入、Harness 控制与治理资产状态。</p>
+        <p>正在汇总 AI 接入、验证治理与治理资产状态。</p>
       </article>
     );
   }
@@ -122,12 +122,12 @@ export function AdminGovernanceWorkbenchPage({
           chips={["账号独立子页", "角色治理", "访问范围"]}
         />
         <EntryCard
-          title="Harness 控制"
+          title="验证治理"
           description="评测运行、数据样本与结果对照统一收口，避免形成低频孤岛栏目。"
           href={formatWorkbenchHash("evaluation-workbench", {
             harnessSection: "overview",
           })}
-          actionLabel="进入 Harness 控制"
+          actionLabel="进入验证治理"
           chips={[
             `${harness.evaluationSuiteCount} 个评测套件`,
             `${harness.runtimeBindingCount} 个运行绑定`,
@@ -153,7 +153,7 @@ export function AdminGovernanceWorkbenchPage({
       <section className="admin-governance-summary">
         <SummaryCard label="已启用连接" value={aiAccess.enabledConnections} />
         <SummaryCard label="生产模型" value={aiAccess.prodReadyModels} />
-        <SummaryCard label="Harness 适配器" value={harness.adapterHealthCount} />
+        <SummaryCard label="验证适配器" value={harness.adapterHealthCount} />
         <SummaryCard label="当前提醒" value={alerts.length} />
       </section>
 
@@ -260,7 +260,7 @@ export function AdminGovernanceWorkbenchPage({
             </ul>
           ) : (
             <p className="admin-governance-empty">
-              Harness 详情已收口到 Harness 控制页，这里只保留总览快照。
+              验证治理详情已收口到验证治理页，这里只保留总览快照。
             </p>
           )}
         </article>

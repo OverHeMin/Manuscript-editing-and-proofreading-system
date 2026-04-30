@@ -21,15 +21,15 @@ test("management navigation exposes three direct entries and can hand off to har
   await expect(page.getByRole("heading", { name: "管理区" })).toBeVisible();
   await expect(page.locator("body")).toContainText("3 项");
   await expect(page.getByRole("button", { name: "AI 接入" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Harness 控制" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "验证治理" })).toBeVisible();
   await expect(page.getByRole("button", { name: "账号与权限" })).toBeVisible();
   await expect(page.getByRole("button", { name: "管理总览" })).toHaveCount(0);
   await expect(page.locator("body")).not.toContainText("AI 接入快照");
   await expect(page.locator("body")).not.toContainText("管理总览");
 
-  await page.getByRole("button", { name: "Harness 控制" }).click();
+  await page.getByRole("button", { name: "验证治理" }).click();
   await expect(page).toHaveURL(/#evaluation-workbench\?harnessMode=ab_acceptance/);
-  await expect(page.getByRole("heading", { name: "Harness 控制" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "验证治理" })).toBeVisible();
   await expect(page.locator(".harness-control-workbench")).toHaveAttribute(
     "data-harness-mode",
     "ab_acceptance",

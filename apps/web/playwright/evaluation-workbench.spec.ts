@@ -49,7 +49,7 @@ test("admin can inspect the delta-first evaluation operations surface with harne
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByRole("heading", { name: "Harness 控制概览" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "验证治理" })).toBeVisible();
   const workbench = page.locator(".evaluation-workbench");
   await waitForHarnessWorkbench(page, "ab_acceptance");
   await expect(workbench).toContainText(localizedSuiteName);

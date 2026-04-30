@@ -617,7 +617,7 @@ test("evaluation workbench page renders an explicit loading state for server-sid
     />,
   );
 
-  assert.match(markup, /Harness 控制概览/u);
+  assert.match(markup, /验证治理概览/u);
   assert.match(markup, /默认聚焦总体评测状态与风险分布。/u);
   assert.match(markup, /正在加载评测套件、运行记录与核验证据\.\.\./);
 });
@@ -644,9 +644,9 @@ test("evaluation workbench loading placeholder follows section-specific first-vi
     />,
   );
 
-  assert.match(overviewLoadingMarkup, /Harness 控制概览/u);
+  assert.match(overviewLoadingMarkup, /验证治理概览/u);
   assert.match(overviewLoadingMarkup, /默认聚焦总体评测状态与风险分布。/u);
-  assert.match(runsLoadingMarkup, /Harness 运行记录/u);
+  assert.match(runsLoadingMarkup, /验证运行记录/u);
   assert.match(runsLoadingMarkup, /默认聚焦最近运行队列与最终建议变化。/u);
 });
 
@@ -702,11 +702,11 @@ test("evaluation workbench page renders the real harness control plane inside a 
     />,
   );
 
-  assert.match(markup, /Harness 控制/u);
+  assert.match(markup, /验证治理/u);
   assert.match(markup, /evaluation-workbench-single-page/u);
   assert.match(markup, /harness-control-workbench/u);
   assert.match(markup, /harness-control-workspace/u);
-  assert.match(markup, /当前 Active/u);
+  assert.match(markup, /当前生效环境/u);
   assert.match(markup, /稿件类型/u);
   assert.match(markup, /临床研究/u);
   assert.match(markup, /主差异检查/u);
@@ -743,7 +743,7 @@ test("evaluation workbench renders the fullscreen harness task-mode workbench", 
   assert.match(markup, /发布门/u);
   assert.match(markup, /单稿诊断/u);
   assert.match(markup, /验证样本集/u);
-  assert.match(markup, /当前 Active/u);
+  assert.match(markup, /当前生效环境/u);
   assert.match(markup, /高级详情：关/u);
   assert.doesNotMatch(markup, /Gold Set/u);
 });
@@ -848,7 +848,7 @@ test("evaluation workbench datasets section keeps the dataset workbench inside t
 test("evaluation workbench loaded page renders compact A/B history without old action clutter", () => {
   const markup = renderLoadedPage(createOperationsOverviewFixture());
 
-  assert.match(markup, /Harness 控制/);
+  assert.match(markup, /验证治理/);
   assert.match(markup, /管理区/);
   assert.match(markup, /harness-control-mode-tabs/);
   assert.match(markup, /A\/B 验收结果/);

@@ -529,7 +529,7 @@ test("summary still exposes current asset and export metadata after the top stri
     />,
   );
 
-  assert.match(markup, /\u5f53\u524d\u8d44\u4ea7/u);
+  assert.match(markup, /\u5f53\u524d\u6587\u4ef6/u);
   assert.match(markup, /Cardiology review - \u7f16\u8f91\u7a3f/u);
   assert.match(markup, /\u67e5\u770b\u5f53\u524d\u7a3f\u4ef6/u);
   assert.match(markup, /\u4e0b\u8f7d\u5f53\u524d\u7a3f\u4ef6/u);
