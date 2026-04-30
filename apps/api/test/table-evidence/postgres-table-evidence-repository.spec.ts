@@ -90,6 +90,38 @@ test("postgres table evidence repository stores immutable revisions and target b
   });
 });
 
+test("postgres table evidence repository allows repeated uploads of the same source file", async () => {
+  await withMigratedTableEvidenceClient(async (client) => {
+    const repository = new PostgresTableEvidenceRepository({ client });
+    const firstUpload = {
+      id: "file-repeat-1",
+      storage_key: "uploads/2026/04/30/repeat-1.docx",
+      file_name: "repeat.docx",
+      mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      byte_length: 128,
+      sha256: "same-content-sha256",
+      uploaded_by: "user-1",
+      uploaded_at: "2026-04-30T00:00:00.000Z",
+    };
+    const secondUpload = {
+      ...firstUpload,
+      id: "file-repeat-2",
+      storage_key: "uploads/2026/04/30/repeat-2.docx",
+      uploaded_at: "2026-04-30T00:01:00.000Z",
+    };
+
+    await repository.saveSourceFile(firstUpload);
+    await repository.saveSourceFile(secondUpload);
+
+    const firstSourceFile = await repository.findSourceFileById("file-repeat-1");
+    const secondSourceFile = await repository.findSourceFileById("file-repeat-2");
+
+    assert.equal(firstSourceFile?.sha256, "same-content-sha256");
+    assert.equal(secondSourceFile?.sha256, "same-content-sha256");
+    assert.equal(secondSourceFile?.storage_key, "uploads/2026/04/30/repeat-2.docx");
+  });
+});
+
 test("postgres table evidence repository rejects cross-asset active revisions and bindings", async () => {
   await withMigratedTableEvidenceClient(async (client) => {
     const repository = new PostgresTableEvidenceRepository({ client });

@@ -61,12 +61,14 @@ export function TableEvidenceUploadEntry({
   return (
     <section className="table-evidence-panel table-evidence-upload-entry">
       <h3>上传 Word 表格证据</h3>
+      <p>选择或拖入 .docx。上传后下方会列出解析到的表格，点击表格即可打开预览确认区。</p>
       <div
         className="table-evidence-dropzone"
         data-upload-busy={isUploading ? "true" : "false"}
         onDragOver={(event) => event.preventDefault()}
         onDrop={handleDrop}
       >
+        <span>选择 .docx 或拖拽 Word 表格文档到这里</span>
         <input
           accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           data-table-evidence-upload-input="true"

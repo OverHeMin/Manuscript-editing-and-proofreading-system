@@ -28,8 +28,14 @@ export function TemplateGovernanceV2Shell({
   onSectionChange,
   onCommand,
 }: TemplateGovernanceV2ShellProps) {
+  const isImmersivePanel = activePanel === "rule-wizard";
+
   return (
-    <section className="rule-center-v2" data-active-section={activeSection}>
+    <section
+      className={`rule-center-v2${isImmersivePanel ? " rule-center-v2--immersive" : ""}`}
+      data-active-section={activeSection}
+      data-active-panel={activePanel}
+    >
       <header className="rule-center-v2__header">
         <p className="template-governance-eyebrow">规则中心</p>
         <h1>规则工作台</h1>
@@ -41,8 +47,15 @@ export function TemplateGovernanceV2Shell({
           counts={counts}
           onSectionChange={onSectionChange}
         />
-        <main className="rule-center-v2__work-area">{children}</main>
-        <aside className="rule-center-v2__detail-panel" data-panel={activePanel}>
+        {isImmersivePanel ? null : (
+          <main className="rule-center-v2__work-area">{children}</main>
+        )}
+        <aside
+          className={`rule-center-v2__detail-panel${
+            isImmersivePanel ? " rule-center-v2__detail-panel--immersive" : ""
+          }`}
+          data-panel={activePanel}
+        >
           {detailPanel ?? <p className="template-governance-empty">未选择项目</p>}
         </aside>
       </div>

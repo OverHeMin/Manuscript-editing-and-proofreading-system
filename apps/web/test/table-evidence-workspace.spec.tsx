@@ -65,6 +65,13 @@ test("TableEvidenceWorkspace exposes source, corrected, diff, fidelity, and conf
   );
 
   assert.match(html, /data-view-mode="source"/);
+  assert.match(html, /data-table-evidence-workspace-layout="responsive"/);
+  assert.match(html, /table-evidence-toolbar-stack/);
+  assert.match(html, /table-evidence-preview-pane/);
+  assert.match(html, /aria-label="上标"/);
+  assert.match(html, /x²/);
+  assert.match(html, /aria-label="下标"/);
+  assert.match(html, /x₂/);
   assert.match(html, /data-view-mode-option="corrected"/);
   assert.match(html, /data-view-mode-option="diff"/);
   assert.match(html, /待确认/);

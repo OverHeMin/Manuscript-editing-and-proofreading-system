@@ -73,6 +73,31 @@ test("image block editor renders visual symbol guidance and structured fields", 
   assert.match(markup, /χ²/u);
 });
 
+test("image block editor flags already uploaded DOCX payloads as misplaced table evidence", () => {
+  const markup = renderToStaticMarkup(
+    <KnowledgeLibraryBlockImageEditor
+      block={{
+        id: "block-1",
+        revision_id: "revision-1",
+        block_type: "image_block",
+        order_no: 2,
+        status: "active",
+        content_payload: {
+          file_name: "中西医结合.docx",
+          mime_type:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          storage_key: "uploads/2026/04/30/table.docx",
+        },
+      }}
+      onChange={() => {}}
+    />,
+  );
+
+  assert.match(markup, /这个图片块里已经是 Word 文档/u);
+  assert.match(markup, /不会触发表格解析和预览/u);
+  assert.match(markup, /删除本图片块/u);
+});
+
 test("image block editor directs DOCX uploads to Word table evidence", () => {
   assert.equal(
     getImageUploadGuardMessage({

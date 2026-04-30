@@ -92,8 +92,8 @@ test("knowledge library can upload, select, confirm, and bind DOCX table evidenc
   await page.locator('[data-board-action="save-draft"]').click();
 
   await page.locator('[data-board-tab="materials"]').click();
-  await page.locator('[data-block-action="add-table-evidence"]').click();
-  await expect(page.getByRole("heading", { name: "\u4e0a\u4f20 Word \u8868\u683c\u8bc1\u636e" })).toBeVisible();
+  await openTableEvidencePanelIfNeeded(page);
+  await expect(page.locator(".table-evidence-upload-entry")).toBeVisible();
 
   await page.locator('[data-table-evidence-upload-input="true"]').setInputFiles({
     name: "tables.docx",
@@ -108,7 +108,12 @@ test("knowledge library can upload, select, confirm, and bind DOCX table evidenc
     "data-asset-id",
     "asset-2",
   );
+  await expect(page.locator(".table-evidence-workspace")).toHaveAttribute(
+    "data-table-evidence-workspace-layout",
+    "responsive",
+  );
   await expect(page.locator(".table-evidence-workspace")).toContainText("Table 2");
+  await assertTableEvidenceWorkspaceLayout(page);
 
   await page.locator('[data-confirmation-kind="invisible_chars"]').check();
   await page.locator('[data-confirmation-kind="special_symbols"]').check();
@@ -144,6 +149,81 @@ test("knowledge library can upload, select, confirm, and bind DOCX table evidenc
     bindingRole: "source_evidence",
   });
 });
+
+test("rule center lays out uploaded DOCX table evidence workspace inside the entry step", async ({
+  page,
+  request,
+}) => {
+  await loginBrowserSession(page, request, "dev.admin");
+  await page.route(
+    "**/api/v1/table-evidence/assets/from-docx-upload",
+    async (route) => {
+      await route.fulfill({
+        status: 201,
+        json: createPendingTableEvidenceResponse(),
+      });
+    },
+  );
+
+  await page.goto("/#template-governance?templateGovernanceView=rule-ledger", {
+    waitUntil: "domcontentloaded",
+  });
+  await page.getByRole("button", { name: "新建规则" }).click();
+  await expect(page.locator(".table-evidence-upload-entry")).toBeVisible();
+
+  await page.locator('[data-table-evidence-upload-input="true"]').setInputFiles({
+    name: "tables.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    buffer: Buffer.from("fake docx content"),
+  });
+
+  await expect(page.locator(".table-evidence-workspace")).toBeVisible();
+  await expect(page.locator(".table-evidence-workspace")).toHaveAttribute(
+    "data-table-evidence-workspace-layout",
+    "responsive",
+  );
+  await expect(page.locator(".table-evidence-workspace")).toContainText("Table 1");
+  await assertTableEvidenceWorkspaceLayout(page);
+});
+
+async function openTableEvidencePanelIfNeeded(page: Page): Promise<void> {
+  const uploadEntry = page.locator(".table-evidence-upload-entry");
+  if (!(await uploadEntry.isVisible())) {
+    await page.locator('[data-block-action="add-table-evidence"]').click();
+  }
+}
+
+async function assertTableEvidenceWorkspaceLayout(page: Page): Promise<void> {
+  const metrics = await page.locator(".table-evidence-workspace").evaluate((workspace) => {
+    const grid = workspace.querySelector(".table-evidence-workspace-grid");
+    const toolbarStack = workspace.querySelector(".table-evidence-toolbar-stack");
+    const previewPane = workspace.querySelector(".table-evidence-preview-pane");
+    const toolbarButtons = Array.from(workspace.querySelectorAll(".table-evidence-toolbar button"));
+    if (!grid || !toolbarStack || !previewPane || toolbarButtons.length === 0) {
+      return null;
+    }
+
+    const gridStyle = getComputedStyle(grid);
+    const previewStyle = getComputedStyle(previewPane);
+    const buttonRects = toolbarButtons.map((button) => button.getBoundingClientRect());
+    return {
+      gridColumnCount: gridStyle.gridTemplateColumns.split(" ").filter(Boolean).length,
+      previewOverflowX: previewStyle.overflowX,
+      previewWidth: previewPane.getBoundingClientRect().width,
+      toolbarStackWidth: toolbarStack.getBoundingClientRect().width,
+      shortestButtonWidth: Math.min(...buttonRects.map((rect) => rect.width)),
+      tallestButtonHeight: Math.max(...buttonRects.map((rect) => rect.height)),
+    };
+  });
+
+  expect(metrics).not.toBeNull();
+  expect(metrics?.gridColumnCount).toBe(1);
+  expect(["auto", "scroll"]).toContain(metrics?.previewOverflowX);
+  expect(metrics?.toolbarStackWidth).toBeGreaterThan(280);
+  expect(metrics?.previewWidth).toBeGreaterThan(280);
+  expect(metrics?.shortestButtonWidth).toBeGreaterThan(24);
+  expect(metrics?.tallestButtonHeight).toBeLessThan(44);
+}
 
 async function loginApiSession(
   request: APIRequestContext,
