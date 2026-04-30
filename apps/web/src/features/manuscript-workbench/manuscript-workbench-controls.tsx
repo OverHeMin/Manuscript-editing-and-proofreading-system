@@ -39,6 +39,7 @@ export interface ManuscriptWorkbenchLookupPanelProps {
 
 export interface ManuscriptWorkbenchTemplateSelectionPanelProps {
   title: string;
+  bindingEnabled?: boolean;
   resolvedManuscriptTypeLabel: string;
   confidenceLabel: string;
   confidenceLevel?: "low" | "medium" | "high";
@@ -53,6 +54,7 @@ export interface ManuscriptWorkbenchTemplateSelectionPanelProps {
   currentAppliedLabel: string;
   hasPendingChange: boolean;
   options: WorkbenchSelectOption[];
+  onBindingEnabledChange?(value: boolean): void;
   onManualManuscriptTypeSelect?(value: string): void;
   onTemplateFamilySelect(value: string): void;
   onSelect(value: string): void;
@@ -125,10 +127,12 @@ export function ManuscriptWorkbenchControls({
   const showScaffoldHeader = layout !== "drawer";
   const utilitiesDescription =
     mode === "proofreading"
-      ? "导出当前文件、刷新最新任务，或在需要时打开校对工作台。"
-      : "导出当前文件、刷新最新任务，或在需要时发布人工终稿。";
-  const utilitiesPrimaryActionLabel =
-    mode === "proofreading" ? "打开校对工作台" : "发布人工终稿";
+      ? "导出当前文件、刷新最新任务。"
+      : "导出当前文件、刷新最新任务，或发布人工终稿。";
+  const shouldShowUtilitiesPrimaryAction =
+    mode !== "proofreading" &&
+    utilities?.canPublishHumanFinal &&
+    utilities.onPublishHumanFinal;
 
   return (
     <section
@@ -225,13 +229,13 @@ export function ManuscriptWorkbenchControls({
                 </p>
               ) : null}
               <div className="manuscript-workbench-button-row manuscript-workbench-button-row--sticky">
-                {utilities.canPublishHumanFinal && utilities.onPublishHumanFinal ? (
+                {shouldShowUtilitiesPrimaryAction ? (
                   <button
                     type="button"
                     disabled={busy}
                     onClick={() => utilities.onPublishHumanFinal?.()}
                   >
-                    {utilitiesPrimaryActionLabel}
+                    发布人工终稿
                   </button>
                 ) : null}
                 <button
@@ -315,8 +319,7 @@ function IntakePanel({
   const [isDragActive, setIsDragActive] = useState(false);
   const requiresUploadPayload = Boolean(
     intake.attachedFileCount === 0 &&
-      (intake.uploadForm.fileContentBase64?.trim().length ?? 0) === 0 &&
-      (intake.uploadForm.storageKey?.trim().length ?? 0) === 0,
+      (intake.uploadForm.fileContentBase64?.trim().length ?? 0) === 0,
   );
   const hasTooManyFiles =
     intake.attachedFileCount > MAX_MANUSCRIPT_BATCH_UPLOAD_COUNT;
@@ -342,7 +345,7 @@ function IntakePanel({
       <div className="manuscript-workbench-panel-heading">
         <div>
           <h3>稿件接入</h3>
-          <p>优先直接上传稿件，稿件类型默认交给 AI 在上传时识别。</p>
+          <p>拖拽或点击上传稿件。</p>
         </div>
       </div>
       <div className="manuscript-workbench-panel-body">
@@ -395,23 +398,6 @@ function IntakePanel({
           一次最多 {MAX_MANUSCRIPT_BATCH_UPLOAD_COUNT} 个稿件，超出后提交按钮会自动停用。
         </p>
         <p className="manuscript-workbench-help">{selectedFileSummary}</p>
-        <details className="manuscript-workbench-upload-advanced">
-          <summary>高级导入</summary>
-          <label className={resolveFieldClassName(requiresUploadPayload)}>
-            <span>远程稿件地址（可选）</span>
-            <input
-              value={intake.uploadForm.storageKey ?? ""}
-              placeholder="仅在需要远程导入时填写"
-              onChange={(event) => intake.onStorageKeyChange(event.target.value)}
-            />
-          </label>
-        </details>
-        {intake.attachedFileNames.length > 0 ? (
-          <div className="manuscript-workbench-selection-context">
-            <span>已附加稿件</span>
-            <strong>{`已附加 ${intake.attachedFileCount} 个稿件`}</strong>
-          </div>
-        ) : null}
         {validationMessages.length > 0 ? (
           <ul className="manuscript-workbench-validation-list">
             {validationMessages.map((message) => (
@@ -440,7 +426,9 @@ function TemplateSelectionPanel({
   busy: boolean;
   templateSelection: ManuscriptWorkbenchTemplateSelectionPanelProps;
 }) {
+  const bindingEnabled = templateSelection.bindingEnabled !== false;
   const shouldShowManualManuscriptTypeSelect =
+    bindingEnabled &&
     templateSelection.showManualManuscriptTypeSelect &&
     (templateSelection.manualManuscriptTypeOptions?.length ?? 0) > 0 &&
     typeof templateSelection.onManualManuscriptTypeSelect === "function";
@@ -470,72 +458,106 @@ function TemplateSelectionPanel({
             <span>识别置信度</span>
             <strong>{templateSelection.confidenceLabel}</strong>
           </div>
-          <div className="manuscript-workbench-selection-context">
-            <span>基础模板家族</span>
-            <strong>{templateSelection.baseTemplateLabel}</strong>
-          </div>
-          <div className="manuscript-workbench-selection-context">
-            <span>当前生效上下文</span>
-            <strong>{resolveAppliedTemplateLabel(templateSelection)}</strong>
-          </div>
+          {bindingEnabled ? (
+            <>
+              <div className="manuscript-workbench-selection-context">
+                <span>基础模板家族</span>
+                <strong>{templateSelection.baseTemplateLabel}</strong>
+              </div>
+              <div className="manuscript-workbench-selection-context">
+                <span>当前生效上下文</span>
+                <strong>{resolveAppliedTemplateLabel(templateSelection)}</strong>
+              </div>
+            </>
+          ) : (
+            <div className="manuscript-workbench-selection-context">
+              <span>当前方式</span>
+              <strong>bare AI</strong>
+            </div>
+          )}
         </div>
-        <details
-          className="manuscript-workbench-template-override"
-          open={templateSelection.requiresOperatorReview}
-        >
-          <summary>
-            {shouldShowManualManuscriptTypeSelect
-              ? "人工修正稿件类型与模板"
-              : "修正基础模板家族"}
-          </summary>
-          {shouldShowManualManuscriptTypeSelect ? (
-            <label className="manuscript-workbench-field">
-              <span>人工确认稿件类型</span>
-              <select
-                value={templateSelection.manualManuscriptTypeValue ?? ""}
-                onChange={(event) =>
-                  templateSelection.onManualManuscriptTypeSelect?.(event.target.value)}
-              >
-                {templateSelection.manualManuscriptTypeOptions?.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          <label className="manuscript-workbench-field">
-            <span>基础模板家族</span>
-            <select
-              value={templateSelection.selectedTemplateFamilyId}
-              onChange={(event) => templateSelection.onTemplateFamilySelect(event.target.value)}
+        <fieldset className="manuscript-workbench-field">
+          <legend>是否绑定模板</legend>
+          <label>
+            <input
+              type="radio"
+              name="template-binding-enabled"
+              checked={bindingEnabled}
+              onChange={() => templateSelection.onBindingEnabledChange?.(true)}
+            />
+            是
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="template-binding-enabled"
+              checked={!bindingEnabled}
+              onChange={() => templateSelection.onBindingEnabledChange?.(false)}
+            />
+            否
+          </label>
+        </fieldset>
+        {bindingEnabled ? (
+          <>
+            <details
+              className="manuscript-workbench-template-override"
+              open={templateSelection.requiresOperatorReview}
             >
-              {templateSelection.selectedTemplateFamilyId.trim().length === 0 &&
-              templateSelection.templateFamilyOptions.length > 0 ? (
-                <option value="">请选择基础模板家族</option>
+              <summary>
+                {shouldShowManualManuscriptTypeSelect
+                  ? "人工修正稿件类型与模板"
+                  : "修正基础模板家族"}
+              </summary>
+              {shouldShowManualManuscriptTypeSelect ? (
+                <label className="manuscript-workbench-field">
+                  <span>人工确认稿件类型</span>
+                  <select
+                    value={templateSelection.manualManuscriptTypeValue ?? ""}
+                    onChange={(event) =>
+                      templateSelection.onManualManuscriptTypeSelect?.(event.target.value)}
+                  >
+                    {templateSelection.manualManuscriptTypeOptions?.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               ) : null}
-              {templateSelection.templateFamilyOptions.map((option) => (
+              <label className="manuscript-workbench-field">
+                <span>基础模板家族</span>
+                <select
+                  value={templateSelection.selectedTemplateFamilyId}
+                  onChange={(event) => templateSelection.onTemplateFamilySelect(event.target.value)}
+                >
+                  {templateSelection.selectedTemplateFamilyId.trim().length === 0 &&
+                  templateSelection.templateFamilyOptions.length > 0 ? (
+                    <option value="">请选择基础模板家族</option>
+                  ) : null}
+                  {templateSelection.templateFamilyOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </details>
+          <label className="manuscript-workbench-field">
+            <span>期刊模板（小期刊/场景）</span>
+            <select
+              value={templateSelection.selectedJournalTemplateId}
+              onChange={(event) => templateSelection.onSelect(event.target.value)}
+            >
+              <option value="">仅使用基础家族</option>
+              {templateSelection.options.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
             </select>
           </label>
-        </details>
-        <label className="manuscript-workbench-field">
-          <span>期刊模板（小期刊/场景）</span>
-          <select
-            value={templateSelection.selectedJournalTemplateId}
-            onChange={(event) => templateSelection.onSelect(event.target.value)}
-          >
-            <option value="">仅使用基础家族</option>
-            {templateSelection.options.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+          </>
+        ) : null}
         {templateSelection.hasPendingChange ? (
           <p className="manuscript-workbench-help is-warning">
             已有未保存的模板切换，请先保存，再继续处理。
@@ -547,7 +569,9 @@ function TemplateSelectionPanel({
           </p>
         ) : null}
         <p className="manuscript-workbench-help">
-          期刊模板用于细化小期刊或场景要求；如不选择，将仅按基础模板家族继续处理。
+          {bindingEnabled
+            ? "期刊模板用于细化小期刊或场景要求；如不选择，将仅按基础模板家族继续处理。"
+            : "本次不绑定模板，系统会按 bare AI 方式处理。"}
         </p>
         <div className="manuscript-workbench-button-row manuscript-workbench-button-row--sticky">
           <button
@@ -670,10 +694,9 @@ function buildIntakeValidationMessages(
 
   if (
     !hasAttachedFiles &&
-    (input.fileContentBase64?.trim().length ?? 0) === 0 &&
-    (input.storageKey?.trim().length ?? 0) === 0
+    (input.fileContentBase64?.trim().length ?? 0) === 0
   ) {
-    messages.push("请先选择本地稿件，或在高级导入中填写远程稿件地址。");
+    messages.push("请先选择本地稿件。");
   }
 
   if (attachedFileCount > MAX_MANUSCRIPT_BATCH_UPLOAD_COUNT) {
@@ -700,13 +723,13 @@ function buildSelectedFileSummary(
     return "已附加 1 个稿件，提交后会直接开始处理。";
   }
 
-  return "尚未选择稿件，可直接上传；如需远程导入，可展开高级导入。";
+  return "尚未选择稿件。";
 }
 
 function formatWorkbenchPanelTitle(title: string): string {
   if (title === "Screening Run") return "初筛执行";
   if (title === "Editing Run") return "编辑执行";
-  if (title === "Proofreading Draft") return "校对草稿生成";
+  if (title === "Proofreading Draft" || title === "Proofreading Run") return "校对执行";
   if (title === "Proofreading Final") return "校对定稿";
   return title;
 }
@@ -714,14 +737,14 @@ function formatWorkbenchPanelTitle(title: string): string {
 function legacyFormatWorkbenchActionLabel(label: string): string {
   if (label === "Run Screening") return "执行初筛";
   if (label === "Run Editing") return "执行编辑";
-  if (label === "Create Draft") return "生成草稿";
+  if (label === "Create Draft" || label === "Run Proofreading") return "执行校对";
   if (label === "Finalize Proofreading") return "校对定稿";
   if (label === "Run Bare AI Once") return "AI 自动处理（本次）";
   return label;
 }
 
 function formatWorkbenchActionLabel(label: string): string {
-  if (label === "Create Draft") return "生成校对草稿";
+  if (label === "Create Draft" || label === "Run Proofreading") return "执行校对";
   if (label === "Finalize Proofreading") return "校对终稿";
   if (label === AI_RECOGNITION_ACTION_LABEL) return BARE_AI_ACTION_DISPLAY_LABEL;
   return legacyFormatWorkbenchActionLabel(label);

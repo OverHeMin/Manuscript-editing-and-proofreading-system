@@ -44,6 +44,10 @@ import {
   type ManuscriptWorkbenchQueueItem,
 } from "./manuscript-workbench-queue-pane.tsx";
 import {
+  loadManuscriptWorkbenchQueueItems,
+  saveManuscriptWorkbenchQueueItems,
+} from "./manuscript-workbench-queue-storage.ts";
+import {
   ManuscriptWorkbenchNotice,
   type ManuscriptWorkbenchNoticeProps,
 } from "./manuscript-workbench-notice.tsx";
@@ -143,6 +147,7 @@ export interface ManuscriptWorkbenchPageProps {
   mode: ManuscriptWorkbenchMode;
   actorRole?: AuthRole;
   controller?: ManuscriptWorkbenchController;
+  initialWorkspaceForTest?: ManuscriptWorkbenchWorkspace;
   prefilledManuscriptId?: string;
   prefilledAssetId?: string;
   prefilledPresentation?: "fullscreen";
@@ -1313,6 +1318,7 @@ export function ManuscriptWorkbenchPage({
   mode,
   actorRole = "user",
   controller = defaultController,
+  initialWorkspaceForTest,
   prefilledManuscriptId,
   prefilledAssetId,
   prefilledPresentation,
@@ -1330,7 +1336,9 @@ export function ManuscriptWorkbenchPage({
     prefilledReviewedCaseSnapshotId?.trim() ?? "";
   const normalizedPrefilledSampleSetItemId = prefilledSampleSetItemId?.trim() ?? "";
   const [lookupId, setLookupId] = useState("");
-  const [workspace, setWorkspace] = useState<ManuscriptWorkbenchWorkspace | null>(null);
+  const [workspace, setWorkspace] = useState<ManuscriptWorkbenchWorkspace | null>(
+    initialWorkspaceForTest ?? null,
+  );
   const [latestJob, setLatestJob] = useState<AnyWorkbenchJob | null>(null);
   const [latestExport, setLatestExport] = useState<DocumentAssetExportViewModel | null>(null);
   const [latestActionResult, setLatestActionResult] =
@@ -1408,9 +1416,12 @@ export function ManuscriptWorkbenchPage({
     );
   const [selectedTemplateFamilyId, setSelectedTemplateFamilyId] = useState("");
   const [selectedJournalTemplateId, setSelectedJournalTemplateId] = useState("");
+  const [isTemplateBindingEnabled, setIsTemplateBindingEnabled] = useState(true);
   const [selectedTemplateContext, setSelectedTemplateContext] =
     useState<ManuscriptWorkbenchTemplateContext | null>(null);
-  const [queueItems, setQueueItems] = useState<ManuscriptWorkbenchQueueItem[]>([]);
+  const [queueItems, setQueueItems] = useState<ManuscriptWorkbenchQueueItem[]>(
+    () => loadInitialQueueItems(mode),
+  );
   const canSubmitUpload =
     uploadForm.title.trim().length > 0 &&
     uploadForm.fileName.trim().length > 0 &&
@@ -1426,16 +1437,28 @@ export function ManuscriptWorkbenchPage({
   });
 
   useEffect(() => {
+    setQueueItems(loadInitialQueueItems(mode));
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode === "submission" || typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      saveManuscriptWorkbenchQueueItems(window.localStorage, mode, queueItems);
+    } catch {
+      // Queue persistence is a convenience layer; workbench actions should not fail if storage is unavailable.
+    }
+  }, [mode, queueItems]);
+
+  useEffect(() => {
     if (!workspace) {
       return;
     }
 
     setLookupId(workspace.manuscript.id);
-    setParentAssetId((current) =>
-      workspace.assets.some((asset) => asset.id === current)
-        ? current
-        : workspace.suggestedParentAsset?.id ?? "",
-    );
+    setParentAssetId((current) => resolveDefaultParentAssetId(current, workspace));
     setDraftAssetId((current) =>
       resolveProofreadingDraftSelection({
         assets: workspace.assets,
@@ -2972,7 +2995,7 @@ function buildTemplateContextActionResult(
       })
     : null;
   const hasPendingTemplateChange =
-    workspace != null
+    workspace != null && isTemplateBindingEnabled
       ? (resolveCurrentBaseTemplateFamilyId(workspace) ?? "") !==
           selectedTemplateFamilyId ||
         (workspace.manuscript.current_journal_template_id ?? "") !==
@@ -2982,12 +3005,10 @@ function buildTemplateContextActionResult(
     ? buildTemplateFamilyOptions(templateSelectionWorkspace)
     : [];
   const templateSelectionPanel =
-    templateSelectionWorkspace &&
-    (templateSelectionWorkspace.templateFamily ||
-      templateSelectionWorkspace.availableTemplateFamilies?.length ||
-      templateSelectionWorkspace.manuscript.governed_execution_context_summary)
+    templateSelectionWorkspace
       ? {
           title: "Journal Template",
+          bindingEnabled: isTemplateBindingEnabled,
           resolvedManuscriptTypeLabel: formatDetectedManuscriptType(
             templateSelectionWorkspace.manuscript,
           ),
@@ -3021,6 +3042,7 @@ function buildTemplateContextActionResult(
           ),
           hasPendingChange: hasPendingTemplateChange,
           options: buildJournalTemplateOptions(templateSelectionWorkspace),
+          onBindingEnabledChange: setIsTemplateBindingEnabled,
           onManualManuscriptTypeSelect: (value: string) => {
             const nextTemplateFamilyId = resolveTemplateFamilyIdForManuscriptType(
               templateSelectionWorkspace,
@@ -3104,13 +3126,18 @@ function buildTemplateContextActionResult(
           onSelect: setParentAssetId,
           onRun: () =>
             void run(resolveActionLabel(mode), async () => {
-              const synchronizedWorkspace = await persistTemplateSelection(workspace);
-              const executionBlockMessage = resolveGovernedExecutionBlockMessage(
-                mode,
-                resolveWorkbenchReadOnlyExecutionContext(mode, synchronizedWorkspace),
-              );
-              if (executionBlockMessage) {
-                throw new Error(executionBlockMessage);
+              const executionMode = isTemplateBindingEnabled ? undefined : "bare";
+              const synchronizedWorkspace = isTemplateBindingEnabled
+                ? await persistTemplateSelection(workspace)
+                : workspace;
+              if (executionMode !== "bare") {
+                const executionBlockMessage = resolveGovernedExecutionBlockMessage(
+                  mode,
+                  resolveWorkbenchReadOnlyExecutionContext(mode, synchronizedWorkspace),
+                );
+                if (executionBlockMessage) {
+                  throw new Error(executionBlockMessage);
+                }
               }
 
               const result = await controller.runModuleAndLoad(
@@ -3119,14 +3146,14 @@ function buildTemplateContextActionResult(
                   manuscriptId: synchronizedWorkspace.manuscript.id,
                   parentAssetId,
                   actorRole,
+                  executionMode,
                   outputBaseName: synchronizedWorkspace.manuscript.title,
                 }),
               );
-              const nextWorkspace = await syncWorkspaceConcurrencySnapshot(
+              let nextWorkspace = await syncWorkspaceConcurrencySnapshot(
                 result.workspace,
               );
-              setWorkspace(nextWorkspace);
-              setLatestJob(result.runResult.job);
+              let nextLatestJob: AnyWorkbenchJob = result.runResult.job;
               if (mode === "proofreading") {
                 setDraftAssetId(
                   resolveProofreadingDraftSelection({
@@ -3136,7 +3163,29 @@ function buildTemplateContextActionResult(
                     preferLatestDraft: true,
                   }),
                 );
+                const nextDraftAssetId = resolveAutoFinalizeProofreadingDraftAssetId(
+                  result.runResult.asset,
+                  nextWorkspace,
+                );
+                if (nextDraftAssetId) {
+                  const finalResult = await controller.finalizeProofreadingAndLoad({
+                    manuscriptId: nextWorkspace.manuscript.id,
+                    draftAssetId: nextDraftAssetId,
+                    actorRole,
+                    storageKey: `runs/${nextWorkspace.manuscript.id}/proofreading/final`,
+                    fileName: resolveWorkbenchProofreadingAnnotatedFileName(
+                      nextWorkspace.manuscript.title,
+                    ),
+                  });
+                  nextWorkspace = await syncWorkspaceConcurrencySnapshot(
+                    finalResult.workspace,
+                  );
+                  nextLatestJob = finalResult.runResult.job;
+                  setDraftAssetId(nextDraftAssetId);
+                }
               }
+              setWorkspace(nextWorkspace);
+              setLatestJob(nextLatestJob);
               await syncProofreadingGovernanceHandoff(nextWorkspace);
               const materializedAsset = requireMaterializedModuleResultAsset(
                 mode,
@@ -3163,36 +3212,27 @@ function buildTemplateContextActionResult(
                       value: result.runResult.job.id,
                     },
                   ],
-                  result.runResult.job,
+                  nextLatestJob,
                   nextWorkspace.manuscript.module_execution_overview,
                 ),
               };
             }),
           onSecondaryRun: () =>
             void run(AI_RECOGNITION_ACTION_LABEL, async () => {
-              const synchronizedWorkspace = await persistTemplateSelection(workspace);
-              const executionBlockMessage = resolveGovernedExecutionBlockMessage(
-                mode,
-                resolveWorkbenchReadOnlyExecutionContext(mode, synchronizedWorkspace),
-              );
-              if (executionBlockMessage) {
-                throw new Error(executionBlockMessage);
-              }
-
               const result = await controller.runModuleAndLoad(
                 buildWorkbenchModuleRunInput({
                   mode,
-                  manuscriptId: synchronizedWorkspace.manuscript.id,
+                  manuscriptId: workspace.manuscript.id,
                   parentAssetId,
                   actorRole,
-                  outputBaseName: synchronizedWorkspace.manuscript.title,
+                  executionMode: "bare",
+                  outputBaseName: workspace.manuscript.title,
                 }),
               );
-              const nextWorkspace = await syncWorkspaceConcurrencySnapshot(
+              let nextWorkspace = await syncWorkspaceConcurrencySnapshot(
                 result.workspace,
               );
-              setWorkspace(nextWorkspace);
-              setLatestJob(result.runResult.job);
+              let nextLatestJob: AnyWorkbenchJob = result.runResult.job;
               if (mode === "proofreading") {
                 setDraftAssetId(
                   resolveProofreadingDraftSelection({
@@ -3202,7 +3242,29 @@ function buildTemplateContextActionResult(
                     preferLatestDraft: true,
                   }),
                 );
+                const nextDraftAssetId = resolveAutoFinalizeProofreadingDraftAssetId(
+                  result.runResult.asset,
+                  nextWorkspace,
+                );
+                if (nextDraftAssetId) {
+                  const finalResult = await controller.finalizeProofreadingAndLoad({
+                    manuscriptId: nextWorkspace.manuscript.id,
+                    draftAssetId: nextDraftAssetId,
+                    actorRole,
+                    storageKey: `runs/${nextWorkspace.manuscript.id}/proofreading/final`,
+                    fileName: resolveWorkbenchProofreadingAnnotatedFileName(
+                      nextWorkspace.manuscript.title,
+                    ),
+                  });
+                  nextWorkspace = await syncWorkspaceConcurrencySnapshot(
+                    finalResult.workspace,
+                  );
+                  nextLatestJob = finalResult.runResult.job;
+                  setDraftAssetId(nextDraftAssetId);
+                }
               }
+              setWorkspace(nextWorkspace);
+              setLatestJob(nextLatestJob);
               await syncProofreadingGovernanceHandoff(nextWorkspace);
               const materializedAsset = requireMaterializedModuleResultAsset(
                 mode,
@@ -3229,7 +3291,7 @@ function buildTemplateContextActionResult(
                       value: result.runResult.job.id,
                     },
                   ],
-                  result.runResult.job,
+                  nextLatestJob,
                   nextWorkspace.manuscript.module_execution_overview,
                 ),
               };
@@ -3928,6 +3990,17 @@ function buildTemplateContextActionResult(
             <ManuscriptWorkbenchQueuePane
               mode={mode}
               busy={workbenchBusy}
+              lookup={{
+                manuscriptId: lookupId,
+                onChange: setLookupId,
+                onLoad: () => {
+                  if (lookupId.trim().length > 0) {
+                    void run("Load Workspace", async () =>
+                      loadWorkspaceIntoBench(lookupId.trim()),
+                    );
+                  }
+                },
+              }}
               workspace={workspace}
               latestJob={latestJob}
               queueItems={queueItems}
@@ -4315,75 +4388,109 @@ export function ManuscriptWorkbenchFocusCanvas({
               <span>识别置信度</span>
               <strong>{templateSelection.confidenceLabel}</strong>
             </div>
-            <div className="manuscript-workbench-selection-context">
-              <span>基础模板家族</span>
-              <strong>{templateSelection.baseTemplateLabel}</strong>
-            </div>
-            <div className="manuscript-workbench-selection-context">
-              <span>当前生效上下文</span>
-              <strong>{templateSelection.currentAppliedLabel}</strong>
-            </div>
+            {templateSelection.bindingEnabled !== false ? (
+              <>
+                <div className="manuscript-workbench-selection-context">
+                  <span>基础模板家族</span>
+                  <strong>{templateSelection.baseTemplateLabel}</strong>
+                </div>
+                <div className="manuscript-workbench-selection-context">
+                  <span>当前生效上下文</span>
+                  <strong>{templateSelection.currentAppliedLabel}</strong>
+                </div>
+              </>
+            ) : (
+              <div className="manuscript-workbench-selection-context">
+                <span>当前方式</span>
+                <strong>bare AI</strong>
+              </div>
+            )}
           </div>
-          <details
-            className="manuscript-workbench-template-override"
-            open={templateSelection.requiresOperatorReview || templateSelection.hasPendingChange}
-          >
-            <summary>
-              {templateSelection.showManualManuscriptTypeSelect &&
-              (templateSelection.manualManuscriptTypeOptions?.length ?? 0) > 0
-                ? "人工修正稿件类型与模板"
-                : "修正基础模板家族"}
-            </summary>
-            {templateSelection.showManualManuscriptTypeSelect &&
-            (templateSelection.manualManuscriptTypeOptions?.length ?? 0) > 0 &&
-            templateSelection.onManualManuscriptTypeSelect ? (
+          <fieldset className="manuscript-workbench-field">
+            <legend>是否绑定模板</legend>
+            <label>
+              <input
+                type="radio"
+                name="focus-template-binding-enabled"
+                checked={templateSelection.bindingEnabled !== false}
+                onChange={() => templateSelection.onBindingEnabledChange?.(true)}
+              />
+              是
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="focus-template-binding-enabled"
+                checked={templateSelection.bindingEnabled === false}
+                onChange={() => templateSelection.onBindingEnabledChange?.(false)}
+              />
+              否
+            </label>
+          </fieldset>
+          {templateSelection.bindingEnabled !== false ? (
+            <>
+              <details
+                className="manuscript-workbench-template-override"
+                open={templateSelection.requiresOperatorReview || templateSelection.hasPendingChange}
+              >
+                <summary>
+                  {templateSelection.showManualManuscriptTypeSelect &&
+                  (templateSelection.manualManuscriptTypeOptions?.length ?? 0) > 0
+                    ? "人工修正稿件类型与模板"
+                    : "修正基础模板家族"}
+                </summary>
+                {templateSelection.showManualManuscriptTypeSelect &&
+                (templateSelection.manualManuscriptTypeOptions?.length ?? 0) > 0 &&
+                templateSelection.onManualManuscriptTypeSelect ? (
+                  <label className="manuscript-workbench-field">
+                    <span>人工确认稿件类型</span>
+                    <select
+                      value={templateSelection.manualManuscriptTypeValue ?? ""}
+                      onChange={(event) =>
+                        templateSelection.onManualManuscriptTypeSelect?.(event.target.value)}
+                    >
+                      {templateSelection.manualManuscriptTypeOptions?.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                <label className="manuscript-workbench-field">
+                  <span>基础模板家族</span>
+                  <select
+                    value={templateSelection.selectedTemplateFamilyId}
+                    onChange={(event) => templateSelection.onTemplateFamilySelect(event.target.value)}
+                  >
+                    {templateSelection.selectedTemplateFamilyId.trim().length === 0 &&
+                    templateSelection.templateFamilyOptions.length > 0 ? (
+                      <option value="">请选择基础模板家族</option>
+                    ) : null}
+                    {templateSelection.templateFamilyOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </details>
               <label className="manuscript-workbench-field">
-                <span>人工确认稿件类型</span>
+                <span>期刊模板（小期刊/场景）</span>
                 <select
-                  value={templateSelection.manualManuscriptTypeValue ?? ""}
-                  onChange={(event) =>
-                    templateSelection.onManualManuscriptTypeSelect?.(event.target.value)}
+                  value={templateSelection.selectedJournalTemplateId}
+                  onChange={(event) => templateSelection.onSelect(event.target.value)}
                 >
-                  {templateSelection.manualManuscriptTypeOptions?.map((option) => (
+                  <option value="">仅使用基础家族</option>
+                  {templateSelection.options.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
                   ))}
                 </select>
               </label>
-            ) : null}
-            <label className="manuscript-workbench-field">
-              <span>基础模板家族</span>
-              <select
-                value={templateSelection.selectedTemplateFamilyId}
-                onChange={(event) => templateSelection.onTemplateFamilySelect(event.target.value)}
-              >
-                {templateSelection.selectedTemplateFamilyId.trim().length === 0 &&
-                templateSelection.templateFamilyOptions.length > 0 ? (
-                  <option value="">请选择基础模板家族</option>
-                ) : null}
-                {templateSelection.templateFamilyOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </details>
-          <label className="manuscript-workbench-field">
-            <span>期刊模板（小期刊/场景）</span>
-            <select
-              value={templateSelection.selectedJournalTemplateId}
-              onChange={(event) => templateSelection.onSelect(event.target.value)}
-            >
-              <option value="">仅使用基础家族</option>
-              {templateSelection.options.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+            </>
+          ) : null}
           {templateSelection.requiresOperatorReview ? (
             <p className="manuscript-workbench-help is-warning">
               AI 识别失败或低置信度时请先人工确认稿件类型，再选择期刊模板。
@@ -4505,11 +4612,10 @@ function ManuscriptWorkbenchResultPanel({
       : null;
   const currentResultPreviewHref =
     workspace && currentResultAsset
-      ? buildWorkbenchAssetDetailHref({
+      ? resolveResultPreviewHref({
           mode,
           manuscriptId: workspace.manuscript.id,
-          assetId: currentResultAsset.id,
-          presentation: resolveWorkbenchDetailPresentation(mode, currentResultAsset),
+          asset: currentResultAsset,
           reviewedCaseSnapshotId: normalizedReviewedCaseSnapshotId,
           sampleSetItemId: normalizedSampleSetItemId,
         })
@@ -5039,14 +5145,14 @@ function resolveCoreStripActivePillar(
 function resolveActionLabel(mode: ManuscriptWorkbenchMode): string {
   if (mode === "screening") return "Run Screening";
   if (mode === "editing") return "Run Editing";
-  if (mode === "proofreading") return "Create Draft";
+  if (mode === "proofreading") return "Run Proofreading";
   return "Run";
 }
 
 function resolveActionPanelTitle(mode: ManuscriptWorkbenchMode): string {
   if (mode === "screening") return "Screening Run";
   if (mode === "editing") return "Editing Run";
-  if (mode === "proofreading") return "Proofreading Draft";
+  if (mode === "proofreading") return "Proofreading Run";
   return "Module Action";
 }
 
@@ -5222,7 +5328,7 @@ function resolveTemplateSelectionStatusMessage(
 function formatPrimaryActionBadge(actionLabel: string): string {
   if (actionLabel === "Run Screening") return "初筛入口";
   if (actionLabel === "Run Editing") return "编辑入口";
-  if (actionLabel === "Create Draft") return "校对草稿";
+  if (actionLabel === "Create Draft" || actionLabel === "Run Proofreading") return "校对入口";
   if (actionLabel === "Finalize Proofreading") return "校对定稿";
   return "处理入口";
 }
@@ -5230,7 +5336,7 @@ function formatPrimaryActionBadge(actionLabel: string): string {
 function formatPrimaryActionTitle(actionLabel: string): string {
   if (actionLabel === "Run Screening") return "执行初筛";
   if (actionLabel === "Run Editing") return "执行编辑";
-  if (actionLabel === "Create Draft") return "生成校对草稿";
+  if (actionLabel === "Create Draft" || actionLabel === "Run Proofreading") return "执行校对";
   if (actionLabel === "Finalize Proofreading") return "确认校对定稿";
   return actionLabel;
 }
@@ -5287,8 +5393,8 @@ function resolvePrimaryActionDescription(
     return "基于当前选中的稿件资产进入编辑处理，生成下一步可继续流转的文档。";
   }
 
-  if (actionLabel === "Create Draft") {
-    return "先生成本轮校对草稿，再进入人工终审和定稿。";
+  if (actionLabel === "Create Draft" || actionLabel === "Run Proofreading") {
+    return "执行校对处理，完成后进入人工核对页确认并生成终稿。";
   }
 
   if (actionLabel === "Finalize Proofreading") {
@@ -5458,6 +5564,20 @@ function buildQueueItemFromManuscript(
     queueStatus: resolveQueueStatus(manuscript, mode, latestJobStatus),
     isActive,
   };
+}
+
+function loadInitialQueueItems(
+  mode: ManuscriptWorkbenchMode,
+): ManuscriptWorkbenchQueueItem[] {
+  if (mode === "submission" || typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    return loadManuscriptWorkbenchQueueItems(window.localStorage, mode);
+  } catch {
+    return [];
+  }
 }
 
 function mergeQueueItems(
@@ -5947,6 +6067,39 @@ function requireMaterializedModuleResultAsset(
   return asset;
 }
 
+export function resolveDefaultParentAssetId(
+  currentParentAssetId: string,
+  workspace: ManuscriptWorkbenchWorkspace,
+): string {
+  const currentParentAsset = workspace.assets.find(
+    (asset) => asset.id === currentParentAssetId,
+  );
+  if (currentParentAsset && isSelectableParentAsset(currentParentAsset)) {
+    return currentParentAsset.id;
+  }
+
+  if (workspace.suggestedParentAsset) {
+    return workspace.suggestedParentAsset.id;
+  }
+
+  return workspace.assets.find((asset) => isSelectableParentAsset(asset))?.id ?? "";
+}
+
+export function resolveAutoFinalizeProofreadingDraftAssetId(
+  runAsset: { id: string; asset_type: string } | null | undefined,
+  workspace: Pick<ManuscriptWorkbenchWorkspace, "latestProofreadingDraftAsset" | "assets">,
+): string {
+  if (runAsset?.asset_type === "proofreading_draft_report") {
+    return runAsset.id;
+  }
+
+  return (
+    workspace.latestProofreadingDraftAsset?.id ??
+    workspace.assets.find((asset) => asset.asset_type === "proofreading_draft_report")?.id ??
+    ""
+  );
+}
+
 function resolveFocusableCurrentResultAsset(
   mode: ManuscriptWorkbenchRunMode,
   workspace: ManuscriptWorkbenchWorkspace,
@@ -6109,8 +6262,6 @@ function resolveMaterializedAssetTypes(
 
   return new Set([
     "final_proof_annotated_docx",
-    "proofreading_draft_report",
-    "final_proof_issue_report",
   ]);
 }
 
@@ -6136,6 +6287,23 @@ function isProofreadingWorkbenchAssetType(
     assetType === "proofreading_draft_report" ||
     assetType === "final_proof_annotated_docx"
   );
+}
+
+export function resolveResultPreviewHref(input: {
+  mode: ManuscriptWorkbenchRunMode;
+  manuscriptId: string;
+  asset: NonNullable<ManuscriptWorkbenchWorkspace["currentAsset"]>;
+  reviewedCaseSnapshotId?: string;
+  sampleSetItemId?: string;
+}): string {
+  return buildWorkbenchAssetDetailHref({
+    mode: input.mode,
+    manuscriptId: input.manuscriptId,
+    assetId: input.asset.id,
+    presentation: resolveWorkbenchDetailPresentation(input.mode, input.asset),
+    reviewedCaseSnapshotId: input.reviewedCaseSnapshotId,
+    sampleSetItemId: input.sampleSetItemId,
+  });
 }
 
 function resolveWorkbenchDetailPresentation(
