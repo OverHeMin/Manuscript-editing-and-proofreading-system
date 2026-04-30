@@ -76,7 +76,7 @@ export function ManuscriptWorkbenchQueuePane({
       </header>
 
       <label className="manuscript-workbench-queue-field">
-        <span>稿件查找</span>
+        <span>查找</span>
         <input
           value={lookup.manuscriptId}
           placeholder="搜索完整稿件名或编号"

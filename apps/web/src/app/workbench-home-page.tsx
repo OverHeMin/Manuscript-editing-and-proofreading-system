@@ -37,11 +37,13 @@ export function WorkbenchHomePage({
               onNavigate(card.target);
             }}
           >
-            <span className="workbench-home-visual" aria-hidden="true">
-              {card.symbol}
+            <span className="workbench-home-logo" aria-hidden="true">
+              <span className="workbench-home-logo-mark">{card.symbol}</span>
             </span>
-            <span className="workbench-home-title">{card.label}</span>
-            <span className="workbench-home-copy">{card.description}</span>
+            <span className="workbench-home-body">
+              <span className="workbench-home-title">{card.label}</span>
+              <span className="workbench-home-copy">{card.description}</span>
+            </span>
           </a>
         ))}
       </div>
@@ -149,11 +151,6 @@ const HOME_CARD_TARGETS: readonly WorkbenchHomeTarget[] = [
     harnessMode: "ab_acceptance",
   },
   {
-    key: "management-manuscript-harness",
-    workbenchId: "manuscript-harness",
-    label: "稿件 Harness",
-  },
-  {
     key: "management-accounts",
     workbenchId: "system-settings",
     label: "账号与权限",
@@ -186,8 +183,6 @@ function resolveWorkbenchHomeCardDescription(
       return "配置模型供应商、路由和执行默认值。";
     case "management-harness":
       return "查看回归、验收和样本验证工作流。";
-    case "management-manuscript-harness":
-      return "按单篇稿件追踪验证和回归证据。";
     case "management-accounts":
       return "管理账号、角色和访问范围。";
     case "home-submission":
@@ -217,8 +212,6 @@ function resolveWorkbenchHomeCardSymbol(
       return "AI";
     case "management-harness":
       return "H";
-    case "management-manuscript-harness":
-      return "验";
     case "management-accounts":
       return "权";
     case "home-submission":

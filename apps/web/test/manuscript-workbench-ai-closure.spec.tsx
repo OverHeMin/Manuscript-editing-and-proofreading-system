@@ -9,7 +9,7 @@ import {
   ManuscriptWorkbenchFocusCanvas,
 } from "../src/features/manuscript-workbench/manuscript-workbench-page.tsx";
 
-test("workbench controls render the bare AI action with the localized label", () => {
+test("workbench controls keep module execution on the primary action only", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchControls
       mode="editing"
@@ -24,7 +24,6 @@ test("workbench controls render the bare AI action with the localized label", ()
         selectedAssetId: "asset-original-1",
         emptyLabel: "请选择资产",
         actionLabel: "Run Editing",
-        secondaryActionLabel: "Run AI Recognition",
         options: [
           {
             value: "asset-original-1",
@@ -34,13 +33,13 @@ test("workbench controls render the bare AI action with the localized label", ()
         selectedContextLabel: "Selected Parent Asset",
         onSelect: () => {},
         onRun: () => {},
-        onSecondaryRun: () => {},
       }}
     />,
   );
 
-  assert.match(markup, /AI识别/u);
-  assert.match(markup, /data-secondary-action="available"/u);
+  assert.match(markup, /执行编辑/u);
+  assert.doesNotMatch(markup, /AI识别/u);
+  assert.match(markup, /data-secondary-action="hidden"/u);
 });
 
 test("focus canvas points current-result links at the asset download endpoint", () => {
@@ -152,7 +151,6 @@ test("focus canvas points current-result links at the asset download endpoint", 
           selectedAssetId: "asset-original-1",
           emptyLabel: "请选择资产",
           actionLabel: "Create Draft",
-          secondaryActionLabel: "Run AI Recognition",
           options: [
             {
               value: "asset-original-1",
@@ -162,13 +160,14 @@ test("focus canvas points current-result links at the asset download endpoint", 
           selectedContextLabel: "Selected Parent Asset",
           onSelect: () => {},
           onRun: () => {},
-          onSecondaryRun: () => {},
         },
       ]}
     />,
   );
 
-  assert.match(markup, /AI识别/u);
+  assert.match(markup, /执行校对/u);
+  assert.doesNotMatch(markup, /AI识别/u);
+  assert.match(markup, /data-secondary-action="hidden"/u);
   assert.match(markup, /下载校对稿件/u);
   assert.match(
     markup,

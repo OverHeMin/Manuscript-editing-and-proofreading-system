@@ -36,12 +36,7 @@ function countOccurrences(text: string, needle: string): number {
 }
 
 function extractGovernanceNavSection(markup: string): string {
-  const marker = "workbench-nav-group--governance";
-  const start = markup.indexOf(marker);
-  assert.notEqual(start, -1, "expected governance nav group to be rendered");
-
-  const nextGroup = markup.indexOf("workbench-nav-group--", start + marker.length);
-  return nextGroup === -1 ? markup.slice(start) : markup.slice(start, nextGroup);
+  return markup;
 }
 
 async function renderWorkbenchHostAtHash(
@@ -95,7 +90,7 @@ test("workbench host runtime render forwards settingsSection=ai-access into acti
   assert.doesNotMatch(markup, /\u521b\u5efa\u8d26\u53f7/u);
   assert.match(
     markup,
-    /workbench-nav-button is-active[\s\S]*?\u0041\u0049 \u63a5\u5165/u,
+    /workbench-child-back[\s\S]*?返回工作台/u,
   );
 });
 
@@ -103,11 +98,13 @@ test("workbench host opens the role-adaptive card homepage before any workbench 
   const markup = await renderWorkbenchHostAtHash("", "admin");
 
   assert.match(markup, /workbench-home-page/u);
-  assert.match(markup, /data-card-count="10"/u);
-  assert.equal(countOccurrences(markup, "workbench-home-card"), 10);
+  assert.match(markup, /data-card-count="9"/u);
+  assert.equal(countOccurrences(markup, "workbench-home-card"), 9);
   assert.match(markup, /href="#screening"/u);
   assert.match(markup, /href="#proofreading"/u);
   assert.match(markup, /href="#system-settings\?settingsSection=accounts"/u);
+  assert.doesNotMatch(markup, /href="#manuscript-harness"/u);
+  assert.match(markup, /workbench-home-logo/u);
   assert.doesNotMatch(markup, /workbench-nav/u);
   assert.doesNotMatch(markup, /核心流程/u);
   assert.doesNotMatch(markup, /管理区/u);
@@ -135,6 +132,16 @@ test("workbench homepage card grid adapts to limited roles without padding empty
   assert.match(knowledgeReviewerMarkup, /href="#template-governance"/u);
 });
 
+test("workbench child pages are standalone routes with a return-to-home action", async () => {
+  const markup = await renderWorkbenchHostAtHash("#screening", "admin");
+
+  assert.match(markup, /workbench-child-back/u);
+  assert.match(markup, /href="#"/u);
+  assert.match(markup, /返回工作台/u);
+  assert.doesNotMatch(markup, /workbench-nav/u);
+  assert.doesNotMatch(markup, /workbench-layout--home/u);
+});
+
 test("workbench host runtime render shows split settings target label in header focus card", async () => {
   const markup = await renderWorkbenchHostAtHash(
     "#system-settings?settingsSection=accounts",
@@ -149,7 +156,7 @@ test("workbench host runtime render shows split settings target label in header 
   assert.doesNotMatch(markup, /\u6a21\u578b\u6ce8\u518c/u);
   assert.match(
     markup,
-    /workbench-nav-button is-active[\s\S]*?\u8d26\u53f7\u4e0e\u6743\u9650/u,
+    /workbench-child-back[\s\S]*?返回工作台/u,
   );
   assert.match(markup, /system-settings-workbench[\s\S]*?<h2>\u8d26\u53f7\u4e0e\u6743\u9650<\/h2>/u);
 });
@@ -161,29 +168,24 @@ test("workbench host runtime render forwards harnessSection=runs into evaluation
 
   assert.match(markup, /evaluation-workbench/u);
   assert.match(markup, /验证治理/u);
-  assert.match(markup, /workbench-nav-button is-active[\s\S]*?验证治理/u);
+  assert.match(markup, /workbench-child-back[\s\S]*?返回工作台/u);
+  assert.doesNotMatch(markup, /workbench-nav/u);
 });
 
-test("workbench host runtime render keeps datasets alias inside the unified harness first-view shell while governance nav stays at three entries", async () => {
+test("workbench host runtime render keeps datasets alias inside the unified standalone harness shell", async () => {
   const markup = await renderWorkbenchHostAtHash(
     "#evaluation-workbench?harnessSection=datasets",
   );
 
-  const governanceSection = extractGovernanceNavSection(markup);
-
   assert.match(markup, /验证样本集视图/u);
   assert.match(markup, /默认聚焦数据集快照与导出链路核对。/u);
   assert.doesNotMatch(markup, /Harness 控制 \/ 数据与样本/u);
-  assert.match(governanceSection, /workbench-nav-button(?: is-active)?[\s\S]*?验证治理/u);
-  assert.equal(
-    countOccurrences(governanceSection, "workbench-nav-button-label"),
-    3,
-  );
+  assert.match(markup, /workbench-child-back[\s\S]*?返回工作台/u);
+  assert.doesNotMatch(markup, /workbench-nav/u);
 });
 
 test("workbench host runtime render maps direct harness-datasets hashes to the unified harness entry", async () => {
   const markup = await renderWorkbenchHostAtHash("#harness-datasets");
-  const governanceSection = extractGovernanceNavSection(markup);
 
   assert.match(markup, /验证治理/u);
   assert.match(markup, /验证样本集视图/u);
@@ -193,11 +195,8 @@ test("workbench host runtime render maps direct harness-datasets hashes to the u
     markup,
     /workbench-header-focus-card[\s\S]*?<strong>验证治理<\/strong>/u,
   );
-  assert.match(governanceSection, /workbench-nav-button(?: is-active)?[\s\S]*?验证治理/u);
-  assert.equal(
-    countOccurrences(governanceSection, "workbench-nav-button-label"),
-    3,
-  );
+  assert.match(markup, /workbench-child-back[\s\S]*?返回工作台/u);
+  assert.doesNotMatch(markup, /workbench-nav/u);
 });
 
 test("knowledge reviewer defaults to knowledge library", () => {
@@ -233,7 +232,8 @@ test("workbench host runtime render routes knowledge ledger hashes to the ledger
   assert.match(markup, /knowledge-library-ledger-toolbar/u);
   assert.doesNotMatch(markup, /knowledge-library-record-drawer/u);
   assert.match(markup, /workbench-header/u);
-  assert.match(markup, /workbench-nav/u);
+  assert.match(markup, /workbench-child-back/u);
+  assert.doesNotMatch(markup, /workbench-nav/u);
 });
 
 test("workbench host forwards knowledge candidate handoffs into the knowledge ledger page", async () => {
@@ -257,7 +257,8 @@ test("workbench host defaults bare knowledge library hashes to the final ledger 
   assert.match(markup, /knowledge-library-ledger-toolbar/u);
   assert.doesNotMatch(markup, /knowledge-library-workbench-page/u);
   assert.match(markup, /workbench-header/u);
-  assert.match(markup, /workbench-nav/u);
+  assert.match(markup, /workbench-child-back/u);
+  assert.doesNotMatch(markup, /workbench-nav/u);
 });
 
 test("workbench host describes knowledge review with neutral pending-item wording", async () => {

@@ -6,7 +6,7 @@ export function formatWorkbenchExecutionTrustModeLabel(
   }
 
   if (mode === "bare") {
-    return "单次 AI 识别";
+    return "bare AI";
   }
 
   return "待确认";

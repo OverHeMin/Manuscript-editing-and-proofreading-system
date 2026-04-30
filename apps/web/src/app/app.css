@@ -454,7 +454,8 @@ a {
   align-items: start;
 }
 
-.workbench-layout--home {
+.workbench-layout--home,
+.workbench-layout--standalone {
   grid-template-columns: minmax(0, 1fr);
 }
 
@@ -464,40 +465,44 @@ a {
 }
 
 .workbench-layout--home .workbench-content,
+.workbench-layout--standalone .workbench-content,
 .workbench-layout--fullscreen-detail .workbench-content {
   width: 100%;
 }
 
 .workbench-home-page {
   min-height: calc(100vh - 220px);
-  padding: 6px 0 24px;
+  padding: 8px 0 28px;
 }
 
 .workbench-home-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 22px;
   align-items: stretch;
 }
 
 .workbench-home-card {
   position: relative;
-  min-height: 300px;
-  padding: 22px 20px;
-  border: 1px solid rgba(238, 211, 155, 0.22);
-  border-radius: 18px;
+  min-height: 330px;
+  aspect-ratio: 0.68;
+  padding: 24px 22px 22px;
+  border: 1px solid rgba(255, 229, 170, 0.28);
+  border-radius: 16px;
   overflow: hidden;
   display: grid;
   align-content: space-between;
-  gap: 16px;
+  gap: 18px;
   color: var(--color-shell-text);
   text-decoration: none;
   background:
-    radial-gradient(circle at 50% 16%, rgba(238, 211, 155, 0.22), transparent 34%),
-    linear-gradient(145deg, rgba(54, 42, 25, 0.96), rgba(17, 15, 13, 0.98) 64%),
+    linear-gradient(115deg, transparent 0 12%, rgba(255, 232, 177, 0.12) 13%, transparent 16% 100%),
+    radial-gradient(circle at 50% 14%, rgba(255, 237, 190, 0.3), transparent 32%),
+    linear-gradient(155deg, rgba(64, 48, 25, 0.98), rgba(17, 15, 13, 0.99) 62%),
     #15120f;
   box-shadow:
-    0 28px 68px rgba(0, 0, 0, 0.28),
+    0 30px 80px rgba(0, 0, 0, 0.34),
+    0 0 0 1px rgba(0, 0, 0, 0.16),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
   transition:
     border-color 180ms ease,
@@ -508,9 +513,9 @@ a {
 .workbench-home-card::before {
   content: "";
   position: absolute;
-  inset: 12px;
-  border: 1px solid rgba(238, 211, 155, 0.16);
-  border-radius: 14px;
+  inset: 13px;
+  border: 1px solid rgba(255, 229, 170, 0.18);
+  border-radius: 12px;
   pointer-events: none;
 }
 
@@ -525,11 +530,11 @@ a {
 }
 
 .workbench-home-card:hover {
-  transform: translateY(-4px);
-  border-color: rgba(255, 232, 177, 0.46);
+  transform: translateY(-8px) rotateX(2deg);
+  border-color: rgba(255, 232, 177, 0.58);
   box-shadow:
-    0 34px 86px rgba(0, 0, 0, 0.36),
-    0 0 36px rgba(216, 190, 132, 0.16),
+    0 42px 96px rgba(0, 0, 0, 0.42),
+    0 0 42px rgba(216, 190, 132, 0.22),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
@@ -547,24 +552,40 @@ a {
     #15120f;
 }
 
-.workbench-home-visual {
+.workbench-home-logo {
   position: relative;
   z-index: 1;
   display: inline-grid;
   place-items: center;
-  width: 76px;
-  height: 76px;
-  border: 1px solid rgba(238, 211, 155, 0.32);
+  width: 86px;
+  height: 86px;
+  border: 1px solid rgba(255, 229, 170, 0.36);
   border-radius: 50%;
   background:
-    radial-gradient(circle, rgba(255, 240, 197, 0.18), rgba(216, 190, 132, 0.08) 58%, transparent);
+    radial-gradient(circle, rgba(255, 242, 202, 0.22), rgba(216, 190, 132, 0.1) 58%, transparent);
   color: var(--color-accent-gold-strong);
   font-family: var(--font-display);
-  font-size: 1.7rem;
-  font-weight: 700;
   box-shadow:
-    0 0 30px rgba(216, 190, 132, 0.12),
+    0 0 36px rgba(216, 190, 132, 0.18),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.workbench-home-logo-mark {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgba(255, 236, 188, 0.18), rgba(103, 77, 34, 0.12));
+  font-size: 1.55rem;
+  font-weight: 800;
+}
+
+.workbench-home-body {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 10px;
 }
 
 .workbench-home-title,
@@ -578,7 +599,7 @@ a {
   display: block;
   color: #fff1ce;
   font-family: var(--font-display);
-  font-size: 1.25rem;
+  font-size: 1.32rem;
   font-weight: 700;
 }
 
@@ -588,6 +609,27 @@ a {
   color: rgba(241, 224, 184, 0.72);
   line-height: 1.65;
   font-size: 0.92rem;
+}
+
+.workbench-child-back {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 9px 13px;
+  border: 1px solid rgba(238, 211, 155, 0.24);
+  border-radius: 999px;
+  color: #f3dfad;
+  background: linear-gradient(180deg, rgba(27, 24, 21, 0.94), rgba(16, 15, 13, 0.98));
+  text-decoration: none;
+  font-weight: 700;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.22);
+}
+
+.workbench-child-back:hover {
+  border-color: rgba(255, 232, 177, 0.48);
+  color: #fff1ce;
 }
 
 .workbench-nav {

@@ -74,7 +74,7 @@ test("queue pane renders uploaded manuscripts with a compact capacity summary", 
   assert.doesNotMatch(markup, /data-queue-filter="in_progress"/);
   assert.doesNotMatch(markup, /data-queue-filter="completed"/);
   assert.doesNotMatch(markup, /data-queue-filter="failed"/);
-  assert.match(markup, /稿件查找/u);
+  assert.match(markup, /查找/u);
   assert.match(markup, /placeholder="搜索完整稿件名或编号"/u);
   assert.match(markup, /value=""/);
   assert.match(markup, /data-queue-item-status="pending"/);

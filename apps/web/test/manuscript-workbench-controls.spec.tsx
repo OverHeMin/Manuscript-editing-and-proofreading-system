@@ -100,7 +100,12 @@ test("drawer layout surfaces intake controls without extra intro scaffolding abo
   assert.match(markup, /已选择 2 个稿件/u);
   assert.match(markup, /人工确认稿件类型/u);
   assert.match(markup, /是否绑定模板/u);
+  assert.match(markup, /通用包/u);
+  assert.match(markup, /医用包/u);
+  assert.match(markup, /深度校对/u);
   assert.match(markup, /期刊模板（小期刊\/场景）/u);
+  assert.doesNotMatch(markup, /AI 识别稿件类型/u);
+  assert.doesNotMatch(markup, /识别置信度/u);
   assert.doesNotMatch(markup, /存储键/u);
   assert.doesNotMatch(markup, /case-report\.docx/u);
   assert.doesNotMatch(markup, /case-report-supplement\.docx/u);
@@ -133,7 +138,7 @@ test("full layout keeps only operator-facing AI readiness copy on the main page"
 
   assert.match(markup, /data-execution-context="readonly"/);
   assert.match(markup, /data-execution-mode="editing"/);
-  assert.match(markup, /同屏完成接入、检索与处理动作/u);
+  assert.match(markup, /稿件处理/u);
   assert.match(markup, /稿件编号/u);
   assert.doesNotMatch(markup, /稿件 ID/u);
   assert.doesNotMatch(markup, /治理动作/u);
@@ -263,11 +268,14 @@ test("template selection hides template menus when the operator chooses bare AI"
   assert.match(markup, /是否绑定模板/u);
   assert.match(markup, /bare AI/u);
   assert.doesNotMatch(markup, /人工确认稿件类型/u);
+  assert.doesNotMatch(markup, /通用包/u);
+  assert.doesNotMatch(markup, /医用包/u);
+  assert.doesNotMatch(markup, /深度校对/u);
   assert.doesNotMatch(markup, /基础模板家族/u);
   assert.doesNotMatch(markup, /期刊模板（小期刊\/场景）/u);
 });
 
-test("module action panels expose a one-time bare AI secondary action without changing the primary governed action", () => {
+test("module action panels expose only the primary execution action", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchControls
       mode="screening"
@@ -282,7 +290,6 @@ test("module action panels expose a one-time bare AI secondary action without ch
         selectedAssetId: "asset-original-1",
         emptyLabel: "请选择资产",
         actionLabel: "Run Screening",
-        secondaryActionLabel: "Run Bare AI Once",
         options: [
           {
             value: "asset-original-1",
@@ -292,14 +299,14 @@ test("module action panels expose a one-time bare AI secondary action without ch
         selectedContextLabel: "Selected Parent Asset",
         onSelect: () => {},
         onRun: () => {},
-        onSecondaryRun: () => {},
       }}
     />,
   );
 
   assert.match(markup, /执行初筛/u);
-  assert.match(markup, /AI 自动处理（本次）/u);
-  assert.match(markup, /data-secondary-action="available"/);
+  assert.doesNotMatch(markup, /AI 自动处理（本次）/u);
+  assert.doesNotMatch(markup, /AI识别/u);
+  assert.match(markup, /data-secondary-action="hidden"/);
 });
 
 test("proofreading utilities keep result review entry owned by the result card", () => {
@@ -326,6 +333,6 @@ test("proofreading utilities keep result review entry owned by the result card",
   assert.doesNotMatch(markup, /打开校对工作台/u);
   assert.doesNotMatch(markup, /在需要时打开校对工作台/u);
   assert.doesNotMatch(markup, /发布人工终稿/u);
-  assert.match(markup, /导出当前资产/u);
+  assert.match(markup, /导出当前文件/u);
   assert.match(markup, /刷新最新任务/u);
 });
