@@ -64,6 +64,9 @@ export async function runDeepProofreadingAiPasses(input: {
             text: slice.text,
             tableIds: slice.tableIds,
             sourceBlockIndexes: slice.sourceBlockIndexes,
+            ...(slice.tableEvidence
+              ? { tableEvidence: structuredClone(slice.tableEvidence) }
+              : {}),
           },
           factLedgerSummary: input.factLedgerSummary,
           activatedRules: input.activatedRules

@@ -4,6 +4,7 @@ import type { KnowledgeRecord } from "../knowledge/knowledge-record.ts";
 import type { KnowledgeRetrievalService } from "../knowledge-retrieval/knowledge-retrieval-service.ts";
 import type { ManuscriptType } from "../manuscripts/manuscript-record.ts";
 import type { DocumentStructureSnapshot } from "../document-pipeline/document-structure-service.ts";
+import type { TableEvidenceSnapshot } from "../document-pipeline/table-evidence-record.ts";
 import type {
   DeepProofreadingConfidence,
   DeepProofreadingDiagnostics,
@@ -73,6 +74,7 @@ export interface DeepProofreadingOrchestratorRunInput {
   generalPackageIds?: string[];
   sourceBlocks: readonly EditorialTextBlock[];
   documentStructure?: DocumentStructureSnapshot;
+  tableEvidenceSnapshot?: TableEvidenceSnapshot;
   rules?: readonly EditorialRuleRecord[];
   knowledge?: readonly KnowledgeRecord[];
   governedFailedChecks?: CreateProofreadingAiPlanInput["governedFailedChecks"];
@@ -132,6 +134,7 @@ export class DeepProofreadingOrchestrator {
     const slices = buildProofreadingSlices({
       blocks: input.sourceBlocks,
       tables,
+      tableEvidenceSnapshot: input.tableEvidenceSnapshot,
       semanticAnalysis,
       factLedger,
     });
@@ -208,6 +211,7 @@ export class DeepProofreadingOrchestrator {
     const deterministicIssues = runTableDataDeterministicChecks({
       factLedger,
       tables,
+      tableEvidenceSnapshot: input.tableEvidenceSnapshot,
     });
     const aiPasses = await runDeepProofreadingAiPasses({
       manuscriptId: input.manuscriptId,

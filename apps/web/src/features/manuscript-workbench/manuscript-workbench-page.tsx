@@ -104,6 +104,7 @@ import {
   type ProofreadingConfirmationDraftState,
   type ProofreadingConfirmationItemViewModel,
 } from "./manuscript-workbench-detail.tsx";
+import { buildProofreadingTableEvidence } from "./proofreading-table-evidence-panel.tsx";
 import {
   buildWorkbenchAssetDisplayName,
   formatWorkbenchGeneratedOutputTypeLabel,
@@ -3669,6 +3670,7 @@ function buildTemplateContextActionResult(
             knowledgeHitLogs={detailExecutionTracking.knowledgeHitLogs}
             knowledgeReferences={workspace.knowledgeReferences}
             deepProofreadingEvidence={buildDeepProofreadingEvidence(detailJob)}
+            proofreadingTableEvidence={buildProofreadingTableEvidence(detailJob)}
             confirmationItems={confirmationItems}
             confirmationState={confirmationState}
             humanReviewDiffItems={humanReviewDiffItems}

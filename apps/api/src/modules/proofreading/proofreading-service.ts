@@ -20,6 +20,8 @@ import type {
   DocumentStructureSnapshot,
   DocumentStructureService,
 } from "../document-pipeline/document-structure-service.ts";
+import type { TableEvidenceCenter } from "../document-pipeline/table-evidence-center.ts";
+import type { TableEvidenceSnapshot } from "../document-pipeline/table-evidence-record.ts";
 import type { AgentExecutionLogRecord } from "../agent-execution/agent-execution-record.ts";
 import {
   AgentExecutionLogNotFoundError,
@@ -241,6 +243,7 @@ export interface ProofreadingServiceOptions {
   >;
   manuscriptQualityService?: Pick<ManuscriptQualityService, "runChecks">;
   documentStructureService?: Pick<DocumentStructureService, "extract">;
+  tableEvidenceCenter?: Pick<TableEvidenceCenter, "getOrCreateSnapshot">;
   reviewItemsService?: Pick<
     ReviewItemsService,
     "listReviewItems" | "recordExecutionGovernedHits" | "submitGovernedHit" | "decideReviewItem"
@@ -385,6 +388,7 @@ export class ProofreadingService {
     "runChecks"
   >;
   private readonly documentStructureService?: Pick<DocumentStructureService, "extract">;
+  private readonly tableEvidenceCenter?: Pick<TableEvidenceCenter, "getOrCreateSnapshot">;
   private readonly reviewItemsService?: Pick<
     ReviewItemsService,
     "listReviewItems" | "recordExecutionGovernedHits" | "submitGovernedHit" | "decideReviewItem"
@@ -451,6 +455,7 @@ export class ProofreadingService {
       };
     this.manuscriptQualityService = options.manuscriptQualityService;
     this.documentStructureService = options.documentStructureService;
+    this.tableEvidenceCenter = options.tableEvidenceCenter;
     this.reviewItemsService = options.reviewItemsService;
     this.learningService = options.learningService;
     this.residualLearningService = options.residualLearningService;
@@ -1243,6 +1248,7 @@ export class ProofreadingService {
             templateFamilyId: manuscript?.current_template_family_id,
             sourceBlocks: proofreadingArtifacts.sourceBlocks,
             documentStructure: proofreadingArtifacts.documentStructureSnapshot,
+            tableEvidenceSnapshot: proofreadingArtifacts.tableEvidenceSnapshot,
             rules: resolvedContext.rules ?? [],
             knowledge: await this.knowledgeRepository.listApproved(),
             generalPackageIds: resolvedContext.qualityPackageVersionIds,
@@ -1614,6 +1620,13 @@ export class ProofreadingService {
             ? {
                 deepProofreading: structuredClone(
                   deepProofreadingRun.deepProofreading,
+                ),
+              }
+            : {}),
+          ...(proofreadingArtifacts?.tableEvidenceSnapshot
+            ? {
+                proofreadingTableEvidence: buildProofreadingTableEvidencePayload(
+                  proofreadingArtifacts.tableEvidenceSnapshot,
                 ),
               }
             : {}),
@@ -2230,6 +2243,12 @@ export class ProofreadingService {
           fileName: sourceAsset?.file_name ?? input.parentAssetId,
         })
       : undefined;
+    const tableEvidenceSnapshot = this.tableEvidenceCenter
+      ? await this.tableEvidenceCenter.getOrCreateSnapshot({
+          manuscriptId: input.manuscriptId,
+          assetId: input.parentAssetId,
+        })
+      : undefined;
     const proofreadingFindings = inspectProofreadingRules({
       blocks: sourceBlocks,
       rules: input.resolvedContext.rules ?? [],
@@ -2284,6 +2303,7 @@ export class ProofreadingService {
       },
       sourceBlocks,
       ...(documentStructureSnapshot ? { documentStructureSnapshot } : {}),
+      ...(tableEvidenceSnapshot ? { tableEvidenceSnapshot } : {}),
     };
   }
 }
@@ -3352,6 +3372,88 @@ function buildStoredProofreadingPlan(
   };
 }
 
+function buildProofreadingTableEvidencePayload(snapshot: TableEvidenceSnapshot): {
+  snapshotId: string;
+  assetId: string;
+  parserVersion: string;
+  status: TableEvidenceSnapshot["status"];
+  warnings: TableEvidenceSnapshot["warnings"];
+  tables: Array<{
+    tableId: string;
+    rowCount: number;
+    columnCount: number;
+    fidelityStatus: string;
+    warnings: string[];
+    cells: Array<{
+      cellId: string;
+      rowIndex: number;
+      columnIndex: number;
+      text: string;
+      specialCharacters: Array<{
+        index: number;
+        char: string;
+        codePoint: string;
+        charClass: string;
+      }>;
+      styleSpans: Array<{
+        runId: string;
+        startIndex: number;
+        endIndex: number;
+        italic?: boolean;
+        bold?: boolean;
+        underline?: boolean;
+        scriptPosition?: string;
+      }>;
+    }>;
+  }>;
+} {
+  return {
+    snapshotId: snapshot.snapshotId,
+    assetId: snapshot.assetId,
+    parserVersion: snapshot.parserVersion,
+    status: snapshot.status,
+    warnings: snapshot.warnings.map((warning) => ({ ...warning })),
+    tables: snapshot.tables.map((table) => ({
+      tableId: table.tableId,
+      rowCount: table.rowCount,
+      columnCount: table.columnCount,
+      fidelityStatus: table.fidelityReport.status,
+      warnings: [...table.fidelityReport.warnings],
+      cells: table.cells.map((cell) => ({
+        cellId: cell.cellId,
+        rowIndex: cell.rowIndex,
+        columnIndex: cell.columnIndex,
+        text: cell.text,
+        specialCharacters: cell.characters
+          .filter((character) => character.charClass !== "normal")
+          .map((character) => ({
+            index: character.index,
+            char: character.char,
+            codePoint: character.codePoint,
+            charClass: character.charClass,
+          })),
+        styleSpans: cell.styleSpans
+          .filter(
+            (span) =>
+              span.italic === true ||
+              span.bold === true ||
+              span.underline === true ||
+              Boolean(span.scriptPosition),
+          )
+          .map((span) => ({
+            runId: span.runId,
+            startIndex: span.startIndex,
+            endIndex: span.endIndex,
+            ...(span.italic === undefined ? {} : { italic: span.italic }),
+            ...(span.bold === undefined ? {} : { bold: span.bold }),
+            ...(span.underline === undefined ? {} : { underline: span.underline }),
+            ...(span.scriptPosition ? { scriptPosition: span.scriptPosition } : {}),
+          })),
+      })),
+    })),
+  };
+}
+
 function issuesToCorrectionSeeds(
   issues: readonly ProofreadingIssue[],
 ): ProofreadingPlanCorrectionSeed[] {
@@ -3809,6 +3911,7 @@ interface ProofreadingRunArtifacts {
   inspectionResult: ProofreadingInspectionResult;
   sourceBlocks: ProofreadingResidualSourceBlock[];
   documentStructureSnapshot?: DocumentStructureSnapshot;
+  tableEvidenceSnapshot?: TableEvidenceSnapshot;
 }
 
 interface ResolvedProofreadingExecutionContext {

@@ -15,6 +15,32 @@ test("deep pass runner sends one pass and one slice context per AI call", async 
         passKinds: ["data_statistics_units_and_tables"],
         sourceBlockIndexes: [0],
         tableIds: ["table-1"],
+        tableEvidence: {
+          snapshotId: "snapshot-1",
+          tableId: "table-1",
+          aiReadableTablePayload: {
+            tableId: "table-1",
+            rowCount: 1,
+            columnCount: 1,
+            cells: [
+              {
+                cellId: "table-1-cell-0-0",
+                rowIndex: 0,
+                columnIndex: 0,
+                rowSpan: 1,
+                columnSpan: 1,
+                text: "P−value",
+                characterClasses: [
+                  { index: 1, char: "−", codePoint: "U+2212", charClass: "minus" },
+                ],
+                styleSpans: [],
+              },
+            ],
+            specialCharacterWarnings: ["table-1-cell-0-0:U+2212:minus"],
+            lowConfidenceReasons: [],
+          },
+          fidelityReport: { status: "complete", warnings: [] },
+        },
         text: "表1 ALT",
         evidence: [],
       },
@@ -47,6 +73,16 @@ test("deep pass runner sends one pass and one slice context per AI call", async 
   assert.equal(calls.length, 1);
   assert.equal((calls[0]?.passFocus as { passKind?: string })?.passKind, "data_statistics_units_and_tables");
   assert.equal((calls[0]?.sliceContext as { id?: string })?.id, "slice-table-1");
+  assert.equal(
+    (
+      calls[0]?.sliceContext as {
+        tableEvidence?: {
+          aiReadableTablePayload?: { cells?: Array<{ cellId?: string }> };
+        };
+      }
+    )?.tableEvidence?.aiReadableTablePayload?.cells?.[0]?.cellId,
+    "table-1-cell-0-0",
+  );
   assert.equal(result.issues[0]?.source, "ai_pass");
   assert.equal(result.issues[0]?.sliceId, "slice-table-1");
 });

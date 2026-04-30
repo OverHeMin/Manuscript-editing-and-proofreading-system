@@ -8,3 +8,6 @@ export * from "./editorial-docx-transform-service.ts";
 export * from "./document-pipeline-api.ts";
 export * from "./local-doc-to-docx-converter.ts";
 export * from "./onlyoffice-save-back-service.ts";
+export * from "./table-evidence-center.ts";
+export * from "./table-evidence-record.ts";
+export * from "./table-evidence-worker-adapter.ts";

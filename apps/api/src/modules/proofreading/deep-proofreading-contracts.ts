@@ -1,5 +1,9 @@
 import type { ProofreadingIssue } from "./proofreading-issue-contract.ts";
 import type { ProofreadingDeepPassKind } from "./proofreading-pass-run-record.ts";
+import type {
+  AiReadableTablePayload,
+  TableEvidenceFidelityReport,
+} from "../document-pipeline/table-evidence-record.ts";
 
 export type DeepProofreadingStageKind =
   | "document_structure_extraction"
@@ -40,6 +44,12 @@ export interface DeepProofreadingSlice {
   passKinds: ProofreadingDeepPassKind[];
   sourceBlockIndexes: number[];
   tableIds?: string[];
+  tableEvidence?: {
+    snapshotId: string;
+    tableId: string;
+    aiReadableTablePayload: AiReadableTablePayload;
+    fidelityReport: TableEvidenceFidelityReport;
+  };
   text: string;
   evidence: DeepProofreadingSliceEvidence[];
 }

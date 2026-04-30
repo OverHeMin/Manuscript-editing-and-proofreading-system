@@ -189,6 +189,32 @@ test("proofreading AI planning sends slice scoped deep context without full-docu
       sliceKind: "table",
       text: "表1 ALT 12.3",
       tableIds: ["table-1"],
+      tableEvidence: {
+        snapshotId: "snapshot-1",
+        tableId: "table-1",
+        aiReadableTablePayload: {
+          tableId: "table-1",
+          rowCount: 1,
+          columnCount: 1,
+          cells: [
+            {
+              cellId: "table-1-cell-0-0",
+              rowIndex: 0,
+              columnIndex: 0,
+              rowSpan: 1,
+              columnSpan: 1,
+              text: "P−value",
+              characterClasses: [
+                { index: 1, char: "−", codePoint: "U+2212", charClass: "minus" },
+              ],
+              styleSpans: [],
+            },
+          ],
+          specialCharacterWarnings: ["table-1-cell-0-0:U+2212:minus"],
+          lowConfidenceReasons: [],
+        },
+        fidelityReport: { status: "complete", warnings: [] },
+      },
     },
     factLedgerSummary: {
       factCount: 2,
@@ -207,6 +233,7 @@ test("proofreading AI planning sends slice scoped deep context without full-docu
   } as never);
 
   assert.doesNotMatch(recordedInput?.systemPrompt ?? "", /整篇稿件单次校对/u);
+  assert.match(recordedInput?.systemPrompt ?? "", /结构化表格证据/u);
   const payload = recordedInput?.userPayload as {
     deepProofreading?: Record<string, unknown>;
   };
@@ -215,6 +242,32 @@ test("proofreading AI planning sends slice scoped deep context without full-docu
     sliceKind: "table",
     text: "表1 ALT 12.3",
     tableIds: ["table-1"],
+    tableEvidence: {
+      snapshotId: "snapshot-1",
+      tableId: "table-1",
+      aiReadableTablePayload: {
+        tableId: "table-1",
+        rowCount: 1,
+        columnCount: 1,
+        cells: [
+          {
+            cellId: "table-1-cell-0-0",
+            rowIndex: 0,
+            columnIndex: 0,
+            rowSpan: 1,
+            columnSpan: 1,
+            text: "P−value",
+            characterClasses: [
+              { index: 1, char: "−", codePoint: "U+2212", charClass: "minus" },
+            ],
+            styleSpans: [],
+          },
+        ],
+        specialCharacterWarnings: ["table-1-cell-0-0:U+2212:minus"],
+        lowConfidenceReasons: [],
+      },
+      fidelityReport: { status: "complete", warnings: [] },
+    },
   });
   assert.deepEqual(payload.deepProofreading?.factLedgerSummary, {
     factCount: 2,

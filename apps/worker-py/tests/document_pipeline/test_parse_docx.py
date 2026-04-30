@@ -204,6 +204,68 @@ def test_document_xml_extracts_rich_table_style_evidence():
     assert semantic["grid_cells"][0]["paragraphs"][0]["fragments"][1]["style"]["italic"]["value"] is True
 
 
+def test_document_xml_extracts_lossless_table_ooxml_and_character_evidence():
+    document_xml = """
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>
+        <w:tbl>
+          <w:tr>
+            <w:tc>
+              <w:tcPr>
+                <w:tcW w:w="2400" w:type="dxa"/>
+                <w:shd w:fill="F2F2F2"/>
+              </w:tcPr>
+              <w:p>
+                <w:r>
+                  <w:t xml:space="preserve">A B　C\u00a0D</w:t>
+                </w:r>
+                <w:r>
+                  <w:tab/>
+                </w:r>
+                <w:r>
+                  <w:t>-–—−±χ</w:t>
+                </w:r>
+                <w:r>
+                  <w:rPr><w:i/></w:rPr>
+                  <w:t>P</w:t>
+                </w:r>
+                <w:r>
+                  <w:rPr><w:vertAlign w:val="superscript"/></w:rPr>
+                  <w:t>2</w:t>
+                </w:r>
+              </w:p>
+            </w:tc>
+          </w:tr>
+        </w:tbl>
+      </w:body>
+    </w:document>
+    """
+
+    result = extract_structure_from_document_xml(document_xml)
+
+    table = result["tables"][0]
+    assert table["raw_tbl_xml"].startswith("<ns0:tbl")
+    assert table["ooxml_hash"]
+    assert table["body_path"] == "word/document.xml/body/tbl[1]"
+    cell = table["raw_rows"][0][0]
+    assert cell["tc_path"] == "word/document.xml/body/tbl[1]/tr[1]/tc[1]"
+    assert cell["tc_hash"]
+    assert cell["raw_xml_text"].startswith("<ns0:tc")
+    assert cell["paragraphs"][0]["p_path"].endswith("/p[1]")
+    assert cell["runs"][0]["run_path"].endswith("/r[1]")
+    assert cell["runs"][0]["run_hash"]
+    assert any(character["charClass"] == "half_space" for character in cell["characters"])
+    assert any(character["charClass"] == "full_space" for character in cell["characters"])
+    assert any(character["charClass"] == "nbsp" for character in cell["characters"])
+    assert any(character["charClass"] == "tab" for character in cell["characters"])
+    assert any(character["charClass"] == "en_dash" for character in cell["characters"])
+    assert any(character["charClass"] == "em_dash" for character in cell["characters"])
+    assert any(character["charClass"] == "hyphen" for character in cell["characters"])
+    assert any(character["charClass"] == "minus" for character in cell["characters"])
+    assert any(span.get("italic") is True for span in cell["style_spans"])
+    assert any(span.get("scriptPosition") == "superscript" for span in cell["style_spans"])
+
+
 def test_document_xml_recovers_sections_from_numbered_plain_paragraphs():
     document_xml = """
     <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">

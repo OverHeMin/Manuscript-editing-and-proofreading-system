@@ -40,6 +40,10 @@ import type {
   ManuscriptWorkbenchKnowledgeReferenceViewModel,
   ManuscriptWorkbenchMode,
 } from "./manuscript-workbench-controller.ts";
+import {
+  ProofreadingTableEvidencePanel,
+  type ProofreadingTableEvidenceViewModel,
+} from "./proofreading-table-evidence-panel.tsx";
 
 export type ManuscriptAssetDetailKind =
   | "document_preview"
@@ -227,6 +231,7 @@ export interface ManuscriptWorkbenchAssetDetailPageProps {
     Record<string, ManuscriptWorkbenchKnowledgeReferenceViewModel>
   >;
   deepProofreadingEvidence?: DeepProofreadingEvidenceViewModel | null;
+  proofreadingTableEvidence?: ProofreadingTableEvidenceViewModel | null;
   confirmationItems?: readonly ProofreadingConfirmationItemViewModel[];
   confirmationState?: Readonly<Record<string, ProofreadingConfirmationDraftState>>;
   humanReviewDiffItems?: readonly HumanReviewDiffItemViewModel[];
@@ -1319,6 +1324,7 @@ export function ManuscriptWorkbenchAssetDetailPage({
   knowledgeHitLogs = [],
   knowledgeReferences,
   deepProofreadingEvidence = null,
+  proofreadingTableEvidence = null,
   confirmationItems = [],
   confirmationState = {},
   humanReviewDiffItems = [],
@@ -2185,6 +2191,8 @@ export function ManuscriptWorkbenchAssetDetailPage({
             {deepProofreadingEvidence
               ? renderDeepProofreadingEvidenceCard(deepProofreadingEvidence)
               : null}
+
+            <ProofreadingTableEvidencePanel evidence={proofreadingTableEvidence} />
 
             {showsHumanReviewDiffQueue ? null : (
               <div className="manuscript-workbench-button-row manuscript-workbench-button-row--sticky">

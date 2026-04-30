@@ -46,6 +46,9 @@ import {
   OnlyOfficeSaveBackService,
   PythonDocxSourceBlockResolver,
   PythonDocxStructureWorkerAdapter,
+  LocalFileTableEvidenceRepository,
+  TableEvidenceCenter,
+  PythonTableEvidenceWorkerAdapter as PythonRuntimeTableEvidenceWorkerAdapter,
 } from "../modules/document-pipeline/index.ts";
 import {
   DocumentPreviewService,
@@ -514,6 +517,12 @@ export function createPersistentGovernanceRuntime(
       assetRepository,
       rootDir: uploadRootDir,
     }),
+  });
+  const runtimeTableEvidenceCenter = new TableEvidenceCenter({
+    rootDir: uploadRootDir,
+    assetRepository,
+    repository: new LocalFileTableEvidenceRepository({ rootDir: uploadRootDir }),
+    worker: new PythonRuntimeTableEvidenceWorkerAdapter(),
   });
   const editorialDocxTransformService = new EditorialDocxTransformService({
     assetRepository,
@@ -995,6 +1004,7 @@ export function createPersistentGovernanceRuntime(
     editorialDocxTransformService,
     proofreadingSourceBlockResolver: docxSourceBlockResolver,
     documentStructureService,
+    tableEvidenceCenter: runtimeTableEvidenceCenter,
     reviewItemsService,
     learningService,
     residualLearningService,

@@ -1,5 +1,6 @@
 import type { EditorialTextBlock } from "../editorial-execution/types.ts";
 import type { DocumentStructureTableSnapshot } from "../document-pipeline/document-structure-service.ts";
+import type { TableEvidenceSnapshot } from "../document-pipeline/table-evidence-record.ts";
 import type {
   DeepProofreadingFactLedger,
   DeepProofreadingSlice,
@@ -19,6 +20,7 @@ const REQUIRED_PASS_KINDS: ProofreadingDeepPassKind[] = [
 export function buildProofreadingSlices(input: {
   blocks: readonly EditorialTextBlock[];
   tables?: readonly DocumentStructureTableSnapshot[];
+  tableEvidenceSnapshot?: TableEvidenceSnapshot;
   semanticAnalysis: ProofreadingSemanticAnalysisResult;
   factLedger: DeepProofreadingFactLedger;
 }): DeepProofreadingSlice[] {
@@ -36,9 +38,13 @@ export function buildProofreadingSlices(input: {
 function buildTableSlices(input: {
   blocks: readonly EditorialTextBlock[];
   tables?: readonly DocumentStructureTableSnapshot[];
+  tableEvidenceSnapshot?: TableEvidenceSnapshot;
   semanticAnalysis: ProofreadingSemanticAnalysisResult;
 }): DeepProofreadingSlice[] {
   return (input.tables ?? []).map((table) => {
+    const tableEvidence = input.tableEvidenceSnapshot?.tables.find(
+      (entry) => entry.tableId === table.table_id,
+    );
     const referencedBlocks = input.semanticAnalysis.entities
       .filter(
         (entity) =>
@@ -53,6 +59,16 @@ function buildTableSlices(input: {
       passKinds: ["data_statistics_units_and_tables"],
       sourceBlockIndexes: uniqueNumbers(referencedBlocks),
       tableIds: [table.table_id],
+      ...(tableEvidence
+        ? {
+            tableEvidence: {
+              snapshotId: input.tableEvidenceSnapshot!.snapshotId,
+              tableId: tableEvidence.tableId,
+              aiReadableTablePayload: tableEvidence.aiPayload,
+              fidelityReport: tableEvidence.fidelityReport,
+            },
+          }
+        : {}),
       text: [
         table.caption_fields?.text,
         table.note_zone?.text,

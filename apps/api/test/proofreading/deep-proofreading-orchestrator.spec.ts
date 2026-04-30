@@ -111,6 +111,50 @@ test("deep orchestrator builds diagnostics, scoped AI passes, and deterministic 
       objects: [],
       warnings: [],
     },
+    tableEvidenceSnapshot: {
+      snapshotId: "snapshot-1",
+      manuscriptId: "manuscript-1",
+      assetId: "asset-1",
+      sourceStorageKey: "uploads/source.docx",
+      docxHash: "hash",
+      parserVersion: "lossless-v1",
+      createdAt: "2026-04-30T00:00:00.000Z",
+      status: "complete",
+      warnings: [],
+      tables: [
+        {
+          tableId: "table-1",
+          ordinal: 1,
+          bodyPath: "word/document.xml/body/tbl[1]",
+          ooxmlHash: "table-hash",
+          rowCount: 1,
+          columnCount: 1,
+          cells: [],
+          aiPayload: {
+            tableId: "table-1",
+            rowCount: 1,
+            columnCount: 1,
+            cells: [
+              {
+                cellId: "table-1-cell-0-0",
+                rowIndex: 0,
+                columnIndex: 0,
+                rowSpan: 1,
+                columnSpan: 1,
+                text: "18.2  ±  1.3",
+                characterClasses: [
+                  { index: 5, char: "±", codePoint: "U+00B1", charClass: "symbol" },
+                ],
+                styleSpans: [{ runId: "run-1", startIndex: 0, endIndex: 1, italic: true }],
+              },
+            ],
+            specialCharacterWarnings: ["table-1-cell-0-0:U+00B1:symbol"],
+            lowConfidenceReasons: [],
+          },
+          fidelityReport: { status: "complete", warnings: [] },
+        },
+      ],
+    },
     rules: [
       {
         id: "rule-table-stat",
@@ -180,6 +224,23 @@ test("deep orchestrator builds diagnostics, scoped AI passes, and deterministic 
   assert.ok(
     aiCalls.some(
       (call) => (call.budgetedKnowledge as unknown[] | undefined)?.length,
+    ),
+  );
+  assert.ok(
+    aiCalls.some(
+      (call) =>
+        (
+          call.sliceContext as
+            | {
+                tableEvidence?: {
+                  aiReadableTablePayload?: {
+                    cells?: Array<{ cellId?: string }>;
+                  };
+                };
+              }
+            | undefined
+        )?.tableEvidence?.aiReadableTablePayload?.cells?.[0]?.cellId ===
+        "table-1-cell-0-0",
     ),
   );
 });
