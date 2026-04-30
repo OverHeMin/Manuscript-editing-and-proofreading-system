@@ -284,8 +284,8 @@ export function buildTemplateGovernanceOverviewFallbackPendingItems(
   if ((metrics.harnessQueuedCount ?? 0) > 0) {
     items.push({
       id: "pending-harness-queued",
-      title: "Harness 待验证",
-      detail: `${metrics.harnessQueuedCount} 条规则候选正在等待 Harness 验证结果回传。`,
+      title: "待验证",
+      detail: `${metrics.harnessQueuedCount} 条规则候选正在等待验证结果回传。`,
       emphasis: `待验证 ${metrics.harnessQueuedCount} 条`,
       actionLabel: "查看待审核",
       targetView: "rule-ledger",
@@ -409,9 +409,9 @@ function buildTemplateGovernanceOverviewMetricCards(
     },
     {
       kind: "harness",
-      label: "Harness \u5f85\u9a8c\u8bc1",
+      label: "待验证",
       value: metrics.harnessQueuedCount ?? 0,
-      detail: `Harness \u5df2\u901a\u8fc7 ${metrics.harnessPassedCount ?? 0} \u6761\uff0cHarness \u672a\u901a\u8fc7 ${metrics.harnessFailedCount ?? 0} \u6761`,
+      detail: `已通过 ${metrics.harnessPassedCount ?? 0} 条，未通过 ${metrics.harnessFailedCount ?? 0} 条`,
     },
   ];
 

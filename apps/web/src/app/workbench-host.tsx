@@ -36,7 +36,6 @@ import {
   type WorkbenchNavigationTarget,
 } from "./workbench-navigation.ts";
 import { WorkbenchHomePage } from "./workbench-home-page.tsx";
-import { WorkbenchNavigationMenu } from "./workbench-navigation-menu.tsx";
 import { resolveResponsiveNavigationOpenState } from "./workbench-shell-layout.ts";
 import { WorkbenchShellHeader } from "./workbench-shell-header.tsx";
 
@@ -198,6 +197,7 @@ export function WorkbenchHost({
   const headerActiveWorkbenchGroupLabel = isHomeRoute
     ? "选择工作区"
     : activeWorkbenchGroupLabel;
+  const shouldRenderStandaloneRoute = !isHomeRoute && !isFullscreenRoute;
 
   return (
     <main className={isFullscreenRoute ? "app-shell app-shell--immersive" : "app-shell"}>
@@ -210,6 +210,7 @@ export function WorkbenchHost({
             isCompactNavigation={isCompactNavigation}
             isNavigationOpen={isNavigationOpen}
             onToggleNavigation={() => setIsNavigationOpen((current) => !current)}
+            showNavigationToggle={false}
             onLogout={onLogout}
             isLogoutPending={isLogoutPending}
           />
@@ -221,6 +222,8 @@ export function WorkbenchHost({
               ? "workbench-layout workbench-layout--fullscreen-detail"
               : isHomeRoute
                 ? "workbench-layout workbench-layout--home"
+                : shouldRenderStandaloneRoute
+                  ? "workbench-layout workbench-layout--standalone"
                 : "workbench-layout"
           }
         >
@@ -231,22 +234,19 @@ export function WorkbenchHost({
             </article>
           ) : null}
 
-          {!isHomeRoute && !isFullscreenRoute ? (
-            <aside
-              id="workbench-navigation-panel"
-              className={`workbench-nav${isCompactNavigation ? " is-compact" : ""}${isCompactNavigation && !isNavigationOpen ? " is-collapsed" : ""}`}
-              aria-label="工作区导航"
-            >
-              <h2>工作区导航</h2>
-              <WorkbenchNavigationMenu
-                groups={navigationGroups}
-                activeTargetKey={activeNavigationTargetKey}
-                onNavigate={(target) => navigateToWorkbenchTarget(target)}
-              />
-            </aside>
-          ) : null}
-
           <section className={`workbench-content workbench-content--${activeRenderKind}`}>
+            {shouldRenderStandaloneRoute ? (
+              <a
+                className="workbench-child-back"
+                href="#"
+                onClick={(event) => {
+                  event.preventDefault();
+                  navigateToHome();
+                }}
+              >
+                返回工作台
+              </a>
+            ) : null}
             {renderContent()}
           </section>
         </div>
@@ -398,6 +398,21 @@ export function WorkbenchHost({
       harnessSection: target.harnessSection,
       harnessMode: target.harnessMode,
     });
+  }
+
+  function navigateToHome() {
+    const fallbackWorkbenchId = resolveInitialWorkbenchId(
+      session.defaultWorkbench,
+      visibleEntries,
+    );
+    setRouteState({
+      activeWorkbenchId: fallbackWorkbenchId,
+      isHome: true,
+    });
+
+    if (typeof window !== "undefined") {
+      window.location.hash = "";
+    }
   }
 
   function navigateToWorkbench(workbenchId: WorkbenchId, handoff?: WorkbenchHandoff) {

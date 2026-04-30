@@ -907,13 +907,14 @@ test("asset option labels distinguish historical asset versions without changing
   );
 });
 
-test("AI recognition uses governed module input by default and only sends bare when explicitly requested", () => {
+test("module run input explicitly carries governed or bare execution mode", () => {
   assert.deepEqual(
     buildWorkbenchModuleRunInput({
       mode: "editing",
       manuscriptId: "manuscript-1",
       parentAssetId: "asset-original-1",
       actorRole: "admin",
+      executionMode: "governed",
     }),
     {
       mode: "editing",
@@ -922,6 +923,7 @@ test("AI recognition uses governed module input by default and only sends bare w
       actorRole: "admin",
       storageKey: "runs/manuscript-1/editing/output",
       fileName: "editing-manuscript.docx",
+      executionMode: "governed",
     },
   );
 
@@ -1080,7 +1082,13 @@ test("mainline workbench renders template binding controls as soon as a manuscri
   );
 
   assert.match(markup, /是否绑定模板/u);
+  assert.match(markup, /人工确认稿件类型/u);
+  assert.match(markup, /通用包/u);
+  assert.match(markup, /医用包/u);
+  assert.match(markup, /深度校对/u);
   assert.match(markup, /执行校对/u);
+  assert.doesNotMatch(markup, /AI 识别稿件类型/u);
+  assert.doesNotMatch(markup, /识别置信度/u);
 });
 
 test("upload title helper defaults single-file titles to the uploaded file name without the extension", () => {
@@ -1211,7 +1219,7 @@ test("workbench progress snapshot exposes live percent labels for running jobs",
   });
 });
 
-test("focus canvas shows the AI recognition action for governed module work while leaving proofreading finalize unchanged", () => {
+test("focus canvas keeps module execution to one primary action", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchFocusCanvas
       mode="editing"
@@ -1320,7 +1328,6 @@ test("focus canvas shows the AI recognition action for governed module work whil
           selectedAssetId: "asset-original-1",
           emptyLabel: "请选择资产",
           actionLabel: "Run Editing",
-          secondaryActionLabel: "Run AI Recognition",
           options: [
             {
               value: "asset-original-1",
@@ -1330,7 +1337,6 @@ test("focus canvas shows the AI recognition action for governed module work whil
           selectedContextLabel: "Selected Parent Asset",
           onSelect: () => {},
           onRun: () => {},
-          onSecondaryRun: () => {},
         },
         {
           title: "Proofreading Final",
@@ -1352,9 +1358,10 @@ test("focus canvas shows the AI recognition action for governed module work whil
   );
 
   assert.match(markup, /执行编辑/u);
-  assert.match(markup, /AI 自动处理（本次）/u);
+  assert.doesNotMatch(markup, /AI 自动处理（本次）/u);
+  assert.doesNotMatch(markup, /AI识别/u);
   assert.match(markup, /确认校对定稿/u);
-  assert.match(markup, /data-secondary-action="available"/);
+  assert.match(markup, /data-secondary-action="hidden"/);
   assert.match(
     markup,
     /href="#editing\?manuscriptId=manuscript-1&amp;assetId=asset-original-1"/,

@@ -357,7 +357,7 @@ function formatOperatorFacingExecutionMode(
   executionMode: "governed" | "bare" | undefined,
 ): string {
   if (executionMode === "bare") {
-    return "单次 AI 识别";
+    return "bare AI";
   }
 
   if (executionMode === "governed") {
@@ -1543,11 +1543,11 @@ export function ManuscriptWorkbenchSummary({
           ) : null}
         </SummaryCard>
 
-        <SummaryCard title="当前资产">
+        <SummaryCard title="当前文件">
           {displayedCurrentAsset ? (
             <>
               <SummaryMetric
-                label="当前资产"
+                label="当前文件"
                 value={renderAssetIdentity(manuscriptTitle, displayedCurrentAsset)}
               />
               <SummaryMetric
@@ -2519,7 +2519,7 @@ function buildMainlineReadinessRecommendedNextStep(
     },
     ...buildManuscriptMainlineReadinessDetails(summary),
     {
-      label: "当前资产",
+      label: "当前文件",
       value: describeAsset(workspace.currentAsset, workspace.manuscript.title),
     },
   ];
@@ -2789,7 +2789,7 @@ function buildRecommendedNextStep(
           value: resolveManuscriptDisplayTitle(workspace.manuscript.title),
         },
         {
-          label: "当前资产",
+          label: "当前文件",
           value: describeAsset(workspace.currentAsset, workspace.manuscript.title),
         },
       ],
@@ -2829,7 +2829,7 @@ function buildRecommendedNextStep(
             value: resolveManuscriptDisplayTitle(workspace.manuscript.title),
           },
           {
-            label: "当前资产",
+            label: "当前文件",
             value: describeAsset(workspace.currentAsset, workspace.manuscript.title),
           },
         ],
@@ -2850,7 +2850,7 @@ function buildRecommendedNextStep(
           ),
         },
         {
-          label: "当前资产",
+          label: "当前文件",
           value: describeAsset(workspace.currentAsset, workspace.manuscript.title),
         },
       ],
@@ -2890,7 +2890,7 @@ function buildRecommendedNextStep(
             value: resolveManuscriptDisplayTitle(workspace.manuscript.title),
           },
           {
-            label: "当前资产",
+            label: "当前文件",
             value: describeAsset(workspace.currentAsset, workspace.manuscript.title),
           },
         ],
@@ -2911,7 +2911,7 @@ function buildRecommendedNextStep(
           ),
         },
         {
-          label: "当前资产",
+          label: "当前文件",
           value: describeAsset(workspace.currentAsset, workspace.manuscript.title),
         },
       ],
@@ -2928,7 +2928,7 @@ function buildRecommendedNextStep(
           value: resolveManuscriptDisplayTitle(workspace.manuscript.title),
         },
         {
-          label: "当前资产",
+          label: "当前文件",
           value: describeAsset(workspace.currentAsset, workspace.manuscript.title),
         },
       ],
@@ -2950,7 +2950,7 @@ function buildRecommendedNextStep(
       guidance: `当前${formatAssetTypeLabel(currentFinalProofAsset.asset_type)}已激活，可继续人工确认、导出或下游交付。`,
       details: [
         {
-          label: "当前资产",
+          label: "当前文件",
           value: describeAsset(currentFinalProofAsset, workspace.manuscript.title),
         },
           {
@@ -2980,7 +2980,7 @@ function buildRecommendedNextStep(
           ),
         },
         {
-          label: "当前资产",
+          label: "当前文件",
           value: describeAsset(workspace.currentAsset, workspace.manuscript.title),
         },
       ],
@@ -2999,7 +2999,7 @@ function buildRecommendedNextStep(
         ),
       },
       {
-        label: "当前资产",
+        label: "当前文件",
         value: describeAsset(workspace.currentAsset, workspace.manuscript.title),
       },
     ],
@@ -3235,7 +3235,7 @@ function buildSettlementDetails(
 
   if (currentAsset) {
     details.push({
-      label: "当前资产",
+      label: "当前文件",
       value: describeAsset(currentAsset, manuscriptTitle),
     });
   }
@@ -3299,7 +3299,7 @@ function buildLatestJobExecutionTrackingSettlementDetails(
 
   if (currentAsset) {
     details.push({
-      label: "当前资产",
+      label: "当前文件",
       value: describeAsset(currentAsset, manuscriptTitle),
     });
   }
@@ -4403,7 +4403,7 @@ function formatActionResultActionLabel(actionLabel: string): string {
     case "Create Draft":
       return "生成校对草稿";
     case "Run Bare AI Once":
-      return "AI 自动处理（本次）";
+      return "执行 bare AI";
     case "Finalize Proofreading":
       return "完成校对定稿";
     case "Upload Manuscript":
@@ -4417,7 +4417,7 @@ function formatActionResultActionLabel(actionLabel: string): string {
     case "Save Template Context":
       return "保存模板上下文";
     case "Export Current Asset":
-      return "导出当前资产";
+      return "导出当前文件";
     case "Publish Human Final":
       return "发布人工终稿";
     case "Submit Manual Feedback":
@@ -4559,7 +4559,7 @@ function formatActionResultDetailLabel(label: string): string {
     case "Recovery Ready At":
       return "恢复可用时间";
     case "Current Asset":
-      return "当前资产";
+      return "当前文件";
     case "Latest Job":
       return "最近任务";
     case "Base Template Family":

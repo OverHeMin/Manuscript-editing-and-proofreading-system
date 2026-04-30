@@ -412,7 +412,7 @@ function AuthShellHero() {
           </div>
           <div className="auth-shell-visual-card">
             <span>AI 路由</span>
-            <strong>模型接入与 Harness 控制独立治理</strong>
+            <strong>模型接入与验证治理独立治理</strong>
           </div>
         </div>
       </div>

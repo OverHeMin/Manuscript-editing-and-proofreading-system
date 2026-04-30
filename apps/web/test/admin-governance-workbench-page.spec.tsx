@@ -236,7 +236,7 @@ test("admin governance workbench page renders a compact gateway with only core m
   assert.match(markup, /管理总览/);
   assert.match(markup, /AI 接入/);
   assert.match(markup, /账号与权限/);
-  assert.match(markup, /Harness 控制/);
+  assert.match(markup, /验证治理/);
   assert.doesNotMatch(markup, /规则中心/);
   assert.match(markup, /#system-settings\?settingsSection=ai-access/);
   assert.match(markup, /#system-settings\?settingsSection=accounts/);

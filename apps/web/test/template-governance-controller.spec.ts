@@ -1910,6 +1910,210 @@ test("template governance controller maps editorial activation metrics into rule
   });
 });
 
+test("template governance controller hides seeded and persistent baseline records from daily surfaces", async () => {
+  const controller = createTemplateGovernanceWorkbenchController({
+    request: async <TResponse>(input: {
+      method: "GET" | "POST";
+      url: string;
+      body?: unknown;
+    }) => {
+      if (input.url === "/api/v1/knowledge") {
+        return { status: 200, body: [] as TResponse };
+      }
+
+      if (input.url === "/api/v1/knowledge/library") {
+        return {
+          status: 200,
+          body: { query_mode: "keyword", items: [] } as TResponse,
+        };
+      }
+
+      if (input.url === "/api/v1/editorial-rules/rule-sets") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "64646464-2204-4000-8000-220400000000",
+              template_family_id: "64646464-0000-4000-8000-000000000000",
+              module: "editing",
+              version_no: 1,
+              status: "published",
+            },
+            {
+              id: "rule-set-real-1",
+              template_family_id: "family-real-1",
+              module: "editing",
+              version_no: 2,
+              status: "draft",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (/\/api\/v1\/editorial-rules\/rule-sets\/.+\/rules$/.test(input.url)) {
+        return { status: 200, body: [] as TResponse };
+      }
+
+      if (input.url === "/api/v1/templates/families") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "64646464-0000-4000-8000-000000000000",
+              manuscript_type: "review",
+              name: "Review 基础模板族",
+              status: "active",
+            },
+            {
+              id: "family-real-1",
+              manuscript_type: "clinical_study",
+              name: "临床研究正式模板族",
+              status: "active",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (/\/api\/v1\/templates\/families\/[^/]+\/journal-templates$/.test(input.url)) {
+        return { status: 200, body: [] as TResponse };
+      }
+
+      if (input.url === "/api/v1/templates/families/family-real-1/module-templates") {
+        return { status: 200, body: [] as TResponse };
+      }
+
+      if (input.url === "/api/v1/templates/families/family-real-1/retrieval-quality-runs/latest") {
+        throw createNotFoundRetrievalError(input.url);
+      }
+
+      if (input.url === "/api/v1/templates/template-compositions") {
+        return {
+          status: 200,
+          body: [
+            {
+              id: "template-composition-seeded-1",
+              name: "临床研究主线模板",
+              manuscript_type: "clinical_study",
+              general_module_ids: [],
+              medical_module_ids: [],
+              execution_module_scope: ["editing"],
+              version_no: 1,
+              status: "published",
+              notes: "",
+              created_at: "2026-03-31T07:59:30.000Z",
+              updated_at: "2026-03-31T08:06:00.000Z",
+            },
+            {
+              id: "template-real-1",
+              name: "正式模板",
+              manuscript_type: "clinical_study",
+              general_module_ids: [],
+              medical_module_ids: [],
+              execution_module_scope: ["editing"],
+              version_no: 3,
+              status: "draft",
+              notes: "",
+              created_at: "2026-04-29T07:59:30.000Z",
+              updated_at: "2026-04-30T08:06:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (
+        input.url === "/api/v1/templates/content-modules?moduleClass=general" ||
+        input.url === "/api/v1/templates/content-modules?moduleClass=medical_specialized"
+      ) {
+        return {
+          status: 200,
+          body: [
+            {
+              id: input.url.includes("medical_specialized")
+                ? "medical-module-seeded-1"
+                : "general-module-seeded-1",
+              module_class: input.url.includes("medical_specialized")
+                ? "medical_specialized"
+                : "general",
+              name: "系统基线模块",
+              category: "reference",
+              manuscript_type_scope: ["clinical_study"],
+              execution_module_scope: ["editing"],
+              applicable_sections: ["references"],
+              evidence_level: "unknown",
+              status: "published",
+              created_at: "2026-03-31T07:56:30.000Z",
+              updated_at: "2026-03-31T08:06:00.000Z",
+            },
+            {
+              id: input.url.includes("medical_specialized")
+                ? "module-real-medical-1"
+                : "module-real-general-1",
+              module_class: input.url.includes("medical_specialized")
+                ? "medical_specialized"
+                : "general",
+              name: input.url.includes("medical_specialized") ? "正式医学包" : "正式通用包",
+              category: "reference",
+              manuscript_type_scope: ["clinical_study"],
+              execution_module_scope: ["editing"],
+              applicable_sections: ["references"],
+              evidence_level: "medium",
+              status: "draft",
+              created_at: "2026-04-29T07:56:30.000Z",
+              updated_at: "2026-04-30T08:06:00.000Z",
+            },
+          ] as TResponse,
+        };
+      }
+
+      if (
+        input.url === "/api/v1/prompt-skill-registry/prompt-templates" ||
+        input.url === "/api/v1/learning/candidates"
+      ) {
+        return { status: 200, body: [] as TResponse };
+      }
+
+      throw new Error(`Unexpected request: ${input.method} ${input.url}`);
+    },
+  });
+
+  const ledger = await controller.loadRuleLedger();
+  const overview = await controller.loadOverview({
+    selectedTemplateFamilyId: "family-real-1",
+  });
+  const templateLedger = await controller.loadTemplateLedger();
+  const generalLedger = await controller.loadContentModuleLedger({
+    moduleClass: "general",
+  });
+  const medicalLedger = await controller.loadContentModuleLedger({
+    moduleClass: "medical_specialized",
+  });
+
+  assert.deepEqual(
+    ledger.rows.map((row) => row.id),
+    ["template-real-1", "module-real-general-1", "module-real-medical-1"],
+  );
+  assert.deepEqual(
+    overview.templateFamilies.map((family) => family.id),
+    ["family-real-1"],
+  );
+  assert.deepEqual(
+    overview.ruleSets.map((ruleSet) => ruleSet.id),
+    ["rule-set-real-1"],
+  );
+  assert.deepEqual(
+    templateLedger.templates.map((template) => template.id),
+    ["template-real-1"],
+  );
+  assert.deepEqual(
+    generalLedger.modules.map((module) => module.id),
+    ["module-real-general-1"],
+  );
+  assert.deepEqual(
+    medicalLedger.modules.map((module) => module.id),
+    ["module-real-medical-1"],
+  );
+});
+
 function createEmptyRuleAuthoringResponse<TResponse>(url: string) {
   if (
     url === "/api/v1/editorial-rules/rule-sets" ||

@@ -1121,7 +1121,7 @@ async function loadTemplateGovernanceRuleLedger(
 
   const journalTemplateEntries = (
     await Promise.all(
-      templateFamiliesResponse.body.map(async (family) => ({
+      filterSystemTemplateFamilies(templateFamiliesResponse.body).map(async (family) => ({
         family,
         journalTemplates: (
           await listJournalTemplateProfilesByTemplateFamilyId(client, family.id)
@@ -1139,18 +1139,20 @@ async function loadTemplateGovernanceRuleLedger(
     ...knowledgeItemsResponse.body
       .filter((item) => item.knowledge_kind === "rule")
       .map((item) => mapKnowledgeItemToRuleLedgerRow(item, ruleEffectMetrics)),
-    ...templatesResponse.body.map(mapTemplateCompositionToRuleLedgerRow),
+    ...filterSystemTemplateCompositions(templatesResponse.body).map(
+      mapTemplateCompositionToRuleLedgerRow,
+    ),
     ...journalTemplateEntries.map(({ family, journalTemplate }) =>
       mapJournalTemplateToRuleLedgerRow(journalTemplate, family),
     ),
-    ...generalModulesResponse.body.map((module) =>
+    ...filterSystemContentModules(generalModulesResponse.body).map((module) =>
       mapContentModuleToRuleLedgerRow(
         module,
         "general_package",
         generalRuleInventory.rulesByModuleId.get(module.id) ?? [],
       ),
     ),
-    ...medicalModulesResponse.body.map((module) =>
+    ...filterSystemContentModules(medicalModulesResponse.body).map((module) =>
       mapContentModuleToRuleLedgerRow(
         module,
         "medical_package",
@@ -1211,7 +1213,9 @@ async function loadTemplateGovernanceContentModuleLedger(
     selectedModuleId?: string | null;
   },
 ): Promise<TemplateGovernanceContentModuleLedgerViewModel> {
-  const modules = (await listContentModules(client, input.moduleClass)).body;
+  const modules = filterSystemContentModules(
+    (await listContentModules(client, input.moduleClass)).body,
+  );
   const ruleInventory = await loadContentModuleRuleInventory(client, {
     moduleClass: input.moduleClass,
   });
@@ -1415,7 +1419,7 @@ async function loadTemplateGovernanceTemplateLedger(
       listContentModules(client, "general"),
       listContentModules(client, "medical_specialized"),
     ]);
-  const templates = templatesResponse.body;
+  const templates = filterSystemTemplateCompositions(templatesResponse.body);
   const selectedTemplateId = resolveSelectedId(
     templates.map((template) => template.id),
     input.selectedTemplateId,
@@ -1425,8 +1429,8 @@ async function loadTemplateGovernanceTemplateLedger(
 
   return {
     templates,
-    generalModules: generalModulesResponse.body,
-    medicalModules: medicalModulesResponse.body,
+    generalModules: filterSystemContentModules(generalModulesResponse.body),
+    medicalModules: filterSystemContentModules(medicalModulesResponse.body),
     selectedTemplateId,
     selectedTemplate,
     summary: {
@@ -1457,7 +1461,7 @@ async function loadTemplateGovernanceOverview(
     listPromptTemplates(client),
   ]);
 
-  const templateFamilies = templateFamiliesResponse.body;
+  const templateFamilies = filterSystemTemplateFamilies(templateFamiliesResponse.body);
   const knowledgeItems = knowledgeItemsResponse.body;
   const selectedTemplateFamilyId = resolveSelectedId(
     templateFamilies.map((family) => family.id),
@@ -1483,7 +1487,7 @@ async function loadTemplateGovernanceOverview(
   const familyRuleSets =
     selectedTemplateFamilyId == null
       ? []
-      : ruleSetsResponse.body.filter(
+      : filterSystemRuleSets(ruleSetsResponse.body).filter(
           (ruleSet) => ruleSet.template_family_id === selectedTemplateFamilyId,
         );
   const selectedJournalTemplateId = resolveSelectedJournalTemplateId({
@@ -1585,6 +1589,34 @@ function resolveSelectedId(
   }
 
   return ids[0] ?? null;
+}
+
+function filterSystemTemplateFamilies<T extends { id: string; name: string }>(
+  families: readonly T[],
+): T[] {
+  return families.filter(
+    (family) =>
+      !isSeededSystemId(family.id) &&
+      !family.name.includes("基础模板族"),
+  );
+}
+
+function filterSystemTemplateCompositions<T extends { id: string }>(
+  templates: readonly T[],
+): T[] {
+  return templates.filter((template) => !isSeededSystemId(template.id));
+}
+
+function filterSystemContentModules<T extends { id: string }>(modules: readonly T[]): T[] {
+  return modules.filter((module) => !isSeededSystemId(module.id));
+}
+
+function filterSystemRuleSets<T extends { id: string }>(ruleSets: readonly T[]): T[] {
+  return ruleSets.filter((ruleSet) => !isSeededSystemId(ruleSet.id));
+}
+
+function isSeededSystemId(id: string): boolean {
+  return id.startsWith("64646464-") || id.includes("-seeded-");
 }
 
 function filterInstructionTemplates(

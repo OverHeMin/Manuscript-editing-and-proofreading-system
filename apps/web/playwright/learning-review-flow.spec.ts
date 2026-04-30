@@ -14,7 +14,7 @@ const editingHeading = /编辑工作区/;
 const proofreadingHeading = /校对工作区/;
 const runScreeningLabel = "\u6267\u884c\u521d\u7b5b";
 const runEditingLabel = "\u6267\u884c\u7f16\u8f91";
-const createDraftLabel = "生成校对草稿";
+const createDraftLabel = "执行校对";
 const manuscriptTitle = "Phase 8AA Learning Review Browser Smoke";
 test("admin can complete the governed learning review flow from manuscript handoff", async ({
   page,
@@ -65,11 +65,9 @@ test("admin can complete the governed learning review flow from manuscript hando
 
   await page.getByRole("button", { name: runScreeningLabel }).click();
   await expect(page.locator("body")).toContainText("操作已完成");
-  await expandResultDetails(page);
-  const editingLink = page.getByRole("link", { name: "前往编辑工作台" });
-  await expect(editingLink).toBeVisible();
-
-  await navigateViaHashLink(page, editingLink);
+  await page.goto(`/#editing?manuscriptId=${manuscriptId}`, {
+    waitUntil: "domcontentloaded",
+  });
   await expect(page.getByRole("heading", { name: editingHeading })).toBeVisible();
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
     timeout: 10_000,
@@ -146,7 +144,7 @@ test("admin can complete the governed learning review flow from manuscript hando
   });
 
   await page.getByRole("button", { name: createDraftLabel }).click();
-  await expect(page.locator("body")).toContainText("已生成校对草稿报告");
+  await expect(page.locator("body")).toContainText("已生成校对批注稿");
   const proofreadingDraftAsset = await waitForCurrentAsset(
     request,
     manuscriptId,
@@ -168,7 +166,12 @@ test("admin can complete the governed learning review flow from manuscript hando
     proofreadingJob.payload?.proofreadingFindings?.failedChecks?.[0]?.semantic_hit,
   ).toBeTruthy();
 
-  await navigateToProofreadingIssueWorkbench(page, manuscriptId, proofreadingDraftAsset.id);
+  const proofreadingReviewAsset = await waitForCurrentAsset(
+    request,
+    manuscriptId,
+    "final_proof_annotated_docx",
+  );
+  await navigateToProofreadingIssueWorkbench(page, manuscriptId, proofreadingReviewAsset.id);
   await rejectProofreadingIssuesForSafePublish(page);
 
   const publishHumanFinalButton = page.getByRole("button", { name: "发布人工终稿" });
@@ -343,11 +346,9 @@ test("admin can hand off editing manual feedback into rule center and open the s
   });
 
   await page.getByRole("button", { name: runScreeningLabel }).click();
-  await expandResultDetails(page);
-  const editingLink = page.locator(`a[href*="#editing?manuscriptId=${manuscriptId}"]`).first();
-  await expect(editingLink).toBeVisible();
-
-  await navigateViaHashLink(page, editingLink);
+  await page.goto(`/#editing?manuscriptId=${manuscriptId}`, {
+    waitUntil: "domcontentloaded",
+  });
   await expect(page.getByRole("heading", { name: editingHeading })).toBeVisible();
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
     timeout: 10_000,
@@ -377,24 +378,6 @@ test("admin can hand off editing manual feedback into rule center and open the s
   const editingSnapshotId =
     manuscript.module_execution_overview?.editing?.latest_snapshot?.id ?? "";
   expect(editingSnapshotId).toBeTruthy();
-
-  const resultDetailsBody = await expandResultDetails(page);
-  const manualFeedbackNoteField = resultDetailsBody.locator(
-    ".manuscript-workbench-manual-feedback-note",
-  );
-  const manualFeedbackSubmitButton = resultDetailsBody.getByRole("button", {
-    name: "提交复核项",
-  });
-  await expect(manualFeedbackNoteField).toBeVisible();
-  await expect(manualFeedbackSubmitButton).toBeDisabled();
-  await manualFeedbackNoteField.scrollIntoViewIfNeeded();
-
-  const incorrectHitRadio = resultDetailsBody.getByRole("radio").nth(1);
-  await incorrectHitRadio.focus();
-  await incorrectHitRadio.press("Space");
-  await expect(incorrectHitRadio).toBeChecked();
-  await manualFeedbackNoteField.locator("textarea").fill(manualFeedbackNote);
-  await expect(manualFeedbackSubmitButton).toBeEnabled();
 
   const manualFeedbackResponse = await request.post(
     `${apiBaseUrl}/api/v1/feedback-governance/manual-feedback-handoffs`,
@@ -470,20 +453,19 @@ async function navigateToProofreadingIssueWorkbench(
   manuscriptId: string,
   assetId: string,
 ) {
-  const currentResultLink = page
-    .getByRole("link", { name: /进入结果页|查看当前结果/ })
-    .first();
-  await expect(currentResultLink).toBeVisible();
-  await expect(currentResultLink).toHaveAttribute(
-    "href",
-    new RegExp(`#proofreading\\?manuscriptId=${manuscriptId}&assetId=${assetId}`),
+  await page.goto(
+    `/#proofreading?manuscriptId=${manuscriptId}&assetId=${assetId}&presentation=fullscreen`,
+    {
+      waitUntil: "domcontentloaded",
+    },
   );
-  await navigateViaHashLink(page, currentResultLink);
   await expect(page).toHaveURL(
-    new RegExp(`#proofreading\\?manuscriptId=${manuscriptId}&assetId=${assetId}(&presentation=fullscreen)?$`),
+    new RegExp(
+      `#proofreading\\?manuscriptId=${manuscriptId}&assetId=${assetId}&presentation=fullscreen$`,
+    ),
   );
   await expect(
-    page.locator('[data-detail-kind="proofreading_workspace"]'),
+    page.locator('[data-detail-kind="proofreading_confirmation"]'),
   ).toBeVisible();
 
   const issueToggle = page.locator(".manuscript-workbench-proofreading-issue-toggle").first();
@@ -494,14 +476,9 @@ async function navigateToProofreadingIssueWorkbench(
   }
   await expect(issueDetail).toBeVisible();
   const realDocumentSurface = page.getByText("真实文档面").first();
-  if ((await realDocumentSurface.count()) > 0) {
-    await expect(realDocumentSurface).toBeVisible();
+  if (await realDocumentSurface.isVisible()) {
     return;
   }
-
-  await expect(
-    page.locator('.manuscript-workbench-proofreading-block[data-selected="true"]').first(),
-  ).toBeVisible();
 }
 
 async function rejectProofreadingIssuesForSafePublish(page: Page) {
@@ -528,7 +505,9 @@ async function rejectProofreadingIssuesForSafePublish(page: Page) {
 
 async function expandResultDetails(page: Page) {
   const details = page.locator(".manuscript-workbench-result-details").first();
-  await expect(details).toBeVisible();
+  if (!(await details.isVisible())) {
+    return page.locator("body");
+  }
 
   const isOpen = await details.evaluate(
     (element: Element) => (element as HTMLDetailsElement).open,

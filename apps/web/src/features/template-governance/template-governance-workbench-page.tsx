@@ -4853,8 +4853,8 @@ function buildTemplateGovernanceOverviewPendingItems(
   if (harnessFailedCount > 0) {
     items.push({
       id: "pending-harness-failed",
-      title: "Harness 验证失败",
-      detail: `${harnessFailedCount} 条规则候选未通过 Harness 验证，需要先复核再沉淀。`,
+      title: "规则验证未通过",
+      detail: `${harnessFailedCount} 条规则候选未通过验证，需要先复核再沉淀。`,
       emphasis: `失败 ${harnessFailedCount} 条`,
       actionLabel: "进入统一复核队列",
       targetView: "rule-ledger",
@@ -4877,8 +4877,8 @@ function buildTemplateGovernanceOverviewPendingItems(
   if (harnessQueuedCount > 0) {
     items.push({
       id: "pending-harness-queued",
-      title: "Harness 待验证",
-      detail: `${harnessQueuedCount} 条规则候选正在等待 Harness 验证。`,
+      title: "规则待验证",
+      detail: `${harnessQueuedCount} 条规则候选正在等待验证。`,
       emphasis: `待验证 ${harnessQueuedCount} 条`,
       actionLabel: "进入统一复核队列",
       targetView: "rule-ledger",
@@ -5131,9 +5131,9 @@ function createTemplateFormValues(): TemplateGovernanceTemplateFormValues {
     name: "",
     manuscriptType: "",
     journalScope: "",
-    executionModuleScope: "",
-    generalModuleIds: "",
-    medicalModuleIds: "",
+    executionModuleScope: [],
+    generalModuleIds: [],
+    medicalModuleIds: [],
     notes: "",
   };
 }
@@ -5814,9 +5814,11 @@ function validateTemplateFormValues(
     return { error: "请填写一个有效的稿件类型。" };
   }
 
-  const executionModuleScope = parseTemplateModules(values.executionModuleScope);
+  const executionModuleScope = values.executionModuleScope
+    .map((item) => normalizeTemplateModule(item))
+    .filter((item): item is TemplateModule => item != null);
   if (executionModuleScope.length === 0) {
-    return { error: "请至少填写一个执行模块。" };
+    return { error: "请至少选择一个执行模块。" };
   }
 
   const generalModuleIds = resolveGovernedModuleIds(
@@ -5982,12 +5984,12 @@ function toTemplateFormValues(
     name: template.name,
     manuscriptType: template.manuscript_type,
     journalScope: template.journal_scope ?? "",
-    executionModuleScope: template.execution_module_scope.join(", "),
-    generalModuleIds: formatGovernedModuleReferences(
+    executionModuleScope: [...template.execution_module_scope],
+    generalModuleIds: resolveGovernedModuleSelections(
       template.general_module_ids,
       generalModules,
     ),
-    medicalModuleIds: formatGovernedModuleReferences(
+    medicalModuleIds: resolveGovernedModuleSelections(
       template.medical_module_ids,
       medicalModules,
     ),
@@ -6010,20 +6012,8 @@ function toJournalTemplateFormValues(
   };
 }
 
-function formatGovernedModuleReferences(
-  moduleIds: readonly string[],
-  modules: readonly GovernedContentModuleViewModel[],
-): string {
-  return moduleIds
-    .map(
-      (moduleId) =>
-        modules.find((module) => module.id === moduleId)?.name ?? moduleId,
-    )
-    .join(", ");
-}
-
 function resolveGovernedModuleIds(
-  value: string,
+  value: readonly string[],
   modules: readonly GovernedContentModuleViewModel[],
 ): {
   ids: string[];
@@ -6032,7 +6022,7 @@ function resolveGovernedModuleIds(
   const ids: string[] = [];
   const unresolved: string[] = [];
 
-  for (const token of parseStringList(value)) {
+  for (const token of value) {
     const matchedModule = modules.find(
       (module) => module.id === token || module.name === token,
     );
@@ -6047,6 +6037,15 @@ function resolveGovernedModuleIds(
     ids: [...new Set(ids)],
     unresolved,
   };
+}
+
+function resolveGovernedModuleSelections(
+  moduleIds: readonly string[],
+  modules: readonly GovernedContentModuleViewModel[],
+): string[] {
+  return moduleIds.map(
+    (moduleId) => modules.find((module) => module.id === moduleId)?.id ?? moduleId,
+  );
 }
 
 function parseLedgerManuscriptTypes(value: string): ManuscriptType[] {

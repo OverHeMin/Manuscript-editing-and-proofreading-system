@@ -171,7 +171,6 @@ export function KnowledgeLibraryEntryForm({
             {mode === "create" ? "新增知识" : "编辑知识"}
           </p>
           <h2>{mode === "create" ? "右侧录入栏" : "右侧编辑栏"}</h2>
-          <p>人工填写和 AI 预填充共用同一张表单，先预填，再逐项核对、补充和确认。</p>
         </div>
 
         <div className="knowledge-library-entry-form__assist-switch">
@@ -253,16 +252,12 @@ export function KnowledgeLibraryEntryForm({
           <section className="knowledge-library-entry-form__section">
             <div className="knowledge-library-entry-form__section-header">
               <h3>基础信息</h3>
-              <p>先完成最短的录入项，再按需展开更多信息。</p>
             </div>
 
             <div
               className="knowledge-library-entry-form__guide"
               data-entry-parameter-guide="knowledge"
             >
-              <p className="knowledge-library-entry-form__guide-intro">
-                需要系统执行判断、命中或拦截时，请去规则中心；知识库主要沉淀依据、解释和参考材料。
-              </p>
               <ul className="knowledge-library-entry-form__guide-list">
                 {KNOWLEDGE_ENTRY_GUIDE_ITEMS.map((item) => (
                   <li key={item}>{item}</li>
@@ -296,9 +291,6 @@ export function KnowledgeLibraryEntryForm({
                   </option>
                 ))}
               </select>
-              <p className="knowledge-library-entry-form__field-help">
-                分类决定这条知识主要作为参考、核查清单还是解释性材料。
-              </p>
             </label>
 
             <label>
@@ -352,7 +344,7 @@ export function KnowledgeLibraryEntryForm({
                 ) : null}
               </div>
               <p className="knowledge-library-entry-form__field-help">
-                必要标签用于补充稿件类型、章节和风险词，方便后续召回。
+                补充风险词或召回标签即可。
               </p>
             </section>
 
@@ -401,9 +393,6 @@ export function KnowledgeLibraryEntryForm({
                       </option>
                     ))}
                   </select>
-                  <p className="knowledge-library-entry-form__field-help">
-                    适用模块决定后续在哪个环节优先检索到这条知识。
-                  </p>
                 </label>
 
                 <label>
@@ -421,9 +410,6 @@ export function KnowledgeLibraryEntryForm({
                       </option>
                     ))}
                   </select>
-                  <p className="knowledge-library-entry-form__field-help">
-                    证据等级帮助区分这条知识更像强依据、一般参考还是待补充说明。
-                  </p>
                 </label>
 
                 <label>
@@ -441,9 +427,6 @@ export function KnowledgeLibraryEntryForm({
                       </option>
                     ))}
                   </select>
-                  <p className="knowledge-library-entry-form__field-help">
-                    来源类型帮助区分知识来自指南、论文、内部案例还是其他补充来源。
-                  </p>
                 </label>
 
                 <label>
@@ -634,10 +617,9 @@ const ENTRY_BOARD_TABS: ReadonlyArray<{
 ];
 
 const KNOWLEDGE_ENTRY_GUIDE_ITEMS = [
-  "知识库只放依据、解释、参考，不在这里录可执行规则。",
-  "分类决定这条知识主要作为参考、核查清单还是解释性材料。",
-  "适用模块决定后续在哪个环节优先检索到这条知识。",
-  "必要标签用于补充稿件类型、章节和风险词，方便后续召回。",
+  "这里只录依据、解释和参考材料。",
+  "执行判断类内容请放到规则中心。",
+  "补充标签即可方便后续召回。",
 ] as const;
 
 function KnowledgeLibraryEntryMultiSelectField(props: {

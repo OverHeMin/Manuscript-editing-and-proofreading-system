@@ -51,8 +51,8 @@ export function HarnessDatasetsWorkbenchPage({
   if (loadStatus === "error" && !overview) {
     return (
       <article className="workbench-placeholder" role="alert">
-        <h2>Harness 控制 / 验证样本集</h2>
-        <p>{errorMessage ?? "暂时无法载入 Harness 数据样本台。"}</p>
+        <h2>验证样本集</h2>
+        <p>{errorMessage ?? "暂时无法载入验证样本集。"}</p>
       </article>
     );
   }
@@ -60,7 +60,7 @@ export function HarnessDatasetsWorkbenchPage({
   if (!overview) {
     return (
       <article className="workbench-placeholder" role="status">
-        <h2>Harness 控制 / 验证样本集</h2>
+        <h2>验证样本集</h2>
         <p>正在载入验证样本集草稿、已发布版本与评分规则关联...</p>
       </article>
     );
@@ -71,10 +71,10 @@ export function HarnessDatasetsWorkbenchPage({
       {embedded ? null : (
         <header className="harness-datasets-hero">
           <div className="harness-datasets-hero-copy">
-            <p className="harness-datasets-eyebrow">Harness 控制</p>
-            <h2>Harness 控制 / 验证样本集</h2>
+            <p className="harness-datasets-eyebrow">验证治理</p>
+            <h2>验证样本集</h2>
             <p>
-              统一整理验证样本、评分规则与本地导出，不再作为单独难理解的孤立栏目。
+              统一整理验证样本、评分规则和本地导出。
             </p>
             <WorkbenchCoreStrip variant="secondary" />
           </div>
@@ -94,9 +94,9 @@ export function HarnessDatasetsWorkbenchPage({
 
       {embedded ? (
         <section className="harness-datasets-embedded-banner">
-          <strong>Harness 验证样本集</strong>
+          <strong>验证样本集</strong>
           <p className="harness-datasets-copy">
-            当前数据集视图仍然属于同一个 Harness 工作区，用于在运行治理链路里直接核对样本、规则和导出状态。
+            在这里直接核对样本、评分规则和导出状态。
           </p>
         </section>
       ) : null}

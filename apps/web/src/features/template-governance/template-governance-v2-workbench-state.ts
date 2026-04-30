@@ -70,9 +70,9 @@ export function createV2TemplateFormValues(): TemplateGovernanceTemplateFormValu
     name: "",
     manuscriptType: "",
     journalScope: "",
-    executionModuleScope: "",
-    generalModuleIds: "",
-    medicalModuleIds: "",
+    executionModuleScope: [],
+    generalModuleIds: [],
+    medicalModuleIds: [],
     notes: "",
   };
 }
@@ -197,9 +197,11 @@ export function validateV2TemplateFormValues(
     return { error: "请填写一个有效的稿件类型。" };
   }
 
-  const executionModuleScope = parseTemplateModules(values.executionModuleScope);
+  const executionModuleScope = values.executionModuleScope
+    .map((item) => normalizeTemplateModule(item))
+    .filter((item): item is TemplateModule => item != null);
   if (executionModuleScope.length === 0) {
-    return { error: "请至少填写一个执行模块。" };
+    return { error: "请至少选择一个执行模块。" };
   }
 
   const generalModuleIds = resolveGovernedModuleIds(
@@ -349,12 +351,12 @@ export function toV2TemplateFormValues(
     name: template.name,
     manuscriptType: template.manuscript_type,
     journalScope: template.journal_scope ?? "",
-    executionModuleScope: template.execution_module_scope.join(", "),
-    generalModuleIds: formatGovernedModuleReferences(
+    executionModuleScope: [...template.execution_module_scope],
+    generalModuleIds: resolveGovernedModuleSelections(
       template.general_module_ids,
       generalModules,
     ),
-    medicalModuleIds: formatGovernedModuleReferences(
+    medicalModuleIds: resolveGovernedModuleSelections(
       template.medical_module_ids,
       medicalModules,
     ),
@@ -389,17 +391,17 @@ export function toV2ErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-function formatGovernedModuleReferences(
+function resolveGovernedModuleSelections(
   moduleIds: readonly string[],
   modules: readonly GovernedContentModuleViewModel[],
-): string {
-  return moduleIds
-    .map((moduleId) => modules.find((module) => module.id === moduleId)?.name ?? moduleId)
-    .join(", ");
+): string[] {
+  return moduleIds.map(
+    (moduleId) => modules.find((module) => module.id === moduleId)?.id ?? moduleId,
+  );
 }
 
 function resolveGovernedModuleIds(
-  value: string,
+  value: readonly string[],
   modules: readonly GovernedContentModuleViewModel[],
 ): {
   ids: string[];
@@ -408,7 +410,7 @@ function resolveGovernedModuleIds(
   const ids: string[] = [];
   const unresolved: string[] = [];
 
-  for (const token of parseStringList(value)) {
+  for (const token of value) {
     const matchedModule = modules.find(
       (module) => module.id === token || module.name === token,
     );

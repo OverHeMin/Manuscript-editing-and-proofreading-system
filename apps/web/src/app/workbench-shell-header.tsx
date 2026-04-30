@@ -7,6 +7,7 @@ export interface WorkbenchShellHeaderProps {
   isCompactNavigation: boolean;
   isNavigationOpen: boolean;
   onToggleNavigation: () => void;
+  showNavigationToggle?: boolean;
   onLogout?: () => void | Promise<void>;
   isLogoutPending?: boolean;
 }
@@ -36,6 +37,7 @@ export function WorkbenchShellHeader({
   isCompactNavigation,
   isNavigationOpen,
   onToggleNavigation,
+  showNavigationToggle = true,
   onLogout,
   isLogoutPending = false,
 }: WorkbenchShellHeaderProps) {
@@ -56,7 +58,7 @@ export function WorkbenchShellHeader({
         </div>
 
         <div className="workbench-header-actions">
-          {isCompactNavigation ? (
+          {showNavigationToggle && isCompactNavigation ? (
             <button
               type="button"
               className="workbench-nav-toggle"
