@@ -1419,6 +1419,50 @@ test("proofreading confirmation helpers keep only active draft rows and serializ
   );
 });
 
+test("proofreading confirmation decisions keep content decision separate from governance routing", () => {
+  assert.deepEqual(
+    buildProofreadingConfirmationDecisions(
+      [
+        {
+          itemId: "issue-1",
+          title: "单位表达不规范",
+          severity: "medium",
+          source: "residual_ai",
+          issueType: "style",
+          blocksFinal: false,
+          targetText: "5 mg per dL",
+          replacementText: "5 mg/dL",
+          anchor: {
+            blockIndex: 0,
+            quote: "5 mg per dL",
+            sectionLabel: "结果",
+          },
+          suggestionAction: "replace_text",
+        },
+      ],
+      {
+        "issue-1": {
+          action: "accepted",
+          routeToRuleCandidate: true,
+          routeToKnowledgeCandidate: true,
+          note: "采纳写入终稿，同时沉淀规则和知识候选。",
+        },
+      },
+    ),
+    [
+      {
+        itemId: "issue-1",
+        targetText: "5 mg per dL",
+        replacementText: "5 mg/dL",
+        action: "accepted",
+        routeToRuleCandidate: true,
+        routeToKnowledgeCandidate: true,
+        note: "采纳写入终稿，同时沉淀规则和知识候选。",
+      },
+    ],
+  );
+});
+
 test("proofreading draft selection keeps the current draft unless a new draft run explicitly prefers the latest draft", () => {
   const assets = [
     {

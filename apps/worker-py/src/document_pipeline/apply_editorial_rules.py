@@ -171,6 +171,8 @@ def apply_rules_to_docx(
             )
             break
 
+        ai_anchor_text = next_text
+        applied_ai_anchor_ranges: list[tuple[int, int]] = []
         for replacement_index, replacement in pending_ai_replacements:
             if replacement_index in resolved_ai_replacement_indexes:
                 continue
@@ -187,7 +189,23 @@ def apply_rules_to_docx(
                 )
                 continue
 
-            if target_text not in next_text:
+            if target_text not in ai_anchor_text:
+                continue
+
+            anchor_range = find_non_overlapping_anchor_range(
+                ai_anchor_text,
+                target_text,
+                applied_ai_anchor_ranges,
+            )
+            if anchor_range is None:
+                resolved_ai_replacement_indexes.add(replacement_index)
+                skipped_ai_replacements.append(
+                    {
+                        "replacementId": f"ai-replacement-{replacement_index + 1}",
+                        "reason": "overlapping_anchor",
+                        "targetText": target_text,
+                    }
+                )
                 continue
 
             application_skip_reason = detect_ai_replacement_application_skip_reason(
@@ -241,7 +259,8 @@ def apply_rules_to_docx(
             )
             applied_rule_id = replacement_id
             resolved_ai_replacement_indexes.add(replacement_index)
-            break
+            applied_ai_anchor_ranges.append(anchor_range)
+            continue
 
         if applied_rule_id is None:
             continue
@@ -401,6 +420,31 @@ def apply_ai_replacement_to_text_nodes(
         return "".join(text_node.text or "" for text_node in text_nodes)
 
     return None
+
+
+def find_non_overlapping_anchor_range(
+    text: str,
+    target_text: str,
+    occupied_ranges: list[tuple[int, int]],
+) -> tuple[int, int] | None:
+    start = text.find(target_text)
+    while start >= 0:
+        end = start + len(target_text)
+        if not any(ranges_overlap(start, end, occupied_start, occupied_end) for occupied_start, occupied_end in occupied_ranges):
+            return (start, end)
+
+        start = text.find(target_text, start + 1)
+
+    return None
+
+
+def ranges_overlap(
+    start: int,
+    end: int,
+    occupied_start: int,
+    occupied_end: int,
+) -> bool:
+    return start < occupied_end and occupied_start < end
 
 
 def is_table_target_rule(rule: dict) -> bool:

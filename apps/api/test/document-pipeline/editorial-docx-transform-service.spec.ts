@@ -594,6 +594,236 @@ test("editorial docx transform service applies executable table patches through 
   }
 });
 
+test("editorial docx transform service applies multiple AI replacements in the same paragraph", async () => {
+  const rootDir = await mkdtemp(
+    path.join(os.tmpdir(), "editorial-docx-transform-ai-replacements-"),
+  );
+
+  try {
+    const assetRepository = new InMemoryDocumentAssetRepository();
+    await assetRepository.save({
+      id: "asset-original-ai-replacements",
+      manuscript_id: "manuscript-ai-replacements",
+      asset_type: "original",
+      status: "active",
+      storage_key: "uploads/manuscript-ai-replacements/original.docx",
+      mime_type:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      source_module: "upload",
+      created_by: "user-1",
+      version_no: 1,
+      is_current: true,
+      file_name: "original.docx",
+      created_at: "2026-04-24T10:30:00.000Z",
+      updated_at: "2026-04-24T10:30:00.000Z",
+    });
+
+    const sourcePath = path.join(
+      rootDir,
+      "uploads",
+      "manuscript-ai-replacements",
+      "original.docx",
+    );
+    await mkdir(path.dirname(sourcePath), { recursive: true });
+    writeParagraphDocxFixture(
+      sourcePath,
+      "study group and control group were reviewed.",
+    );
+
+    const service = new EditorialDocxTransformService({
+      assetRepository,
+      rootDir,
+    });
+
+    const result = await service.applyDeterministicRules({
+      manuscriptId: "manuscript-ai-replacements",
+      sourceAssetId: "asset-original-ai-replacements",
+      outputStorageKey: "outputs/manuscript-ai-replacements/edited.docx",
+      tableAutoApplyMode: "editing_safe_apply",
+      rules: [],
+      aiReplacements: [
+        {
+          targetText: "study group",
+          replacementText: "Study group",
+          reason: "case normalization",
+        },
+        {
+          targetText: "control group",
+          replacementText: "Control group",
+          reason: "case normalization",
+        },
+      ],
+    });
+
+    assert.deepEqual(result.appliedRuleIds, [
+      "ai-replacement-1",
+      "ai-replacement-2",
+    ]);
+    assert.deepEqual(result.skippedAiReplacements, []);
+
+    const outputXml = await readDocumentXml(
+      path.join(rootDir, "outputs", "manuscript-ai-replacements", "edited.docx"),
+    );
+    assert.match(outputXml, /Study group and Control group were reviewed\./u);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("editorial docx transform service does not chain AI replacements introduced by earlier replacements", async () => {
+  const rootDir = await mkdtemp(
+    path.join(os.tmpdir(), "editorial-docx-transform-ai-chain-"),
+  );
+
+  try {
+    const assetRepository = new InMemoryDocumentAssetRepository();
+    await assetRepository.save({
+      id: "asset-original-ai-chain",
+      manuscript_id: "manuscript-ai-chain",
+      asset_type: "original",
+      status: "active",
+      storage_key: "uploads/manuscript-ai-chain/original.docx",
+      mime_type:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      source_module: "upload",
+      created_by: "user-1",
+      version_no: 1,
+      is_current: true,
+      file_name: "original.docx",
+      created_at: "2026-04-24T10:30:00.000Z",
+      updated_at: "2026-04-24T10:30:00.000Z",
+    });
+
+    const sourcePath = path.join(
+      rootDir,
+      "uploads",
+      "manuscript-ai-chain",
+      "original.docx",
+    );
+    await mkdir(path.dirname(sourcePath), { recursive: true });
+    writeParagraphDocxFixture(sourcePath, "study group was reviewed.");
+
+    const service = new EditorialDocxTransformService({
+      assetRepository,
+      rootDir,
+    });
+
+    const result = await service.applyDeterministicRules({
+      manuscriptId: "manuscript-ai-chain",
+      sourceAssetId: "asset-original-ai-chain",
+      outputStorageKey: "outputs/manuscript-ai-chain/edited.docx",
+      tableAutoApplyMode: "editing_safe_apply",
+      rules: [],
+      aiReplacements: [
+        {
+          targetText: "study group",
+          replacementText: "Study group",
+          reason: "case normalization",
+        },
+        {
+          targetText: "Study group",
+          replacementText: "STUDY GROUP",
+          reason: "case normalization",
+        },
+      ],
+    });
+
+    assert.deepEqual(result.appliedRuleIds, ["ai-replacement-1"]);
+    assert.deepEqual(result.skippedAiReplacements, [
+      {
+        replacementId: "ai-replacement-2",
+        reason: "anchor_not_precise",
+        targetText: "Study group",
+      },
+    ]);
+
+    const outputXml = await readDocumentXml(
+      path.join(rootDir, "outputs", "manuscript-ai-chain", "edited.docx"),
+    );
+    assert.match(outputXml, /Study group was reviewed\./u);
+    assert.doesNotMatch(outputXml, /STUDY GROUP/u);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("editorial docx transform service skips overlapping AI replacements in the same paragraph", async () => {
+  const rootDir = await mkdtemp(
+    path.join(os.tmpdir(), "editorial-docx-transform-ai-overlap-"),
+  );
+
+  try {
+    const assetRepository = new InMemoryDocumentAssetRepository();
+    await assetRepository.save({
+      id: "asset-original-ai-overlap",
+      manuscript_id: "manuscript-ai-overlap",
+      asset_type: "original",
+      status: "active",
+      storage_key: "uploads/manuscript-ai-overlap/original.docx",
+      mime_type:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      source_module: "upload",
+      created_by: "user-1",
+      version_no: 1,
+      is_current: true,
+      file_name: "original.docx",
+      created_at: "2026-04-24T10:30:00.000Z",
+      updated_at: "2026-04-24T10:30:00.000Z",
+    });
+
+    const sourcePath = path.join(
+      rootDir,
+      "uploads",
+      "manuscript-ai-overlap",
+      "original.docx",
+    );
+    await mkdir(path.dirname(sourcePath), { recursive: true });
+    writeParagraphDocxFixture(sourcePath, "study group was reviewed.");
+
+    const service = new EditorialDocxTransformService({
+      assetRepository,
+      rootDir,
+    });
+
+    const result = await service.applyDeterministicRules({
+      manuscriptId: "manuscript-ai-overlap",
+      sourceAssetId: "asset-original-ai-overlap",
+      outputStorageKey: "outputs/manuscript-ai-overlap/edited.docx",
+      tableAutoApplyMode: "editing_safe_apply",
+      rules: [],
+      aiReplacements: [
+        {
+          targetText: "study group",
+          replacementText: "Study group",
+          reason: "case normalization",
+        },
+        {
+          targetText: "group",
+          replacementText: "Group",
+          reason: "case normalization",
+        },
+      ],
+    });
+
+    assert.deepEqual(result.appliedRuleIds, ["ai-replacement-1"]);
+    assert.deepEqual(result.skippedAiReplacements, [
+      {
+        replacementId: "ai-replacement-2",
+        reason: "overlapping_anchor",
+        targetText: "group",
+      },
+    ]);
+
+    const outputXml = await readDocumentXml(
+      path.join(rootDir, "outputs", "manuscript-ai-overlap", "edited.docx"),
+    );
+    assert.match(outputXml, /Study group was reviewed\./u);
+    assert.doesNotMatch(outputXml, /Study Group/u);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
 test("editorial docx transform service applies controlled table rebuild patches through the worker", async () => {
   const rootDir = await mkdtemp(
     path.join(os.tmpdir(), "editorial-docx-transform-table-rebuild-"),
@@ -1119,6 +1349,30 @@ function styleFact<T>(value: T) {
     availability: "authoritative" as const,
     value,
   };
+}
+
+function writeParagraphDocxFixture(outputPath: string, paragraphText: string): void {
+  const script = [
+    "import zipfile",
+    "from pathlib import Path",
+    "from xml.sax.saxutils import escape",
+    `output = Path(r'''${outputPath.replace(/'/g, "''")}''')`,
+    `paragraph_text = r'''${paragraphText.replace(/'/g, "''")}'''`,
+    "output.parent.mkdir(parents=True, exist_ok=True)",
+    "document_xml = '<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body><w:p><w:r><w:t>' + escape(paragraph_text) + '</w:t></w:r></w:p></w:body></w:document>'",
+    "entries = {",
+    "  '[Content_Types].xml': '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/><Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/><Override PartName=\"/docProps/app.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.extended-properties+xml\"/></Types>''',",
+    "  '_rels/.rels': '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/><Relationship Id=\"rId3\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties\" Target=\"docProps/app.xml\"/></Relationships>''',",
+    "  'docProps/core.xml': '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:dcterms=\"http://purl.org/dc/terms/\" xmlns:dcmitype=\"http://purl.org/dc/dcmitype/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"><dc:title>Medical Manuscript Artifact</dc:title></cp:coreProperties>''',",
+    "  'docProps/app.xml': '''<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\" xmlns:vt=\"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes\"><Application>Codex Medical Manuscript System</Application></Properties>''',",
+    "  'word/document.xml': document_xml,",
+    "}",
+    "with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as archive:",
+    "    for name, content in entries.items():",
+    "        archive.writestr(name, content)",
+  ].join("\n");
+
+  execFileSync(process.platform === "win32" ? "py" : "python3", ["-c", script]);
 }
 
 function writeTableDocxFixture(outputPath: string): void {

@@ -9,6 +9,7 @@ import type { HumanReviewDiffRecord } from "../../src/modules/human-review/human
 import { HumanReviewService } from "../../src/modules/human-review/human-review-service.ts";
 import { InMemoryJobRepository } from "../../src/modules/jobs/in-memory-job-repository.ts";
 import { InMemoryManuscriptRepository } from "../../src/modules/manuscripts/in-memory-manuscript-repository.ts";
+import type { ReviewItemsService } from "../../src/modules/review-items/review-items-service.ts";
 
 function createHarness(options: {
   reviewItemsService?: ConstructorParameters<typeof HumanReviewService>[0]["reviewItemsService"];
@@ -51,6 +52,7 @@ function createHarness(options: {
   return {
     manuscriptRepository,
     assetRepository,
+    jobRepository,
     humanReviewRepository,
     service,
     transformCalls,
@@ -267,6 +269,367 @@ test("human review publish applies kept text diffs and excludes rejected diffs",
   assert.equal(reject?.final_asset_id, result.asset.id);
   assert.equal(keep?.status, "published_writeback_done");
   assert.equal(reject?.status, "published_writeback_done");
+});
+
+test("human review publish merges confirmed AI proofreading issues with human edit diffs", async () => {
+  const {
+    manuscriptRepository,
+    assetRepository,
+    humanReviewRepository,
+    service,
+    transformCalls,
+  } = createHarness();
+  await seedManuscriptAndAssets({ manuscriptRepository, assetRepository });
+  await humanReviewRepository.saveDiffItem(
+    createDiff({
+      id: "human-diff-keep",
+      content_decision: "keep",
+      status: "confirmed",
+      before_text: "ALT remained stable.",
+      after_text: "Serum ALT remained stable.",
+    }),
+  );
+
+  const result = await service.publishConfirmedFinal({
+    manuscriptId: "manuscript-1",
+    module: "proofreading",
+    requestedBy: "proofreader-1",
+    outputStorageKey: "runs/human-review/final.docx",
+    outputFileName: "human-final.docx",
+    proofreadingConfirmationDecisions: [
+      {
+        itemId: "ai-issue-1",
+        targetText: "5 mg per dL",
+        replacementText: "5 mg/dL",
+        finalReplacementText: "5 mg/dL",
+        action: "accepted",
+      },
+      {
+        itemId: "ai-issue-2",
+        targetText: "unchanged AI suggestion",
+        replacementText: "unused replacement",
+        finalReplacementText: "unused replacement",
+        action: "rejected",
+      },
+    ],
+  });
+
+  assert.equal(result.asset.asset_type, "human_final_docx");
+  assert.equal(transformCalls.length, 1);
+  assert.equal(transformCalls[0]?.sourceAssetId, "asset-base");
+  assert.deepEqual(transformCalls[0]?.aiReplacements, [
+    {
+      targetText: "5 mg per dL",
+      replacementText: "5 mg/dL",
+      reason: "Proofreading confirmation ai-issue-1 kept by reviewer.",
+    },
+    {
+      targetText: "ALT remained stable.",
+      replacementText: "Serum ALT remained stable.",
+      reason: "Human review diff human-diff-keep kept by reviewer.",
+    },
+  ]);
+  assert.deepEqual(result.job.payload?.proofreadingConfirmationDecisionIds, [
+    "ai-issue-1",
+    "ai-issue-2",
+  ]);
+});
+
+test("human review publish blocks incomplete AI proofreading confirmations", async () => {
+  const {
+    manuscriptRepository,
+    assetRepository,
+    jobRepository,
+    humanReviewRepository,
+    service,
+  } = createHarness();
+  await seedManuscriptAndAssets({ manuscriptRepository, assetRepository });
+  await jobRepository.save({
+    id: "job-asset-base",
+    manuscript_id: "manuscript-1",
+    module: "proofreading",
+    job_type: "proofreading_run",
+    status: "completed",
+    requested_by: "proofreader-1",
+    payload: {
+      proofreadingPlan: {
+        issues: [
+          {
+            itemId: "ai-issue-1",
+            anchor: { quote: "5 mg per dL" },
+            suggestion: { replacementText: "5 mg/dL" },
+          },
+          {
+            itemId: "ai-issue-2",
+            anchor: { quote: "The hemoglobin were stable." },
+            suggestion: { replacementText: "The hemoglobin was stable." },
+          },
+        ],
+      },
+    },
+    attempt_count: 1,
+    created_at: "2026-04-28T00:00:00.000Z",
+    updated_at: "2026-04-28T00:00:00.000Z",
+  });
+  await humanReviewRepository.saveDiffItem(
+    createDiff({
+      id: "human-diff-keep",
+      content_decision: "keep",
+      status: "confirmed",
+      before_text: "ALT remained stable.",
+      after_text: "Serum ALT remained stable.",
+    }),
+  );
+
+  await assert.rejects(
+    () =>
+      service.publishConfirmedFinal({
+        manuscriptId: "manuscript-1",
+        module: "proofreading",
+        requestedBy: "proofreader-1",
+        outputStorageKey: "runs/human-review/final.docx",
+        outputFileName: "human-final.docx",
+        proofreadingConfirmationDecisions: [
+          {
+            itemId: "ai-issue-1",
+            targetText: "5 mg per dL",
+            replacementText: "5 mg/dL",
+            finalReplacementText: "5 mg/dL",
+            action: "accepted",
+          },
+          {
+            itemId: "ai-issue-2",
+            targetText: "The hemoglobin were stable.",
+            replacementText: "The hemoglobin was stable.",
+            finalReplacementText: "The hemoglobin was stable.",
+            action: "escalated",
+          },
+        ],
+    }),
+    /AI proofreading issue ai-issue-2 is escalated and must be resolved/u,
+  );
+
+  await assert.rejects(
+    () =>
+      service.publishConfirmedFinal({
+        manuscriptId: "manuscript-1",
+        module: "proofreading",
+        requestedBy: "proofreader-1",
+        outputStorageKey: "runs/human-review/final.docx",
+        outputFileName: "human-final.docx",
+        proofreadingConfirmationDecisions: [
+          {
+            itemId: "ai-issue-1",
+            targetText: "5 mg per dL",
+            replacementText: "5 mg/dL",
+            finalReplacementText: "5 mg/dL",
+            action: "accepted",
+          },
+        ],
+      }),
+    /AI proofreading issues must all be confirmed/u,
+  );
+
+  await assert.rejects(
+    () =>
+      service.publishConfirmedFinal({
+        manuscriptId: "manuscript-1",
+        module: "proofreading",
+        requestedBy: "proofreader-1",
+        outputStorageKey: "runs/human-review/final.docx",
+        outputFileName: "human-final.docx",
+        proofreadingConfirmationItemCount: 2,
+        proofreadingConfirmationDecisions: [
+          {
+            itemId: "ai-issue-1",
+            targetText: "5 mg per dL",
+            replacementText: "5 mg/dL",
+            finalReplacementText: "5 mg/dL",
+            action: "accepted",
+          },
+        ],
+      }),
+    /AI proofreading issues must all be confirmed/u,
+  );
+
+  await assert.rejects(
+    () =>
+      service.publishConfirmedFinal({
+        manuscriptId: "manuscript-1",
+        module: "proofreading",
+        requestedBy: "proofreader-1",
+        outputStorageKey: "runs/human-review/final.docx",
+        outputFileName: "human-final.docx",
+        proofreadingConfirmationDecisions: [
+          {
+            itemId: "ai-issue-1",
+            targetText: "5 mg per dL",
+            replacementText: "5 mg/dL",
+            finalReplacementText: "5 mg/dL",
+            action: "accepted",
+          },
+          {
+            itemId: "ai-issue-2",
+            targetText: "The hemoglobin were stable.",
+            replacementText: "The hemoglobin was stable.",
+            finalReplacementText: "The hemoglobin was stable.",
+            action: "manual_only",
+            blocksFinal: true,
+          },
+        ],
+      }),
+    /AI proofreading issue ai-issue-2 still requires manual confirmation/u,
+  );
+});
+
+test("human review publish keeps accepted AI issue while routing it to rule and knowledge candidates", async () => {
+  const governedHitSubmissions: Array<{
+    feedbackCategory?: string;
+    excerpt?: string;
+    suggestion?: string;
+    originPayload?: Record<string, unknown>;
+  }> = [];
+  const reviewDecisions: Array<{
+    action?: string;
+    proposalText?: string;
+  }> = [];
+  const {
+    manuscriptRepository,
+    assetRepository,
+    humanReviewRepository,
+    service,
+    transformCalls,
+  } = createHarness({
+    reviewItemsService: {
+      async submitGovernedHit(
+        input: Parameters<ReviewItemsService["submitGovernedHit"]>[0],
+      ) {
+        governedHitSubmissions.push({
+          feedbackCategory: input.feedbackCategory,
+          excerpt: input.excerpt,
+          suggestion: input.suggestion,
+          originPayload: input.originPayload,
+        });
+        return {
+          feedback: null,
+          item: {
+            id: `review-item-${governedHitSubmissions.length}`,
+            title: input.title,
+          },
+        };
+      },
+      async decideReviewItem(
+        input: Parameters<ReviewItemsService["decideReviewItem"]>[0],
+      ) {
+        reviewDecisions.push({
+          action: input.action,
+          proposalText:
+            "proposalText" in input ? input.proposalText : undefined,
+        });
+        return {
+          action: input.action,
+          item: {
+            id: `learning-candidate-${reviewDecisions.length}`,
+          },
+        };
+      },
+    } as never,
+  });
+  await seedManuscriptAndAssets({ manuscriptRepository, assetRepository });
+  await humanReviewRepository.saveDiffItem(
+    createDiff({
+      id: "human-diff-keep",
+      content_decision: "keep",
+      status: "confirmed",
+      before_text: "ALT remained stable.",
+      after_text: "Serum ALT remained stable.",
+    }),
+  );
+
+  const result = await service.publishConfirmedFinal({
+    manuscriptId: "manuscript-1",
+    module: "proofreading",
+    requestedBy: "proofreader-1",
+    outputStorageKey: "runs/human-review/final.docx",
+    outputFileName: "human-final.docx",
+    proofreadingConfirmationDecisions: [
+      {
+        itemId: "ai-issue-1",
+        targetText: "5 mg per dL",
+        replacementText: "5 mg/dL",
+        finalReplacementText: "5 mg/dL",
+        action: "accepted",
+        routeToRuleCandidate: true,
+        routeToKnowledgeCandidate: true,
+      },
+    ],
+  });
+
+  assert.equal(result.asset.asset_type, "human_final_docx");
+  assert.deepEqual(transformCalls[0]?.aiReplacements, [
+    {
+      targetText: "5 mg per dL",
+      replacementText: "5 mg/dL",
+      reason: "Proofreading confirmation ai-issue-1 kept by reviewer.",
+    },
+    {
+      targetText: "ALT remained stable.",
+      replacementText: "Serum ALT remained stable.",
+      reason: "Human review diff human-diff-keep kept by reviewer.",
+    },
+  ]);
+  assert.deepEqual(result.job.payload?.proofreadingConfirmationDecisionIds, [
+    "ai-issue-1",
+  ]);
+  assert.deepEqual(result.job.payload?.proofreadingConfirmationGovernanceIntents, [
+    {
+      itemId: "ai-issue-1",
+      ruleCandidate: true,
+      knowledgeCandidate: true,
+    },
+  ]);
+  assert.deepEqual(
+    governedHitSubmissions.map((submission) => ({
+      feedbackCategory: submission.feedbackCategory,
+      excerpt: submission.excerpt,
+      suggestion: submission.suggestion,
+      routeAction: submission.originPayload?.routeAction,
+    })),
+    [
+      {
+        feedbackCategory: "missed_hit",
+        excerpt: "5 mg per dL",
+        suggestion: "5 mg/dL",
+        routeAction: "route_to_rule_candidate",
+      },
+      {
+        feedbackCategory: "missing_knowledge",
+        excerpt: "5 mg per dL",
+        suggestion: "5 mg/dL",
+        routeAction: "route_to_knowledge_candidate",
+      },
+    ],
+  );
+  assert.deepEqual(reviewDecisions, [
+    {
+      action: "route_to_rule_candidate",
+      proposalText: "5 mg/dL",
+    },
+    {
+      action: "route_to_knowledge_candidate",
+      proposalText: "5 mg/dL",
+    },
+  ]);
+  assert.deepEqual(result.job.payload?.proofreadingConfirmationBackflow, {
+    attempted_count: 2,
+    succeeded_count: 2,
+    failed_count: 0,
+  });
+  assert.deepEqual(result.backflow.summary, {
+    attempted_count: 2,
+    succeeded_count: 2,
+    failed_count: 0,
+  });
 });
 
 test("human review publish creates an edited docx final for editing module", async () => {

@@ -253,6 +253,8 @@ export interface PublishHumanReviewFinalAndLoadInput {
   actorRole: AuthRole;
   outputStorageKey?: string;
   outputFileName?: string;
+  proofreadingConfirmationDecisions?: readonly ProofreadingConfirmationDecisionInput[];
+  proofreadingConfirmationItemCount?: number;
 }
 
 export interface PublishHumanReviewFinalAndLoadResult {
@@ -568,6 +570,8 @@ export function createManuscriptWorkbenchController(
         module: input.module,
         outputStorageKey: input.outputStorageKey,
         outputFileName: input.outputFileName,
+        proofreadingConfirmationDecisions: input.proofreadingConfirmationDecisions,
+        proofreadingConfirmationItemCount: input.proofreadingConfirmationItemCount,
       });
       const [job, workspace] = await Promise.all([
         hydrateWorkbenchActionJob(client, response.body.job),

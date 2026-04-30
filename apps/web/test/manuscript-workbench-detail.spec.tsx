@@ -465,6 +465,176 @@ test("proofreading detail renders the human review diff queue without prompt or 
   assert.doesNotMatch(markup, /仅留证据/u);
 });
 
+test("proofreading detail keeps AI issues and human edits in one review queue", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchAssetDetailPage
+      mode="proofreading"
+      manuscriptTitle="统一核对稿件"
+      asset={{
+        id: "asset-proof-final-1",
+        manuscript_id: "manuscript-proof-1",
+        asset_type: "final_proof_annotated_docx",
+        status: "active",
+        storage_key: "runs/proofreading/final.docx",
+        mime_type:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        source_module: "proofreading",
+        created_by: "proofreader-1",
+        version_no: 2,
+        is_current: true,
+        file_name: "proofreading-final.docx",
+        created_at: "2026-04-28T09:00:00.000Z",
+        updated_at: "2026-04-28T09:05:00.000Z",
+      }}
+      detailKind="proofreading_confirmation"
+      backHref="#proofreading?manuscriptId=manuscript-proof-1"
+      downloadHref="http://localhost/api/v1/document-assets/asset-proof-final-1/download"
+      confirmationItems={[
+        {
+          itemId: "ai-issue-1",
+          title: "AI发现单位问题",
+          description: "AI 建议统一单位写法。",
+          severity: "medium",
+          source: "residual_ai",
+          issueType: "style",
+          blocksFinal: false,
+          targetText: "5 mg per dL",
+          replacementText: "5 mg/dL",
+          anchor: {
+            blockIndex: 0,
+            quote: "5 mg per dL",
+            sectionLabel: "结果",
+          },
+          suggestionAction: "replace_text",
+        },
+      ]}
+      confirmationState={{
+        "ai-issue-1": {
+          action: "accepted",
+        },
+      }}
+      humanReviewDiffItems={[
+        {
+          id: "human-diff-1",
+          module: "proofreading",
+          manuscript_id: "manuscript-proof-1",
+          baseline_asset_id: "asset-proof-final-1",
+          working_asset_id: "asset-proof-working-1",
+          source: "human_added",
+          content_decision: "unconfirmed",
+          governance_intents: {
+            rule_candidate: true,
+            knowledge_candidate: true,
+          },
+          apply_capability: "auto_apply_revert",
+          status: "pending",
+          before_text: "ALT remained stable.",
+          after_text: "Serum ALT remained stable.",
+          summary: "人工发现术语需补全",
+          location: {
+            anchor_kind: "paragraph",
+            block_index: 2,
+            quote: "ALT remained stable.",
+            section_label: "结果",
+          },
+          created_at: "2026-04-28T09:00:00.000Z",
+          updated_at: "2026-04-28T09:00:00.000Z",
+        },
+      ]}
+      humanReviewPreflight={{
+        can_publish: true,
+        blocking_reasons: [],
+        summary: {
+          total_count: 1,
+          unconfirmed_count: 0,
+          deferred_count: 0,
+          unsafe_count: 0,
+          kept_count: 1,
+          rejected_count: 0,
+        },
+      }}
+    />,
+  );
+
+  assert.match(markup, /问题队列/u);
+  assert.match(markup, /共发现 2 项问题/u);
+  assert.match(markup, /AI发现单位问题/u);
+  assert.match(markup, /人工发现术语需补全/u);
+  assert.match(markup, /人工新增/u);
+  assert.match(markup, /转规则候选/u);
+  assert.match(markup, /转知识候选/u);
+  assert.match(markup, /AI 校对问题尚未全部确认，不能生成最终稿。/u);
+  assert.match(markup, /<button type="button" disabled="">生成最终稿<\/button>/u);
+  assert.doesNotMatch(markup, /差异队列/u);
+});
+
+test("editing human review queue can publish without proofreading confirmation items", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchAssetDetailPage
+      mode="editing"
+      manuscriptTitle="编辑稿人工核验"
+      asset={{
+        id: "asset-edited-docx-1",
+        manuscript_id: "manuscript-editing-1",
+        asset_type: "edited_docx",
+        status: "active",
+        storage_key: "runs/editing/edited.docx",
+        mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        source_module: "editing",
+        created_by: "editor-1",
+        version_no: 2,
+        is_current: true,
+        file_name: "edited.docx",
+        created_at: "2026-04-24T10:00:00.000Z",
+        updated_at: "2026-04-24T10:05:00.000Z",
+      }}
+      detailKind="document_preview"
+      backHref="#editing?manuscriptId=manuscript-editing-1"
+      downloadHref="http://localhost/api/v1/document-assets/asset-edited-docx-1/download"
+      humanReviewModule="editing"
+      isFinalizeEnabled={false}
+      humanReviewDiffItems={[
+        {
+          id: "human-diff-edit-1",
+          module: "editing",
+          manuscript_id: "manuscript-editing-1",
+          baseline_asset_id: "asset-edited-docx-1",
+          working_asset_id: "asset-editing-working-1",
+          source: "human_overrode_ai",
+          content_decision: "keep",
+          governance_intents: {
+            rule_candidate: false,
+            knowledge_candidate: false,
+          },
+          apply_capability: "auto_apply_revert",
+          status: "confirmed",
+          before_text: "Methods were described.",
+          after_text: "The methods were described.",
+          summary: "人工确认编辑稿改动",
+          created_at: "2026-04-28T09:00:00.000Z",
+          updated_at: "2026-04-28T09:00:00.000Z",
+        },
+      ]}
+      humanReviewPreflight={{
+        can_publish: true,
+        blocking_reasons: [],
+        summary: {
+          total_count: 1,
+          unconfirmed_count: 0,
+          deferred_count: 0,
+          unsafe_count: 0,
+          kept_count: 1,
+          rejected_count: 0,
+        },
+      }}
+    />,
+  );
+
+  assert.match(markup, /人工差异核验/u);
+  assert.doesNotMatch(markup, /AI 校对问题尚未全部确认/u);
+  assert.match(markup, /<button type="button">生成最终稿<\/button>/u);
+});
+
 test("asset detail kind routes proofreading draft reports into the dedicated issue workbench", () => {
   assert.equal(
     resolveManuscriptAssetDetailKind({

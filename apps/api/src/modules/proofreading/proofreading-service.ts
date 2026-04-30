@@ -181,6 +181,8 @@ export interface ProofreadingConfirmationDecisionInput {
   replacementText: string;
   action: ProofreadingConfirmationDecisionAction;
   editedReplacementText?: string;
+  routeToRuleCandidate?: boolean;
+  routeToKnowledgeCandidate?: boolean;
   note?: string;
 }
 
@@ -708,59 +710,53 @@ export class ProofreadingService {
         this.reviewItemsService &&
         manuscript &&
         sourceSnapshotId &&
-        normalizedDecisions.some(
-          (decision) =>
-            decision.action === "route_to_rule_candidate" ||
-            decision.action === "route_to_knowledge_candidate",
-        )
+        normalizedDecisions.some(hasProofreadingConfirmationGovernanceIntent)
       ) {
         for (const decision of normalizedDecisions) {
-          if (
-            decision.action !== "route_to_rule_candidate" &&
-            decision.action !== "route_to_knowledge_candidate"
-          ) {
-            continue;
+          for (const routeAction of buildProofreadingConfirmationRouteActions(
+            decision,
+          )) {
+            const governedHit = await this.reviewItemsService.submitGovernedHit({
+              manuscriptId: input.manuscriptId,
+              manuscriptType: manuscript.manuscript_type,
+              module: "proofreading",
+              snapshotId: sourceSnapshotId,
+              sourceAssetId: sourceManuscriptAssetId,
+              feedbackCategory:
+                routeAction === "route_to_knowledge_candidate"
+                  ? "missing_knowledge"
+                  : "missed_hit",
+              feedbackText:
+                decision.note ??
+                `Human confirmed proofreading issue for ${decision.targetText}.`,
+              title: `Proofreading confirmation ${decision.itemId}`,
+              excerpt: decision.targetText,
+              suggestion: decision.finalReplacementText,
+              rationale: `Confirmed from proofreading asset ${proofreadingAsset.id}.`,
+              candidatePosture: "candidate_change",
+              decisionSource: "manual_feedback",
+              relatedKnowledgeItemIds: knownKnowledgeItemIds,
+              originPayload: {
+                source: "proofreading_confirmation",
+                proofreadingJobId: finalJob?.id,
+                finalAssetId: proofreadingAsset.id,
+                action: decision.action,
+                routeAction,
+                itemId: decision.itemId,
+              },
+              createdBy: input.requestedBy,
+            });
+
+            await this.reviewItemsService.decideReviewItem({
+              sourceKind: "governed_hit",
+              id: governedHit.item.id,
+              action: routeAction,
+              requestedBy: input.requestedBy,
+              requestedByRole: input.actorRole,
+              title: governedHit.item.title,
+              proposalText: decision.finalReplacementText,
+            });
           }
-
-          const governedHit = await this.reviewItemsService.submitGovernedHit({
-            manuscriptId: input.manuscriptId,
-            manuscriptType: manuscript.manuscript_type,
-            module: "proofreading",
-            snapshotId: sourceSnapshotId,
-            sourceAssetId: sourceManuscriptAssetId,
-            feedbackCategory:
-              decision.action === "route_to_knowledge_candidate"
-                ? "missing_knowledge"
-                : "missed_hit",
-            feedbackText:
-              decision.note ??
-              `Human confirmed proofreading issue for ${decision.targetText}.`,
-            title: `Proofreading confirmation ${decision.itemId}`,
-            excerpt: decision.targetText,
-            suggestion: decision.finalReplacementText,
-            rationale: `Confirmed from proofreading asset ${proofreadingAsset.id}.`,
-            candidatePosture: "candidate_change",
-            decisionSource: "manual_feedback",
-            relatedKnowledgeItemIds: knownKnowledgeItemIds,
-            originPayload: {
-              source: "proofreading_confirmation",
-              proofreadingJobId: finalJob?.id,
-              finalAssetId: proofreadingAsset.id,
-              action: decision.action,
-              itemId: decision.itemId,
-            },
-            createdBy: input.requestedBy,
-          });
-
-          await this.reviewItemsService.decideReviewItem({
-            sourceKind: "governed_hit",
-            id: governedHit.item.id,
-            action: decision.action,
-            requestedBy: input.requestedBy,
-            requestedByRole: input.actorRole,
-            title: governedHit.item.title,
-            proposalText: decision.finalReplacementText,
-          });
         }
       }
 
@@ -911,6 +907,14 @@ export class ProofreadingService {
               targetText: decision.targetText,
               replacementText: decision.replacementText,
               finalReplacementText: decision.finalReplacementText,
+              ...(decision.routeToRuleCandidate &&
+              decision.action !== "route_to_rule_candidate"
+                ? { routeToRuleCandidate: true }
+                : {}),
+              ...(decision.routeToKnowledgeCandidate &&
+              decision.action !== "route_to_knowledge_candidate"
+                ? { routeToKnowledgeCandidate: true }
+                : {}),
               note: decision.note,
             })),
           },
@@ -2306,6 +2310,8 @@ interface NormalizedProofreadingConfirmationDecision {
     | "escalated"
     | "route_to_rule_candidate"
     | "route_to_knowledge_candidate";
+  routeToRuleCandidate: boolean;
+  routeToKnowledgeCandidate: boolean;
   category?: string;
   note?: string;
   severity: "critical" | "high" | "medium" | "low";
@@ -2798,7 +2804,13 @@ function normalizeProofreadingConfirmationDecisions(input: {
           : normalizeOptionalDecisionText(decision.editedReplacementText) ??
             normalizeOptionalDecisionText(decision.replacementText) ??
             matchingIssue?.suggestion?.replacementText ??
-            matchingCorrection?.replacementText;
+          matchingCorrection?.replacementText;
+      const routeToRuleCandidate =
+        decision.routeToRuleCandidate === true ||
+        normalizedAction === "route_to_rule_candidate";
+      const routeToKnowledgeCandidate =
+        decision.routeToKnowledgeCandidate === true ||
+        normalizedAction === "route_to_knowledge_candidate";
 
       return {
         itemId: normalizeOptionalDecisionText(decision.itemId) ?? `decision-${index + 1}`,
@@ -2814,6 +2826,8 @@ function normalizeProofreadingConfirmationDecisions(input: {
           "",
         finalReplacementText,
         action: normalizedAction,
+        routeToRuleCandidate,
+        routeToKnowledgeCandidate,
         category: matchingIssue?.issueType ?? matchingCorrection?.category,
         note: normalizeOptionalDecisionText(decision.note),
         severity: matchingIssue?.severity ?? "medium",
@@ -2845,6 +2859,8 @@ function normalizeProofreadingConfirmationDecisions(input: {
       })
         ? "accepted"
         : "manual_only",
+    routeToRuleCandidate: false,
+    routeToKnowledgeCandidate: false,
     category: issue.issueType,
     severity: issue.severity,
     issueType: issue.issueType,
@@ -2906,10 +2922,10 @@ function summarizeProofreadingConfirmationDecisions(
     ).length,
     rejectedCount: decisions.filter((decision) => decision.action === "rejected").length,
     routedRuleCandidateCount: decisions.filter(
-      (decision) => decision.action === "route_to_rule_candidate",
+      (decision) => decision.routeToRuleCandidate,
     ).length,
     routedKnowledgeCandidateCount: decisions.filter(
-      (decision) => decision.action === "route_to_knowledge_candidate",
+      (decision) => decision.routeToKnowledgeCandidate,
     ).length,
     manualOnlyCount: decisions.filter((decision) => decision.action === "manual_only")
       .length,
@@ -2924,6 +2940,8 @@ function serializeProofreadingConfirmationDecisions(
   targetText: string;
   replacementText: string;
   finalReplacementText?: string;
+  routeToRuleCandidate?: boolean;
+  routeToKnowledgeCandidate?: boolean;
 }> {
   return decisions.map((decision) => ({
     itemId: decision.itemId,
@@ -2931,7 +2949,38 @@ function serializeProofreadingConfirmationDecisions(
     targetText: decision.targetText,
     replacementText: decision.replacementText,
     finalReplacementText: decision.finalReplacementText,
+    ...(decision.routeToRuleCandidate &&
+    decision.action !== "route_to_rule_candidate"
+      ? { routeToRuleCandidate: true }
+      : {}),
+    ...(decision.routeToKnowledgeCandidate &&
+    decision.action !== "route_to_knowledge_candidate"
+      ? { routeToKnowledgeCandidate: true }
+      : {}),
   }));
+}
+
+function hasProofreadingConfirmationGovernanceIntent(
+  decision: NormalizedProofreadingConfirmationDecision,
+): boolean {
+  return decision.routeToRuleCandidate || decision.routeToKnowledgeCandidate;
+}
+
+function buildProofreadingConfirmationRouteActions(
+  decision: NormalizedProofreadingConfirmationDecision,
+): Array<"route_to_rule_candidate" | "route_to_knowledge_candidate"> {
+  const actions: Array<"route_to_rule_candidate" | "route_to_knowledge_candidate"> =
+    [];
+
+  if (decision.routeToRuleCandidate) {
+    actions.push("route_to_rule_candidate");
+  }
+
+  if (decision.routeToKnowledgeCandidate) {
+    actions.push("route_to_knowledge_candidate");
+  }
+
+  return actions;
 }
 
 function assertPublishableProofreadingDecisions(

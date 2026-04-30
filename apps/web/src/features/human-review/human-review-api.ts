@@ -9,6 +9,7 @@ import type {
   HumanReviewPublishPreflightResultViewModel,
   HumanReviewBackflowResultViewModel,
 } from "./types.ts";
+import type { ProofreadingConfirmationDecisionInput } from "../proofreading/types.ts";
 
 export interface HumanReviewHttpClient {
   request<TResponse>(input: {
@@ -42,6 +43,8 @@ export interface HumanReviewPublishInput {
   module: HumanReviewPublishModule;
   outputStorageKey?: string;
   outputFileName?: string;
+  proofreadingConfirmationDecisions?: readonly ProofreadingConfirmationDecisionInput[];
+  proofreadingConfirmationItemCount?: number;
 }
 
 export function listHumanReviewDiffItems(
@@ -126,6 +129,18 @@ export function publishHumanReviewFinal(
         ? { outputStorageKey: input.outputStorageKey }
         : {}),
       ...(input.outputFileName ? { outputFileName: input.outputFileName } : {}),
+      ...(input.proofreadingConfirmationDecisions
+        ? {
+            proofreadingConfirmationDecisions:
+              input.proofreadingConfirmationDecisions,
+          }
+        : {}),
+      ...(input.proofreadingConfirmationItemCount !== undefined
+        ? {
+            proofreadingConfirmationItemCount:
+              input.proofreadingConfirmationItemCount,
+          }
+        : {}),
     },
   });
 }
