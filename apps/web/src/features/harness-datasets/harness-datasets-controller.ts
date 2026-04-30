@@ -1,6 +1,9 @@
 import {
+  archiveHarnessGoldSetVersion,
+  copyHarnessGoldSetVersionToDraft,
   exportHarnessGoldSetVersion,
   getHarnessDatasetsWorkbenchOverview,
+  publishHarnessGoldSetVersion,
   type HarnessDatasetsHttpClient,
 } from "./harness-datasets-api.ts";
 import type {
@@ -12,6 +15,7 @@ import type {
   HarnessDatasetsWorkbenchOverview,
   HarnessDatasetWorkbenchApiOverview,
   HarnessDatasetRubricSummaryViewModel,
+  HarnessDatasetVersionApiRecord,
 } from "./types.ts";
 
 export interface HarnessDatasetsWorkbenchController {
@@ -22,6 +26,18 @@ export interface HarnessDatasetsWorkbenchController {
   }): Promise<{
     overview: HarnessDatasetsWorkbenchOverview;
     exportResult: HarnessDatasetExportResultViewModel;
+  }>;
+  publishDraftAndReload(goldSetVersionId: string): Promise<{
+    overview: HarnessDatasetsWorkbenchOverview;
+    version: HarnessDatasetVersionApiRecord;
+  }>;
+  archiveDraftAndReload(goldSetVersionId: string): Promise<{
+    overview: HarnessDatasetsWorkbenchOverview;
+    version: HarnessDatasetVersionApiRecord;
+  }>;
+  copyPublishedToDraftAndReload(goldSetVersionId: string): Promise<{
+    overview: HarnessDatasetsWorkbenchOverview;
+    version: HarnessDatasetVersionApiRecord;
   }>;
 }
 
@@ -45,6 +61,32 @@ export function createHarnessDatasetsWorkbenchController(
 
       return {
         exportResult,
+        overview: await loadHarnessDatasetsWorkbenchOverview(client),
+      };
+    },
+    async publishDraftAndReload(goldSetVersionId) {
+      const version = (await publishHarnessGoldSetVersion(client, goldSetVersionId)).body;
+
+      return {
+        version,
+        overview: await loadHarnessDatasetsWorkbenchOverview(client),
+      };
+    },
+    async archiveDraftAndReload(goldSetVersionId) {
+      const version = (await archiveHarnessGoldSetVersion(client, goldSetVersionId)).body;
+
+      return {
+        version,
+        overview: await loadHarnessDatasetsWorkbenchOverview(client),
+      };
+    },
+    async copyPublishedToDraftAndReload(goldSetVersionId) {
+      const version = (
+        await copyHarnessGoldSetVersionToDraft(client, goldSetVersionId)
+      ).body;
+
+      return {
+        version,
         overview: await loadHarnessDatasetsWorkbenchOverview(client),
       };
     },

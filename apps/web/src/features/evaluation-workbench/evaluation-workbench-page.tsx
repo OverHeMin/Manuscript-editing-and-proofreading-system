@@ -17,6 +17,7 @@ import {
 import { ManuscriptQualityPackagesSection } from "../admin-governance/manuscript-quality-packages-section.tsx";
 import type { AuthRole } from "../auth/index.ts";
 import type { WorkbenchHarnessSection } from "../auth/workbench.ts";
+import type { HarnessWorkbenchMode } from "./harness-control-workbench.tsx";
 import {
   HarnessOperatorSection,
   type HarnessOperatorWorkspaceSnapshot,
@@ -36,6 +37,7 @@ import {
   type EvaluationWorkbenchOverview,
 } from "./evaluation-workbench-controller.ts";
 import type { EvaluationWorkbenchHistoryWindowPreset } from "./evaluation-workbench-operations.ts";
+import { HarnessControlWorkbench } from "./harness-control-workbench.tsx";
 import { HarnessResizableSplitPane } from "./harness-resizable-split-pane.tsx";
 
 const defaultController = createEvaluationWorkbenchController(createBrowserHttpClient());
@@ -62,6 +64,7 @@ export interface EvaluationWorkbenchPageProps {
   harnessController?: AdminGovernanceWorkbenchController;
   actorRole?: AuthRole;
   section?: WorkbenchHarnessSection;
+  harnessMode?: HarnessWorkbenchMode;
   prefilledManuscriptId?: string;
   initialOverview?: EvaluationWorkbenchOverview | null;
   initialHarnessOverview?: AdminGovernanceOverview | null;
@@ -75,6 +78,7 @@ export function EvaluationWorkbenchPage({
   harnessController,
   actorRole,
   section = "overview",
+  harnessMode,
   prefilledManuscriptId,
   initialOverview = null,
   initialHarnessOverview = null,
@@ -154,6 +158,7 @@ export function EvaluationWorkbenchPage({
       actorRole={actorRole}
       harnessController={harnessController}
       section={section}
+      harnessMode={harnessMode}
       sectionTitle={landingCopy.title}
       sectionSummary={landingCopy.summary}
       overview={overview}
@@ -173,6 +178,12 @@ export function EvaluationWorkbenchPage({
       onSelectHistoryWindow={(preset) => void handleSelectHistoryWindow(preset)}
       onSelectHistoryFilter={setHistoryFilter}
       onSelectHistorySortMode={setHistorySortMode}
+      onRunHarnessAbAcceptance={(input) => handleRunHarnessAbAcceptance(input)}
+      onRunHarnessActiveRegression={(input) => handleRunHarnessActiveRegression(input)}
+      onRunHarnessReleaseGate={(input) => handleRunHarnessReleaseGate(input)}
+      onDiagnoseManuscript={(manuscriptId) =>
+        handleDiagnoseHarnessManuscript(manuscriptId)
+      }
     />
   );
 
@@ -230,12 +241,110 @@ export function EvaluationWorkbenchPage({
       historyWindowPreset,
     });
   }
+
+  async function handleRunHarnessAbAcceptance(
+    input: Parameters<EvaluationWorkbenchController["runHarnessAbAcceptanceAndReload"]>[0],
+  ) {
+    setLoadStatus("loading");
+    setErrorMessage(null);
+    setStatusMessage(null);
+
+    try {
+      const result = await controller.runHarnessAbAcceptanceAndReload({
+        ...input,
+        manuscriptId: activeManuscriptContextId,
+      });
+      setOverview(result.overview);
+      setHistoryWindowPreset(result.overview.suiteOperations.defaultWindow);
+      setLoadStatus("ready");
+      setStatusMessage(`A/B 验收已创建运行 ${result.result.run.id}，证据包状态为 ${formatHarnessWorkflowDecision(result.result.finalized.recommendation.status)}。`);
+    } catch (error) {
+      setLoadStatus("ready");
+      setErrorMessage(toErrorMessage(error));
+    }
+  }
+
+  async function handleRunHarnessActiveRegression(
+    input: Parameters<EvaluationWorkbenchController["runHarnessActiveRegressionAndReload"]>[0],
+  ) {
+    setLoadStatus("loading");
+    setErrorMessage(null);
+    setStatusMessage(null);
+
+    try {
+      const result = await controller.runHarnessActiveRegressionAndReload({
+        ...input,
+        manuscriptId: activeManuscriptContextId,
+      });
+      setOverview(result.overview);
+      setHistoryWindowPreset(result.overview.suiteOperations.defaultWindow);
+      setLoadStatus("ready");
+      setStatusMessage(`回归巡检已创建运行 ${result.result.run.id}，证据包状态为 ${formatHarnessWorkflowDecision(result.result.finalized.recommendation.status)}。`);
+    } catch (error) {
+      setLoadStatus("ready");
+      setErrorMessage(toErrorMessage(error));
+    }
+  }
+
+  async function handleRunHarnessReleaseGate(
+    input: Parameters<EvaluationWorkbenchController["runHarnessReleaseGateAndReload"]>[0],
+  ) {
+    setLoadStatus("loading");
+    setErrorMessage(null);
+    setStatusMessage(null);
+
+    try {
+      const result = await controller.runHarnessReleaseGateAndReload({
+        ...input,
+        manuscriptId: activeManuscriptContextId,
+      });
+      setOverview(result.overview);
+      setHistoryWindowPreset(result.overview.suiteOperations.defaultWindow);
+      setLoadStatus("ready");
+      setStatusMessage(`发布门已创建运行 ${result.result.run.id}，门禁结论为 ${formatHarnessWorkflowDecision(result.result.finalized.recommendation.status)}。`);
+    } catch (error) {
+      setLoadStatus("ready");
+      setErrorMessage(toErrorMessage(error));
+    }
+  }
+
+  async function handleDiagnoseHarnessManuscript(manuscriptId: string) {
+    if (!overview) return;
+    setLoadStatus("loading");
+    setErrorMessage(null);
+    setStatusMessage(null);
+
+    try {
+      const diagnosis = await controller.diagnoseHarnessManuscript({
+        actorRole: actorRole ?? "admin",
+        manuscriptId,
+      });
+      const nextOverview = await controller.loadOverview({
+        selectedSuiteId: diagnosis.matched_suite_ids[0] ?? overview.selectedSuiteId,
+        selectedRunId: diagnosis.matched_run_ids[0] ?? overview.selectedRunId,
+        manuscriptId,
+        historyWindowPreset,
+      });
+      setOverview(nextOverview);
+      setHistoryWindowPreset(nextOverview.suiteOperations.defaultWindow);
+      setLoadStatus("ready");
+      setStatusMessage(
+        diagnosis.status === "hit"
+          ? `单稿诊断命中 ${diagnosis.matched_run_ids.length} 条运行、${diagnosis.evidence.length} 条证据。`
+          : "单稿诊断未命中现有运行或样本上下文。",
+      );
+    } catch (error) {
+      setLoadStatus("ready");
+      setErrorMessage(toErrorMessage(error));
+    }
+  }
 }
 
 function EvaluationWorkbenchOperationsView(props: {
   actorRole?: AuthRole;
   harnessController?: AdminGovernanceWorkbenchController;
   section: WorkbenchHarnessSection;
+  harnessMode?: HarnessWorkbenchMode;
   sectionTitle: string;
   sectionSummary: string;
   overview: EvaluationWorkbenchOverview;
@@ -255,7 +364,52 @@ function EvaluationWorkbenchOperationsView(props: {
   onSelectHistoryWindow: (preset: EvaluationWorkbenchHistoryWindowPreset) => void;
   onSelectHistoryFilter: (filter: EvaluationWorkbenchHistoryFilter) => void;
   onSelectHistorySortMode: (sortMode: EvaluationWorkbenchHistorySortMode) => void;
+  onRunHarnessAbAcceptance: (
+    input: Parameters<EvaluationWorkbenchController["runHarnessAbAcceptanceAndReload"]>[0],
+  ) => void;
+  onRunHarnessActiveRegression: (
+    input: Parameters<EvaluationWorkbenchController["runHarnessActiveRegressionAndReload"]>[0],
+  ) => void;
+  onRunHarnessReleaseGate: (
+    input: Parameters<EvaluationWorkbenchController["runHarnessReleaseGateAndReload"]>[0],
+  ) => void;
+  onDiagnoseManuscript: (manuscriptId: string) => void;
 }) {
+  const useHarnessControlWorkbench =
+    props.section === "overview" || props.section === "runs" || props.section === "datasets";
+
+  if (useHarnessControlWorkbench) {
+    return (
+      <HarnessControlWorkbench
+        actorRole={props.actorRole}
+        harnessController={props.harnessController ?? defaultHarnessController}
+        section={props.section}
+        initialMode={props.harnessMode}
+        overview={props.overview}
+        prefilledManuscriptId={props.prefilledManuscriptId}
+        initialHarnessOverview={props.initialHarnessOverview}
+        initialHarnessScope={props.initialHarnessScope}
+        initialHarnessPreview={props.initialHarnessPreview}
+        initialDatasetsOverview={props.initialDatasetsOverview}
+        statusMessage={props.statusMessage}
+        errorMessage={props.errorMessage}
+        historyFilter={props.historyFilter}
+        historySortMode={props.historySortMode}
+        selectedRunItemId={props.selectedRunItemId}
+        onSelectSuite={props.onSelectSuite}
+        onSelectRun={props.onSelectRun}
+        onSelectRunItem={props.onSelectRunItem}
+        onSelectHistoryWindow={props.onSelectHistoryWindow}
+        onSelectHistoryFilter={props.onSelectHistoryFilter}
+        onSelectHistorySortMode={props.onSelectHistorySortMode}
+        onRunHarnessAbAcceptance={props.onRunHarnessAbAcceptance}
+        onRunHarnessActiveRegression={props.onRunHarnessActiveRegression}
+        onRunHarnessReleaseGate={props.onRunHarnessReleaseGate}
+        onDiagnoseManuscript={props.onDiagnoseManuscript}
+      />
+    );
+  }
+
   const resolvedHarnessController = props.harnessController ?? defaultHarnessController;
   const [operatorSnapshot, setOperatorSnapshot] = useState<HarnessOperatorWorkspaceSnapshot>(() =>
     createInitialHarnessOperatorSnapshot({
@@ -3015,4 +3169,11 @@ function toErrorMessage(error: unknown) {
   if (error instanceof BrowserHttpClientError) return error.message;
   if (error instanceof Error && error.message.trim()) return error.message;
   return "Harness 控制发生了未预期错误。";
+}
+
+function formatHarnessWorkflowDecision(value: string) {
+  if (value === "recommended") return "可推荐";
+  if (value === "needs_review") return "待复核";
+  if (value === "rejected") return "已拒绝";
+  return value;
 }

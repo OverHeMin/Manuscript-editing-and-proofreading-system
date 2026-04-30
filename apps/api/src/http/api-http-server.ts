@@ -88,6 +88,7 @@ import {
 } from "../modules/execution-resolution/index.ts";
 import {
   createHarnessControlPlaneApi,
+  HarnessActivationEvidenceGateError,
   HarnessControlPlaneService,
 } from "../modules/harness-control-plane/index.ts";
 import {
@@ -117,10 +118,16 @@ import {
 import {
   createHarnessDatasetApi,
   HarnessDatasetDependencyMissingError,
-  HarnessGoldSetVersionExportValidationError,
   HarnessDatasetService,
   HarnessDatasetSourceResolutionError,
+  HarnessGoldSetFamilyNotFoundError,
+  HarnessGoldSetVersionExportValidationError,
+  HarnessGoldSetVersionNotEditableError,
+  HarnessGoldSetVersionNotFoundError,
+  HarnessGoldSetVersionPublishValidationError,
   InMemoryHarnessDatasetRepository,
+  HarnessRubricDefinitionNotFoundError,
+  HarnessRubricDefinitionStatusTransitionError,
 } from "../modules/harness-datasets/index.ts";
 import {
   createHarnessIntegrationApi,
@@ -645,6 +652,35 @@ type HttpRouteMatch =
     }
   | {
       route: "harness-datasets-workbench";
+    }
+  | {
+      route: "harness-datasets-create-family";
+    }
+  | {
+      route: "harness-datasets-create-rubric";
+    }
+  | {
+      route: "harness-datasets-publish-rubric";
+      rubricDefinitionId: string;
+    }
+  | {
+      route: "harness-datasets-create-gold-set-version";
+    }
+  | {
+      route: "harness-datasets-update-gold-set-version-draft";
+      goldSetVersionId: string;
+    }
+  | {
+      route: "harness-datasets-publish-gold-set-version";
+      goldSetVersionId: string;
+    }
+  | {
+      route: "harness-datasets-archive-gold-set-version";
+      goldSetVersionId: string;
+    }
+  | {
+      route: "harness-datasets-copy-gold-set-version-to-draft";
+      goldSetVersionId: string;
     }
   | {
       route: "harness-datasets-export-gold-set-version";
@@ -1400,6 +1436,18 @@ type HttpRouteMatch =
       route: "verification-ops-create-evaluation-run";
     }
   | {
+      route: "verification-ops-run-harness-ab-acceptance";
+    }
+  | {
+      route: "verification-ops-run-harness-active-regression";
+    }
+  | {
+      route: "verification-ops-run-harness-release-gate";
+    }
+  | {
+      route: "verification-ops-diagnose-harness-manuscript";
+    }
+  | {
       route: "verification-ops-complete-evaluation-run";
       runId: string;
     }
@@ -1996,6 +2044,7 @@ export function createInMemoryApiRuntime(input: {
     modelRoutingGovernanceService,
     retrievalPresetService,
     manualReviewPolicyService,
+    verificationOpsRepository,
   });
   const aiProviderConnectionService = createAiProviderConnectionService({
     repository: aiProviderConnectionRepository,
@@ -4969,6 +5018,118 @@ async function handleRoute(
         exportRootDir: harnessExportRootDir,
       });
     }
+    case "harness-datasets-create-family": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as Parameters<
+        typeof runtime.harnessDatasetApi.createGoldSetFamily
+      >[0];
+
+      return runtime.harnessDatasetApi.createGoldSetFamily({
+        actorRole: session.user.role,
+        input: body.input,
+      });
+    }
+    case "harness-datasets-create-rubric": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        input: Omit<
+          Parameters<typeof runtime.harnessDatasetApi.createRubricDefinition>[0]["input"],
+          "createdBy"
+        >;
+      };
+
+      return runtime.harnessDatasetApi.createRubricDefinition({
+        actorRole: session.user.role,
+        input: {
+          ...body.input,
+          createdBy: session.user.id,
+        },
+      });
+    }
+    case "harness-datasets-publish-rubric": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+
+      return runtime.harnessDatasetApi.publishRubricDefinition({
+        actorRole: session.user.role,
+        rubricDefinitionId: routeMatch.rubricDefinitionId,
+        input: {
+          publishedBy: session.user.id,
+        },
+      });
+    }
+    case "harness-datasets-create-gold-set-version": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        input: Omit<
+          Parameters<typeof runtime.harnessDatasetApi.createGoldSetVersion>[0]["input"],
+          "createdBy"
+        >;
+      };
+
+      return runtime.harnessDatasetApi.createGoldSetVersion({
+        actorRole: session.user.role,
+        input: {
+          ...body.input,
+          createdBy: session.user.id,
+        },
+      });
+    }
+    case "harness-datasets-update-gold-set-version-draft": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        input: Parameters<
+          typeof runtime.harnessDatasetApi.updateGoldSetVersionDraft
+        >[0]["input"];
+      };
+
+      return runtime.harnessDatasetApi.updateGoldSetVersionDraft({
+        actorRole: session.user.role,
+        goldSetVersionId: routeMatch.goldSetVersionId,
+        input: body.input,
+      });
+    }
+    case "harness-datasets-publish-gold-set-version": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+
+      return runtime.harnessDatasetApi.publishGoldSetVersion({
+        actorRole: session.user.role,
+        goldSetVersionId: routeMatch.goldSetVersionId,
+        input: {
+          publishedBy: session.user.id,
+        },
+      });
+    }
+    case "harness-datasets-archive-gold-set-version": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+
+      return runtime.harnessDatasetApi.archiveGoldSetVersion({
+        actorRole: session.user.role,
+        goldSetVersionId: routeMatch.goldSetVersionId,
+        input: {
+          archivedBy: session.user.id,
+        },
+      });
+    }
+    case "harness-datasets-copy-gold-set-version-to-draft": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        input?: Omit<
+          Parameters<
+            typeof runtime.harnessDatasetApi.copyGoldSetVersionToDraft
+          >[0]["input"],
+          "createdBy"
+        >;
+      };
+
+      return runtime.harnessDatasetApi.copyGoldSetVersionToDraft({
+        actorRole: session.user.role,
+        goldSetVersionId: routeMatch.goldSetVersionId,
+        input: {
+          ...body.input,
+          createdBy: session.user.id,
+        },
+      });
+    }
     case "harness-datasets-export-gold-set-version": {
       const session = await requirePermission(req, runtime, "permissions.manage");
       const body = (await readJsonBody(req)) as {
@@ -7327,6 +7488,58 @@ async function handleRoute(
         actorRole: session.user.role,
       });
     }
+    case "verification-ops-run-harness-ab-acceptance": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        input: Parameters<
+          typeof runtime.verificationOpsApi.runHarnessAbAcceptance
+        >[0]["input"];
+      };
+
+      return runtime.verificationOpsApi.runHarnessAbAcceptance({
+        actorRole: session.user.role,
+        input: body.input,
+      });
+    }
+    case "verification-ops-run-harness-active-regression": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        input: Parameters<
+          typeof runtime.verificationOpsApi.runHarnessActiveRegression
+        >[0]["input"];
+      };
+
+      return runtime.verificationOpsApi.runHarnessActiveRegression({
+        actorRole: session.user.role,
+        input: body.input,
+      });
+    }
+    case "verification-ops-run-harness-release-gate": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        input: Parameters<
+          typeof runtime.verificationOpsApi.runHarnessReleaseGate
+        >[0]["input"];
+      };
+
+      return runtime.verificationOpsApi.runHarnessReleaseGate({
+        actorRole: session.user.role,
+        input: body.input,
+      });
+    }
+    case "verification-ops-diagnose-harness-manuscript": {
+      const session = await requirePermission(req, runtime, "permissions.manage");
+      const body = (await readJsonBody(req)) as {
+        input: Parameters<
+          typeof runtime.verificationOpsApi.diagnoseHarnessManuscript
+        >[0]["input"];
+      };
+
+      return runtime.verificationOpsApi.diagnoseHarnessManuscript({
+        actorRole: session.user.role,
+        input: body.input,
+      });
+    }
     case "verification-ops-complete-evaluation-run": {
       const session = await requirePermission(req, runtime, "permissions.manage");
       const body = (await readJsonBody(req)) as {
@@ -7614,6 +7827,68 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
   if (method === "GET" && path === "/api/v1/harness-datasets/workbench") {
     return { route: "harness-datasets-workbench" };
+  }
+
+  if (method === "POST" && path === "/api/v1/harness-datasets/gold-set-families") {
+    return { route: "harness-datasets-create-family" };
+  }
+
+  if (method === "POST" && path === "/api/v1/harness-datasets/rubrics") {
+    return { route: "harness-datasets-create-rubric" };
+  }
+
+  const publishHarnessRubricMatch = path.match(
+    /^\/api\/v1\/harness-datasets\/rubrics\/([^/]+)\/publish$/,
+  );
+  if (method === "POST" && publishHarnessRubricMatch) {
+    return {
+      route: "harness-datasets-publish-rubric",
+      rubricDefinitionId: publishHarnessRubricMatch[1],
+    };
+  }
+
+  if (method === "POST" && path === "/api/v1/harness-datasets/gold-set-versions") {
+    return { route: "harness-datasets-create-gold-set-version" };
+  }
+
+  const updateHarnessGoldSetVersionDraftMatch = path.match(
+    /^\/api\/v1\/harness-datasets\/gold-set-versions\/([^/]+)\/draft$/,
+  );
+  if (method === "POST" && updateHarnessGoldSetVersionDraftMatch) {
+    return {
+      route: "harness-datasets-update-gold-set-version-draft",
+      goldSetVersionId: updateHarnessGoldSetVersionDraftMatch[1],
+    };
+  }
+
+  const publishHarnessGoldSetVersionMatch = path.match(
+    /^\/api\/v1\/harness-datasets\/gold-set-versions\/([^/]+)\/publish$/,
+  );
+  if (method === "POST" && publishHarnessGoldSetVersionMatch) {
+    return {
+      route: "harness-datasets-publish-gold-set-version",
+      goldSetVersionId: publishHarnessGoldSetVersionMatch[1],
+    };
+  }
+
+  const archiveHarnessGoldSetVersionMatch = path.match(
+    /^\/api\/v1\/harness-datasets\/gold-set-versions\/([^/]+)\/archive$/,
+  );
+  if (method === "POST" && archiveHarnessGoldSetVersionMatch) {
+    return {
+      route: "harness-datasets-archive-gold-set-version",
+      goldSetVersionId: archiveHarnessGoldSetVersionMatch[1],
+    };
+  }
+
+  const copyHarnessGoldSetVersionToDraftMatch = path.match(
+    /^\/api\/v1\/harness-datasets\/gold-set-versions\/([^/]+)\/copy-draft$/,
+  );
+  if (method === "POST" && copyHarnessGoldSetVersionToDraftMatch) {
+    return {
+      route: "harness-datasets-copy-gold-set-version-to-draft",
+      goldSetVersionId: copyHarnessGoldSetVersionToDraftMatch[1],
+    };
   }
 
   const exportHarnessGoldSetVersionMatch = path.match(
@@ -8779,6 +9054,34 @@ function matchRoute(req: IncomingMessage): HttpRouteMatch | null {
 
   if (method === "POST" && path === "/api/v1/verification-ops/evaluation-runs") {
     return { route: "verification-ops-create-evaluation-run" };
+  }
+
+  if (
+    method === "POST" &&
+    path === "/api/v1/verification-ops/harness/ab-acceptance"
+  ) {
+    return { route: "verification-ops-run-harness-ab-acceptance" };
+  }
+
+  if (
+    method === "POST" &&
+    path === "/api/v1/verification-ops/harness/active-regression"
+  ) {
+    return { route: "verification-ops-run-harness-active-regression" };
+  }
+
+  if (
+    method === "POST" &&
+    path === "/api/v1/verification-ops/harness/release-gate"
+  ) {
+    return { route: "verification-ops-run-harness-release-gate" };
+  }
+
+  if (
+    method === "POST" &&
+    path === "/api/v1/verification-ops/harness/manuscript-diagnosis"
+  ) {
+    return { route: "verification-ops-diagnose-harness-manuscript" };
   }
 
   const completeEvaluationRunMatch = path.match(
@@ -10015,6 +10318,9 @@ export function mapErrorToHttpResponse(
     error instanceof EvaluationEvidencePackNotFoundError ||
     error instanceof EvaluationSampleSetSourceSnapshotNotFoundError ||
     error instanceof KnowledgeRetrievalSnapshotNotFoundError ||
+    error instanceof HarnessGoldSetFamilyNotFoundError ||
+    error instanceof HarnessGoldSetVersionNotFoundError ||
+    error instanceof HarnessRubricDefinitionNotFoundError ||
     error instanceof ResidualIssueNotFoundError ||
     error instanceof HumanReviewDiffItemNotFoundError ||
     error instanceof ReviewItemNotFoundError
@@ -10132,8 +10438,11 @@ export function mapErrorToHttpResponse(
     error instanceof EvaluationEvidencePackRunMismatchError ||
     error instanceof EvaluationLearningSnapshotNotInRunError ||
     error instanceof EvaluationExperimentBindingError ||
+    error instanceof HarnessActivationEvidenceGateError ||
     error instanceof HarnessDatasetSourceResolutionError ||
+    error instanceof HarnessGoldSetVersionNotEditableError ||
     error instanceof HarnessGoldSetVersionExportValidationError ||
+    error instanceof HarnessRubricDefinitionStatusTransitionError ||
     error instanceof HarnessGovernedRunStateError ||
     error instanceof ResidualIssueCandidateRouteNotSupportedError ||
     error instanceof ResidualIssueNotReadyForCandidateCreationError ||
@@ -10198,6 +10507,7 @@ export function mapErrorToHttpResponse(
     error instanceof EvaluationSampleSetSourceEligibilityError ||
     error instanceof VerificationRetrievalDependencyError ||
     error instanceof HarnessIntegrationValidationError ||
+    error instanceof HarnessGoldSetVersionPublishValidationError ||
     error instanceof ReviewItemDecisionActionNotSupportedError ||
     error instanceof ReviewItemDecisionInputInvalidError ||
     error instanceof EditingSlotManualResolutionInvalidError ||

@@ -1,5 +1,6 @@
 import type {
   WorkbenchHarnessSection,
+  WorkbenchHarnessMode,
   WorkbenchId,
   WorkbenchSettingsSection,
 } from "../features/auth/index.ts";
@@ -21,6 +22,7 @@ export type WorkbenchRenderKind =
 export type RuleCenterMode = "authoring" | "learning" | "ai-intake";
 export type SettingsSection = WorkbenchSettingsSection;
 export type HarnessSection = WorkbenchHarnessSection;
+export type HarnessMode = WorkbenchHarnessMode;
 export type KnowledgeLibraryView = "classic" | "ledger";
 export type TemplateGovernanceView =
   | "authoring"
@@ -49,6 +51,7 @@ export interface WorkbenchHandoff {
   ruleCenterMode?: RuleCenterMode;
   settingsSection?: SettingsSection;
   harnessSection?: HarnessSection;
+  harnessMode?: HarnessMode;
 }
 
 export interface WorkbenchLocation {
@@ -68,6 +71,7 @@ export interface WorkbenchLocation {
   ruleCenterMode?: RuleCenterMode;
   settingsSection?: SettingsSection;
   harnessSection?: HarnessSection;
+  harnessMode?: HarnessMode;
 }
 
 export function resolveWorkbenchRenderKind(
@@ -161,6 +165,8 @@ export function formatWorkbenchHash(
     typeof handoff === "string" ? undefined : handoff?.settingsSection;
   const harnessSection =
     typeof handoff === "string" ? undefined : handoff?.harnessSection;
+  const harnessMode =
+    typeof handoff === "string" ? undefined : handoff?.harnessMode;
 
   if (manuscriptId && manuscriptId.trim().length > 0) {
     params.set("manuscriptId", manuscriptId.trim());
@@ -221,6 +227,9 @@ export function formatWorkbenchHash(
   if (harnessSection) {
     params.set("harnessSection", harnessSection);
   }
+  if (harnessMode) {
+    params.set("harnessMode", harnessMode);
+  }
 
   const query = params.toString();
   return `#${workbenchId}${query ? `?${query}` : ""}`;
@@ -259,6 +268,7 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
   const ruleCenterMode = normalizeRuleCenterMode(params.get("ruleCenterMode"));
   const settingsSection = normalizeSettingsSection(params.get("settingsSection"));
   const harnessSection = normalizeHarnessSection(params.get("harnessSection"));
+  const harnessMode = normalizeHarnessMode(params.get("harnessMode"));
 
   return {
     workbenchId: rawWorkbenchId,
@@ -283,6 +293,7 @@ export function resolveWorkbenchLocation(hash: string): WorkbenchLocation {
     ...(ruleCenterMode ? { ruleCenterMode } : {}),
     ...(settingsSection ? { settingsSection } : {}),
     ...(harnessSection ? { harnessSection } : {}),
+    ...(harnessMode ? { harnessMode } : {}),
   };
 }
 
@@ -371,6 +382,20 @@ function normalizeSettingsSection(value: string | null): SettingsSection | undef
 
 function normalizeHarnessSection(value: string | null): HarnessSection | undefined {
   if (value === "overview" || value === "runs" || value === "datasets") {
+    return value;
+  }
+
+  return undefined;
+}
+
+function normalizeHarnessMode(value: string | null): HarnessMode | undefined {
+  if (
+    value === "ab_acceptance" ||
+    value === "regression_inspection" ||
+    value === "release_gate" ||
+    value === "single_manuscript_diagnosis" ||
+    value === "validation_sample_sets"
+  ) {
     return value;
   }
 

@@ -3,6 +3,7 @@ import {
   completeEvaluationRun,
   createEvaluationRun,
   createLearningCandidateFromEvaluation as createLearningCandidateFromEvaluationRequest,
+  diagnoseHarnessManuscript,
   finalizeEvaluationRun,
   getEvaluationRunFinalizedResult,
   listEvaluationSuiteFinalizedResults,
@@ -16,11 +17,15 @@ import {
   listVerificationCheckProfiles,
   recordEvaluationRunItemResult,
   recordVerificationEvidence,
+  runHarnessAbAcceptance,
+  runHarnessActiveRegression,
+  runHarnessReleaseGate,
 } from "../verification-ops/index.ts";
 import type { AuthRole } from "../auth/index.ts";
 import type {
   CreateLearningCandidateFromEvaluationInput,
   CreateEvaluationRunInput,
+  DiagnoseHarnessManuscriptInput,
   EvaluationLearningCandidateViewModel,
   EvaluationRunItemViewModel,
   EvaluationSuiteFinalizedResultViewModel,
@@ -31,9 +36,14 @@ import type {
   FinalizeEvaluationRunResultViewModel,
   RecordEvaluationRunItemResultInput,
   ReleaseCheckProfileViewModel,
+  RunHarnessAbAcceptanceInput,
+  RunHarnessActiveRegressionInput,
+  RunHarnessReleaseGateInput,
   VerificationEvidenceKind,
   VerificationEvidenceViewModel,
   VerificationCheckProfileViewModel,
+  HarnessManuscriptDiagnosisResultViewModel,
+  HarnessWorkflowRunResultViewModel,
 } from "../verification-ops/index.ts";
 import {
   buildEvaluationWorkbenchSuiteOperationsSummary,
@@ -162,6 +172,24 @@ export interface EvaluationWorkbenchController {
   createLearningCandidateFromEvaluation(
     input: CreateLearningCandidateFromEvaluationInput,
   ): Promise<EvaluationLearningCandidateViewModel>;
+  runHarnessAbAcceptanceAndReload(
+    input: RunHarnessAbAcceptanceInput & {
+      manuscriptId?: string | null;
+    },
+  ): Promise<EvaluationWorkbenchHarnessWorkflowResult>;
+  runHarnessActiveRegressionAndReload(
+    input: RunHarnessActiveRegressionInput & {
+      manuscriptId?: string | null;
+    },
+  ): Promise<EvaluationWorkbenchHarnessWorkflowResult>;
+  runHarnessReleaseGateAndReload(
+    input: RunHarnessReleaseGateInput & {
+      manuscriptId?: string | null;
+    },
+  ): Promise<EvaluationWorkbenchHarnessWorkflowResult>;
+  diagnoseHarnessManuscript(
+    input: DiagnoseHarnessManuscriptInput,
+  ): Promise<HarnessManuscriptDiagnosisResultViewModel>;
 }
 
 export interface EvaluationWorkbenchCreateRunResult {
@@ -201,6 +229,11 @@ export interface EvaluationWorkbenchFinalizeRunResult {
   overview: EvaluationWorkbenchOverview;
   evidence: VerificationEvidenceViewModel | null;
   finalized: FinalizeEvaluationRunResultViewModel;
+}
+
+export interface EvaluationWorkbenchHarnessWorkflowResult {
+  overview: EvaluationWorkbenchOverview;
+  result: HarnessWorkflowRunResultViewModel;
 }
 
 export interface EvaluationWorkbenchFinalizeCompletedRunInput {
@@ -313,6 +346,42 @@ export function createEvaluationWorkbenchController(
     },
     async createLearningCandidateFromEvaluation(input) {
       return (await createLearningCandidateFromEvaluationRequest(client, input)).body;
+    },
+    async runHarnessAbAcceptanceAndReload(input) {
+      const result = (await runHarnessAbAcceptance(client, input)).body;
+      return {
+        result,
+        overview: await loadEvaluationWorkbenchOverview(client, {
+          selectedSuiteId: input.suiteId,
+          selectedRunId: result.run.id,
+          manuscriptId: input.manuscriptId,
+        }),
+      };
+    },
+    async runHarnessActiveRegressionAndReload(input) {
+      const result = (await runHarnessActiveRegression(client, input)).body;
+      return {
+        result,
+        overview: await loadEvaluationWorkbenchOverview(client, {
+          selectedSuiteId: input.suiteId,
+          selectedRunId: result.run.id,
+          manuscriptId: input.manuscriptId,
+        }),
+      };
+    },
+    async runHarnessReleaseGateAndReload(input) {
+      const result = (await runHarnessReleaseGate(client, input)).body;
+      return {
+        result,
+        overview: await loadEvaluationWorkbenchOverview(client, {
+          selectedSuiteId: input.suiteId,
+          selectedRunId: result.run.id,
+          manuscriptId: input.manuscriptId,
+        }),
+      };
+    },
+    async diagnoseHarnessManuscript(input) {
+      return (await diagnoseHarnessManuscript(client, input)).body;
     },
   };
 }

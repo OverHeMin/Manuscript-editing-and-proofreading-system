@@ -33,6 +33,7 @@ import {
   isSelectedRunHiddenFromHistoryList,
   searchFinalizedRunHistory,
 } from "../src/features/evaluation-workbench/evaluation-workbench-page.tsx";
+import { formatHarnessModeHash } from "../src/features/evaluation-workbench/harness-control-workbench.tsx";
 
 function createFinalizedHistoryEntry(input: {
   runId: string;
@@ -649,21 +650,14 @@ test("evaluation workbench loading placeholder follows section-specific first-vi
   assert.match(runsLoadingMarkup, /默认聚焦最近运行队列与最终建议变化。/u);
 });
 
-test("evaluation workbench loaded page renders a read-only release-gate summary card", () => {
+test("evaluation workbench loaded page renders A/B acceptance evidence summary by default", () => {
   const markup = renderLoadedPage(createOperationsOverviewFixture());
 
-  assert.match(markup, /发布门摘要/);
-  assert.match(markup, /当前运行：run-12/);
-  assert.match(markup, /基线运行：run-11/);
-  assert.match(markup, /当前与基线：run-11 对 run-12/);
-  assert.match(markup, /建议状态：可推荐/);
-  assert.match(markup, /回归摘要： 未发现回归失败。/);
-  assert.match(markup, /失败摘要： 未记录失败标注。/);
-  assert.match(markup, /发布就绪摘要/);
-  assert.match(
-    markup,
-    /当前运行 run-12 相对基线 run-11 的结论为 可推荐。回归摘要：未发现回归失败。 失败摘要：未记录失败标注。/,
-  );
+  assert.match(markup, /data-harness-mode="ab_acceptance"/u);
+  assert.match(markup, /A\/B 验收结果/u);
+  assert.match(markup, /最近运行 run-12 相对 baseline run-11 的建议为 可推荐。/u);
+  assert.match(markup, /证据完整度/u);
+  assert.match(markup, /硬门禁/u);
 });
 
 test("evaluation workbench page lands on different first-view emphasis for overview vs runs sections", () => {
@@ -687,10 +681,10 @@ test("evaluation workbench page lands on different first-view emphasis for overv
     />,
   );
 
-  assert.match(overviewMarkup, /Harness 控制概览/u);
-  assert.match(overviewMarkup, /默认聚焦总体评测状态与风险分布。/u);
-  assert.match(runsMarkup, /Harness 运行记录/u);
-  assert.match(runsMarkup, /默认聚焦最近运行队列与最终建议变化。/u);
+  assert.match(overviewMarkup, /data-harness-mode="ab_acceptance"/u);
+  assert.match(overviewMarkup, /A\/B 验收/u);
+  assert.match(runsMarkup, /data-harness-mode="regression_inspection"/u);
+  assert.match(runsMarkup, /回归巡检/u);
 });
 
 test("evaluation workbench page renders the real harness control plane inside a unified harness workspace", () => {
@@ -710,41 +704,123 @@ test("evaluation workbench page renders the real harness control plane inside a 
 
   assert.match(markup, /Harness 控制/u);
   assert.match(markup, /evaluation-workbench-single-page/u);
-  assert.match(markup, /evaluation-workbench-region-status/u);
-  assert.match(markup, /evaluation-workbench-region-actions/u);
-  assert.match(markup, /evaluation-workbench-region-governance/u);
-  assert.match(markup, /evaluation-workbench-region-datasets/u);
-  assert.match(markup, /evaluation-workbench-split-handle/u);
-  assert.match(markup, /全局状态/u);
-  assert.match(markup, /操作控制/u);
-  assert.match(markup, /环境编辑/u);
+  assert.match(markup, /harness-control-workbench/u);
+  assert.match(markup, /harness-control-workspace/u);
+  assert.match(markup, /当前 Active/u);
   assert.match(markup, /稿件类型/u);
-  assert.match(markup, /模板族/u);
-  assert.match(markup, /Editing Clinical Family/u);
-  assert.match(markup, /执行配置/u);
-  assert.match(markup, /运行绑定/u);
-  assert.match(markup, /路由版本/u);
-  assert.match(markup, /检索预设/u);
-  assert.match(markup, /人工复核策略/u);
-  assert.match(markup, /预览候选环境/u);
-  assert.match(markup, /验证实验区/u);
+  assert.match(markup, /临床研究/u);
+  assert.match(markup, /主差异检查/u);
   assert.match(
     markup,
-    /当前候选环境与生效环境存在 2 处主差异，所选评测套件要求恰好 1 处主差异。/u,
+    /当前候选存在 2 处主差异，请收窄到一个候选变量后再验收。/u,
   );
-  assert.match(markup, /<button[^>]*disabled=""[^>]*>发起候选验证<\/button>/u);
-  assert.match(markup, /发起候选验证/u);
-  assert.match(markup, /激活与回滚/u);
-  assert.match(markup, /激活候选环境/u);
-  assert.match(markup, /回滚当前范围/u);
-  assert.match(markup, /路由策略草稿/u);
-  assert.match(markup, /运行绑定治理/u);
-  assert.match(markup, /质量包治理/u);
-  assert.match(markup, /结构化风格规则/u);
+  assert.match(markup, /运行 candidate vs active/u);
+  assert.doesNotMatch(markup, /激活候选环境/u);
+  assert.doesNotMatch(markup, /回滚当前范围/u);
   assert.doesNotMatch(markup, /Structured Style Rules/u);
-  assert.match(markup, /数据与样本/u);
-  assert.match(markup, /草稿 1 个/u);
-  assert.match(markup, /已发布 1 个/u);
+  assert.match(markup, /高级详情：关/u);
+});
+
+test("evaluation workbench renders the fullscreen harness task-mode workbench", () => {
+  const markup = renderToStaticMarkup(
+    <EvaluationWorkbenchPage
+      controller={{
+        loadOverview: async () => createOperationsOverviewFixture(),
+      } as never}
+      section="overview"
+      initialOverview={createOperationsOverviewFixture() as never}
+      initialHarnessOverview={createHarnessGovernanceOverviewFixture() as never}
+      initialHarnessScope={createHarnessScopeFixture() as never}
+      initialHarnessPreview={createHarnessPreviewFixture() as never}
+      initialDatasetsOverview={createHarnessDatasetsOverviewFixture() as never}
+    />,
+  );
+
+  assert.match(markup, /harness-control-workbench/u);
+  assert.match(markup, /data-harness-mode="ab_acceptance"/u);
+  assert.match(markup, /A\/B 验收/u);
+  assert.match(markup, /回归巡检/u);
+  assert.match(markup, /发布门/u);
+  assert.match(markup, /单稿诊断/u);
+  assert.match(markup, /验证样本集/u);
+  assert.match(markup, /当前 Active/u);
+  assert.match(markup, /高级详情：关/u);
+  assert.doesNotMatch(markup, /Gold Set/u);
+});
+
+test("evaluation workbench maps legacy runs section to regression mode without activation controls", () => {
+  const markup = renderToStaticMarkup(
+    <EvaluationWorkbenchPage
+      controller={{
+        loadOverview: async () => createOperationsOverviewFixture(),
+      } as never}
+      section="runs"
+      initialOverview={createOperationsOverviewFixture() as never}
+      initialHarnessOverview={createHarnessGovernanceOverviewFixture() as never}
+      initialHarnessScope={createHarnessScopeFixture() as never}
+      initialHarnessPreview={createHarnessPreviewFixture() as never}
+    />,
+  );
+
+  assert.match(markup, /data-harness-mode="regression_inspection"/u);
+  assert.match(markup, /运行回归巡检/u);
+  assert.doesNotMatch(markup, /激活候选环境/u);
+  assert.doesNotMatch(markup, /回滚当前范围/u);
+});
+
+test("evaluation workbench maps legacy datasets section to validation sample sets", () => {
+  const markup = renderToStaticMarkup(
+    <EvaluationWorkbenchPage
+      controller={{
+        loadOverview: async () => createOperationsOverviewFixture(),
+      } as never}
+      section="datasets"
+      initialOverview={createOperationsOverviewFixture() as never}
+      initialHarnessOverview={createHarnessGovernanceOverviewFixture() as never}
+      initialHarnessScope={createHarnessScopeFixture() as never}
+      initialHarnessPreview={createHarnessPreviewFixture() as never}
+      initialDatasetsOverview={createHarnessDatasetsOverviewFixture() as never}
+    />,
+  );
+
+  assert.match(markup, /data-harness-mode="validation_sample_sets"/u);
+  assert.match(markup, /验证样本集/u);
+  assert.match(markup, /已发布版本只读/u);
+  assert.doesNotMatch(markup, /Gold Set/u);
+});
+
+test("evaluation workbench opens release gate from a harnessMode deep link", () => {
+  const markup = renderToStaticMarkup(
+    <EvaluationWorkbenchPage
+      controller={{
+        loadOverview: async () => createOperationsOverviewFixture(),
+      } as never}
+      harnessMode="release_gate"
+      initialOverview={createOperationsOverviewFixture() as never}
+      initialHarnessOverview={createHarnessGovernanceOverviewFixture() as never}
+      initialHarnessScope={createHarnessScopeFixture() as never}
+      initialHarnessPreview={createHarnessPreviewFixture() as never}
+    />,
+  );
+
+  assert.match(markup, /data-harness-mode="release_gate"/u);
+  assert.match(markup, /检查发布门/u);
+  assert.doesNotMatch(markup, /尚未接入/u);
+  assert.match(markup, /发布门将基于所选发布配置生成证据包/u);
+});
+
+test("evaluation workbench mode switching builds a shareable harnessMode hash", () => {
+  assert.equal(
+    formatHarnessModeHash(
+      "#evaluation-workbench?harnessSection=runs&manuscriptId=manuscript-42",
+      "release_gate",
+    ),
+    "#evaluation-workbench?manuscriptId=manuscript-42&harnessMode=release_gate",
+  );
+  assert.equal(
+    formatHarnessModeHash("#harness-datasets", "ab_acceptance"),
+    "#evaluation-workbench?harnessMode=ab_acceptance",
+  );
 });
 
 test("evaluation workbench datasets section keeps the dataset workbench inside the same harness workspace", () => {
@@ -765,55 +841,30 @@ test("evaluation workbench datasets section keeps the dataset workbench inside t
   assert.match(markup, /evaluation-workbench-single-page/u);
   assert.match(markup, /evaluation-workbench-region-datasets is-emphasized/u);
   assert.match(markup, /harness-datasets-workbench is-embedded/u);
-  assert.match(markup, /待整理队列/u);
+  assert.match(markup, /验证样本集草稿/u);
   assert.match(markup, /已发布版本/u);
 });
 
-test("evaluation workbench loaded page renders a delta-first summary with bounded read-only history", () => {
+test("evaluation workbench loaded page renders compact A/B history without old action clutter", () => {
   const markup = renderLoadedPage(createOperationsOverviewFixture());
 
   assert.match(markup, /Harness 控制/);
   assert.match(markup, /管理区/);
-  assert.match(markup, /workbench-core-strip is-secondary/);
-  assert.match(markup, /运行总览/);
-  assert.match(markup, /变化分类：改善/i);
-  assert.match(
-    markup,
-    /本次变化判定为改善，因为最新已定稿建议从待复核提升为可推荐。/,
-  );
-  assert.match(markup, /建议动作：可推进候选版本/);
-  assert.match(markup, /最新结果与基线对照/);
-  assert.match(markup, /默认对照：run-12 对 run-11/);
-  assert.match(markup, /最近 10 次/);
-  assert.match(markup, /最近 7 天/);
-  assert.match(markup, /最近 30 天/);
-  assert.match(markup, /全部套件历史/);
-  assert.match(markup, /全部/);
+  assert.match(markup, /harness-control-mode-tabs/);
+  assert.match(markup, /A\/B 验收结果/);
   assert.match(markup, /可推荐/);
   assert.match(markup, /待复核/);
   assert.match(markup, /已拒绝/);
-  assert.match(markup, /最新优先/);
-  assert.match(markup, /失败优先/);
-  assert.match(markup, /当前时间窗口展示 10 \/ 12 条已定稿运行。/);
   assert.match(markup, /run-12/);
   assert.match(markup, /run-03/);
   assert.doesNotMatch(markup, /run-02/);
-  assert.match(markup, /默认最新运行/);
-  assert.match(markup, /默认基线/);
-  assert.match(markup, /当前查看运行：run-01/);
-  assert.match(markup, /当前查看运行 run-01 不在当前历史窗口内。/);
-  assert.match(markup, /建议分布/);
-  assert.match(markup, /6 可推荐 \/ 3 待复核 \/ 1 已拒绝/);
-  assert.match(markup, /证据包结果/);
-  assert.match(markup, /复发信号/);
-  assert.match(markup, /3 次回归提及 \/ 4 次失败提及 \/ 4 次运行被标记/);
   assert.doesNotMatch(markup, /Activate/);
   assert.doesNotMatch(markup, /Run Launch/);
   assert.doesNotMatch(markup, /完成运行并定稿/);
   assert.doesNotMatch(markup, /完成建议定稿/);
 });
 
-test("evaluation workbench release-gate summary falls back to an honest empty state when finalized evidence is missing", () => {
+test("evaluation workbench A/B summary falls back honestly when baseline comparison is missing", () => {
   const insufficientComparisonOverview = createOperationsOverviewFixture();
   const onlyVisibleEntry = insufficientComparisonOverview.finalizedRunHistory[0];
   insufficientComparisonOverview.suiteOperations = {
@@ -829,10 +880,10 @@ test("evaluation workbench release-gate summary falls back to an honest empty st
   };
   const insufficientComparisonMarkup = renderLoadedPage(insufficientComparisonOverview);
 
-  assert.match(insufficientComparisonMarkup, /发布门摘要/);
+  assert.match(insufficientComparisonMarkup, /A\/B 验收结果/u);
   assert.match(
     insufficientComparisonMarkup,
-    /当前历史窗口至少需要展示 2 条已定稿运行后，才能生成发布门摘要。/,
+    /最近运行 run-12 已定稿，但当前窗口还不足以形成 baseline 对照。/u,
   );
 
   const selectedRunNotFinalizedOverview = createOperationsOverviewFixture();
@@ -849,14 +900,14 @@ test("evaluation workbench release-gate summary falls back to an honest empty st
   selectedRunNotFinalizedOverview.selectedRunFinalization = null;
   const selectedRunNotFinalizedMarkup = renderLoadedPage(selectedRunNotFinalizedOverview);
 
-  assert.match(selectedRunNotFinalizedMarkup, /发布门摘要/);
+  assert.match(selectedRunNotFinalizedMarkup, /A\/B 验收结果/u);
   assert.match(
     selectedRunNotFinalizedMarkup,
-    /所选运行需要先生成已定稿建议与证据包后，才能查看发布门摘要。/,
+    /最近运行 run-12 相对 baseline run-11 的建议为 可推荐。/u,
   );
 });
 
-test("evaluation workbench loaded page keeps selected inspection finalization outside the visible history window", () => {
+test("evaluation workbench loaded page keeps A/B history bounded to the visible window", () => {
   const overview = createOperationsOverviewFixture();
   const selectedFinalized = overview.finalizedRunHistory.find((entry) => entry.run.id === "run-01");
   assert.ok(selectedFinalized);
@@ -868,11 +919,11 @@ test("evaluation workbench loaded page keeps selected inspection finalization ou
 
   const markup = renderLoadedPage(overview);
 
-  assert.match(markup, /当前查看运行：run-01/);
-  assert.match(markup, /建议结论：已拒绝/);
-  assert.match(markup, /证据包：pack-run-01/);
-  assert.match(markup, /Selected inspection run regressed and was rejected\./);
-  assert.match(markup, /该运行不在默认摘要使用的历史窗口内。/);
+  assert.match(markup, /运行历史/u);
+  assert.match(markup, /run-12/u);
+  assert.match(markup, /run-03/u);
+  assert.doesNotMatch(markup, /run-02/u);
+  assert.doesNotMatch(markup, /Selected inspection run regressed and was rejected\./);
 });
 
 test("evaluation workbench loaded page renders honest degradation when fewer than two finalized runs are visible", () => {
@@ -909,14 +960,10 @@ test("evaluation workbench loaded page renders honest degradation when fewer tha
 
   const markup = renderLoadedPage(overview);
 
-  assert.match(markup, /运行总览/);
+  assert.match(markup, /A\/B 验收结果/u);
   assert.match(
     markup,
-    /当前最近 10 次内可见的已定稿运行不足 2 条，暂时无法形成默认变化结论。/,
-  );
-  assert.match(
-    markup,
-    /请先在当前窗口内再完成 1 条运行定稿后，再判断套件是改善、回落还是持平。/,
+    /最近运行 run-12 已定稿，但当前窗口还不足以形成 baseline 对照。/u,
   );
 });
 

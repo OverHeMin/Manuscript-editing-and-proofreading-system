@@ -176,6 +176,18 @@ test("workbench routing formats and resolves harness section hashes", () => {
   });
 });
 
+test("workbench routing formats and resolves harness mode hashes", () => {
+  const hash = formatWorkbenchHash("evaluation-workbench", {
+    harnessMode: "release_gate",
+  });
+
+  assert.equal(hash, "#evaluation-workbench?harnessMode=release_gate");
+  assert.deepEqual(resolveWorkbenchLocation(hash), {
+    workbenchId: "evaluation-workbench",
+    harnessMode: "release_gate",
+  });
+});
+
 test("workbench routing preserves selected learning candidate ids for rule center handoffs", () => {
   const hash = formatWorkbenchHash("template-governance", {
     manuscriptId: "manuscript-42",

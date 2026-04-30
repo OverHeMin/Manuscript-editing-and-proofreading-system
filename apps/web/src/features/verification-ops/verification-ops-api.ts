@@ -7,7 +7,10 @@ import type {
   CreateEvaluationSuiteInput,
   CreateReleaseCheckProfileInput,
   CreateVerificationCheckProfileInput,
+  DiagnoseHarnessManuscriptInput,
   EvaluationLearningCandidateViewModel,
+  HarnessManuscriptDiagnosisResultViewModel,
+  HarnessWorkflowRunResultViewModel,
   EvaluationRunItemViewModel,
   EvaluationRunViewModel,
   EvaluationSampleSetItemViewModel,
@@ -23,6 +26,9 @@ import type {
   RecordEvaluationRunItemResultInput,
   RecordVerificationEvidenceInput,
   ReleaseCheckProfileViewModel,
+  RunHarnessAbAcceptanceInput,
+  RunHarnessActiveRegressionInput,
+  RunHarnessReleaseGateInput,
   VerificationCheckProfileViewModel,
   VerificationEvidenceViewModel,
 } from "./types.ts";
@@ -254,6 +260,85 @@ export function createEvaluationRun(
         ...(input.releaseCheckProfileId !== undefined
           ? { releaseCheckProfileId: input.releaseCheckProfileId }
           : {}),
+      },
+    },
+  });
+}
+
+export function runHarnessAbAcceptance(
+  client: VerificationOpsHttpClient,
+  input: RunHarnessAbAcceptanceInput,
+) {
+  return client.request<HarnessWorkflowRunResultViewModel>({
+    method: "POST",
+    url: "/api/v1/verification-ops/harness/ab-acceptance",
+    body: {
+      actorRole: input.actorRole,
+      input: {
+        suiteId: input.suiteId,
+        ...(input.sampleSetId !== undefined
+          ? { sampleSetId: input.sampleSetId }
+          : {}),
+        activeBinding: input.activeBinding,
+        candidateBinding: input.candidateBinding,
+      },
+    },
+  });
+}
+
+export function runHarnessActiveRegression(
+  client: VerificationOpsHttpClient,
+  input: RunHarnessActiveRegressionInput,
+) {
+  return client.request<HarnessWorkflowRunResultViewModel>({
+    method: "POST",
+    url: "/api/v1/verification-ops/harness/active-regression",
+    body: {
+      actorRole: input.actorRole,
+      input: {
+        suiteId: input.suiteId,
+        ...(input.sampleSetId !== undefined
+          ? { sampleSetId: input.sampleSetId }
+          : {}),
+        activeBinding: input.activeBinding,
+      },
+    },
+  });
+}
+
+export function runHarnessReleaseGate(
+  client: VerificationOpsHttpClient,
+  input: RunHarnessReleaseGateInput,
+) {
+  return client.request<HarnessWorkflowRunResultViewModel>({
+    method: "POST",
+    url: "/api/v1/verification-ops/harness/release-gate",
+    body: {
+      actorRole: input.actorRole,
+      input: {
+        suiteId: input.suiteId,
+        ...(input.sampleSetId !== undefined
+          ? { sampleSetId: input.sampleSetId }
+          : {}),
+        releaseCheckProfileId: input.releaseCheckProfileId,
+        activeBinding: input.activeBinding,
+        candidateBinding: input.candidateBinding,
+      },
+    },
+  });
+}
+
+export function diagnoseHarnessManuscript(
+  client: VerificationOpsHttpClient,
+  input: DiagnoseHarnessManuscriptInput,
+) {
+  return client.request<HarnessManuscriptDiagnosisResultViewModel>({
+    method: "POST",
+    url: "/api/v1/verification-ops/harness/manuscript-diagnosis",
+    body: {
+      actorRole: input.actorRole,
+      input: {
+        manuscriptId: input.manuscriptId,
       },
     },
   });

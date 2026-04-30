@@ -112,6 +112,11 @@ export interface ArchiveGoldSetVersionInput {
   archivedBy: string;
 }
 
+export interface CopyGoldSetVersionToDraftInput {
+  createdBy: string;
+  publicationNotes?: string;
+}
+
 export interface CreateHarnessDatasetDraftCandidateInput {
   familyName: string;
   description?: string;
@@ -769,6 +774,52 @@ export class HarnessDatasetService {
       };
       await repository.saveGoldSetVersion(archived);
       return archived;
+    });
+  }
+
+  async copyGoldSetVersionToDraft(
+    actorRole: RoleKey,
+    goldSetVersionId: string,
+    input: CopyGoldSetVersionToDraftInput,
+  ): Promise<HarnessGoldSetVersionRecord> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+
+    return this.transactionManager.withTransaction(async ({ repository }) => {
+      const existing = await this.requireGoldSetVersionFrom(repository, goldSetVersionId);
+      if (existing.status !== "published") {
+        throw new HarnessGoldSetVersionNotEditableError(
+          goldSetVersionId,
+          existing.status,
+        );
+      }
+
+      const familyVersions = await repository.listGoldSetVersionsByFamilyId(
+        existing.family_id,
+      );
+      const copied: HarnessGoldSetVersionRecord = {
+        ...cloneGoldSetVersion(existing),
+        id: this.createId(),
+        version_no:
+          familyVersions.reduce(
+            (highestVersion, record) => Math.max(highestVersion, record.version_no),
+            0,
+          ) + 1,
+        status: "draft",
+        items: existing.items.map(cloneGoldSetItem),
+        item_count: existing.item_count,
+        deidentification_gate_passed: existing.deidentification_gate_passed,
+        human_review_gate_passed: existing.human_review_gate_passed,
+        created_by: input.createdBy,
+        created_at: this.now().toISOString(),
+        publication_notes: input.publicationNotes ?? existing.publication_notes,
+        published_by: undefined,
+        published_at: undefined,
+        archived_by: undefined,
+        archived_at: undefined,
+      };
+
+      await repository.saveGoldSetVersion(copied);
+      return copied;
     });
   }
 

@@ -51,7 +51,7 @@ export function HarnessDatasetsWorkbenchPage({
   if (loadStatus === "error" && !overview) {
     return (
       <article className="workbench-placeholder" role="alert">
-        <h2>Harness 控制 / 数据与样本</h2>
+        <h2>Harness 控制 / 验证样本集</h2>
         <p>{errorMessage ?? "暂时无法载入 Harness 数据样本台。"}</p>
       </article>
     );
@@ -60,8 +60,8 @@ export function HarnessDatasetsWorkbenchPage({
   if (!overview) {
     return (
       <article className="workbench-placeholder" role="status">
-        <h2>Harness 控制 / 数据与样本</h2>
-        <p>正在载入金标准草稿、已发布版本与评分规则关联...</p>
+        <h2>Harness 控制 / 验证样本集</h2>
+        <p>正在载入验证样本集草稿、已发布版本与评分规则关联...</p>
       </article>
     );
   }
@@ -72,9 +72,9 @@ export function HarnessDatasetsWorkbenchPage({
         <header className="harness-datasets-hero">
           <div className="harness-datasets-hero-copy">
             <p className="harness-datasets-eyebrow">Harness 控制</p>
-            <h2>Harness 控制 / 数据与样本</h2>
+            <h2>Harness 控制 / 验证样本集</h2>
             <p>
-              统一整理高质量样本、评分规则与本地导出，不再作为单独难理解的孤立栏目。
+              统一整理验证样本、评分规则与本地导出，不再作为单独难理解的孤立栏目。
             </p>
             <WorkbenchCoreStrip variant="secondary" />
           </div>
@@ -94,7 +94,7 @@ export function HarnessDatasetsWorkbenchPage({
 
       {embedded ? (
         <section className="harness-datasets-embedded-banner">
-          <strong>Harness 数据与样本</strong>
+          <strong>Harness 验证样本集</strong>
           <p className="harness-datasets-copy">
             当前数据集视图仍然属于同一个 Harness 工作区，用于在运行治理链路里直接核对样本、规则和导出状态。
           </p>
@@ -131,18 +131,39 @@ export function HarnessDatasetsWorkbenchPage({
       <div className="harness-datasets-layout">
         <article className="harness-datasets-panel">
           <div className="harness-datasets-panel-header">
-            <h3>待整理队列</h3>
+            <h3>验证样本集草稿</h3>
             <span>{overview.draftVersions.length} 个草稿版本</span>
           </div>
           {overview.draftVersions.length > 0 ? (
             <div className="harness-datasets-stack">
               {overview.draftVersions.map((version) => (
-                <HarnessDatasetVersionCard key={version.id} version={version} />
+                <HarnessDatasetVersionCard
+                  key={version.id}
+                  version={version}
+                  actions={
+                    <div className="harness-datasets-actions">
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => void handlePublishDraft(version.id)}
+                      >
+                        发布草稿
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => void handleArchiveDraft(version.id)}
+                      >
+                        归档草稿
+                      </button>
+                    </div>
+                  }
+                />
               ))}
             </div>
           ) : (
             <p className="harness-datasets-empty">
-              当前没有待整理的样本草稿版本。
+              当前没有待整理的验证样本集草稿版本。
             </p>
           )}
         </article>
@@ -166,6 +187,13 @@ export function HarnessDatasetsWorkbenchPage({
                       <button
                         type="button"
                         disabled={isBusy}
+                        onClick={() => void handleCopyPublishedToDraft(version.id)}
+                      >
+                        复制为草稿
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isBusy}
                         onClick={() => void handleExport(version.id, "json")}
                       >
                         导出 JSON
@@ -184,7 +212,7 @@ export function HarnessDatasetsWorkbenchPage({
             </div>
           ) : (
             <p className="harness-datasets-empty">
-              当前还没有可导出的已发布样本版本。
+              当前还没有可导出的已发布验证样本集版本。
             </p>
           )}
         </article>
@@ -230,6 +258,61 @@ export function HarnessDatasetsWorkbenchPage({
       setIsBusy(false);
     }
   }
+
+  async function handlePublishDraft(goldSetVersionId: string) {
+    setIsBusy(true);
+    setErrorMessage(null);
+    setStatusMessage(null);
+
+    try {
+      const result = await controller.publishDraftAndReload(goldSetVersionId);
+      setOverview(result.overview);
+      setLoadStatus("ready");
+      setStatusMessage(
+        `验证样本集草稿 v${result.version.version_no} 已发布，可用于回归、A/B 验收和发布门。`,
+      );
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleArchiveDraft(goldSetVersionId: string) {
+    setIsBusy(true);
+    setErrorMessage(null);
+    setStatusMessage(null);
+
+    try {
+      const result = await controller.archiveDraftAndReload(goldSetVersionId);
+      setOverview(result.overview);
+      setLoadStatus("ready");
+      setStatusMessage(`验证样本集草稿 v${result.version.version_no} 已归档。`);
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleCopyPublishedToDraft(goldSetVersionId: string) {
+    setIsBusy(true);
+    setErrorMessage(null);
+    setStatusMessage(null);
+
+    try {
+      const result = await controller.copyPublishedToDraftAndReload(goldSetVersionId);
+      setOverview(result.overview);
+      setLoadStatus("ready");
+      setStatusMessage(
+        `已复制为验证样本集草稿 v${result.version.version_no}，可以继续整理后发布。`,
+      );
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error));
+    } finally {
+      setIsBusy(false);
+    }
+  }
 }
 
 function HarnessDatasetVersionCard(props: {
@@ -243,7 +326,7 @@ function HarnessDatasetVersionCard(props: {
     <article className="harness-datasets-card">
       <header className="harness-datasets-card-header">
         <div>
-          <h4>{version.familyName}</h4>
+          <h4>{formatValidationSampleSetName(version.familyName)}</h4>
           <p>
             {formatModuleLabel(version.familyScope.module)} · v{version.versionNo} · {formatVersionStatusLabel(version.status)}
           </p>
@@ -267,6 +350,14 @@ function HarnessDatasetVersionCard(props: {
         评分规则：{describeRubricAssignment(version)}
       </p>
       <p className="harness-datasets-copy">样本条目：{version.itemCount}</p>
+      {version.status === "published" ? (
+        <div className="harness-datasets-provenance">
+          <strong>已发布版本只读</strong>
+          <p className="harness-datasets-copy">
+            如需修改，请复制为新草稿版本后再发布。
+          </p>
+        </div>
+      ) : null}
       {releaseFreezeStatus != null ? (
         <div className="harness-datasets-provenance">
           <strong>{releaseFreezeStatus.label}</strong>
@@ -357,6 +448,13 @@ function describeReleaseFreezeStatus(version: HarnessDatasetVersionViewModel) {
   };
 }
 
+function formatValidationSampleSetName(value: string) {
+  return value
+    .replace(/release candidate/giu, "发布候选")
+    .replace(/gold set/giu, "验证样本集")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
 
 function formatModuleLabel(value: string) {
   switch (value) {

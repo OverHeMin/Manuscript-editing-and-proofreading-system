@@ -21,6 +21,12 @@ export type WorkbenchNavGroup = "general" | "mainline" | "knowledge" | "governan
 
 export type WorkbenchSettingsSection = "ai-access" | "accounts";
 export type WorkbenchHarnessSection = "overview" | "runs" | "datasets";
+export type WorkbenchHarnessMode =
+  | "ab_acceptance"
+  | "regression_inspection"
+  | "release_gate"
+  | "single_manuscript_diagnosis"
+  | "validation_sample_sets";
 export type WorkbenchShellGroupId =
   | "home"
   | "core-process"
@@ -44,6 +50,7 @@ export interface WorkbenchShellTargetDescriptor {
   group: WorkbenchShellGroupId;
   settingsSection?: WorkbenchSettingsSection;
   harnessSection?: WorkbenchHarnessSection;
+  harnessMode?: WorkbenchHarnessMode;
 }
 
 export const WORKBENCH_ENTRIES: readonly WorkbenchEntry[] = [
@@ -210,12 +217,6 @@ export const WORKBENCH_SHELL_TARGETS: readonly WorkbenchShellTargetDescriptor[] 
     group: "collaboration-recovery",
   },
   {
-    key: "management-overview",
-    workbenchId: "admin-console",
-    label: "管理总览",
-    group: "management",
-  },
-  {
     key: "management-ai-access",
     workbenchId: "system-settings",
     label: "AI 接入",
@@ -223,18 +224,18 @@ export const WORKBENCH_SHELL_TARGETS: readonly WorkbenchShellTargetDescriptor[] 
     settingsSection: "ai-access",
   },
   {
+    key: "management-harness",
+    workbenchId: "evaluation-workbench",
+    label: "Harness 控制",
+    group: "management",
+    harnessMode: "ab_acceptance",
+  },
+  {
     key: "management-accounts",
     workbenchId: "system-settings",
     label: "账号与权限",
     group: "management",
     settingsSection: "accounts",
-  },
-  {
-    key: "management-harness",
-    workbenchId: "evaluation-workbench",
-    label: "Harness 控制",
-    group: "management",
-    harnessSection: "overview",
   },
 ] as const;
 
@@ -245,7 +246,6 @@ export const ROLE_WORKBENCHES: Record<AuthRole, readonly WorkbenchId[]> = {
     "proofreading",
     "knowledge-library",
     "knowledge-review",
-    "admin-console",
     "evaluation-workbench",
     "harness-datasets",
     "manuscript-harness",

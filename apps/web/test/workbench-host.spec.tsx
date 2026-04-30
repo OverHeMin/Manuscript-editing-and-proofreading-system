@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
@@ -127,7 +128,7 @@ test("workbench host runtime render forwards harnessSection=runs into evaluation
   assert.match(markup, /workbench-nav-button is-active[\s\S]*?Harness/u);
 });
 
-test("workbench host runtime render keeps datasets alias inside the unified harness first-view shell while governance nav stays at four entries", async () => {
+test("workbench host runtime render keeps datasets alias inside the unified harness first-view shell while governance nav stays at three entries", async () => {
   const markup = await renderWorkbenchHostAtHash(
     "#evaluation-workbench?harnessSection=datasets",
   );
@@ -137,29 +138,29 @@ test("workbench host runtime render keeps datasets alias inside the unified harn
   assert.match(markup, /Harness 数据集视图/u);
   assert.match(markup, /默认聚焦数据集快照与导出链路核对。/u);
   assert.doesNotMatch(markup, /Harness 控制 \/ 数据与样本/u);
-  assert.match(governanceSection, /workbench-nav-button is-active[\s\S]*?Harness/u);
+  assert.match(governanceSection, /workbench-nav-button(?: is-active)?[\s\S]*?Harness/u);
   assert.equal(
     countOccurrences(governanceSection, "workbench-nav-button-label"),
-    4,
+    3,
   );
 });
 
-test("workbench host runtime render keeps direct harness-datasets focus card label", async () => {
+test("workbench host runtime render maps direct harness-datasets hashes to the unified harness entry", async () => {
   const markup = await renderWorkbenchHostAtHash("#harness-datasets");
   const governanceSection = extractGovernanceNavSection(markup);
 
-  assert.match(markup, /Harness 数据集/u);
+  assert.match(markup, /Harness 控制/u);
   assert.match(markup, /Harness 数据集视图/u);
   assert.match(markup, /默认聚焦数据集快照与导出链路核对。/u);
   assert.doesNotMatch(markup, /Harness 控制 \/ 数据与样本/u);
   assert.match(
     markup,
-    /workbench-header-focus-card[\s\S]*?<strong>Harness \u6570\u636e\u96c6<\/strong>/u,
+    /workbench-header-focus-card[\s\S]*?<strong>Harness \u63a7\u5236<\/strong>/u,
   );
-  assert.match(governanceSection, /workbench-nav-button is-active[\s\S]*?Harness/u);
+  assert.match(governanceSection, /workbench-nav-button(?: is-active)?[\s\S]*?Harness/u);
   assert.equal(
     countOccurrences(governanceSection, "workbench-nav-button-label"),
-    4,
+    3,
   );
 });
 
@@ -322,15 +323,13 @@ test("workbench host runtime render routes rule center extraction hashes to the 
   assert.doesNotMatch(markup, /rule-package-workbench-columns/u);
 });
 
-test("workbench host routes admin-console hashes to the lightweight management overview", async () => {
+test("workbench host routes legacy admin-console hashes away from the removed management overview", async () => {
   const markup = await renderWorkbenchHostAtHash("#admin-console");
 
-  assert.match(markup, /workbench-content--admin-governance/u);
-  assert.match(markup, /管理总览/u);
-  assert.match(markup, /正在加载管理总览/u);
-  assert.match(markup, /正在汇总 AI 接入、Harness 控制与治理资产状态/u);
-  assert.match(markup, /workbench-header-focus-card[\s\S]*?<strong>管理总览<\/strong>/u);
-  assert.doesNotMatch(markup, /manuscript-workbench-shell--screening/u);
+  assert.doesNotMatch(markup, /workbench-content--admin-governance/u);
+  assert.doesNotMatch(markup, /管理总览/u);
+  assert.doesNotMatch(markup, /正在加载管理总览/u);
+  assert.match(markup, /manuscript-workbench-shell--screening/u);
 });
 
 test("admin navigation model aligns to the final IA groups and management target labels", async () => {
@@ -367,10 +366,9 @@ test("admin navigation model aligns to the final IA groups and management target
   assert.deepEqual(
     groups[2]?.items.map((item: { label: string }) => item.label),
     [
-      "管理总览",
       "AI 接入",
-      "账号与权限",
       "Harness 控制",
+      "账号与权限",
     ],
   );
   assert.equal(
@@ -501,11 +499,11 @@ test("navigation menu renders grouped admin navigation with final IA labels and 
   assert.match(html, /管理区/u);
   assert.match(html, /规则中心/u);
   assert.doesNotMatch(html, /质量优化/u);
-  assert.match(html, /管理总览/u);
+  assert.doesNotMatch(html, /管理总览/u);
   assert.match(html, /AI 接入/u);
   assert.match(html, /账号与权限/u);
   assert.match(html, /Harness 控制/u);
-  assert.match(html, /4 \u9879/u);
+  assert.match(html, /3 \u9879/u);
   assert.match(html, /2 \u9879/u);
   assert.match(html, /\u77e5\u8bc6\u5e93/u);
   assert.match(html, /\u77e5\u8bc6\u5ba1\u6838/u);
@@ -542,18 +540,18 @@ test("workbench routing formats and resolves knowledge library and revision revi
   });
 });
 
-test("workbench routing supports harness datasets section hashes while keeping management nav at four items", async () => {
+test("workbench routing supports harness mode hashes while keeping management nav at three items", async () => {
   const navigationModule = await import("../src/app/workbench-navigation.ts");
   const routingModule = await import("../src/app/workbench-routing.ts");
   const groups = navigationModule.buildWorkbenchNavigationGroups(
     buildSession("admin").availableWorkbenchEntries,
   );
   const datasetsHash = routingModule.formatWorkbenchHash("evaluation-workbench", {
-    harnessSection: "datasets",
+    harnessMode: "validation_sample_sets",
   });
 
   assert.equal(groups[2]?.label, "管理区");
-  assert.equal(groups[2]?.items.length, 4);
+  assert.equal(groups[2]?.items.length, 3);
   assert.equal(
     groups[2]?.items.find((item: { label: string }) => item.label === "Harness 控制")?.id,
     "evaluation-workbench",
@@ -564,12 +562,29 @@ test("workbench routing supports harness datasets section hashes while keeping m
   );
   assert.equal(
     datasetsHash,
-    "#evaluation-workbench?harnessSection=datasets",
+    "#evaluation-workbench?harnessMode=validation_sample_sets",
   );
   assert.deepEqual(routingModule.resolveWorkbenchLocation(datasetsHash), {
     workbenchId: "evaluation-workbench",
+    harnessMode: "validation_sample_sets",
+  });
+  assert.deepEqual(routingModule.resolveWorkbenchLocation("#evaluation-workbench?harnessSection=datasets"), {
+    workbenchId: "evaluation-workbench",
     harnessSection: "datasets",
   });
+});
+
+test("workbench shell gives harness control a wide fullscreen-owned content lane", async () => {
+  const appCss = await readFile(new URL("../src/app/app.css", import.meta.url), "utf8");
+
+  assert.match(
+    appCss,
+    /\.workbench-content--evaluation-workbench\s*\{[\s\S]*?width:\s*100%;[\s\S]*?\}/u,
+  );
+  assert.doesNotMatch(
+    appCss,
+    /\.workbench-content--evaluation-workbench,[\s\S]*?width:\s*min\(1240px,\s*100%\)/u,
+  );
 });
 
 test("navigation menu renders a simplified user work area", async () => {
@@ -607,16 +622,18 @@ test("admin navigation keeps route ids stable while exposing final IA labels", a
   const groups = navigationModule.buildWorkbenchNavigationGroups(
     buildSession("admin").availableWorkbenchEntries,
   );
-  const overviewEntry = groups[2]?.items.find((item: { id: string }) => item.id === "admin-console");
   const aiAccessEntry = groups[2]?.items.find((item: { label: string }) => item.label === "AI 接入");
   const accountEntry = groups[2]?.items.find((item: { label: string }) => item.label === "账号与权限");
   const harnessEntry = groups[2]?.items.find((item: { id: string }) => item.id === "evaluation-workbench");
 
-  assert.equal(overviewEntry?.id, "admin-console");
-  assert.equal(overviewEntry?.label, "管理总览");
+  assert.equal(groups[2]?.items.some((item: { id: string }) => item.id === "admin-console"), false);
   assert.equal(aiAccessEntry?.id, "system-settings");
   assert.equal(accountEntry?.id, "system-settings");
   assert.equal(harnessEntry?.label, "Harness 控制");
+  assert.deepEqual(
+    groups[2]?.items.map((item: { label: string }) => item.label),
+    ["AI 接入", "Harness 控制", "账号与权限"],
+  );
 });
 
 test("workbench shell header renders fully Chinese top copy and active desk summary", async () => {

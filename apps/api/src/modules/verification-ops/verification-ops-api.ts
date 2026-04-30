@@ -20,6 +20,7 @@ import type {
 } from "./verification-ops-repository.ts";
 import type {
   CompleteEvaluationRunInput,
+  DiagnoseHarnessManuscriptInput,
   CreateLearningCandidateFromEvaluationInput,
   CreateEvaluationRunInput,
   CreateEvaluationSampleSetInput,
@@ -28,8 +29,13 @@ import type {
   CreateVerificationCheckProfileInput,
   EvaluationSuiteFinalizationResult,
   FinalizeEvaluationRunResult,
+  HarnessManuscriptDiagnosisResult,
+  HarnessWorkflowRunResult,
   RecordEvaluationRunItemResultInput,
   RecordVerificationEvidenceInput,
+  RunHarnessAbAcceptanceInput,
+  RunHarnessActiveRegressionInput,
+  RunHarnessReleaseGateInput,
   VerificationOpsService,
 } from "./verification-ops-service.ts";
 
@@ -252,6 +258,61 @@ export function createVerificationOpsApi(
       return {
         status: 201,
         body: await verificationOpsService.createEvaluationRun(actorRole, input),
+      };
+    },
+
+    async runHarnessAbAcceptance({
+      actorRole,
+      input,
+    }: {
+      actorRole: RoleKey;
+      input: RunHarnessAbAcceptanceInput;
+    }): Promise<RouteResponse<HarnessWorkflowRunResult>> {
+      return {
+        status: 201,
+        body: await verificationOpsService.runHarnessAbAcceptance(actorRole, input),
+      };
+    },
+
+    async runHarnessActiveRegression({
+      actorRole,
+      input,
+    }: {
+      actorRole: RoleKey;
+      input: RunHarnessActiveRegressionInput;
+    }): Promise<RouteResponse<HarnessWorkflowRunResult>> {
+      return {
+        status: 201,
+        body: await verificationOpsService.runHarnessActiveRegression(actorRole, input),
+      };
+    },
+
+    async runHarnessReleaseGate({
+      actorRole,
+      input,
+    }: {
+      actorRole: RoleKey;
+      input: RunHarnessReleaseGateInput;
+    }): Promise<RouteResponse<HarnessWorkflowRunResult>> {
+      return {
+        status: 201,
+        body: await verificationOpsService.runHarnessReleaseGate(actorRole, input),
+      };
+    },
+
+    async diagnoseHarnessManuscript({
+      actorRole,
+      input,
+    }: {
+      actorRole: RoleKey;
+      input: DiagnoseHarnessManuscriptInput;
+    }): Promise<RouteResponse<HarnessManuscriptDiagnosisResult>> {
+      return {
+        status: 200,
+        body: await verificationOpsService.diagnoseHarnessManuscript(
+          actorRole,
+          input,
+        ),
       };
     },
 

@@ -64,6 +64,34 @@ export interface HarnessDatasetVersionViewModel {
   publications: HarnessDatasetPublicationViewModel[];
 }
 
+export interface HarnessDatasetVersionApiRecord {
+  id: string;
+  family_id: string;
+  version_no: number;
+  status: HarnessGoldSetVersionStatus;
+  rubric_definition_id?: string;
+  item_count: number;
+  created_by: string;
+  created_at: string;
+  published_by?: string;
+  published_at?: string;
+  archived_by?: string;
+  archived_at?: string;
+  publication_notes?: string;
+  deidentification_gate_passed: boolean;
+  human_review_gate_passed: boolean;
+  items: Array<{
+    source_kind: HarnessDatasetSourceKind;
+    source_id: string;
+    manuscript_id: string;
+    manuscript_type: ManuscriptType;
+    deidentification_passed: boolean;
+    human_reviewed: boolean;
+    risk_tags?: string[];
+    expected_structured_output?: Record<string, unknown>;
+  }>;
+}
+
 export interface HarnessDatasetRubricSummaryViewModel {
   id: string;
   name: string;
@@ -86,9 +114,8 @@ export interface HarnessDatasetExportResultViewModel {
 
 export interface HarnessDatasetWorkbenchApiOverview {
   export_root_dir: string;
-  versions: Array<{
-    id: string;
-    family_id: string;
+  versions: Array<
+    HarnessDatasetVersionApiRecord & {
     family_name: string;
     family_scope: {
       module: TemplateModule;
@@ -96,24 +123,6 @@ export interface HarnessDatasetWorkbenchApiOverview {
       measure_focus: string;
       template_family_id?: string;
     };
-    version_no: number;
-    status: HarnessGoldSetVersionStatus;
-    item_count: number;
-    created_by: string;
-    created_at: string;
-    published_by?: string;
-    published_at?: string;
-    deidentification_gate_passed: boolean;
-    human_review_gate_passed: boolean;
-    items: Array<{
-      source_kind: HarnessDatasetSourceKind;
-      source_id: string;
-      manuscript_id: string;
-      manuscript_type: ManuscriptType;
-      deidentification_passed: boolean;
-      human_reviewed: boolean;
-      risk_tags?: string[];
-    }>;
     rubric_assignment: {
       status: HarnessRubricAssignmentStatus;
       rubric_definition_id?: string;
@@ -129,7 +138,8 @@ export interface HarnessDatasetWorkbenchApiOverview {
       deidentification_gate_passed: boolean;
       created_at: string;
     }>;
-  }>;
+  }
+  >;
   rubrics: Array<{
     id: string;
     name: string;
