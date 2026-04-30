@@ -84,10 +84,12 @@ test("evaluation workbench labels online execution regression suite families exp
   const overview = createOnlineRegressionOverview();
   const markup = renderToStaticMarkup(
     <EvaluationWorkbenchPage
+      section="runs"
       initialOverview={overview}
     />,
   );
 
+  assert.match(markup, /data-harness-mode="regression_inspection"/u);
   assert.match(markup, /data-evaluation-suite-id="suite-module"/u);
   assert.match(markup, /data-evaluation-suite-type="module_regression_suite"/u);
   assert.match(markup, /data-evaluation-suite-id="suite-scope"/u);

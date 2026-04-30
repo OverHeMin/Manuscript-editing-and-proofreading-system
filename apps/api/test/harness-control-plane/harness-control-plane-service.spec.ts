@@ -2,8 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   HarnessControlPlaneService,
+  HarnessActivationEvidenceGateError,
   type ResolveHarnessEnvironmentPreviewInput,
 } from "../../src/modules/harness-control-plane/index.ts";
+import { InMemoryVerificationOpsRepository } from "../../src/modules/verification-ops/in-memory-verification-ops-repository.ts";
 import type { ModuleExecutionProfileRecord } from "../../src/modules/execution-governance/index.ts";
 import {
   ActiveManualReviewPolicyNotFoundError,
@@ -18,7 +20,9 @@ import {
 } from "../../src/modules/retrieval-presets/index.ts";
 import type { RuntimeBindingRecord } from "../../src/modules/runtime-bindings/index.ts";
 
-function createHarnessControlPlaneServiceHarness() {
+function createHarnessControlPlaneServiceHarness(input: {
+  enforceActivationEvidenceGate?: boolean;
+} = {}) {
   const scope = {
     module: "editing",
     manuscriptType: "clinical_study",
@@ -342,6 +346,7 @@ function createHarnessControlPlaneServiceHarness() {
     return match;
   };
 
+  const verificationOpsRepository = new InMemoryVerificationOpsRepository();
   const service = new HarnessControlPlaneService({
     executionGovernanceService: {
       resolveActiveProfile: async () => requireProfile(activeIds.executionProfileId),
@@ -447,6 +452,7 @@ function createHarnessControlPlaneServiceHarness() {
         return requireManualReviewPolicy(policyId);
       },
     },
+    ...(input.enforceActivationEvidenceGate ? { verificationOpsRepository } : {}),
   });
 
   return {
@@ -454,6 +460,7 @@ function createHarnessControlPlaneServiceHarness() {
     foreignScope,
     scope,
     service,
+    verificationOpsRepository,
     setActiveManualReviewPolicyId(policyId?: string) {
       activeIds.manualReviewPolicyId = policyId;
     },
@@ -461,6 +468,40 @@ function createHarnessControlPlaneServiceHarness() {
       activeIds.retrievalPresetId = presetId;
     },
   };
+}
+
+async function seedRecommendedActivationEvidence(
+  verificationOpsRepository: InMemoryVerificationOpsRepository,
+  runId = "run-2",
+) {
+  await verificationOpsRepository.saveEvaluationRun({
+    id: runId,
+    suite_id: "suite-1",
+    run_item_count: 0,
+    status: "passed",
+    evidence_ids: [],
+    started_at: "2026-04-30T08:00:00.000Z",
+    finished_at: "2026-04-30T08:10:00.000Z",
+  });
+  await verificationOpsRepository.saveEvaluationEvidencePack({
+    id: `pack-${runId}`,
+    experiment_run_id: runId,
+    summary_status: "recommended",
+    score_summary: "Harness activation gate accepted the candidate.",
+    regression_summary: "No regression failures were recorded.",
+    failure_summary: "No failure annotations were recorded.",
+    cost_summary: "Cost tracking is not recorded in this gate.",
+    latency_summary: "Latency tracking is not recorded in this gate.",
+    created_at: "2026-04-30T08:11:00.000Z",
+  });
+  await verificationOpsRepository.saveEvaluationPromotionRecommendation({
+    id: `recommendation-${runId}`,
+    experiment_run_id: runId,
+    evidence_pack_id: `pack-${runId}`,
+    status: "recommended",
+    decision_reason: "Recommended by Harness release gate.",
+    created_at: "2026-04-30T08:12:00.000Z",
+  });
 }
 
 test("harness control plane reads the active five-part environment for one scope", async () => {
@@ -597,6 +638,44 @@ test("harness control plane previews activates and rolls back core components ev
       .manual_review_policy,
     undefined,
   );
+});
+
+test("harness control plane blocks candidate activation until linked evidence is recommended", async () => {
+  const { service, scope } = createHarnessControlPlaneServiceHarness({
+    enforceActivationEvidenceGate: true,
+  });
+
+  await assert.rejects(
+    () =>
+      service.activateEnvironment("admin", {
+        ...scope,
+        executionProfileId: "profile-draft-2",
+        runtimeBindingId: "binding-draft-2",
+        modelRoutingPolicyVersionId: "routing-version-draft-2",
+        reason: "Try activating without finalized Harness evidence.",
+      }),
+    HarnessActivationEvidenceGateError,
+  );
+});
+
+test("harness control plane allows candidate activation with recommended linked evidence", async () => {
+  const { service, scope, verificationOpsRepository } =
+    createHarnessControlPlaneServiceHarness({
+      enforceActivationEvidenceGate: true,
+    });
+  await seedRecommendedActivationEvidence(verificationOpsRepository, "run-2");
+
+  const activated = await service.activateEnvironment("admin", {
+    ...scope,
+    executionProfileId: "profile-draft-2",
+    runtimeBindingId: "binding-draft-2",
+    modelRoutingPolicyVersionId: "routing-version-draft-2",
+    reason: "Activate with recommended Harness evidence.",
+  });
+
+  assert.equal(activated.execution_profile.id, "profile-draft-2");
+  assert.equal(activated.runtime_binding.id, "binding-draft-2");
+  assert.equal(activated.model_routing_policy_version.id, "routing-version-draft-2");
 });
 
 test("harness control plane fails open when optional retrieval and manual review components are absent", async () => {

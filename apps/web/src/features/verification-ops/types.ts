@@ -9,7 +9,9 @@ import type {
 export type VerificationCheckType =
   | "browser_qa"
   | "benchmark"
-  | "deploy_verification";
+  | "deploy_verification"
+  | "retrieval_quality"
+  | "residual_issue_validation";
 export type VerificationRegistryStatus = "draft" | "published" | "archived";
 export type EvaluationSuiteStatus = "draft" | "active" | "archived";
 export type EvaluationSuiteType =
@@ -65,6 +67,7 @@ export interface FrozenExperimentBindingViewModel {
   runtime_id: string;
   prompt_template_id: string;
   skill_package_ids: string[];
+  quality_package_version_ids?: string[];
   module_template_id: string;
 }
 
@@ -199,6 +202,39 @@ export interface FinalizeEvaluationRunResultViewModel {
   recommendation: EvaluationPromotionRecommendationViewModel;
 }
 
+export type HarnessWorkflowMode =
+  | "ab_acceptance"
+  | "regression_inspection"
+  | "release_gate";
+
+export interface HarnessWorkflowRunResultViewModel {
+  mode: HarnessWorkflowMode;
+  run: EvaluationRunViewModel;
+  evidence: VerificationEvidenceViewModel[];
+  finalized: FinalizeEvaluationRunResultViewModel;
+  summary: string;
+  release_gate?: {
+    profile_id: string;
+    decision: EvaluationDecisionStatus;
+  };
+}
+
+export interface HarnessManuscriptDiagnosisResultViewModel {
+  manuscript_id: string;
+  status: "hit" | "miss";
+  matched_run_ids: string[];
+  matched_suite_ids: string[];
+  evidence: VerificationEvidenceViewModel[];
+  sample_contexts: Array<{
+    sample_set_id: string;
+    sample_set_name: string;
+    sample_item_id: string;
+    reviewed_case_snapshot_id: string;
+    manuscript_type: ManuscriptType;
+    risk_tags?: string[];
+  }>;
+}
+
 export type EvaluationSuiteFinalizedResultsHistoryWindowPreset =
   | "latest_10"
   | "last_7_days"
@@ -303,6 +339,31 @@ export interface CreateEvaluationRunInput {
   baselineBinding?: FrozenExperimentBindingInput;
   candidateBinding?: FrozenExperimentBindingInput;
   releaseCheckProfileId?: string;
+}
+
+export interface RunHarnessAbAcceptanceInput {
+  actorRole: AuthRole;
+  suiteId: string;
+  sampleSetId?: string;
+  activeBinding: FrozenExperimentBindingInput;
+  candidateBinding: FrozenExperimentBindingInput;
+}
+
+export interface RunHarnessActiveRegressionInput {
+  actorRole: AuthRole;
+  suiteId: string;
+  sampleSetId?: string;
+  activeBinding: FrozenExperimentBindingInput;
+}
+
+export interface RunHarnessReleaseGateInput
+  extends RunHarnessAbAcceptanceInput {
+  releaseCheckProfileId: string;
+}
+
+export interface DiagnoseHarnessManuscriptInput {
+  actorRole: AuthRole;
+  manuscriptId: string;
 }
 
 export interface CompleteEvaluationRunInput {

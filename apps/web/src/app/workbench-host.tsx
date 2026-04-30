@@ -168,6 +168,10 @@ export function WorkbenchHost({
           activeWorkbenchId === "evaluation-workbench"
             ? routeState.harnessSection ?? "overview"
             : routeState.harnessSection,
+        harnessMode:
+          activeWorkbenchId === "evaluation-workbench"
+            ? routeState.harnessMode
+            : undefined,
       });
   const activeNavigationGroup =
     navigationGroups.find((group) =>
@@ -179,7 +183,9 @@ export function WorkbenchHost({
     activeNavigationItem?.label ??
     "工作台";
   const headerWorkbenchLabel =
-    activeWorkbenchId === "harness-datasets"
+    activeWorkbenchId === "harness-datasets" && activeNavigationItem != null
+      ? activeNavigationItem.label
+      : activeWorkbenchId === "harness-datasets"
       ? activeWorkbenchLabel
       : activeNavigationItem?.label ?? activeWorkbenchLabel;
   const activeWorkbenchGroupLabel = activeNavigationGroup?.label ?? "当前工作区";
@@ -303,6 +309,7 @@ export function WorkbenchHost({
           <EvaluationWorkbenchPage
             actorRole={session.role}
             section={routeState.harnessSection ?? "overview"}
+            harnessMode={routeState.harnessMode}
             prefilledManuscriptId={routeState.manuscriptId}
           />
         );
@@ -311,6 +318,7 @@ export function WorkbenchHost({
           <EvaluationWorkbenchPage
             actorRole={session.role}
             section="datasets"
+            harnessMode="validation_sample_sets"
             prefilledManuscriptId={routeState.manuscriptId}
           />
         );
@@ -358,6 +366,7 @@ export function WorkbenchHost({
     navigateToWorkbench(target.workbenchId, {
       settingsSection: target.settingsSection,
       harnessSection: target.harnessSection,
+      harnessMode: target.harnessMode,
     });
   }
 
@@ -381,6 +390,7 @@ export function WorkbenchHost({
       ruleCenterMode: handoff?.ruleCenterMode,
       settingsSection: handoff?.settingsSection,
       harnessSection: handoff?.harnessSection,
+      harnessMode: handoff?.harnessMode,
     });
 
     if (typeof window !== "undefined") {
@@ -403,10 +413,16 @@ function resolveActiveNavigationItem(
       : routeState.settingsSection;
   const effectiveHarnessSection =
     routeState.activeWorkbenchId === "harness-datasets"
-      ? "overview"
+      ? "datasets"
       : effectiveWorkbenchId === "evaluation-workbench"
       ? routeState.harnessSection ?? "overview"
       : routeState.harnessSection;
+  const effectiveHarnessMode =
+    routeState.activeWorkbenchId === "harness-datasets"
+      ? "ab_acceptance"
+      : effectiveWorkbenchId === "evaluation-workbench"
+      ? routeState.harnessMode
+      : undefined;
 
   for (const group of groups) {
     for (const item of group.items) {
@@ -424,6 +440,13 @@ function resolveActiveNavigationItem(
       if (
         item.target.harnessSection &&
         item.target.harnessSection !== effectiveHarnessSection
+      ) {
+        continue;
+      }
+
+      if (
+        item.target.harnessMode &&
+        item.target.harnessMode !== effectiveHarnessMode
       ) {
         continue;
       }
@@ -487,6 +510,7 @@ function resolveInitialWorkbenchRoute(
       ruleCenterMode: "learning",
       settingsSection: location.settingsSection,
       harnessSection: location.harnessSection,
+      harnessMode: location.harnessMode,
     };
   }
 
@@ -509,6 +533,7 @@ function resolveInitialWorkbenchRoute(
       ruleCenterMode: location.ruleCenterMode,
       settingsSection: location.settingsSection,
       harnessSection: location.harnessSection,
+      harnessMode: location.harnessMode,
     };
   }
 

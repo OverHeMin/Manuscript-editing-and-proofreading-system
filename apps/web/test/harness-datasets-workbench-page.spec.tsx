@@ -240,8 +240,8 @@ test("harness datasets workbench page renders a loading state for server-side sh
     />,
   );
 
-  assert.match(markup, /Harness 控制 \/ 数据与样本/);
-  assert.match(markup, /正在载入金标准草稿、已发布版本与评分规则关联/u);
+  assert.match(markup, /Harness 控制 \/ 验证样本集/);
+  assert.match(markup, /正在载入验证样本集草稿、已发布版本与评分规则关联/u);
 });
 
 test("harness datasets workbench page can render in an embedded harness-owned mode", () => {
@@ -258,10 +258,13 @@ test("harness datasets workbench page can render in an embedded harness-owned mo
   );
 
   assert.match(markup, /harness-datasets-workbench is-embedded/u);
+  assert.match(markup, /验证样本集/u);
+  assert.match(markup, /已发布版本只读/u);
+  assert.doesNotMatch(markup, /Gold Set/u);
   assert.match(markup, /harness-datasets-embedded-banner/u);
   assert.doesNotMatch(markup, /harness-datasets-hero/u);
   assert.doesNotMatch(markup, /workbench-core-strip is-secondary/u);
-  assert.match(markup, /待整理队列/u);
+  assert.match(markup, /验证样本集草稿/u);
   assert.match(markup, /已发布版本/u);
 });
 
@@ -271,12 +274,13 @@ test("harness datasets workbench page renders curation queue, published exports,
   assert.match(markup, /Harness 控制/);
   assert.match(markup, /管理区/);
   assert.match(markup, /workbench-core-strip is-secondary/);
-  assert.match(markup, /Harness 控制 \/ 数据与样本/);
-  assert.match(markup, /统一整理高质量样本、评分规则与本地导出/u);
-  assert.match(markup, /待整理队列/);
+  assert.match(markup, /Harness 控制 \/ 验证样本集/);
+  assert.match(markup, /统一整理验证样本、评分规则与本地导出/u);
+  assert.match(markup, /验证样本集草稿/);
   assert.match(markup, /已发布版本/);
-  assert.match(markup, /Proofreading gold set/);
-  assert.match(markup, /Editing gold set/);
+  assert.match(markup, /Proofreading 验证样本集/);
+  assert.match(markup, /Editing 验证样本集/);
+  assert.doesNotMatch(markup, /gold set/iu);
   assert.match(markup, /评分规则：需要人工指定/);
   assert.match(markup, /评分规则：Editing rubric v2（已发布）/u);
   assert.match(markup, /关注重点：问题识别 · 稿件类型：临床研究/u);
@@ -287,25 +291,28 @@ test("harness datasets workbench page renders curation queue, published exports,
   assert.match(markup, /本地导出目录：\.local-data\/harness-exports\/development/);
   assert.match(markup, /导出 JSON/);
   assert.match(markup, /导出 JSONL/);
-  assert.doesNotMatch(markup, /导出 JSON<\/button><button[^>]*>导出 JSONL<\/button><\/div><\/article><article[^>]*><header[^>]*><div><h4>Proofreading gold set/);
+  assert.match(markup, /复制为草稿/);
+  assert.match(markup, /发布草稿/);
+  assert.match(markup, /归档草稿/);
+  assert.doesNotMatch(markup, /导出 JSON<\/button><button[^>]*>导出 JSONL<\/button><\/div><\/article><article[^>]*><header[^>]*><div><h4>Proofreading 验证样本集/);
 });
 
-test("harness datasets workbench page reports release-freeze readiness and exact blocking reasons for published gold sets", () => {
+test("harness datasets workbench page reports release-freeze readiness and exact blocking reasons for published validation sample sets", () => {
   const markup = renderLoadedPage();
 
   assert.match(markup, /发布冻结已就绪/);
-  assert.match(markup, /Editing gold set/);
+  assert.match(markup, /Editing 验证样本集/);
   assert.match(markup, /脱敏校验：已通过/);
   assert.match(markup, /人工复核：已通过/);
   assert.match(markup, /发布冻结已就绪，可用于清单记录与导出引用。/u);
 
-  assert.match(markup, /Screening gold set/);
+  assert.match(markup, /Screening 验证样本集/);
   assert.match(markup, /发布冻结未就绪：缺少已发布的评分规则。/u);
 
-  assert.match(markup, /Review gold set/);
+  assert.match(markup, /Review 验证样本集/);
   assert.match(markup, /发布冻结未就绪：脱敏校验尚未完成。/u);
 
-  assert.match(markup, /Proofreading release candidate gold set/);
+  assert.match(markup, /Proofreading 发布候选 验证样本集/);
   assert.match(markup, /发布冻结未就绪：人工复核尚未完成。/u);
 });
 

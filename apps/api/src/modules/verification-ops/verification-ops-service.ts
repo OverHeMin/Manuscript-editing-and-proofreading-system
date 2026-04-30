@@ -25,6 +25,7 @@ import {
   summarizeEvaluationRun,
 } from "./evidence-pack-builder.ts";
 import {
+  EvaluationExperimentBindingError,
   freezeExperimentBindings,
   type FrozenExperimentBindingInput,
 } from "./experiment-binding-guard.ts";
@@ -115,6 +116,29 @@ export interface CreateEvaluationRunInput {
   baselineBinding?: FrozenExperimentBindingInput;
   candidateBinding?: FrozenExperimentBindingInput;
   releaseCheckProfileId?: string;
+  allowSingleCandidateBinding?: boolean;
+}
+
+export interface RunHarnessAbAcceptanceInput {
+  suiteId: string;
+  sampleSetId?: string;
+  activeBinding: FrozenExperimentBindingInput;
+  candidateBinding: FrozenExperimentBindingInput;
+}
+
+export interface RunHarnessActiveRegressionInput {
+  suiteId: string;
+  sampleSetId?: string;
+  activeBinding: FrozenExperimentBindingInput;
+}
+
+export interface RunHarnessReleaseGateInput
+  extends RunHarnessAbAcceptanceInput {
+  releaseCheckProfileId: string;
+}
+
+export interface DiagnoseHarnessManuscriptInput {
+  manuscriptId: string;
 }
 
 export interface SeedGovernedExecutionRunsInput {
@@ -148,6 +172,34 @@ export interface FinalizeEvaluationRunResult {
   run: EvaluationRunRecord;
   evidence_pack: EvaluationEvidencePackRecord;
   recommendation: EvaluationPromotionRecommendationRecord;
+}
+
+export interface HarnessWorkflowRunResult {
+  mode: "ab_acceptance" | "regression_inspection" | "release_gate";
+  run: EvaluationRunRecord;
+  evidence: VerificationEvidenceRecord[];
+  finalized: FinalizeEvaluationRunResult;
+  summary: string;
+  release_gate?: {
+    profile_id: string;
+    decision: EvaluationPromotionRecommendationRecord["status"];
+  };
+}
+
+export interface HarnessManuscriptDiagnosisResult {
+  manuscript_id: string;
+  status: "hit" | "miss";
+  matched_run_ids: string[];
+  matched_suite_ids: string[];
+  evidence: VerificationEvidenceRecord[];
+  sample_contexts: Array<{
+    sample_set_id: string;
+    sample_set_name: string;
+    sample_item_id: string;
+    reviewed_case_snapshot_id: string;
+    manuscript_type: EvaluationSampleSetItemRecord["manuscript_type"];
+    risk_tags?: string[];
+  }>;
 }
 
 type EvaluationSuiteFinalizationHistoryWindowPreset =
@@ -719,7 +771,13 @@ export class VerificationOpsService {
     let runItemCount = 0;
     let sampleItems: EvaluationSampleSetItemRecord[] = [];
 
-    if (input.baselineBinding || input.candidateBinding) {
+    if (
+      input.allowSingleCandidateBinding &&
+      input.candidateBinding &&
+      !input.baselineBinding
+    ) {
+      candidateBinding = freezeSingleCandidateBinding(input.candidateBinding);
+    } else if (input.baselineBinding || input.candidateBinding) {
       const frozenBindings = freezeExperimentBindings({
         suite,
         baselineBinding: input.baselineBinding,
@@ -763,6 +821,152 @@ export class VerificationOpsService {
     }
 
     return record;
+  }
+
+  async runHarnessAbAcceptance(
+    actorRole: RoleKey,
+    input: RunHarnessAbAcceptanceInput,
+  ): Promise<HarnessWorkflowRunResult> {
+    const run = await this.createEvaluationRun(actorRole, {
+      suiteId: input.suiteId,
+      sampleSetId: input.sampleSetId,
+      baselineBinding: normalizeHarnessBindingLane(input.activeBinding, "baseline"),
+      candidateBinding: normalizeHarnessBindingLane(input.candidateBinding, "candidate"),
+    });
+
+    return this.completeHarnessWorkflowRun(actorRole, {
+      mode: "ab_acceptance",
+      run,
+      evidenceLabel:
+        `Harness A/B candidate vs active orchestration for run ${run.id}.`,
+      summary:
+        `Created candidate vs active Harness run ${run.id}; item scoring is ready for operator review.`,
+    });
+  }
+
+  async runHarnessActiveRegression(
+    actorRole: RoleKey,
+    input: RunHarnessActiveRegressionInput,
+  ): Promise<HarnessWorkflowRunResult> {
+    const run = await this.createEvaluationRun(actorRole, {
+      suiteId: input.suiteId,
+      sampleSetId: input.sampleSetId,
+      candidateBinding: normalizeHarnessBindingLane(input.activeBinding, "candidate"),
+      allowSingleCandidateBinding: true,
+    });
+
+    return this.completeHarnessWorkflowRun(actorRole, {
+      mode: "regression_inspection",
+      run,
+      evidenceLabel:
+        `Harness active-only regression orchestration for run ${run.id}.`,
+      summary:
+        `Created active-only Harness regression run ${run.id}; item scoring is ready for operator review.`,
+    });
+  }
+
+  async runHarnessReleaseGate(
+    actorRole: RoleKey,
+    input: RunHarnessReleaseGateInput,
+  ): Promise<HarnessWorkflowRunResult> {
+    const run = await this.createEvaluationRun(actorRole, {
+      suiteId: input.suiteId,
+      sampleSetId: input.sampleSetId,
+      baselineBinding: normalizeHarnessBindingLane(input.activeBinding, "baseline"),
+      candidateBinding: normalizeHarnessBindingLane(input.candidateBinding, "candidate"),
+      releaseCheckProfileId: input.releaseCheckProfileId,
+    });
+
+    const result = await this.completeHarnessWorkflowRun(actorRole, {
+      mode: "release_gate",
+      run,
+      evidenceLabel:
+        `Harness release gate orchestration for run ${run.id}.`,
+      summary:
+        `Created Harness release gate run ${run.id}; finalized evidence is available for gate review.`,
+    });
+
+    return {
+      ...result,
+      release_gate: {
+        profile_id: input.releaseCheckProfileId,
+        decision: result.finalized.recommendation.status,
+      },
+    };
+  }
+
+  async diagnoseHarnessManuscript(
+    actorRole: RoleKey,
+    input: DiagnoseHarnessManuscriptInput,
+  ): Promise<HarnessManuscriptDiagnosisResult> {
+    this.permissionGuard.assert(actorRole, "permissions.manage");
+
+    const manuscriptId = input.manuscriptId.trim();
+    const suites = await this.repository.listEvaluationSuites();
+    const sampleSets = await this.repository.listEvaluationSampleSets();
+    const sampleSetById = new Map(sampleSets.map((record) => [record.id, record]));
+    const sampleItemsBySetId = new Map<string, EvaluationSampleSetItemRecord[]>();
+    const matchedRuns: EvaluationRunRecord[] = [];
+    const matchedSampleContexts: HarnessManuscriptDiagnosisResult["sample_contexts"] = [];
+
+    for (const suite of suites) {
+      const runs = await this.repository.listEvaluationRunsBySuiteId(suite.id);
+      for (const run of runs) {
+        let matched = run.governed_source?.manuscript_id === manuscriptId;
+
+        if (run.sample_set_id) {
+          let sampleItems = sampleItemsBySetId.get(run.sample_set_id);
+          if (!sampleItems) {
+            sampleItems = await this.repository.listEvaluationSampleSetItemsBySampleSetId(
+              run.sample_set_id,
+            );
+            sampleItemsBySetId.set(run.sample_set_id, sampleItems);
+          }
+
+          const matchedItems = sampleItems.filter(
+            (item) => item.manuscript_id === manuscriptId,
+          );
+          if (matchedItems.length > 0) {
+            matched = true;
+            const sampleSet = sampleSetById.get(run.sample_set_id);
+            for (const item of matchedItems) {
+              matchedSampleContexts.push({
+                sample_set_id: run.sample_set_id,
+                sample_set_name: sampleSet?.name ?? run.sample_set_id,
+                sample_item_id: item.id,
+                reviewed_case_snapshot_id: item.reviewed_case_snapshot_id,
+                manuscript_type: item.manuscript_type,
+                risk_tags: item.risk_tags ? [...item.risk_tags] : undefined,
+              });
+            }
+          }
+        }
+
+        if (matched) {
+          matchedRuns.push(run);
+        }
+      }
+    }
+
+    const matchedRunIds = dedupePreserveOrder(matchedRuns.map((run) => run.id));
+    const evidence = (
+      await Promise.all(
+        matchedRuns.flatMap((run) =>
+          run.evidence_ids.map((evidenceId) =>
+            this.repository.findVerificationEvidenceById(evidenceId),
+          ),
+        ),
+      )
+    ).filter((record): record is VerificationEvidenceRecord => record != null);
+
+    return {
+      manuscript_id: manuscriptId,
+      status: matchedRunIds.length > 0 ? "hit" : "miss",
+      matched_run_ids: matchedRunIds,
+      matched_suite_ids: dedupePreserveOrder(matchedRuns.map((run) => run.suite_id)),
+      evidence,
+      sample_contexts: dedupeSampleContexts(matchedSampleContexts),
+    };
   }
 
   async seedGovernedExecutionRuns(
@@ -1350,6 +1554,143 @@ export class VerificationOpsService {
       outcome: input.outcome,
     });
   }
+
+  private async completeHarnessWorkflowRun(
+    actorRole: RoleKey,
+    input: {
+      mode: HarnessWorkflowRunResult["mode"];
+      run: EvaluationRunRecord;
+      evidenceLabel: string;
+      summary: string;
+    },
+  ): Promise<HarnessWorkflowRunResult> {
+    const evidence = await this.recordVerificationEvidence(actorRole, {
+      kind: "artifact",
+      label: input.evidenceLabel,
+    });
+    const completed = await this.completeEvaluationRun(actorRole, {
+      runId: input.run.id,
+      status: "passed",
+      evidenceIds: [evidence.id],
+    });
+    const finalized = await this.finalizeEvaluationRun(actorRole, completed.id);
+
+    return {
+      mode: input.mode,
+      run: completed,
+      evidence: [evidence],
+      finalized,
+      summary: input.summary,
+    };
+  }
+}
+
+function normalizeHarnessBindingLane(
+  binding: FrozenExperimentBindingInput,
+  lane: FrozenExperimentBindingInput["lane"],
+): FrozenExperimentBindingInput {
+  return {
+    ...binding,
+    lane,
+  };
+}
+
+function freezeSingleCandidateBinding(
+  binding: FrozenExperimentBindingInput,
+): FrozenExperimentBindingRecord {
+  return {
+    lane: "candidate",
+    ...withOptionalFrozenBindingField(
+      "execution_profile_id",
+      optionalString(binding.executionProfileId),
+    ),
+    ...withOptionalFrozenBindingField(
+      "runtime_binding_id",
+      optionalString(binding.runtimeBindingId),
+    ),
+    ...withOptionalFrozenBindingField(
+      "model_routing_policy_version_id",
+      optionalString(binding.modelRoutingPolicyVersionId),
+    ),
+    ...withOptionalFrozenBindingField(
+      "retrieval_preset_id",
+      optionalString(binding.retrievalPresetId),
+    ),
+    ...withOptionalFrozenBindingField(
+      "manual_review_policy_id",
+      optionalString(binding.manualReviewPolicyId),
+    ),
+    model_id: requireFrozenBindingString(binding.modelId, "candidate.modelId"),
+    runtime_id: requireFrozenBindingString(binding.runtimeId, "candidate.runtimeId"),
+    prompt_template_id: requireFrozenBindingString(
+      binding.promptTemplateId,
+      "candidate.promptTemplateId",
+    ),
+    skill_package_ids: dedupePreserveOrder(
+      binding.skillPackageIds.map((value) =>
+        requireFrozenBindingString(value, "candidate.skillPackageIds[]"),
+      ),
+    ),
+    ...withOptionalFrozenBindingField(
+      "quality_package_version_ids",
+      binding.qualityPackageVersionIds
+        ? dedupePreserveOrder(
+            binding.qualityPackageVersionIds.map((value) =>
+              requireFrozenBindingString(
+                value,
+                "candidate.qualityPackageVersionIds[]",
+              ),
+            ),
+          )
+        : undefined,
+    ),
+    module_template_id: requireFrozenBindingString(
+      binding.moduleTemplateId,
+      "candidate.moduleTemplateId",
+    ),
+  };
+}
+
+function requireFrozenBindingString(value: string, label: string): string {
+  if (value.trim().length === 0) {
+    throw new EvaluationExperimentBindingError(
+      `Frozen experiment binding field ${label} is required.`,
+    );
+  }
+
+  return value.trim();
+}
+
+function optionalString(value: string | undefined): string | undefined {
+  return value?.trim() || undefined;
+}
+
+function withOptionalFrozenBindingField<
+  TKey extends keyof FrozenExperimentBindingRecord,
+>(
+  key: TKey,
+  value: FrozenExperimentBindingRecord[TKey] | undefined,
+): Partial<FrozenExperimentBindingRecord> {
+  return value === undefined ? {} : { [key]: value };
+}
+
+function dedupeSampleContexts(
+  contexts: HarnessManuscriptDiagnosisResult["sample_contexts"],
+): HarnessManuscriptDiagnosisResult["sample_contexts"] {
+  const seen = new Set<string>();
+  const result: HarnessManuscriptDiagnosisResult["sample_contexts"] = [];
+
+  for (const context of contexts) {
+    const key = `${context.sample_set_id}:${context.sample_item_id}`;
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push(context);
+  }
+
+  return result;
 }
 
 function createVerificationOpsTransactionManager(

@@ -1,6 +1,7 @@
 import {
   WORKBENCH_SHELL_TARGETS,
   type WorkbenchEntry,
+  type WorkbenchHarnessMode,
   type WorkbenchHarnessSection,
   type WorkbenchId,
   type WorkbenchSettingsSection,
@@ -19,6 +20,7 @@ export interface WorkbenchNavigationTarget {
   workbenchId: WorkbenchId;
   settingsSection?: WorkbenchSettingsSection;
   harnessSection?: WorkbenchHarnessSection;
+  harnessMode?: WorkbenchHarnessMode;
 }
 
 export interface WorkbenchNavigationItem {
@@ -129,6 +131,9 @@ export function getWorkbenchNavigationTargetKey(
   if (target.harnessSection) {
     params.set("harnessSection", target.harnessSection);
   }
+  if (target.harnessMode) {
+    params.set("harnessMode", target.harnessMode);
+  }
 
   const query = params.toString();
   return `${target.workbenchId}${query ? `?${query}` : ""}`;
@@ -153,6 +158,7 @@ function buildNavigationItem(
     workbenchId: target.workbenchId,
     settingsSection: target.settingsSection,
     harnessSection: target.harnessSection,
+    harnessMode: target.harnessMode,
   };
 
   return {

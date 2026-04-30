@@ -31,6 +31,7 @@ import type {
   HarnessEnvironmentRollbackSnapshotRecord,
 } from "./harness-control-plane-rollback-repository.ts";
 import { InMemoryHarnessControlPlaneRollbackRepository } from "./in-memory-harness-control-plane-rollback-repository.ts";
+import type { VerificationOpsRepository } from "../verification-ops/verification-ops-repository.ts";
 
 export interface ResolveHarnessEnvironmentPreviewInput {
   module: TemplateModule;
@@ -99,6 +100,12 @@ export interface HarnessControlPlaneServiceOptions {
     ) => Promise<NonNullable<HarnessEnvironmentRecord["manual_review_policy"]>>;
   };
   rollbackHistoryRepository?: HarnessControlPlaneRollbackRepository;
+  verificationOpsRepository?: Pick<
+    VerificationOpsRepository,
+    | "findEvaluationRunById"
+    | "findEvaluationEvidencePackById"
+    | "findLatestEvaluationPromotionRecommendationByRunId"
+  >;
 }
 
 interface ScopeKeyInput {
@@ -120,6 +127,13 @@ export class HarnessEnvironmentScopeMismatchError extends Error {
   }
 }
 
+export class HarnessActivationEvidenceGateError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "HarnessActivationEvidenceGateError";
+  }
+}
+
 export class HarnessControlPlaneService {
   private readonly executionGovernanceService: HarnessControlPlaneServiceOptions["executionGovernanceService"];
   private readonly runtimeBindingService: HarnessControlPlaneServiceOptions["runtimeBindingService"];
@@ -127,6 +141,7 @@ export class HarnessControlPlaneService {
   private readonly retrievalPresetService: HarnessControlPlaneServiceOptions["retrievalPresetService"];
   private readonly manualReviewPolicyService: HarnessControlPlaneServiceOptions["manualReviewPolicyService"];
   private readonly rollbackHistoryRepository: HarnessControlPlaneRollbackRepository;
+  private readonly verificationOpsRepository?: HarnessControlPlaneServiceOptions["verificationOpsRepository"];
 
   constructor(options: HarnessControlPlaneServiceOptions) {
     this.executionGovernanceService = options.executionGovernanceService;
@@ -137,6 +152,7 @@ export class HarnessControlPlaneService {
     this.rollbackHistoryRepository =
       options.rollbackHistoryRepository ??
       new InMemoryHarnessControlPlaneRollbackRepository();
+    this.verificationOpsRepository = options.verificationOpsRepository;
   }
 
   async getActiveEnvironment(
@@ -176,6 +192,7 @@ export class HarnessControlPlaneService {
   ): Promise<HarnessEnvironmentRecord> {
     const activeEnvironment = await this.getActiveEnvironment(input);
     const targetEnvironment = await this.resolveEnvironment(input);
+    await this.assertActivationEvidenceReady(targetEnvironment);
     const rollbackSnapshot = await this.rollbackHistoryRepository.appendSnapshot({
       scope: toRollbackScope(input),
       snapshot: toRollbackSnapshot(activeEnvironment),
@@ -536,6 +553,60 @@ export class HarnessControlPlaneService {
     }
 
     await this.manualReviewPolicyService.archivePolicy(activePolicy.id, actorRole);
+  }
+
+  private async assertActivationEvidenceReady(
+    targetEnvironment: HarnessEnvironmentRecord,
+  ): Promise<void> {
+    if (!this.verificationOpsRepository) {
+      return;
+    }
+
+    const links = targetEnvironment.model_routing_policy_version.evidence_links;
+    if (links.length === 0) {
+      throw new HarnessActivationEvidenceGateError(
+        "Harness activation requires a recommended evaluation evidence link on the target routing version.",
+      );
+    }
+
+    for (const link of links) {
+      const runId =
+        link.kind === "evaluation_run"
+          ? link.id
+          : link.kind === "evidence_pack"
+            ? await this.resolveRunIdFromEvidencePack(link.id)
+            : null;
+      if (!runId) {
+        continue;
+      }
+
+      const run = await this.verificationOpsRepository.findEvaluationRunById(runId);
+      if (!run) {
+        continue;
+      }
+
+      const recommendation =
+        await this.verificationOpsRepository.findLatestEvaluationPromotionRecommendationByRunId(
+          run.id,
+        );
+      if (recommendation?.status === "recommended") {
+        return;
+      }
+    }
+
+    throw new HarnessActivationEvidenceGateError(
+      "Harness activation requires the linked evaluation run to have a recommended evidence pack.",
+    );
+  }
+
+  private async resolveRunIdFromEvidencePack(
+    evidencePackId: string,
+  ): Promise<string | null> {
+    const evidencePack =
+      await this.verificationOpsRepository?.findEvaluationEvidencePackById(
+        evidencePackId,
+      );
+    return evidencePack?.experiment_run_id ?? null;
   }
 
   private assertExecutionProfileScope(

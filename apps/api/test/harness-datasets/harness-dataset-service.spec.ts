@@ -165,6 +165,93 @@ test("harness dataset governance creates gold-set families, versions, and publis
   assert.equal(publishedVersion.body.status, "published");
 });
 
+test("harness dataset governance can copy a published validation sample set back to an editable draft", async () => {
+  const { api } = createHarnessDatasetGovernanceHarness();
+
+  const family = await api.createGoldSetFamily({
+    actorRole: "admin",
+    input: {
+      name: "Editing reusable samples",
+      scope: {
+        module: "editing",
+        manuscriptTypes: ["clinical_study"],
+        measureFocus: "conformance",
+      },
+    },
+  });
+  const rubric = await api.publishRubricDefinition({
+    actorRole: "admin",
+    rubricDefinitionId:
+      (
+        await api.createRubricDefinition({
+          actorRole: "admin",
+          input: {
+            name: "Editing conformance rubric",
+            scope: {
+              module: "editing",
+              manuscriptTypes: ["clinical_study"],
+            },
+            scoringDimensions: [
+              {
+                key: "conformance",
+                label: "Conformance",
+                weight: 1,
+              },
+            ],
+            createdBy: "admin-1",
+          },
+        })
+      ).body.id,
+    input: {
+      publishedBy: "admin-1",
+    },
+  });
+  const published = await api.publishGoldSetVersion({
+    actorRole: "admin",
+    goldSetVersionId:
+      (
+        await api.createGoldSetVersion({
+          actorRole: "admin",
+          input: {
+            familyId: family.body.id,
+            rubricDefinitionId: rubric.body.id,
+            createdBy: "admin-1",
+            items: [
+              {
+                sourceKind: "reviewed_case_snapshot",
+                sourceId: "snapshot-1",
+                manuscriptId: "manuscript-1",
+                manuscriptType: "clinical_study",
+                deidentificationPassed: true,
+                humanReviewed: true,
+              },
+            ],
+          },
+        })
+      ).body.id,
+    input: {
+      publishedBy: "admin-1",
+    },
+  });
+
+  const copied = await api.copyGoldSetVersionToDraft({
+    actorRole: "admin",
+    goldSetVersionId: published.body.id,
+    input: {
+      createdBy: "admin-2",
+      publicationNotes: "Edit copy for next release.",
+    },
+  });
+
+  assert.equal(copied.status, 201);
+  assert.equal(copied.body.status, "draft");
+  assert.equal(copied.body.family_id, family.body.id);
+  assert.equal(copied.body.version_no, 2);
+  assert.equal(copied.body.item_count, 1);
+  assert.equal(copied.body.created_by, "admin-2");
+  assert.equal(copied.body.publication_notes, "Edit copy for next release.");
+});
+
 test("harness dataset governance only publishes deidentified human-reviewed versions and archived history stays immutable", async () => {
   const { api } = createHarnessDatasetGovernanceHarness();
 

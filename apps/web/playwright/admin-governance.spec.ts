@@ -8,53 +8,49 @@ const abstractObjectiveSource = "\u6458\u8981 \u76ee\u7684";
 const abstractObjectiveNormalized = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09";
 const journalObjectiveNormalized = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09\uff1a";
 
-test("admin console exposes the current governance entry cards and can hand off to harness", async ({
+test("management navigation exposes three direct entries and can hand off to harness", async ({
   page,
   request,
 }) => {
   await loginAsDemoUser(request, "dev.admin");
 
-  await page.goto("/#admin-console", {
+  await page.goto("/#screening", {
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByRole("heading", { name: "管理总览" })).toBeVisible();
-  await expect(page.locator("body")).toContainText("AI 接入");
-  await expect(page.locator("body")).toContainText("账号与权限");
-  await expect(page.locator("body")).toContainText("Harness 控制");
-  await expect(page.locator("body")).toContainText("规则中心");
+  await expect(page.getByRole("heading", { name: "管理区" })).toBeVisible();
+  await expect(page.locator("body")).toContainText("3 项");
+  await expect(page.getByRole("button", { name: "AI 接入" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Harness 控制" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "账号与权限" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "管理总览" })).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText("AI 接入快照");
+  await expect(page.locator("body")).not.toContainText("管理总览");
 
-  await expect(page.getByRole("link", { name: "进入 AI 接入" })).toHaveAttribute(
-    "href",
-    /#system-settings\?settingsSection=ai-access/,
+  await page.getByRole("button", { name: "Harness 控制" }).click();
+  await expect(page).toHaveURL(/#evaluation-workbench\?harnessMode=ab_acceptance/);
+  await expect(page.getByRole("heading", { name: "Harness 控制" })).toBeVisible();
+  await expect(page.locator(".harness-control-workbench")).toHaveAttribute(
+    "data-harness-mode",
+    "ab_acceptance",
   );
-  await expect(page.getByRole("link", { name: "进入账号与权限" })).toHaveAttribute(
-    "href",
-    /#system-settings\?settingsSection=accounts/,
-  );
-  await expect(page.getByRole("link", { name: "进入 Harness 控制" })).toHaveAttribute(
-    "href",
-    /#evaluation-workbench\?harnessSection=overview/,
-  );
-  await expect(page.getByRole("link", { name: "打开规则中心" })).toHaveCount(0);
-
-  await page.getByRole("link", { name: "进入 Harness 控制" }).click();
-  await expect(page).toHaveURL(/#evaluation-workbench\?harnessSection=overview/);
 });
 
-test("admin console keeps only landing snapshots and hands deeper harness work off to dedicated pages", async ({
+test("management navigation opens settings pages and keeps removed overview out of the shell", async ({
   page,
   request,
 }) => {
   await loginAsDemoUser(request, "dev.admin");
 
-  await page.goto("/#admin-console", {
+  await page.goto("/#screening", {
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByRole("heading", { name: "AI 接入快照" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Harness 运行体征" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "当前提醒" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "管理区" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "管理总览" })).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText("AI 接入快照");
+  await expect(page.locator("body")).not.toContainText("Harness 运行体征");
+  await expect(page.locator("body")).not.toContainText("当前提醒");
   await expect(page.getByRole("heading", { name: "治理资产快照" })).toHaveCount(0);
   await expect(page.getByText("查看治理资产明细")).toHaveCount(0);
   await expect(page.locator("body")).not.toContainText("Harness Control Plane");
@@ -62,8 +58,13 @@ test("admin console keeps only landing snapshots and hands deeper harness work o
   await expect(page.locator("body")).not.toContainText("Quality Lab");
   await expect(page.locator("body")).not.toContainText("Activation Gate");
 
-  await page.getByRole("link", { name: "评测运行" }).click();
-  await expect(page).toHaveURL(/#evaluation-workbench\?harnessSection=runs/);
+  await page.getByRole("button", { name: "AI 接入" }).click();
+  await expect(page).toHaveURL(/#system-settings\?settingsSection=ai-access/);
+  await expect(page.getByRole("heading", { name: "AI 接入" })).toBeVisible();
+
+  await page.getByRole("button", { name: "账号与权限" }).click();
+  await expect(page).toHaveURL(/#system-settings\?settingsSection=accounts/);
+  await expect(page.getByRole("heading", { name: "账号与权限" })).toBeVisible();
 });
 
 test("template governance authoring route opens the five-step rule wizard", async ({

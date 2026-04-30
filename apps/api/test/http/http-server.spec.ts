@@ -403,6 +403,142 @@ test("http server keeps harness dataset governance routes admin-only during publ
   }
 });
 
+test("http server exposes harness dataset draft, publish, archive, and copy routes to admins", async () => {
+  const { server, baseUrl } = await startServer();
+
+  try {
+    const adminCookie = await loginAsDemoUser(baseUrl, "dev.admin");
+    const jsonHeaders = {
+      Cookie: adminCookie,
+      "Content-Type": "application/json",
+    };
+
+    const familyResponse = await fetch(
+      `${baseUrl}/api/v1/harness-datasets/gold-set-families`,
+      {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          input: {
+            name: "HTTP validation samples",
+            scope: {
+              module: "editing",
+              manuscriptTypes: ["clinical_study"],
+              measureFocus: "conformance",
+            },
+          },
+        }),
+      },
+    );
+    const family = (await familyResponse.json()) as { id: string };
+
+    const rubricResponse = await fetch(`${baseUrl}/api/v1/harness-datasets/rubrics`, {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify({
+        input: {
+          name: "HTTP rubric",
+          scope: {
+            module: "editing",
+            manuscriptTypes: ["clinical_study"],
+          },
+          scoringDimensions: [
+            {
+              key: "conformance",
+              label: "Conformance",
+              weight: 1,
+            },
+          ],
+        },
+      }),
+    });
+    const rubric = (await rubricResponse.json()) as { id: string };
+    const publishedRubricResponse = await fetch(
+      `${baseUrl}/api/v1/harness-datasets/rubrics/${rubric.id}/publish`,
+      {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({}),
+      },
+    );
+    const publishedRubric = (await publishedRubricResponse.json()) as {
+      id: string;
+      status: string;
+    };
+
+    const versionResponse = await fetch(
+      `${baseUrl}/api/v1/harness-datasets/gold-set-versions`,
+      {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          input: {
+            familyId: family.id,
+            rubricDefinitionId: publishedRubric.id,
+            items: [
+              {
+                sourceKind: "reviewed_case_snapshot",
+                sourceId: "snapshot-http-1",
+                manuscriptId: "manuscript-http-1",
+                manuscriptType: "clinical_study",
+                deidentificationPassed: true,
+                humanReviewed: true,
+              },
+            ],
+          },
+        }),
+      },
+    );
+    const version = (await versionResponse.json()) as { id: string };
+
+    const publishResponse = await fetch(
+      `${baseUrl}/api/v1/harness-datasets/gold-set-versions/${version.id}/publish`,
+      {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({}),
+      },
+    );
+    const published = (await publishResponse.json()) as { status: string };
+
+    const copyResponse = await fetch(
+      `${baseUrl}/api/v1/harness-datasets/gold-set-versions/${version.id}/copy-draft`,
+      {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          input: {
+            publicationNotes: "HTTP copy",
+          },
+        }),
+      },
+    );
+    const copied = (await copyResponse.json()) as { id: string; status: string };
+
+    const archiveResponse = await fetch(
+      `${baseUrl}/api/v1/harness-datasets/gold-set-versions/${copied.id}/archive`,
+      {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({}),
+      },
+    );
+    const archived = (await archiveResponse.json()) as { status: string };
+
+    assert.equal(familyResponse.status, 201);
+    assert.equal(rubricResponse.status, 201);
+    assert.equal(publishedRubric.status, "published");
+    assert.equal(versionResponse.status, 201);
+    assert.equal(published.status, "published");
+    assert.equal(copyResponse.status, 201);
+    assert.equal(copied.status, "draft");
+    assert.equal(archiveResponse.status, 200);
+    assert.equal(archived.status, "archived");
+  } finally {
+    await stopServer(server);
+  }
+});
+
 test("http server grants knowledge reviewers scoped rule-center access without global admin power", async () => {
   const { server, baseUrl } = await startServer();
 

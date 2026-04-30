@@ -1,6 +1,7 @@
 import type { RoleKey } from "../../users/roles.ts";
 import type {
   ArchiveGoldSetVersionInput,
+  CopyGoldSetVersionToDraftInput,
   CreateGoldSetFamilyInput,
   CreateGoldSetVersionInput,
   CreateRubricDefinitionInput,
@@ -154,6 +155,25 @@ export function createHarnessDatasetApi(options: CreateHarnessDatasetApiOptions)
       return {
         status: 200,
         body: await harnessDatasetService.archiveGoldSetVersion(
+          actorRole,
+          goldSetVersionId,
+          input,
+        ),
+      };
+    },
+
+    async copyGoldSetVersionToDraft({
+      actorRole,
+      goldSetVersionId,
+      input,
+    }: {
+      actorRole: RoleKey;
+      goldSetVersionId: string;
+      input: CopyGoldSetVersionToDraftInput;
+    }): Promise<RouteResponse<HarnessGoldSetVersionRecord>> {
+      return {
+        status: 201,
+        body: await harnessDatasetService.copyGoldSetVersionToDraft(
           actorRole,
           goldSetVersionId,
           input,

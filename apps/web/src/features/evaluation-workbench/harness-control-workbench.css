@@ -1,0 +1,382 @@
+.harness-control-workbench {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  color: #152238;
+}
+
+.harness-control-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.harness-control-header-copy,
+.harness-control-active-strip,
+.harness-control-panel,
+.harness-control-result-card,
+.harness-control-operator-panel,
+.harness-control-advanced-panel {
+  border: 1px solid #d8e1ec;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgba(31, 45, 61, 0.06);
+}
+
+.harness-control-header-copy {
+  padding: 16px 18px;
+}
+
+.harness-control-breadcrumb {
+  margin: 0 0 8px;
+  color: #5b6b7e;
+  font-size: 0.86rem;
+}
+
+.harness-control-title-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.harness-control-title-row h2 {
+  margin: 0;
+  font-size: clamp(1.25rem, 2vw, 1.55rem);
+  line-height: 1.2;
+}
+
+.harness-control-title-row p {
+  margin: 6px 0 0;
+  max-width: 760px;
+  color: #526276;
+  line-height: 1.5;
+}
+
+.harness-control-advanced-toggle,
+.harness-control-mode-tab,
+.harness-control-primary-action,
+.harness-control-history-list button {
+  border: 1px solid #c8d4e2;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1f2f46;
+  cursor: pointer;
+  font: inherit;
+}
+
+.harness-control-advanced-toggle {
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  font-weight: 700;
+}
+
+.harness-control-active-strip {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 14px 16px;
+}
+
+.harness-control-active-strip span,
+.harness-control-metric span,
+.harness-control-setting-list dt,
+.harness-control-field span,
+.harness-control-history-controls span {
+  color: #617086;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.harness-control-active-strip strong {
+  color: #17253a;
+  font-size: 1rem;
+}
+
+.harness-control-active-strip small {
+  color: #526276;
+  line-height: 1.4;
+}
+
+.harness-control-mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(130px, 1fr));
+  gap: 8px;
+}
+
+.harness-control-mode-tab {
+  display: flex;
+  min-height: 58px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.harness-control-mode-tab span {
+  font-weight: 800;
+}
+
+.harness-control-mode-tab small {
+  margin-top: 3px;
+  color: #5c6b7d;
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+
+.harness-control-mode-tab.is-active {
+  border-color: #1f6feb;
+  background: #eef5ff;
+  color: #0f3f8a;
+}
+
+.harness-control-workspace {
+  display: grid;
+  grid-template-columns: minmax(340px, 400px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.harness-control-settings,
+.harness-control-results {
+  min-width: 0;
+}
+
+.harness-control-panel,
+.harness-control-result-card,
+.harness-control-operator-panel,
+.harness-control-advanced-panel {
+  padding: 14px;
+}
+
+.harness-control-section-heading {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 12px;
+}
+
+.harness-control-section-heading p {
+  margin: 0;
+  color: #1f6feb;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.harness-control-section-heading h3,
+.harness-control-result-card h3,
+.harness-control-card-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.harness-control-section-heading span,
+.harness-control-result-card p {
+  color: #526276;
+  line-height: 1.48;
+}
+
+.harness-control-setting-list,
+.harness-control-advanced-grid {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.harness-control-setting-list div,
+.harness-control-advanced-grid div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.harness-control-setting-list dd,
+.harness-control-advanced-grid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #1c2a3e;
+  line-height: 1.35;
+}
+
+.harness-control-field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.harness-control-field input,
+.harness-control-history-controls select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #cbd6e4;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+}
+
+.harness-control-readiness {
+  display: grid;
+  gap: 4px;
+  margin: 12px 0;
+  border: 1px solid #d9e6f7;
+  border-radius: 8px;
+  background: #f7fbff;
+  padding: 10px;
+}
+
+.harness-control-readiness span {
+  color: #4f5f72;
+  line-height: 1.4;
+}
+
+.harness-control-primary-action {
+  width: 100%;
+  margin-top: 2px;
+  border-color: #1f6feb;
+  background: #1f6feb;
+  color: #ffffff;
+  padding: 10px 12px;
+  font-weight: 800;
+}
+
+.harness-control-primary-action:disabled {
+  border-color: #c7d1de;
+  background: #edf1f5;
+  color: #6d7b8c;
+  cursor: not-allowed;
+}
+
+.harness-control-result-mode {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.harness-control-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.harness-control-metric {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid #d8e1ec;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.harness-control-metric strong {
+  overflow-wrap: anywhere;
+  color: #17253a;
+  font-size: 1rem;
+}
+
+.harness-control-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.harness-control-history-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  border: 1px solid #d8e1ec;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.harness-control-history-controls label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.harness-control-history-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.harness-control-history-list button {
+  display: grid;
+  width: 100%;
+  gap: 4px;
+  padding: 10px;
+  text-align: left;
+}
+
+.harness-control-history-list button.is-selected {
+  border-color: #1f6feb;
+  background: #f2f7ff;
+}
+
+.harness-control-history-list small {
+  color: #526276;
+  line-height: 1.35;
+}
+
+.harness-control-operator-panel,
+.harness-control-advanced-panel {
+  margin-top: 2px;
+}
+
+.harness-control-error,
+.harness-control-status {
+  margin: 10px 0 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.harness-control-error {
+  background: #fff2f2;
+  color: #9b1c1c;
+}
+
+.harness-control-status {
+  background: #f0f7ff;
+  color: #164b8f;
+}
+
+@media (max-width: 1100px) {
+  .harness-control-header,
+  .harness-control-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .harness-control-mode-tabs {
+    grid-template-columns: repeat(3, minmax(140px, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .harness-control-title-row {
+    flex-direction: column;
+  }
+
+  .harness-control-mode-tabs {
+    display: flex;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .harness-control-mode-tab {
+    min-width: 150px;
+  }
+
+  .harness-control-metrics,
+  .harness-control-history-controls {
+    grid-template-columns: 1fr;
+  }
+}
