@@ -402,7 +402,7 @@ export function KnowledgeReviewWorkbenchPage({
               审核角色：{formatActorRole(actorRole)}
             </span>
             <span className="knowledge-review-summary-chip">
-              当前资产：{effectiveSelectedItem?.asset_id ?? "等待选择"}
+              当前知识：{effectiveSelectedItem?.asset_id ?? "等待选择"}
             </span>
             <span className="knowledge-review-summary-chip">
               当前对象：{effectiveSelectedItem?.revision_id ?? "等待选择"}

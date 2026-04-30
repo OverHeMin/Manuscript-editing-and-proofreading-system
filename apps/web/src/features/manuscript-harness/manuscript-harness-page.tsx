@@ -191,7 +191,7 @@ export function ManuscriptHarnessPage({
             <div className="manuscript-workbench-panel-heading">
               <div>
                 <h3>打开稿件矩阵</h3>
-                <p>输入稿件编号后读取后端派生的只读 Harness 控制结果。</p>
+                <p>输入稿件编号后读取后端派生的只读验证结果。</p>
               </div>
             </div>
             <div className="manuscript-workbench-panel-body">

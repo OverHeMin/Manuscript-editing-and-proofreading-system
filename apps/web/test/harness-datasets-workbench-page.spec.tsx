@@ -240,7 +240,7 @@ test("harness datasets workbench page renders a loading state for server-side sh
     />,
   );
 
-  assert.match(markup, /Harness 控制 \/ 验证样本集/);
+  assert.match(markup, /验证样本集/);
   assert.match(markup, /正在载入验证样本集草稿、已发布版本与评分规则关联/u);
 });
 
@@ -271,11 +271,11 @@ test("harness datasets workbench page can render in an embedded harness-owned mo
 test("harness datasets workbench page renders curation queue, published exports, and provenance detail", () => {
   const markup = renderLoadedPage();
 
-  assert.match(markup, /Harness 控制/);
+  assert.match(markup, /验证治理/);
   assert.match(markup, /管理区/);
   assert.match(markup, /workbench-core-strip is-secondary/);
-  assert.match(markup, /Harness 控制 \/ 验证样本集/);
-  assert.match(markup, /统一整理验证样本、评分规则与本地导出/u);
+  assert.match(markup, /验证治理/);
+  assert.match(markup, /统一整理验证样本、评分规则和本地导出/u);
   assert.match(markup, /验证样本集草稿/);
   assert.match(markup, /已发布版本/);
   assert.match(markup, /Proofreading 验证样本集/);

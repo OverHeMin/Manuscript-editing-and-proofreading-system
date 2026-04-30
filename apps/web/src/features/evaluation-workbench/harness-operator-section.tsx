@@ -310,7 +310,7 @@ export function HarnessOperatorSection({
         : nextManuscriptTypes[0] ?? null;
 
     if (preferredManuscriptType == null) {
-      setErrorMessage("当前模块还没有配置 Harness 范围。");
+      setErrorMessage("当前模块还没有配置验证范围。");
       return;
     }
 
@@ -320,7 +320,7 @@ export function HarnessOperatorSection({
   function handleManuscriptTypeChange(nextManuscriptType: ManuscriptType) {
     const activeModule = scopeProfile?.module ?? overview?.executionProfiles[0]?.module ?? null;
     if (activeModule == null) {
-      setErrorMessage("当前还没有可用的 Harness 范围。");
+      setErrorMessage("当前还没有可用的验证范围。");
       return;
     }
 
@@ -340,7 +340,7 @@ export function HarnessOperatorSection({
       preferredTemplateFamilyId: scopeProfile?.template_family_id ?? null,
     });
     if (nextProfile == null) {
-      setErrorMessage("当前模块和稿件类型组合还没有配置 Harness 范围。");
+      setErrorMessage("当前模块和稿件类型组合还没有配置验证范围。");
       return;
     }
 
@@ -435,7 +435,7 @@ export function HarnessOperatorSection({
       setScope(nextScope);
       setSelection(resolveSelectionFromScope(nextScope));
       setPreview(null);
-      setStatusMessage("当前 Harness 范围已激活候选环境。");
+      setStatusMessage("当前验证范围已激活候选环境。");
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -468,7 +468,7 @@ export function HarnessOperatorSection({
       setScope(nextScope);
       setSelection(resolveSelectionFromScope(nextScope));
       setPreview(null);
-      setStatusMessage("当前 Harness 范围已回滚到现行生效环境。");
+      setStatusMessage("当前验证范围已回滚到现行生效环境。");
     } catch (error) {
       setErrorMessage(toErrorMessage(error));
     } finally {
@@ -480,7 +480,7 @@ export function HarnessOperatorSection({
     return (
       <article className="evaluation-workbench-panel">
         <div className="evaluation-workbench-panel-header">
-          <h3>Harness 控制区</h3>
+          <h3>验证治理区</h3>
           <span>加载中</span>
         </div>
         <p className="evaluation-workbench-empty">
@@ -498,7 +498,7 @@ export function HarnessOperatorSection({
       {showScopeSummary ? (
         <article className="evaluation-workbench-panel evaluation-workbench-operator-summary">
           <div className="evaluation-workbench-panel-header">
-            <h3>Harness 控制范围</h3>
+            <h3>验证范围</h3>
             <span>当前边界</span>
           </div>
           <div className="evaluation-workbench-history-compare">
@@ -981,5 +981,5 @@ function toErrorMessage(error: unknown) {
     return error.message;
   }
 
-  return "当前无法更新 Harness 控制区。";
+  return "当前无法更新验证治理区。";
 }

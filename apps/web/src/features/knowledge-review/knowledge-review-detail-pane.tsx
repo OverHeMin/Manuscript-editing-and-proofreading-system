@@ -54,13 +54,13 @@ export function KnowledgeReviewDetailPane({
       <div className="knowledge-review-detail-scroll" data-scroll-owner="detail">
         {item == null ? (
           <div className="knowledge-review-empty-state knowledge-review-neutral-empty">
-            请选择一条待审条目，以加载对应资产、审核上下文与审核历史。
+            请选择一条待审条目，以加载对应知识、审核上下文与审核历史。
           </div>
         ) : (
           <>
             <dl className="knowledge-review-detail-grid">
               <div>
-                <dt>资产 ID</dt>
+                <dt>知识 ID</dt>
                 <dd>{item.asset_id}</dd>
               </div>
               <div>

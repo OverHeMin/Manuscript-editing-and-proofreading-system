@@ -70,9 +70,9 @@ test("rule center overview renders approved A-layout shell", () => {
   assert.match(markup, /\u67e5\u770b\u5f85\u5ba1\u6838/u);
   assert.match(markup, /\u5f85\u5904\u7406\u4e8b\u9879/u);
   assert.match(markup, /\u7edf\u4e00\u590d\u6838\u5f85\u5904\u7406/u);
-  assert.match(markup, /Harness \u5f85\u9a8c\u8bc1/u);
-  assert.match(markup, /Harness \u5df2\u901a\u8fc7/u);
-  assert.match(markup, /Harness \u672a\u901a\u8fc7/u);
+  assert.match(markup, /待验证/u);
+  assert.match(markup, /已通过 4 条/u);
+  assert.match(markup, /未通过 1 条/u);
   assert.match(markup, /\u89c4\u5219\u8349\u7a3f\u5f85\u5199\u56de/u);
   assert.match(markup, /\u89c4\u5219\u8349\u7a3f\u5df2\u5199\u56de/u);
   assert.match(markup, /\u6700\u8fd1\u5305\s*\/\s*\u6a21\u677f\u66f4\u65b0/u);
@@ -204,7 +204,7 @@ test("rule center overview bridges retrieval quality into governed evidence word
   assert.match(markup, /\u4e0a\u4e0b\u6587\u7cbe\u786e\u7387 0\.68/u);
   assert.match(markup, /\u4e0a\u4e0b\u6587\u53ec\u56de\u7387 0\.62/u);
   assert.match(markup, /data-governance-metric-kind="harness"/u);
-  assert.match(markup, /Harness \u5f85\u9a8c\u8bc1/u);
-  assert.match(markup, /Harness \u5df2\u901a\u8fc7 4 \u6761/u);
-  assert.match(markup, /Harness \u672a\u901a\u8fc7 1 \u6761/u);
+  assert.match(markup, /待验证/u);
+  assert.match(markup, /已通过 4 条/u);
+  assert.match(markup, /未通过 1 条/u);
 });

@@ -887,7 +887,7 @@ function buildAdminGovernanceLandingOverview(input: {
   if (
     input.harnessAdapterHealth.some((record) => record.latest_degradation_reason)
   ) {
-    warnings.push("Harness 适配器存在降级记录，建议进入 Harness 控制页进一步查看。");
+    warnings.push("验证适配器存在降级记录，建议进入验证治理页进一步查看。");
   }
 
   return {

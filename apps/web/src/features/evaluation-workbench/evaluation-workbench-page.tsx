@@ -138,7 +138,7 @@ export function EvaluationWorkbenchPage({
       <article className="workbench-placeholder" role="alert">
         <h2>{`${landingCopy.title} 暂不可用`}</h2>
         <p>{landingCopy.summary}</p>
-        <p>{errorMessage ?? "暂时无法加载 Harness 控制数据。"}</p>
+        <p>{errorMessage ?? "暂时无法加载验证治理数据。"}</p>
       </article>
     );
   }
@@ -472,7 +472,7 @@ function EvaluationWorkbenchOperationsView(props: {
     <section className="evaluation-workbench evaluation-workbench-single-page">
       <header className="evaluation-workbench-hero">
         <div className="evaluation-workbench-hero-copy">
-          <p className="evaluation-workbench-eyebrow">Harness 控制</p>
+          <p className="evaluation-workbench-eyebrow">验证治理</p>
           <h2>{props.sectionTitle}</h2>
           <p>{props.sectionSummary}</p>
           <WorkbenchCoreStrip variant="secondary" />
@@ -1368,20 +1368,20 @@ function resolveEvaluationLandingCopy(section: WorkbenchHarnessSection): {
 } {
   if (section === "runs") {
     return {
-      title: "Harness 运行记录",
+      title: "验证运行记录",
       summary: "默认聚焦最近运行队列与最终建议变化。",
     };
   }
 
   if (section === "datasets") {
     return {
-      title: "Harness 数据集视图",
+      title: "验证样本集视图",
       summary: "默认聚焦数据集快照与导出链路核对。",
     };
   }
 
   return {
-    title: "Harness 控制概览",
+    title: "验证治理概览",
     summary: "默认聚焦总体评测状态与风险分布。",
   };
 }
@@ -1832,7 +1832,7 @@ export function EvaluationWorkbenchFinalizePanel(props: {
             />
           </Field>
         ) : (
-          <Field label="制品资产 ID" wide>
+          <Field label="证据文件 ID" wide>
             <input
               value={props.finalizeForm.artifactAssetId}
               onChange={(event) => props.onArtifactAssetIdChange(event.target.value)}
@@ -3168,7 +3168,7 @@ function createHistorySearchHaystack(
 function toErrorMessage(error: unknown) {
   if (error instanceof BrowserHttpClientError) return error.message;
   if (error instanceof Error && error.message.trim()) return error.message;
-  return "Harness 控制发生了未预期错误。";
+  return "验证治理发生了未预期错误。";
 }
 
 function formatHarnessWorkflowDecision(value: string) {
