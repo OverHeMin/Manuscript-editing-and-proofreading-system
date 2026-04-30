@@ -914,6 +914,39 @@
   gap: 0.6rem;
 }
 
+.knowledge-library-rich-content-editor__table-evidence {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border: 1px solid #bfd0e0;
+  border-radius: 14px;
+  background: #f8fbff;
+}
+
+.knowledge-library-rich-content-editor__table-evidence-header strong,
+.knowledge-library-rich-content-editor__table-evidence-header span {
+  display: block;
+}
+
+.knowledge-library-rich-content-editor__table-evidence-header span {
+  color: #5b7084;
+  font-size: 0.92rem;
+}
+
+.table-evidence-dropzone {
+  display: grid;
+  gap: 0.55rem;
+  padding: 1rem;
+  border: 1px dashed #8da7c0;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.table-evidence-dropzone span {
+  color: #40556a;
+  font-weight: 700;
+}
+
 .knowledge-library-rich-content-editor__list {
   display: grid;
   gap: 0.85rem;
@@ -983,6 +1016,16 @@
 .knowledge-library-block-editor__hint {
   color: #61768a;
   font-size: 0.92rem;
+}
+
+.knowledge-library-block-editor__error {
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #e3a4a4;
+  border-radius: 12px;
+  background: #fff7f7;
+  color: #9d1f1f;
+  font-weight: 700;
 }
 
 .knowledge-library-attachment-field__dropzone {

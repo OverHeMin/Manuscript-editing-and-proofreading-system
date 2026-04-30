@@ -36,11 +36,17 @@ export function TableEvidenceRunToolbar({
 
   return (
     <section className="table-evidence-toolbar" aria-label="运行样式工具栏">
-      <button type="button" data-run-style="bold" onClick={() => commitStyle({ bold: true })}>
+      <button
+        type="button"
+        aria-label="加粗"
+        data-run-style="bold"
+        onClick={() => commitStyle({ bold: true })}
+      >
         B
       </button>
       <button
         type="button"
+        aria-label="斜体"
         data-run-style="italic"
         onClick={() => commitStyle({ italic: true })}
       >
@@ -48,6 +54,7 @@ export function TableEvidenceRunToolbar({
       </button>
       <button
         type="button"
+        aria-label="下划线"
         data-run-style="underline"
         onClick={() => commitStyle({ underline: true })}
       >
@@ -55,17 +62,19 @@ export function TableEvidenceRunToolbar({
       </button>
       <button
         type="button"
+        aria-label="上标"
         data-run-style="superscript"
         onClick={() => commitStyle({ superscript: true, script_position: "superscript" })}
       >
-        x2
+        x²
       </button>
       <button
         type="button"
+        aria-label="下标"
         data-run-style="subscript"
         onClick={() => commitStyle({ subscript: true, script_position: "subscript" })}
       >
-        x2
+        x₂
       </button>
     </section>
   );

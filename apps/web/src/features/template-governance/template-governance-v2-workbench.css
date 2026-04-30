@@ -84,6 +84,10 @@
   align-items: start;
 }
 
+.rule-center-v2--immersive .rule-center-v2__body {
+  grid-template-columns: minmax(132px, 168px) minmax(0, 1fr);
+}
+
 .rule-center-v2__rail,
 .rule-center-v2__work-area,
 .rule-center-v2__detail-panel {
@@ -138,6 +142,10 @@
 .rule-center-v2__detail-panel {
   background:
     linear-gradient(180deg, #ffffff, #f8fbfc);
+}
+
+.rule-center-v2__detail-panel--immersive {
+  max-height: none;
 }
 
 .rule-center-v2__queue-table {

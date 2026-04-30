@@ -300,19 +300,21 @@ test("rule wizard entry step removes confirmed packages and revision ids when ta
   });
 });
 
-test("rule wizard entry exposes table evidence only when a real draft revision id exists", () => {
+test("rule wizard entry exposes table evidence upload before a real draft revision exists", () => {
   const StepEntry = TemplateGovernanceRuleWizardStepEntry as unknown as (
     props: Record<string, unknown>,
   ) => React.ReactElement;
 
-  const unavailableMarkup = renderToStaticMarkup(
+  const localDraftMarkup = renderToStaticMarkup(
     <StepEntry
       value={createRuleWizardEntryFormState()}
       onChange={() => undefined}
       tableEvidenceClient={{ request: async () => ({ status: 200, body: {} }) }}
     />,
   );
-  assert.match(unavailableMarkup, /data-table-evidence-client-state="unavailable"/u);
+  assert.match(localDraftMarkup, /data-table-evidence-client-state="available"/u);
+  assert.match(localDraftMarkup, /data-table-evidence-upload-input="true"/u);
+  assert.match(localDraftMarkup, /预览确认区会在上传并选择表格后显示在这里/u);
 
   const availableMarkup = renderToStaticMarkup(
     <StepEntry
@@ -352,15 +354,17 @@ test("rule wizard entry keeps DOCX guidance separate from image upload", () => {
 
   assert.match(markup, /Word 表格证据/u);
   assert.match(markup, /上传 Word 表格证据/u);
+  assert.match(markup, /data-table-evidence-upload-input="true"/u);
+  assert.match(markup, /预览确认区会在上传并选择表格后显示在这里/u);
   assert.match(markup, /图片入口只接收图片/u);
   assert.match(markup, /请点击“Word 表格证据”上传 \.docx/u);
 });
 
-test("rule wizard shell wires the default table evidence client when entry has a draft revision id", () => {
+test("rule wizard shell wires the default table evidence client before entry has a draft revision id", () => {
   const Wizard = TemplateGovernanceRuleWizard as unknown as (
     props: Record<string, unknown>,
   ) => React.ReactElement;
-  const unavailableMarkup = renderToStaticMarkup(
+  const localDraftMarkup = renderToStaticMarkup(
     <Wizard state={{ mode: "create", step: "entry", dirty: true }} />,
   );
   const availableMarkup = renderToStaticMarkup(
@@ -374,7 +378,8 @@ test("rule wizard shell wires the default table evidence client when entry has a
     />,
   );
 
-  assert.match(unavailableMarkup, /data-table-evidence-client-state="unavailable"/u);
+  assert.match(localDraftMarkup, /data-table-evidence-client-state="available"/u);
+  assert.match(localDraftMarkup, /data-table-evidence-upload-input="true"/u);
   assert.match(availableMarkup, /data-table-evidence-client-state="available"/u);
 });
 

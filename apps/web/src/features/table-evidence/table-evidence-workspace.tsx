@@ -138,6 +138,7 @@ export function TableEvidenceWorkspace({
   return (
     <section
       className="table-evidence-workspace"
+      data-table-evidence-workspace-layout="responsive"
       data-asset-id={asset.id}
       data-revision-id={revision.id}
       data-view-mode={viewMode}
@@ -203,21 +204,25 @@ export function TableEvidenceWorkspace({
 
       <div className="table-evidence-workspace-grid">
         <main className="table-evidence-main-pane">
-          <TableEvidenceRunToolbar cell={selectedCell} onOperation={appendOperation} />
-          <TableEvidenceStructureToolbar cell={selectedCell} />
-          {viewMode === "diff" ? (
-            <TableEvidenceDiffView
-              correctedSnapshot={correctedSnapshot}
-              sourceSnapshot={revision.source_snapshot}
-            />
-          ) : (
-            <TableEvidenceRenderer
-              onSelectCell={setSelectedCellId}
-              selectedCellId={selectedCellId}
-              showInvisibleCharacters={showInvisibleCharacters}
-              snapshot={activeSnapshot}
-            />
-          )}
+          <div className="table-evidence-toolbar-stack" aria-label="表格修订工具">
+            <TableEvidenceRunToolbar cell={selectedCell} onOperation={appendOperation} />
+            <TableEvidenceStructureToolbar cell={selectedCell} />
+          </div>
+          <div className="table-evidence-preview-pane" aria-label="表格预览">
+            {viewMode === "diff" ? (
+              <TableEvidenceDiffView
+                correctedSnapshot={correctedSnapshot}
+                sourceSnapshot={revision.source_snapshot}
+              />
+            ) : (
+              <TableEvidenceRenderer
+                onSelectCell={setSelectedCellId}
+                selectedCellId={selectedCellId}
+                showInvisibleCharacters={showInvisibleCharacters}
+                snapshot={activeSnapshot}
+              />
+            )}
+          </div>
         </main>
         <aside className="table-evidence-side-pane">
           <TableEvidenceCellEditor cell={selectedCell} onOperation={appendOperation} />
@@ -455,13 +460,15 @@ function resolveViewModeLabel(mode: TableEvidenceWorkspaceViewMode): string {
 
 const TABLE_EVIDENCE_WORKSPACE_STYLE = `
 .table-evidence-workspace {
+  box-sizing: border-box;
+  container-type: inline-size;
   display: grid;
   gap: 12px;
+  min-width: 0;
 }
 
 .table-evidence-workspace-header,
-.table-evidence-workspace-controls,
-.table-evidence-toolbar {
+.table-evidence-workspace-controls {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
@@ -472,10 +479,34 @@ const TABLE_EVIDENCE_WORKSPACE_STYLE = `
   justify-content: space-between;
 }
 
+.table-evidence-workspace-header h2 {
+  font-size: 16px;
+  line-height: 1.3;
+  margin: 0;
+}
+
+.table-evidence-workspace-header p {
+  color: #5b6472;
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.table-evidence-segmented-control {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.table-evidence-segmented-control button {
+  min-height: 30px;
+  white-space: nowrap;
+}
+
 .table-evidence-workspace-grid {
+  align-items: start;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(420px, 1fr) minmax(280px, 340px);
 }
 
 .table-evidence-main-pane,
@@ -483,14 +514,94 @@ const TABLE_EVIDENCE_WORKSPACE_STYLE = `
   min-width: 0;
 }
 
+.table-evidence-main-pane {
+  display: grid;
+  gap: 10px;
+}
+
+.table-evidence-toolbar-stack {
+  background: #f8f9fb;
+  border: 1px solid #d6d9df;
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+}
+
+.table-evidence-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.table-evidence-toolbar button,
+.table-evidence-control-row button,
+.table-evidence-workspace-controls button {
+  min-height: 32px;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.table-evidence-toolbar span {
+  color: #5b6472;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.table-evidence-preview-pane {
+  background: #ffffff;
+  border: 1px solid #d6d9df;
+  border-radius: 6px;
+  box-sizing: border-box;
+  min-width: 0;
+  overflow: auto;
+  padding: 10px;
+}
+
+.table-evidence-renderer,
+.table-evidence-diff-view table {
+  border-collapse: collapse;
+  min-width: max(100%, 520px);
+}
+
+.table-evidence-renderer th,
+.table-evidence-renderer td,
+.table-evidence-diff-view th,
+.table-evidence-diff-view td {
+  border: 1px solid #c9ced6;
+  min-width: 88px;
+  overflow-wrap: anywhere;
+  padding: 6px 8px;
+  vertical-align: top;
+}
+
+.table-evidence-renderer .is-selected {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+}
+
+.table-evidence-diff-view {
+  min-width: 520px;
+}
+
+.table-evidence-diff-view h3 {
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+
 .table-evidence-side-pane {
   display: grid;
   gap: 10px;
 }
 
+.table-evidence-codepoint-inspector,
 .table-evidence-panel {
   border: 1px solid #d6d9df;
   border-radius: 6px;
+  box-sizing: border-box;
+  min-width: 0;
   padding: 10px;
 }
 
@@ -511,9 +622,78 @@ const TABLE_EVIDENCE_WORKSPACE_STYLE = `
   width: 100%;
 }
 
-@media (max-width: 900px) {
+.table-evidence-control-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.table-evidence-panel p,
+.table-evidence-panel dd,
+.table-evidence-panel dt,
+.table-evidence-codepoint-inspector dt,
+.table-evidence-codepoint-inspector dd {
+  overflow-wrap: anywhere;
+}
+
+.table-evidence-fidelity-details,
+.table-evidence-codepoint-inspector {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.table-evidence-fidelity-details > div,
+.table-evidence-codepoint-item {
+  display: grid;
+  gap: 2px;
+}
+
+.table-evidence-codepoint-inspector dt,
+.table-evidence-fidelity-details dt {
+  color: #374151;
+  font-weight: 600;
+}
+
+.table-evidence-codepoint-inspector dd,
+.table-evidence-fidelity-details dd {
+  color: #5b6472;
+  margin: 0;
+}
+
+@container (max-width: 1180px) {
   .table-evidence-workspace-grid {
     grid-template-columns: 1fr;
+  }
+
+  .table-evidence-side-pane {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 760px) {
+  .table-evidence-workspace-header,
+  .table-evidence-workspace-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .table-evidence-segmented-control {
+    width: 100%;
+  }
+
+  .table-evidence-segmented-control button {
+    flex: 1 1 0;
+  }
+
+  .table-evidence-side-pane {
+    grid-template-columns: 1fr;
+  }
+
+  .table-evidence-preview-pane {
+    padding: 8px;
   }
 }
 `;

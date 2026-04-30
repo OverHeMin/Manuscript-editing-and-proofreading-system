@@ -61,7 +61,6 @@ export function TemplateGovernanceRuleWizardStepEntry({
   draftRevisionId,
 }: TemplateGovernanceRuleWizardStepEntryProps) {
   const hasRealDraftRevisionId = isRealDraftRevisionId(draftRevisionId);
-  const enabledTableEvidenceClient = hasRealDraftRevisionId ? tableEvidenceClient : undefined;
   const enabledTableEvidencePickerItems = hasRealDraftRevisionId
     ? tableEvidencePickerItems
     : [];
@@ -182,7 +181,7 @@ export function TemplateGovernanceRuleWizardStepEntry({
 
           <section className="template-governance-card template-governance-ledger-section">
             <header className="template-governance-ledger-section-header">
-              <h2>图片 / 图表 / 截图</h2>
+              <h2>Word 表格 / 图片 / 补充证据</h2>
             </header>
             <KnowledgeLibraryRichContentEditor
               blocks={value.supplementalBlocks ?? []}
@@ -201,7 +200,7 @@ export function TemplateGovernanceRuleWizardStepEntry({
                 })
               }
               onUploadImage={onUploadImage}
-              tableEvidenceClient={enabledTableEvidenceClient}
+              tableEvidenceClient={tableEvidenceClient}
               tableEvidencePickerItems={enabledTableEvidencePickerItems}
               currentRevisionId={hasRealDraftRevisionId ? draftRevisionId : undefined}
               tableEvidenceBindingTargetType="rule_draft"
