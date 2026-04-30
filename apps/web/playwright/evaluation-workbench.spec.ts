@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 const apiBaseUrl =
   process.env.PLAYWRIGHT_API_BASE_URL ?? "http://127.0.0.1:3001";
@@ -30,6 +30,16 @@ test("admin can inspect the delta-first evaluation operations surface with harne
   page,
   request,
 }) => {
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      consoleErrors.push(message.text());
+    }
+  });
+  page.on("pageerror", (error) => {
+    consoleErrors.push(error.message);
+  });
+
   const prepared = await prepareSuiteWithFinalizedHistory(request, {
     label: `Phase 10C ${Date.now()}`,
   });
@@ -40,33 +50,32 @@ test("admin can inspect the delta-first evaluation operations surface with harne
   });
 
   await expect(page.getByRole("heading", { name: "Harness 控制概览" })).toBeVisible();
-  await expect(page.locator(".evaluation-workbench")).toContainText(localizedSuiteName);
-  await page.getByRole("button", { name: localizedSuiteName }).click();
-
   const workbench = page.locator(".evaluation-workbench");
-  const historyPanel = page
-    .locator(".evaluation-workbench-panel")
-    .filter({ has: page.getByRole("heading", { name: "历史结果" }) });
-  const comparisonPanel = page
-    .locator(".evaluation-workbench-panel")
-    .filter({ has: page.getByRole("heading", { name: "结果对照" }) });
-  const signalPanel = page
-    .locator(".evaluation-workbench-panel")
-    .filter({ has: page.getByRole("heading", { name: "套件信号摘要" }) });
-  const historyButtons = historyPanel.locator(".evaluation-workbench-history-list button");
-
-  await expect(workbench).toContainText("运行总览");
-  await expect(workbench).toContainText("变化分类：改善");
-  await expect(workbench).toContainText("本次变化判定为改善");
+  await waitForHarnessWorkbench(page, "ab_acceptance");
+  await expect(workbench).toContainText(localizedSuiteName);
+  await expect(workbench).toContainText("A/B 验收");
+  await expect(workbench).toContainText("运行 candidate vs active");
+  await expect(workbench).toContainText("命中/建议");
+  await expect(workbench).toContainText("可推荐");
+  await expect(workbench).toContainText("证据完整度");
   await expect(workbench).toContainText(
-    `默认对照：${prepared.latestRunId} 对 ${prepared.needsReviewRunId}`,
+    `最近运行 ${prepared.latestRunId} 相对 baseline ${prepared.needsReviewRunId} 的建议为 可推荐。`,
   );
-  await expect(workbench).toContainText("当前时间窗口展示 3 / 3 条已定稿运行");
+  await expect(workbench).toContainText("运行历史");
+  await expect(workbench).toContainText(prepared.latestRunId);
+  await expect(workbench).toContainText(prepared.needsReviewRunId);
+  await expect(workbench).toContainText(prepared.rejectedRunId);
 
-  await expect(comparisonPanel).toContainText(`对照基线：${prepared.needsReviewRunId}`);
-  await expect(comparisonPanel).toContainText("平均加权得分 97.0（共 1 条）");
-  await expect(comparisonPanel).toContainText("当前证据：最新浏览器验收");
-  await expect(comparisonPanel).toContainText("基线证据：待复核浏览器验收");
+  await page.getByRole("button", { name: "回归巡检" }).click();
+  await waitForHarnessWorkbench(page, "regression_inspection");
+  await expect(workbench).toContainText(localizedSuiteName);
+  await expect(workbench).toContainText("可见历史");
+  await expect(workbench).toContainText("回归提及");
+  await expect(workbench).toContainText("失败提及");
+  const runHistoryPanel = page
+    .locator(".harness-control-result-card")
+    .filter({ has: page.getByRole("heading", { name: "运行历史" }) });
+  const runHistoryButtons = runHistoryPanel.locator(".harness-control-history-list button");
 
   const historyWindow = page.getByLabel("时间窗口");
   await expect(historyWindow.locator("option")).toContainText([
@@ -90,9 +99,6 @@ test("admin can inspect the delta-first evaluation operations surface with harne
   await expect(historyWindow).toHaveValue("latest_10");
   await expect(historyWindow.locator("option:checked")).toHaveText("最近 10 次");
 
-  await expect(historyPanel).toContainText("默认最新运行");
-  await expect(historyPanel).toContainText("默认基线");
-
   const recommendationFilter = page.getByLabel("建议筛选");
   await expect(recommendationFilter.locator("option")).toContainText([
     "全部",
@@ -103,66 +109,73 @@ test("admin can inspect the delta-first evaluation operations surface with harne
   await expect(recommendationFilter.locator("option:checked")).toHaveText("全部");
   await recommendationFilter.selectOption("recommended");
   await expect(recommendationFilter.locator("option:checked")).toHaveText("可推荐");
-  await expect(historyPanel).toContainText(prepared.latestRunId);
-  await expect(historyPanel).not.toContainText(prepared.needsReviewRunId);
-  await expect(historyPanel).not.toContainText(prepared.rejectedRunId);
+  await expect(workbench).toContainText(prepared.latestRunId);
+  await expect(workbench).not.toContainText(prepared.needsReviewRunId);
+  await expect(workbench).not.toContainText(prepared.rejectedRunId);
 
   await recommendationFilter.selectOption("needs_review");
   await expect(recommendationFilter.locator("option:checked")).toHaveText("待复核");
-  await expect(historyPanel).toContainText(prepared.needsReviewRunId);
-  await expect(historyPanel).not.toContainText(prepared.latestRunId);
-  await expect(historyPanel).not.toContainText(prepared.rejectedRunId);
+  await expect(workbench).toContainText(prepared.needsReviewRunId);
+  await expect(workbench).not.toContainText(prepared.latestRunId);
+  await expect(workbench).not.toContainText(prepared.rejectedRunId);
 
   await recommendationFilter.selectOption("rejected");
   await expect(recommendationFilter.locator("option:checked")).toHaveText("已拒绝");
-  await expect(historyPanel).toContainText(prepared.rejectedRunId);
-  await expect(historyPanel).not.toContainText(prepared.latestRunId);
-  await expect(historyPanel).not.toContainText(prepared.needsReviewRunId);
+  await expect(workbench).toContainText(prepared.rejectedRunId);
+  await expect(workbench).not.toContainText(prepared.latestRunId);
+  await expect(workbench).not.toContainText(prepared.needsReviewRunId);
 
   await recommendationFilter.selectOption("all");
   await expect(recommendationFilter.locator("option:checked")).toHaveText("全部");
-  await expect(historyPanel).toContainText(prepared.latestRunId);
-  await expect(historyPanel).toContainText(prepared.needsReviewRunId);
-  await expect(historyPanel).toContainText(prepared.rejectedRunId);
+  await expect(workbench).toContainText(prepared.latestRunId);
+  await expect(workbench).toContainText(prepared.needsReviewRunId);
+  await expect(workbench).toContainText(prepared.rejectedRunId);
 
-  const sortMode = page.getByLabel("排序方式");
-  await expect(sortMode.locator("option")).toContainText([
-    "最新优先",
-    "失败优先",
-  ]);
+  const sortMode = page.getByLabel("排序");
+  await expect(sortMode.locator("option")).toContainText(["最新优先", "失败优先"]);
   await sortMode.selectOption("failures_first");
   await expect(sortMode).toHaveValue("failures_first");
   await expect(sortMode.locator("option:checked")).toHaveText("失败优先");
-  await expect(historyButtons.first()).toContainText(prepared.rejectedRunId);
+  await expect(runHistoryButtons.first()).toContainText(prepared.rejectedRunId);
 
   await sortMode.selectOption("newest");
   await expect(sortMode).toHaveValue("newest");
   await expect(sortMode.locator("option:checked")).toHaveText("最新优先");
-  await expect(historyButtons.first()).toContainText(prepared.latestRunId);
+  await expect(runHistoryButtons.first()).toContainText(prepared.latestRunId);
 
-  await expect(signalPanel).toContainText("建议分布");
-  await expect(signalPanel).toContainText("1 可推荐 / 1 待复核 / 1 已拒绝");
-  await expect(signalPanel).toContainText("证据包结果");
-  await expect(signalPanel).toContainText("复发信号");
-  await expect(signalPanel).toContainText("1 次回归提及 / 1 次失败提及 / 1 次运行被标记");
-
-  await expect(page.getByRole("heading", { name: "环境编辑" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "验证实验区" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "激活与回滚" })).toBeVisible();
-  await expect(page.locator("body")).not.toContainText("Environment Editor");
-  await expect(page.locator("body")).not.toContainText("Quality Lab");
-  await expect(page.locator("body")).not.toContainText("Activation Gate");
-  const launchButton = page.getByRole("button", { name: "发起候选验证" });
-  await expect(launchButton).toBeVisible();
-  await expect(launchButton).toBeDisabled();
-  await expect(workbench).toContainText("请先预览候选环境。");
+  await page.getByRole("button", { name: "发布门" }).click();
+  await waitForHarnessWorkbench(page, "release_gate");
+  await expect(workbench).toContainText("发布门摘要");
+  await expect(workbench).toContainText("当前证据");
+  await page.locator('[data-harness-primary-action="release_gate"]').click();
+  await expect(page.locator(".harness-control-operator-panel")).toContainText(
+    "候选预览、运行发起、激活与回滚",
+  );
   await page.getByRole("button", { name: "预览候选环境" }).click();
   await expect(workbench).toContainText(
     "当前候选环境与生效环境没有主差异，所选评测套件不能发起 A/B 验证。",
   );
   await expect(page.getByRole("button", { name: "激活候选环境" })).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("Environment Editor");
+  await expect(page.locator("body")).not.toContainText("Quality Lab");
+  await expect(page.locator("body")).not.toContainText("Activation Gate");
+
+  await page.getByRole("button", { name: "单稿诊断" }).click();
+  await waitForHarnessWorkbench(page, "single_manuscript_diagnosis");
+  await page.getByPlaceholder("输入 manuscript ID").fill("manuscript-demo-1");
+  await page.locator('[data-harness-primary-action="single_manuscript_diagnosis"]').click();
+  await expect(workbench).toContainText(/单稿诊断命中|当前诊断稿件：manuscript-demo-1/);
+
+  await page.getByRole("button", { name: "验证样本集" }).click();
+  await waitForHarnessWorkbench(page, "validation_sample_sets");
+  await expect(workbench).toContainText("验证样本集");
+  await expect(workbench).toContainText("已发布版本只读");
+  await page.locator('[data-harness-primary-action="validation_sample_sets"]').click();
+  await expect(workbench).toContainText("验证样本集已在右侧显示");
+
   await expect(page.getByRole("button", { name: "Complete And Finalize Run" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Finalize Recommendation" })).toHaveCount(0);
+  expect(consoleErrors).toEqual([]);
 });
 
 function localizeHarnessSurfaceName(name: string) {
@@ -171,6 +184,22 @@ function localizeHarnessSurfaceName(name: string) {
   }
 
   return name;
+}
+
+async function waitForHarnessWorkbench(
+  page: Page,
+  mode:
+    | "ab_acceptance"
+    | "regression_inspection"
+    | "release_gate"
+    | "single_manuscript_diagnosis"
+    | "validation_sample_sets",
+) {
+  await expect(page.locator(".workbench-placeholder")).toHaveCount(0);
+  await expect(page.locator(".harness-control-workbench")).toHaveAttribute(
+    "data-harness-mode",
+    mode,
+  );
 }
 
 async function prepareSuiteWithFinalizedHistory(

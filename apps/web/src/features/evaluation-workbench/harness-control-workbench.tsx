@@ -6,6 +6,7 @@ import type {
   AdminHarnessScopeViewModel,
   HarnessEnvironmentPreviewViewModel,
 } from "../admin-governance/admin-governance-controller.ts";
+import { formatHarnessSurfaceName } from "../admin-governance/harness-surface-copy.ts";
 import type { AuthRole } from "../auth/index.ts";
 import type { WorkbenchHarnessSection } from "../auth/workbench.ts";
 import { HarnessDatasetsWorkbenchPage } from "../harness-datasets/harness-datasets-workbench-page.tsx";
@@ -525,7 +526,7 @@ function ModeSettingsPanel(props: {
         </div>
         <div>
           <dt>评测套件</dt>
-          <dd>{selectedSuite ? selectedSuite.name : "暂无套件"}</dd>
+          <dd>{selectedSuite ? formatHarnessSurfaceName(selectedSuite.name) : "暂无套件"}</dd>
         </div>
         <div>
           <dt>验证样本集</dt>
@@ -595,6 +596,11 @@ function ModeResultsPanel(props: {
   initialDatasetsOverview?: HarnessDatasetsWorkbenchOverview | null;
   diagnosisManuscriptId: string;
 }) {
+  const visibleHistory = sortHarnessHistory(
+    filterHarnessHistory(props.overview.suiteOperations.visibleHistory, props.historyFilter),
+    props.historySortMode,
+  );
+
   if (props.mode === "validation_sample_sets") {
     return (
       <section className="evaluation-workbench-region evaluation-workbench-region-datasets is-emphasized harness-control-result-mode">
@@ -633,7 +639,7 @@ function ModeResultsPanel(props: {
           </p>
         </article>
         <HistoryList
-          entries={props.overview.suiteOperations.visibleHistory}
+          entries={visibleHistory}
           selectedRunId={props.selectedRun?.id ?? null}
           onSelectRun={props.onSelectRun}
         />
@@ -659,7 +665,7 @@ function ModeResultsPanel(props: {
           </p>
         </article>
         <HistoryList
-          entries={props.overview.suiteOperations.visibleHistory}
+          entries={visibleHistory}
           selectedRunId={props.selectedRun?.id ?? null}
           onSelectRun={props.onSelectRun}
         />
@@ -694,7 +700,7 @@ function ModeResultsPanel(props: {
           onSelectSuite={props.onSelectSuite}
         />
         <HistoryList
-          entries={props.overview.suiteOperations.visibleHistory}
+          entries={visibleHistory}
           selectedRunId={props.selectedRun?.id ?? null}
           onSelectRun={props.onSelectRun}
         />
@@ -719,12 +725,53 @@ function ModeResultsPanel(props: {
         </p>
       </article>
       <HistoryList
-        entries={props.overview.suiteOperations.visibleHistory}
+        entries={visibleHistory}
         selectedRunId={props.selectedRun?.id ?? null}
         onSelectRun={props.onSelectRun}
       />
     </section>
   );
+}
+
+function filterHarnessHistory(
+  entries: readonly EvaluationWorkbenchFinalizedRunHistoryEntry[],
+  filter: HarnessHistoryFilter,
+) {
+  if (filter === "all") {
+    return entries;
+  }
+
+  return entries.filter((entry) => entry.finalized.recommendation.status === filter);
+}
+
+function sortHarnessHistory(
+  entries: readonly EvaluationWorkbenchFinalizedRunHistoryEntry[],
+  sortMode: HarnessHistorySortMode,
+) {
+  if (sortMode !== "failures_first") {
+    return entries;
+  }
+
+  return [...entries].sort((left, right) => {
+    const severityDelta =
+      getHarnessRecommendationSeverity(left.finalized.recommendation.status) -
+      getHarnessRecommendationSeverity(right.finalized.recommendation.status);
+    if (severityDelta !== 0) {
+      return severityDelta;
+    }
+
+    const leftTime = Date.parse(left.run.finished_at ?? left.run.started_at);
+    const rightTime = Date.parse(right.run.finished_at ?? right.run.started_at);
+    return rightTime - leftTime;
+  });
+}
+
+function getHarnessRecommendationSeverity(
+  status: EvaluationWorkbenchFinalizedRunHistoryEntry["finalized"]["recommendation"]["status"],
+) {
+  if (status === "rejected") return 0;
+  if (status === "needs_review") return 1;
+  return 2;
 }
 
 function SuiteList(props: {
@@ -757,7 +804,7 @@ function SuiteList(props: {
               data-evaluation-suite-type={suite.suite_type}
               onClick={() => props.onSelectSuite(suite.id)}
             >
-              <strong>{suite.name}</strong>
+              <strong>{formatHarnessSurfaceName(suite.name)}</strong>
               <span>{formatSuiteTypeLabel(suite.suite_type)}</span>
             </button>
           </li>
@@ -801,7 +848,7 @@ function HistoryControls(props: {
           <option value="latest_10">最近 10 次</option>
           <option value="last_7_days">最近 7 天</option>
           <option value="last_30_days">最近 30 天</option>
-          <option value="all">全部套件历史</option>
+          <option value="all_suite">全部套件历史</option>
         </select>
       </label>
       <label>
