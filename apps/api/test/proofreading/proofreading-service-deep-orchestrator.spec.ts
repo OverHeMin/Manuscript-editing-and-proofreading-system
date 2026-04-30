@@ -9,6 +9,7 @@ test("governed proofreading draft uses deep orchestrator diagnostics by default"
   const harness = await seedMedicalQualityFixture();
   const proofreadingPassRunRepository = new InMemoryProofreadingPassRunRepository();
   const aiCalls: CreateProofreadingAiPlanInput[] = [];
+  let tableEvidenceCallCount = 0;
   const proofreadingService = new ProofreadingService({
     manuscriptRepository: harness.manuscriptRepository,
     assetRepository: harness.assetRepository,
@@ -129,6 +130,87 @@ test("governed proofreading draft uses deep orchestrator diagnostics by default"
         };
       },
     },
+    tableEvidenceCenter: {
+      async getOrCreateSnapshot(input: { manuscriptId: string; assetId: string }) {
+        tableEvidenceCallCount += 1;
+        return {
+          snapshotId: "snapshot-1",
+          manuscriptId: input.manuscriptId,
+          assetId: input.assetId,
+          sourceStorageKey: "uploads/source.docx",
+          docxHash: "hash",
+          parserVersion: "lossless-v1",
+          createdAt: "2026-04-30T00:00:00.000Z",
+          status: "complete",
+          warnings: [],
+          tables: [
+            {
+              tableId: "table-1",
+              ordinal: 1,
+              bodyPath: "word/document.xml/body/tbl[1]",
+              ooxmlHash: "table-hash",
+              rowCount: 1,
+              columnCount: 1,
+              cells: [
+                {
+                  cellId: "table-1-cell-0-0",
+                  rowIndex: 0,
+                  columnIndex: 0,
+                  rowSpan: 1,
+                  columnSpan: 1,
+                  tcPath: "word/document.xml/body/tbl[1]/tr[1]/tc[1]",
+                  rawTcXml: "<w:tc/>",
+                  tcHash: "cell-hash",
+                  text: "P−0.05",
+                  paragraphs: [],
+                  runs: [],
+                  characters: [
+                    {
+                      index: 1,
+                      char: "−",
+                      codePoint: "U+2212",
+                      unicodeName: "MINUS SIGN",
+                      charClass: "minus",
+                      sourceRunId: "run-1",
+                      preserved: true,
+                      visible: true,
+                    },
+                  ],
+                  styleSpans: [
+                    {
+                      runId: "run-1",
+                      startIndex: 0,
+                      endIndex: 1,
+                      italic: true,
+                    },
+                  ],
+                },
+              ],
+              aiPayload: {
+                tableId: "table-1",
+                rowCount: 1,
+                columnCount: 1,
+                cells: [
+                  {
+                    cellId: "table-1-cell-0-0",
+                    rowIndex: 0,
+                    columnIndex: 0,
+                    rowSpan: 1,
+                    columnSpan: 1,
+                    text: "18.2",
+                    characterClasses: [],
+                    styleSpans: [],
+                  },
+                ],
+                specialCharacterWarnings: [],
+                lowConfidenceReasons: [],
+              },
+              fidelityReport: { status: "complete", warnings: [] },
+            },
+          ],
+        };
+      },
+    },
     createId: () => "job-proofreading-deep-1",
     now: () => new Date("2026-04-28T10:00:00.000Z"),
   } as never);
@@ -151,6 +233,17 @@ test("governed proofreading draft uses deep orchestrator diagnostics by default"
     };
     proofreadingPlan?: {
       issues?: Array<{ source?: string; passKind?: string; sliceId?: string }>;
+    };
+    proofreadingTableEvidence?: {
+      status?: string;
+      tables?: Array<{
+        tableId?: string;
+        cells?: Array<{
+          cellId?: string;
+          specialCharacters?: Array<{ codePoint?: string; charClass?: string }>;
+          styleSpans?: Array<{ italic?: boolean }>;
+        }>;
+      }>;
     };
     proofreadingDeepPassRuns?: unknown[];
   };
@@ -175,6 +268,36 @@ test("governed proofreading draft uses deep orchestrator diagnostics by default"
     "deep orchestrator diagnostics must not be stored as legacy payload pass runs",
   );
   assert.ok(aiCalls.every((call) => call.sliceContext && call.passFocus));
+  assert.equal(tableEvidenceCallCount, 1);
+  assert.equal(payload.proofreadingTableEvidence?.status, "complete");
+  assert.equal(payload.proofreadingTableEvidence?.tables?.[0]?.tableId, "table-1");
+  assert.equal(
+    payload.proofreadingTableEvidence?.tables?.[0]?.cells?.[0]
+      ?.specialCharacters?.[0]?.codePoint,
+    "U+2212",
+  );
+  assert.equal(
+    payload.proofreadingTableEvidence?.tables?.[0]?.cells?.[0]?.styleSpans?.[0]
+      ?.italic,
+    true,
+  );
+  assert.ok(
+    aiCalls.some(
+      (call) =>
+        (
+          call.sliceContext as
+            | {
+                tableEvidence?: {
+                  aiReadableTablePayload?: {
+                    cells?: Array<{ cellId?: string }>;
+                  };
+                };
+              }
+            | undefined
+        )?.tableEvidence?.aiReadableTablePayload?.cells?.[0]?.cellId ===
+        "table-1-cell-0-0",
+    ),
+  );
 
   const persistedPassRuns = await proofreadingPassRunRepository.listByJobId(
     result.job.id,

@@ -148,6 +148,8 @@ function buildProofreadingSystemPrompt(
     "当 contextMode=document_map 时，要先完整理解 documentMap 提供的整篇结构、跨章节信号和关键术语，再结合 fullDocumentBlocks 的定位预览统一判断。",
     "必须保持保守：证据不足时宁可少报，不要臆造问题。",
     "优先关注医学事实、术语、数值与单位、统计与表格正文一致性、前后逻辑链条、语法与标点格式。",
+    "当 deepProofreading.sliceContext.tableEvidence 存在时，结构化表格证据是表格阅读权威输入；必须优先依据 aiReadableTablePayload 的 tableId、cellId、字符类别和样式证据判断，不要只凭扁平文本猜测表格内容。",
+    "涉及医学数据、统计值、P 值、单位或表格单元格内容时，只输出候选问题和 verify_fact/explain_only 建议，不得自动改写表格数据。",
     "只返回 JSON，不要返回 Markdown，不要返回修改后的全文。",
     "把已由规则、知识库、质量检查覆盖的内容视为已治理层覆盖，重点补充 residual AI 问题。",
     "不要重复报告 governedCoverage 里已经出现的同一段引文、同一规则失败、同一人工复核项或同一质量问题。",

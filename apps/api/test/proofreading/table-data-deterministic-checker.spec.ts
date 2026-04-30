@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { runTableDataDeterministicChecks } from "../../src/modules/proofreading/table-data-deterministic-checker.ts";
 import type { DeepProofreadingFactLedger } from "../../src/modules/proofreading/deep-proofreading-contracts.ts";
 import type { DocumentStructureTableSnapshot } from "../../src/modules/document-pipeline/document-structure-service.ts";
+import type { TableEvidenceSnapshot } from "../../src/modules/document-pipeline/table-evidence-record.ts";
 
 test("deterministic checker turns ledger conflicts into table anchored verify-fact issue cards", () => {
   const ledger: DeepProofreadingFactLedger = {
@@ -94,6 +95,173 @@ test("deterministic checker turns ledger conflicts into table anchored verify-fa
       (entry) => entry.kind === "table_cell" && entry.label === "italic:P",
     ),
   );
+});
+
+test("deterministic checker surfaces high-risk lossless table character evidence", () => {
+  const ledger: DeepProofreadingFactLedger = {
+    schema: "deep_proofreading_fact_ledger.v1",
+    facts: [],
+    conflicts: [],
+    diagnostics: { factCount: 0, conflictCount: 0 },
+  };
+  const tableEvidenceSnapshot: TableEvidenceSnapshot = {
+    snapshotId: "snapshot-1",
+    manuscriptId: "manuscript-1",
+    assetId: "asset-1",
+    sourceStorageKey: "uploads/source.docx",
+    docxHash: "hash",
+    parserVersion: "lossless-v1",
+    createdAt: "2026-04-30T00:00:00.000Z",
+    status: "complete",
+    warnings: [],
+    tables: [
+      {
+        tableId: "table-1",
+        ordinal: 1,
+        bodyPath: "word/document.xml/body/tbl[1]",
+        ooxmlHash: "table-hash",
+        rowCount: 1,
+        columnCount: 1,
+        cells: [
+          {
+            cellId: "table-1-cell-0-0",
+            rowIndex: 0,
+            columnIndex: 0,
+            rowSpan: 1,
+            columnSpan: 1,
+            tcPath: "word/document.xml/body/tbl[1]/tr[1]/tc[1]",
+            rawTcXml: "<w:tc/>",
+            tcHash: "cell-hash",
+            text: "P\u00a0−value",
+            paragraphs: [],
+            runs: [],
+            characters: [
+              {
+                index: 1,
+                char: "\u00a0",
+                codePoint: "U+00A0",
+                unicodeName: "NO-BREAK SPACE",
+                charClass: "nbsp",
+                sourceRunId: "run-1",
+                preserved: true,
+                visible: true,
+              },
+              {
+                index: 2,
+                char: "−",
+                codePoint: "U+2212",
+                unicodeName: "MINUS SIGN",
+                charClass: "minus",
+                sourceRunId: "run-1",
+                preserved: true,
+                visible: true,
+              },
+            ],
+            styleSpans: [{ runId: "run-1", startIndex: 0, endIndex: 1, italic: true }],
+          },
+        ],
+        aiPayload: {
+          tableId: "table-1",
+          rowCount: 1,
+          columnCount: 1,
+          cells: [],
+          specialCharacterWarnings: [],
+          lowConfidenceReasons: [],
+        },
+        fidelityReport: { status: "complete", warnings: [] },
+      },
+    ],
+  };
+
+  const issues = runTableDataDeterministicChecks({
+    factLedger: ledger,
+    tableEvidenceSnapshot,
+  });
+
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0]?.issueType, "medical_data_consistency.lossless_character_review");
+  assert.equal(issues[0]?.anchor.documentLocator?.anchorKind, "table_cell");
+  assert.equal(issues[0]?.anchor.documentLocator?.tableId, "table-1");
+  assert.match(issues[0]?.description ?? "", /U\+00A0/u);
+  assert.match(issues[0]?.description ?? "", /U\+2212/u);
+  assert.ok(
+    issues[0]?.supportingEvidence.some(
+      (entry) => entry.label === "italic:run-1:0-1",
+    ),
+  );
+});
+
+test("deterministic checker does not flag plain table style spans without high-risk evidence", () => {
+  const ledger: DeepProofreadingFactLedger = {
+    schema: "deep_proofreading_fact_ledger.v1",
+    facts: [],
+    conflicts: [],
+    diagnostics: { factCount: 0, conflictCount: 0 },
+  };
+  const tableEvidenceSnapshot: TableEvidenceSnapshot = {
+    snapshotId: "snapshot-plain",
+    manuscriptId: "manuscript-1",
+    assetId: "asset-1",
+    sourceStorageKey: "uploads/source.docx",
+    docxHash: "hash",
+    parserVersion: "lossless-v1",
+    createdAt: "2026-04-30T00:00:00.000Z",
+    status: "complete",
+    warnings: [],
+    tables: [
+      {
+        tableId: "table-1",
+        ordinal: 1,
+        bodyPath: "word/document.xml/body/tbl[1]",
+        ooxmlHash: "table-hash",
+        rowCount: 1,
+        columnCount: 1,
+        cells: [
+          {
+            cellId: "table-1-cell-0-0",
+            rowIndex: 0,
+            columnIndex: 0,
+            rowSpan: 1,
+            columnSpan: 1,
+            tcPath: "word/document.xml/body/tbl[1]/tr[1]/tc[1]",
+            rawTcXml: "<w:tc/>",
+            tcHash: "cell-hash",
+            text: "18.2",
+            paragraphs: [],
+            runs: [],
+            characters: [
+              {
+                index: 0,
+                char: "1",
+                codePoint: "U+0031",
+                charClass: "normal",
+                sourceRunId: "run-plain",
+                preserved: true,
+                visible: true,
+              },
+            ],
+            styleSpans: [{ runId: "run-plain", startIndex: 0, endIndex: 4 }],
+          },
+        ],
+        aiPayload: {
+          tableId: "table-1",
+          rowCount: 1,
+          columnCount: 1,
+          cells: [],
+          specialCharacterWarnings: [],
+          lowConfidenceReasons: [],
+        },
+        fidelityReport: { status: "complete", warnings: [] },
+      },
+    ],
+  };
+
+  const issues = runTableDataDeterministicChecks({
+    factLedger: ledger,
+    tableEvidenceSnapshot,
+  });
+
+  assert.equal(issues.length, 0);
 });
 
 function emptyStyleEvidence() {

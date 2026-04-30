@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import re
+import unicodedata
 from xml.etree import ElementTree as ET
 
 from .table_semantics import build_table_semantic_snapshot
@@ -223,14 +225,20 @@ def extract_structure_from_document_xml(
             continue
 
         table_order = len(tables) + 1
+        table_path = f"word/document.xml/body/tbl[{table_order}]"
+        raw_tbl_xml = serialize_xml(child)
         row_count, column_count, cells, raw_rows, border_hints, table_objects = extract_table_dimensions(
             child,
             table_index=table_order,
+            table_path=table_path,
             source_zone=current_section if current_section == "front_matter" else "body",
         )
         caption_text = pending_table_caption["text"] if pending_table_caption else None
         table_entry = {
             "order": table_order,
+            "body_path": table_path,
+            "raw_tbl_xml": raw_tbl_xml,
+            "ooxml_hash": sha256_text(raw_tbl_xml),
             "row_count": row_count,
             "column_count": column_count,
             "caption": caption_text,
@@ -520,6 +528,72 @@ def build_inline_fragment(**fragment: object) -> dict:
     }
 
 
+def serialize_xml(node: ET.Element) -> str:
+    return ET.tostring(node, encoding="unicode")
+
+
+def sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def format_codepoint(character: str) -> str:
+    return f"U+{ord(character):04X}"
+
+
+def classify_table_character(character: str) -> str:
+    if character == " ":
+        return "half_space"
+    if character == "\u3000":
+        return "full_space"
+    if character == "\u00a0":
+        return "nbsp"
+    if character == "\t":
+        return "tab"
+    if character in {"\n", "\r"}:
+        return "line_break"
+    if character == "–":
+        return "en_dash"
+    if character == "—":
+        return "em_dash"
+    if character == "-":
+        return "hyphen"
+    if character == "−":
+        return "minus"
+    if ord(character) < 32:
+        return "control"
+    if not character.isalnum() and not character.isspace():
+        return "symbol"
+    return "normal"
+
+
+def build_table_characters(
+    text: str,
+    *,
+    source_run_id: str,
+    start_index: int = 0,
+) -> list[dict]:
+    return [
+        {
+            "index": start_index + offset,
+            "char": character,
+            "codePoint": format_codepoint(character),
+            "unicodeName": safe_unicode_name(character),
+            "charClass": classify_table_character(character),
+            "sourceRunId": source_run_id,
+            "preserved": True,
+            "visible": character not in {"\t", "\n", "\r"},
+        }
+        for offset, character in enumerate(text)
+    ]
+
+
+def safe_unicode_name(character: str) -> str | None:
+    try:
+        return unicodedata.name(character)
+    except ValueError:
+        return None
+
+
 def extract_paragraph_fragments(node: ET.Element) -> list[dict]:
     fragments: list[dict] = []
     for child in list(node):
@@ -660,6 +734,7 @@ def extract_table_dimensions(
     node: ET.Element,
     *,
     table_index: int,
+    table_path: str,
     source_zone: str,
 ) -> tuple[int, int, list[list[str]], list[list[dict]], dict, list[dict]]:
     layout_rows = extract_table_cell_layout_rows(node)
@@ -673,8 +748,22 @@ def extract_table_dimensions(
         for cell_layout in row_layout:
             cell = cell_layout["node"]
             cell_index = int(cell_layout["cell_index"])
-            paragraphs = extract_table_cell_paragraphs(cell)
+            cell_path = f"{table_path}/tr[{row_index + 1}]/tc[{cell_index + 1}]"
+            paragraphs = extract_table_cell_paragraphs(cell, cell_path=cell_path)
             cell_text = build_table_cell_display_text(paragraphs)
+            runs = extract_table_cell_runs(cell, cell_path=cell_path)
+            characters = [
+                character
+                for run in runs
+                for character in run.get("characters", [])
+                if isinstance(character, dict)
+            ]
+            style_spans = [
+                run["styleSpan"]
+                for run in runs
+                if isinstance(run.get("styleSpan"), dict)
+            ]
+            raw_tc_xml = serialize_xml(cell)
             cell_objects = extract_table_cell_object_evidence(
                 cell,
                 table_index=table_index,
@@ -692,7 +781,12 @@ def extract_table_dimensions(
                     "text": cell_text,
                     "display_text": cell_text,
                     "normalized_text": normalize_table_cell_text(cell_text),
-                    "raw_xml_text": ET.tostring(cell, encoding="unicode"),
+                    "raw_xml_text": raw_tc_xml,
+                    "tc_path": cell_path,
+                    "tc_hash": sha256_text(raw_tc_xml),
+                    "runs": runs,
+                    "characters": characters,
+                    "style_spans": style_spans,
                     "style_runs": flatten_table_cell_style_runs(paragraphs),
                     "grid_column_index": cell_layout["column_index"],
                     "column_span": cell_layout["column_span"],
@@ -991,13 +1085,87 @@ def extract_cell_border_hints(node: ET.Element) -> dict:
     return hints
 
 
-def extract_table_cell_paragraphs(node: ET.Element) -> list[dict]:
+def extract_table_cell_paragraphs(node: ET.Element, *, cell_path: str | None = None) -> list[dict]:
     paragraphs: list[dict] = []
-    for paragraph in node.findall("./w:p", NS):
+    for paragraph_index, paragraph in enumerate(node.findall("./w:p", NS)):
         snapshot = extract_paragraph_snapshot(paragraph)
         if snapshot["text"] or snapshot["fragments"]:
+            paragraph_path = (
+                f"{cell_path}/p[{paragraph_index + 1}]"
+                if cell_path
+                else f"table-cell/p[{paragraph_index + 1}]"
+            )
+            raw_p_xml = serialize_xml(paragraph)
+            snapshot["paragraph_id"] = f"{paragraph_path}"
+            snapshot["p_path"] = paragraph_path
+            snapshot["raw_p_xml"] = raw_p_xml
+            snapshot["p_hash"] = sha256_text(raw_p_xml)
             paragraphs.append(snapshot)
     return paragraphs
+
+
+def extract_table_cell_runs(node: ET.Element, *, cell_path: str) -> list[dict]:
+    runs: list[dict] = []
+    character_offset = 0
+    for paragraph_index, paragraph in enumerate(node.findall("./w:p", NS)):
+        paragraph_path = f"{cell_path}/p[{paragraph_index + 1}]"
+        for run_index, run in enumerate(paragraph.findall("./w:r", NS)):
+            run_path = f"{paragraph_path}/r[{run_index + 1}]"
+            run_text = build_run_text(run)
+            raw_run_xml = serialize_xml(run)
+            style = extract_run_style_evidence(run)
+            run_id = f"{run_path}"
+            characters = build_table_characters(
+                run_text,
+                source_run_id=run_id,
+                start_index=character_offset,
+            )
+            style_span = {
+                "runId": run_id,
+                "startIndex": character_offset,
+                "endIndex": character_offset + len(run_text),
+                "fontFamily": read_style_fact_value(style.get("font_family")),
+                "fontSizePt": read_style_fact_value(style.get("font_size_pt")),
+                "bold": read_style_fact_value(style.get("bold")),
+                "italic": read_style_fact_value(style.get("italic")),
+                "scriptPosition": read_style_fact_value(style.get("script_position")),
+            }
+            runs.append(
+                {
+                    "runId": run_id,
+                    "run_path": run_path,
+                    "runPath": run_path,
+                    "raw_run_xml": raw_run_xml,
+                    "rawRunXml": raw_run_xml,
+                    "run_hash": sha256_text(raw_run_xml),
+                    "runHash": sha256_text(raw_run_xml),
+                    "text": run_text,
+                    "characters": characters,
+                    "styleSpan": style_span,
+                    "style_span": style_span,
+                }
+            )
+            character_offset += len(run_text)
+    return runs
+
+
+def build_run_text(run: ET.Element) -> str:
+    text_parts: list[str] = []
+    for child in list(run):
+        if child.tag == qualify("rPr"):
+            continue
+        if child.tag == qualify("t"):
+            text_parts.append(child.text or "")
+            continue
+        if child.tag == qualify("tab"):
+            text_parts.append("\t")
+            continue
+        if child.tag == qualify("br") or child.tag == qualify("cr"):
+            text_parts.append("\n")
+            continue
+        if child.tag == qualify("sym"):
+            text_parts.append(decode_symbol_text((child.attrib.get(qualify("char")) or "").strip()))
+    return "".join(text_parts)
 
 
 def _read_border_enabled(node: ET.Element | None) -> bool:

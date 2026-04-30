@@ -7,6 +7,7 @@ import {
   buildProofreadingConfirmationItems,
   ManuscriptWorkbenchAssetDetailPage,
 } from "../src/features/manuscript-workbench/manuscript-workbench-detail.tsx";
+import { buildProofreadingTableEvidence } from "../src/features/manuscript-workbench/proofreading-table-evidence-panel.tsx";
 
 test("proofreading workspace renders deep proofreading diagnostics as read-only evidence", () => {
   const job = {
@@ -70,10 +71,51 @@ test("proofreading workspace renders deep proofreading diagnostics as read-only 
         ],
         manualReviewItems: [],
       },
+      proofreadingTableEvidence: {
+        snapshotId: "snapshot-1",
+        assetId: "asset-source-1",
+        parserVersion: "lossless-v1",
+        status: "complete",
+        warnings: [],
+        tables: [
+          {
+            tableId: "table-1",
+            rowCount: 1,
+            columnCount: 1,
+            fidelityStatus: "complete",
+            warnings: [],
+            cells: [
+              {
+                cellId: "table-1-cell-0-0",
+                rowIndex: 0,
+                columnIndex: 0,
+                text: "P−0.05",
+                specialCharacters: [
+                  {
+                    index: 1,
+                    char: "−",
+                    codePoint: "U+2212",
+                    charClass: "minus",
+                  },
+                ],
+                styleSpans: [
+                  {
+                    runId: "run-1",
+                    startIndex: 0,
+                    endIndex: 1,
+                    italic: true,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
     },
   };
   const confirmationItems = buildProofreadingConfirmationItems(job as never);
   const evidence = buildDeepProofreadingEvidence(job as never);
+  const tableEvidence = buildProofreadingTableEvidence(job as never);
 
   assert.equal(confirmationItems.length, 1);
   assert.equal(
@@ -106,6 +148,7 @@ test("proofreading workspace renders deep proofreading diagnostics as read-only 
       downloadHref="http://localhost/api/v1/document-assets/asset-proof-draft-1/download"
       confirmationItems={confirmationItems}
       deepProofreadingEvidence={evidence}
+      proofreadingTableEvidence={tableEvidence}
       proofreadingDocumentBlocks={[
         {
           blockId: "proofreading-block-0",
@@ -126,5 +169,10 @@ test("proofreading workspace renders deep proofreading diagnostics as read-only 
   assert.match(markup, /知识 4/u);
   assert.match(markup, /data_statistics_units_and_tables/u);
   assert.match(markup, /final_regression_preparation/u);
+  assert.match(markup, /表格无损证据/u);
+  assert.match(markup, /snapshot-1/u);
+  assert.match(markup, /table-1-cell-0-0/u);
+  assert.match(markup, /U\+2212 · minus/u);
+  assert.match(markup, /斜体/u);
   assert.doesNotMatch(markup, /fact-ledger-1/u);
 });

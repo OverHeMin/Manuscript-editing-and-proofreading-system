@@ -158,6 +158,9 @@ import {
   OnlyOfficeSaveBackUnauthorizedError,
   PythonDocxSourceBlockResolver,
   PythonDocxStructureWorkerAdapter,
+  LocalFileTableEvidenceRepository,
+  TableEvidenceCenter,
+  PythonTableEvidenceWorkerAdapter as PythonRuntimeTableEvidenceWorkerAdapter,
   type DocumentIntakeResult,
 } from "../modules/document-pipeline/index.ts";
 import {
@@ -1768,6 +1771,16 @@ export function createInMemoryApiRuntime(input: {
       rootDir: input.uploadRootDir,
     }),
   });
+  const runtimeTableEvidenceCenter = new TableEvidenceCenter({
+    rootDir: input.uploadRootDir,
+    assetRepository,
+    repository: new LocalFileTableEvidenceRepository({
+      rootDir: input.uploadRootDir,
+    }),
+    worker: new PythonRuntimeTableEvidenceWorkerAdapter(),
+    createId: () => nextId("runtime-table-evidence"),
+    now: () => new Date(),
+  });
   const editorialDocxTransformService = new EditorialDocxTransformService({
     assetRepository,
     rootDir: input.uploadRootDir,
@@ -2390,6 +2403,7 @@ export function createInMemoryApiRuntime(input: {
     editorialDocxTransformService,
     proofreadingSourceBlockResolver: docxSourceBlockResolver,
     documentStructureService,
+    tableEvidenceCenter: runtimeTableEvidenceCenter,
     reviewItemsService,
     learningService,
     residualLearningService,

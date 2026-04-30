@@ -238,6 +238,80 @@ test("proofreading workspace falls back to block view when preview session is mi
   assert.match(markup, /问题 1 项/u);
 });
 
+test("proofreading confirmation page renders table evidence from the draft job", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchAssetDetailPage
+      mode="proofreading"
+      manuscriptTitle="proofreading confirmation manuscript"
+      asset={{
+        id: "asset-proof-final-1",
+        manuscript_id: "manuscript-proof-1",
+        asset_type: "final_proof_annotated_docx",
+        status: "active",
+        storage_key: "runs/proofreading/final.docx",
+        mime_type:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        parent_asset_id: "asset-proof-draft-1",
+        source_module: "proofreading",
+        created_by: "proofreader-1",
+        version_no: 2,
+        is_current: true,
+        file_name: "proofreading-final.docx",
+        created_at: "2026-04-30T10:00:00.000Z",
+        updated_at: "2026-04-30T10:05:00.000Z",
+      }}
+      detailKind="proofreading_confirmation"
+      backHref="#proofreading?manuscriptId=manuscript-proof-1"
+      downloadHref="http://localhost/api/v1/document-assets/asset-proof-final-1/download"
+      proofreadingTableEvidence={{
+        snapshotId: "snapshot-proof-table-1",
+        status: "complete",
+        parserVersion: "lossless-v1",
+        warnings: [],
+        tables: [
+          {
+            tableId: "table-1",
+            rowCount: 1,
+            columnCount: 1,
+            fidelityStatus: "complete",
+            warnings: [],
+            cells: [
+              {
+                cellId: "table-1-cell-0-0",
+                rowIndex: 0,
+                columnIndex: 0,
+                text: "P−0.05",
+                specialCharacters: [
+                  {
+                    index: 1,
+                    char: "−",
+                    codePoint: "U+2212",
+                    charClass: "minus",
+                  },
+                ],
+                styleSpans: [
+                  {
+                    runId: "run-1",
+                    startIndex: 0,
+                    endIndex: 1,
+                    italic: true,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }}
+    />,
+  );
+
+  assert.match(markup, /表格无损证据/u);
+  assert.match(markup, /snapshot-proof-table-1/u);
+  assert.match(markup, /table-1-cell-0-0/u);
+  assert.match(markup, /U\+2212 · minus/u);
+  assert.match(markup, /斜体/u);
+});
+
 test("editing edited docx detail uses the onlyoffice review layout even with governance evidence", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchAssetDetailPage
