@@ -273,6 +273,91 @@ test("rule wizard remains usable inside the V2 detail panel", async ({
   }
 });
 
+test("rule center V2 AI intake generates a draft and applies it to the rule wizard", async ({
+  page,
+  request,
+}) => {
+  await openRuleCenter(
+    page,
+    request,
+    "/#template-governance?templateGovernanceView=rule-ledger&ruleCenterMode=ai-intake",
+  );
+
+  await page
+    .locator('[data-v2-detail-panel="ai-intake"] textarea')
+    .fill("摘要首次出现英文缩写时必须写出中文全称并在括号内给出英文缩写。");
+  const intakeRequest = page.waitForResponse((response) =>
+    response.url().includes("/api/v1/editorial-rules/ai-intake/drafts") &&
+    response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "解析规则" }).click();
+  await intakeRequest;
+
+  await expect(page.locator('[data-v2-detail-panel="ai-intake"]')).toContainText("AI 理解");
+  await page.getByRole("button", { name: "应用到向导" }).click();
+  await expect(page.locator('[data-v2-detail-panel="rule-wizard"]')).toBeVisible();
+  await expect(page.locator('[data-v2-detail-panel="rule-wizard"]')).toContainText(
+    "规则草稿向导",
+  );
+  await expect(page.getByLabel("规则名称")).not.toHaveValue("");
+});
+
+test("rule center V2 queue rows and detail actions open the retained work flows", async ({
+  page,
+  request,
+}) => {
+  await openRuleCenter(
+    page,
+    request,
+    "/#template-governance?templateGovernanceView=large-template-ledger",
+  );
+
+  const firstTemplate = page.locator('[data-v2-queue-section="templates"] button').first();
+  await firstTemplate.click();
+  const templateName = (await firstTemplate.textContent())?.trim() ?? "";
+  await expect(page.locator('[data-v2-detail-panel="template-detail"] strong')).toContainText(
+    templateName,
+  );
+  await page.getByRole("button", { name: "新建模板" }).click();
+  await expect(page.getByRole("heading", { name: "新建大模板" })).toBeVisible();
+
+  await page.locator('.rule-center-v2__rail button[data-section="packages"]').click();
+  const firstPackage = page.locator('[data-v2-queue-section="packages"] button').first();
+  await firstPackage.click();
+  const packageName = (await firstPackage.textContent())?.trim() ?? "";
+  await expect(page.locator('[data-v2-detail-panel="package-detail"] strong')).toContainText(
+    packageName,
+  );
+  await page.getByRole("button", { name: "新建规则包" }).click();
+  await expect(page.getByRole("heading", { name: "新建通用包" })).toBeVisible();
+
+  await page.locator('.rule-center-v2__rail button[data-section="extraction"]').click();
+  const firstTask = page.locator('[data-v2-queue-section="extraction"] button').first();
+  await firstTask.click();
+  await page.getByRole("button", { name: "确认入库" }).click();
+  await expect(page.getByRole("heading", { name: "候选语义复核" })).toBeVisible();
+
+  await page.locator('.rule-center-v2__rail button[data-section="release"]').click();
+  const firstRuleSet = page.locator('[data-v2-queue-section="release"] button').first();
+  await firstRuleSet.click();
+  const releasePanel = page.locator('[data-v2-detail-panel="release-check"]');
+  await expect(releasePanel).toContainText("规则发布轨道");
+
+  const availableReleaseAction = releasePanel
+    .getByRole("button")
+    .filter({ hasText: /候选发布|进入 Canary|正式生效|回滚到上一版/u })
+    .first();
+  if ((await availableReleaseAction.count()) > 0) {
+    const releaseRequest = page.waitForResponse((response) =>
+      response.url().includes("/api/v1/editorial-rules/rule-sets/") &&
+      response.request().method() === "POST",
+    );
+    await availableReleaseAction.click();
+    await releaseRequest;
+    await expect(releasePanel).toContainText("规则发布轨道已更新");
+  }
+});
+
 async function openRuleCenter(
   page: Page,
   request: APIRequestContext,

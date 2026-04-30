@@ -162,7 +162,10 @@ import {
   rewindRuleWizardState,
   type RuleWizardState,
 } from "./template-governance-rule-wizard-state.ts";
-import { resolveEditorialRuleDraftWriteback } from "./rule-learning-state.ts";
+import {
+  isRuleCenterReviewItem,
+  resolveEditorialRuleDraftWriteback,
+} from "./rule-learning-state.ts";
 import {
   createRuleWizardEntryFormState,
   createRuleWizardEntryFormStateFromDetail,
@@ -383,7 +386,7 @@ export function TemplateGovernanceWorkbenchPage(
       ? initialMode ?? "authoring"
       : undefined;
   const advancedCompatibilityPanel =
-    initialView === "classic" ? (
+    initialView === "classic" || initialRulePackageWorkspace ? (
       <TemplateGovernanceLegacyWorkbenchPage
         controller={controller}
         actorRole={actorRole}
@@ -400,12 +403,15 @@ export function TemplateGovernanceWorkbenchPage(
         initialSelectedReviewItemId={initialSelectedReviewItemId}
       />
     ) : undefined;
+  const effectiveInitialView =
+    initialRulePackageWorkspace && initialView === "overview" ? "classic" : initialView;
 
   return (
     <TemplateGovernanceV2WorkbenchPage
       controller={controller}
+      actorRole={actorRole}
       initialMode={effectiveMode}
-      initialView={initialView}
+      initialView={effectiveInitialView}
       initialSelectedRuleLedgerRowId={initialSelectedRuleLedgerRowId}
       prefilledManuscriptId={prefilledManuscriptId}
       prefilledReviewedCaseSnapshotId={prefilledReviewedCaseSnapshotId}
@@ -2683,8 +2689,8 @@ function createInitialTemplateGovernanceV2SectionData(input: {
   if (input.initialMode === "learning") {
     return {
       section: "recovery",
-      candidates: [...input.initialLearningCandidates],
-      reviewItems: [...input.initialReviewItems],
+      candidates: input.initialLearningCandidates.filter(isRuleCenterLearningCandidate),
+      reviewItems: input.initialReviewItems.filter(isRuleCenterReviewItem),
     };
   }
 
@@ -3864,17 +3870,7 @@ function resolveRuleWizardCompletionMessage(
   }
 }
 
-function isRuleCenterRecoverySeedItem(item: ReviewItemViewModel): boolean {
-  if (item.source_kind === "governed_hit") {
-    return true;
-  }
-
-  if (item.source_kind === "residual_issue") {
-    return item.recommended_route === "rule_candidate";
-  }
-
-  return item.type === "rule_candidate";
-}
+const isRuleCenterRecoverySeedItem = isRuleCenterReviewItem;
 
 function TemplateGovernanceContentModuleLedgerRoute({
   controller,

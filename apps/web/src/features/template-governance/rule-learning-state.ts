@@ -60,7 +60,7 @@ export function filterRuleLearningReviewItems(
   });
 }
 
-function isRuleCenterReviewItem(item: ReviewItemViewModel): boolean {
+export function isRuleCenterReviewItem(item: ReviewItemViewModel): boolean {
   if (item.source_kind === "governed_hit") {
     return true;
   }
