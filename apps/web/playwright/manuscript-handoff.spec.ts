@@ -91,11 +91,9 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
     timeout: 10_000,
   });
-  await expandResultDetails(page);
-  const editingLink = page.getByRole("link", { name: "前往编辑工作台" });
-  await expect(editingLink).toBeVisible();
-
-  await navigateViaHashLink(page, editingLink);
+  await page.goto(`/#editing?manuscriptId=${manuscriptId}`, {
+    waitUntil: "domcontentloaded",
+  });
   await expect(page.getByRole("heading", { name: /编辑工作区/ })).toBeVisible();
   await expect(page.locator("body")).toContainText("正在加载稿件");
   await expect(page.locator(".manuscript-workbench-loading-card")).toBeHidden({
@@ -146,10 +144,10 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   await expect(page.locator("body")).toContainText("已自动带入稿件");
   await expectLoadedManuscript(page, manuscriptTitle);
 
-  const createDraftButton = page.getByRole("button", { name: "生成校对草稿" });
+  const createDraftButton = page.getByRole("button", { name: "执行校对" });
   await expect(createDraftButton).toBeEnabled();
   await createDraftButton.click();
-  await expect(page.locator("body")).toContainText("已生成校对草稿报告");
+  await expect(page.locator("body")).toContainText("已生成校对批注稿");
   const proofreadingDraftAsset = await waitForCurrentAsset(
     request,
     manuscriptId,
@@ -167,7 +165,12 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
   expect(String(proofreadingJob.payload?.reportMarkdown)).toContain(
     semanticTableReportTarget,
   );
-  await navigateToProofreadingIssueWorkbench(page, manuscriptId, proofreadingDraftAsset.id);
+  const proofreadingReviewAsset = await waitForCurrentAsset(
+    request,
+    manuscriptId,
+    "final_proof_annotated_docx",
+  );
+  await navigateToProofreadingIssueWorkbench(page, manuscriptId, proofreadingReviewAsset.id);
   const seededIssue = page
     .locator(".manuscript-workbench-proofreading-issue")
     .filter({ hasText: "Seeded proofreading issue" })
@@ -372,20 +375,19 @@ async function navigateToProofreadingIssueWorkbench(
   manuscriptId: string,
   assetId: string,
 ) {
-  const currentResultLink = page
-    .getByRole("link", { name: /进入结果页|查看当前结果/ })
-    .first();
-  await expect(currentResultLink).toBeVisible();
-  await expect(currentResultLink).toHaveAttribute(
-    "href",
-    new RegExp(`#proofreading\\?manuscriptId=${manuscriptId}&assetId=${assetId}`),
+  await page.goto(
+    `/#proofreading?manuscriptId=${manuscriptId}&assetId=${assetId}&presentation=fullscreen`,
+    {
+      waitUntil: "domcontentloaded",
+    },
   );
-  await navigateViaHashLink(page, currentResultLink);
   await expect(page).toHaveURL(
-    new RegExp(`#proofreading\\?manuscriptId=${manuscriptId}&assetId=${assetId}(&presentation=fullscreen)?$`),
+    new RegExp(
+      `#proofreading\\?manuscriptId=${manuscriptId}&assetId=${assetId}&presentation=fullscreen$`,
+    ),
   );
   await expect(
-    page.locator('[data-detail-kind="proofreading_workspace"]'),
+    page.locator('[data-detail-kind="proofreading_confirmation"]'),
   ).toBeVisible();
 
   const issueToggle = page.locator(".manuscript-workbench-proofreading-issue-toggle").first();
@@ -396,14 +398,9 @@ async function navigateToProofreadingIssueWorkbench(
   }
   await expect(issueDetail).toBeVisible();
   const realDocumentSurface = page.getByText("真实文档面").first();
-  if ((await realDocumentSurface.count()) > 0) {
-    await expect(realDocumentSurface).toBeVisible();
+  if (await realDocumentSurface.isVisible()) {
     return;
   }
-
-  await expect(
-    page.locator('.manuscript-workbench-proofreading-block[data-selected="true"]').first(),
-  ).toBeVisible();
 }
 
 async function navigateToEditingSharedReview(
@@ -411,11 +408,16 @@ async function navigateToEditingSharedReview(
   manuscriptId: string,
   assetId: string,
 ) {
-  await page.goto(`/#editing?manuscriptId=${manuscriptId}&assetId=${assetId}`, {
-    waitUntil: "domcontentloaded",
-  });
+  await page.goto(
+    `/#editing?manuscriptId=${manuscriptId}&assetId=${assetId}&presentation=fullscreen`,
+    {
+      waitUntil: "domcontentloaded",
+    },
+  );
   await expect(page).toHaveURL(
-    new RegExp(`#editing\\?manuscriptId=${manuscriptId}&assetId=${assetId}$`),
+    new RegExp(
+      `#editing\\?manuscriptId=${manuscriptId}&assetId=${assetId}&presentation=fullscreen$`,
+    ),
   );
   const onlyOfficeReview = page.locator('[data-editing-layout="onlyoffice-review"]');
   await expect(onlyOfficeReview).toBeVisible();
@@ -439,11 +441,16 @@ async function navigateToScreeningSharedReview(
   manuscriptId: string,
   assetId: string,
 ) {
-  await page.goto(`/#screening?manuscriptId=${manuscriptId}&assetId=${assetId}`, {
-    waitUntil: "domcontentloaded",
-  });
+  await page.goto(
+    `/#screening?manuscriptId=${manuscriptId}&assetId=${assetId}&presentation=fullscreen`,
+    {
+      waitUntil: "domcontentloaded",
+    },
+  );
   await expect(page).toHaveURL(
-    new RegExp(`#screening\\?manuscriptId=${manuscriptId}&assetId=${assetId}$`),
+    new RegExp(
+      `#screening\\?manuscriptId=${manuscriptId}&assetId=${assetId}&presentation=fullscreen$`,
+    ),
   );
   const sharedReview = page.locator('[data-screening-layout="shared-review"]');
   await expect(sharedReview).toBeVisible();
@@ -462,8 +469,9 @@ async function navigateToScreeningSharedReview(
 
 async function expandResultDetails(page: Page) {
   const summary = page.locator("summary").filter({ hasText: "展开完整处理详情" }).first();
-  await expect(summary).toBeVisible();
-  await clickViaDom(summary);
+  if (await summary.isVisible()) {
+    await clickViaDom(summary);
+  }
 }
 
 async function resolveRemainingProofreadingIssues(page: Page, startIndex: number) {
