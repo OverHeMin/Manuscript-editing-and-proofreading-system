@@ -181,7 +181,7 @@ export function TemplateGovernanceRuleWizardStepEntry({
 
           <section className="template-governance-card template-governance-ledger-section">
             <header className="template-governance-ledger-section-header">
-              <h2>Word 表格 / 图片 / 补充证据</h2>
+              <h2>Word 表格 / 图片 / 图表 / 截图 / 补充证据</h2>
             </header>
             <KnowledgeLibraryRichContentEditor
               blocks={value.supplementalBlocks ?? []}
