@@ -40,3 +40,25 @@ test("rule center V2 shell renders a unified workbench structure", () => {
   assert.match(markup, /\u65b0\u5efa AI \u89c4\u5219\u8349\u7a3f/u);
   assert.doesNotMatch(markup, /template-governance-overview-page/u);
 });
+
+test("rule center V2 shell gives the rule wizard an immersive authoring layout", () => {
+  const markup = renderToStaticMarkup(
+    <TemplateGovernanceV2Shell
+      activeSection="rules"
+      activePanel="rule-wizard"
+      counts={{ rules: 12 }}
+      detailPanel={<div data-testid="rule-wizard-panel">规则草稿向导</div>}
+      onCommand={() => undefined}
+      onSectionChange={() => undefined}
+    >
+      <div data-testid="center-work-area">规则台账</div>
+    </TemplateGovernanceV2Shell>,
+  );
+
+  assert.match(markup, /rule-center-v2--immersive/u);
+  assert.match(markup, /data-active-panel="rule-wizard"/u);
+  assert.match(markup, /rule-center-v2__detail-panel--immersive/u);
+  assert.doesNotMatch(markup, /rule-center-v2__work-area/u);
+  assert.doesNotMatch(markup, /规则台账/u);
+  assert.match(markup, /规则草稿向导/u);
+});

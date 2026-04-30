@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   bindTableEvidenceRevision,
   confirmTableEvidenceRevision,
@@ -93,7 +93,9 @@ export function KnowledgeLibraryRichContentEditor({
   onTableEvidenceBlockAdded,
   compact = false,
 }: KnowledgeLibraryRichContentEditorProps) {
-  const [isTableEvidenceOpen, setIsTableEvidenceOpen] = useState(false);
+  const [isTableEvidenceOpen, setIsTableEvidenceOpen] = useState(
+    () => Boolean(tableEvidenceClient || tableEvidencePickerItems.length > 0),
+  );
   const [tableEvidenceErrorMessage, setTableEvidenceErrorMessage] = useState<string | null>(
     null,
   );
@@ -108,6 +110,12 @@ export function KnowledgeLibraryRichContentEditor({
     uploadedTableEvidenceSelections.find(
       (selection) => selection.table.table_id === selectedUploadedTableId,
     ) ?? uploadedTableEvidenceSelections[0];
+
+  useEffect(() => {
+    if (tableEvidenceClient || tableEvidencePickerItems.length > 0) {
+      setIsTableEvidenceOpen(true);
+    }
+  }, [tableEvidenceClient, tableEvidencePickerItems.length]);
 
   async function appendTableEvidenceBlock(selection: KnowledgeTableEvidenceBlockSelection) {
     await handleKnowledgeLibraryTableEvidenceSelection({
@@ -239,7 +247,7 @@ export function KnowledgeLibraryRichContentEditor({
           data-block-action="add-table-evidence"
           onClick={() => setIsTableEvidenceOpen((current) => !current)}
         >
-          Word 表格证据
+          {isTableEvidenceOpen ? "收起 Word 表格证据" : "Word 表格证据"}
         </button>
         <button
           type="button"
@@ -263,12 +271,20 @@ export function KnowledgeLibraryRichContentEditor({
         className="knowledge-library-rich-content-editor__table-evidence"
         data-table-evidence-client-state={tableEvidenceClientState}
       >
+        <header className="knowledge-library-rich-content-editor__table-evidence-header">
+          <div>
+            <strong>Word 表格证据上传预览区</strong>
+            <span>
+              在这里上传 .docx，系统解析后会列出表格并显示可编辑预览确认区。
+            </span>
+          </div>
+        </header>
         {tableEvidenceErrorMessage ? (
           <p role="alert">{tableEvidenceErrorMessage}</p>
         ) : null}
         <p>
-          上传 Word 表格证据：请点击上方“Word 表格证据”按钮后在这里选择 .docx，
-          系统会解析表格并打开预览确认区；不要把 .docx 放进图片块。
+          上传 Word 表格证据：在本区域选择或拖入 .docx，系统会解析表格并打开预览确认区；
+          不要把 .docx 放进图片块。
         </p>
 
         {isTableEvidenceOpen && !tableEvidenceClient && tableEvidencePickerItems.length === 0 ? (
@@ -319,6 +335,16 @@ export function KnowledgeLibraryRichContentEditor({
               bindTableEvidenceRevision(tableEvidenceClient, input).then(() => undefined)
             }
           />
+        ) : null}
+
+        {isTableEvidenceOpen && tableEvidenceClient && !selectedUploadedTableEvidence ? (
+          <section
+            className="table-evidence-panel table-evidence-preview-placeholder"
+            data-table-evidence-preview-placeholder="true"
+          >
+            <h3>预览确认区</h3>
+            <p>预览确认区会在上传并选择表格后显示在这里。</p>
+          </section>
         ) : null}
 
         {isTableEvidenceOpen && tableEvidencePickerItems.length > 0 ? (
@@ -591,9 +617,11 @@ export async function appendKnowledgeLibraryTableEvidenceBlock({
   KnowledgeContentBlockViewModel[]
 > {
   const nextOrder = blocks.length;
-  const revisionId = normalizeKnowledgeLibraryTableEvidenceRevisionId(currentRevisionId);
+  const revisionId = resolveKnowledgeLibraryTableEvidenceRevisionId(currentRevisionId);
   const binding =
-    client && isConfirmedTableEvidenceSelection(selection)
+    client &&
+    isRealKnowledgeLibraryTableEvidenceRevisionId(revisionId) &&
+    isConfirmedTableEvidenceSelection(selection)
       ? await bindTableEvidenceRevision(client, {
           revisionId: selection.revisionId,
           targetType: tableEvidenceBindingTargetType,
@@ -625,19 +653,21 @@ export async function appendKnowledgeLibraryTableEvidenceBlock({
   ];
 }
 
-function normalizeKnowledgeLibraryTableEvidenceRevisionId(
+function resolveKnowledgeLibraryTableEvidenceRevisionId(
   currentRevisionId: string | undefined,
 ): string {
   const revisionId = currentRevisionId?.trim() ?? "";
-  if (
-    revisionId.length === 0 ||
-    revisionId === "draft-revision" ||
-    revisionId === "local-draft"
-  ) {
-    throw new Error("请先保存草稿后再添加 Word 表格证据");
-  }
+  return isRealKnowledgeLibraryTableEvidenceRevisionId(revisionId)
+    ? revisionId
+    : "local-draft";
+}
 
-  return revisionId;
+function isRealKnowledgeLibraryTableEvidenceRevisionId(revisionId: string): boolean {
+  return (
+    revisionId.length > 0 &&
+    revisionId !== "draft-revision" &&
+    revisionId !== "local-draft"
+  );
 }
 
 function isConfirmedTableEvidenceSelection(

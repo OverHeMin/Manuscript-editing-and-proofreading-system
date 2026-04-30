@@ -44,6 +44,7 @@ export function KnowledgeLibraryBlockImageEditor({
       : "存储位置会在上传后生成";
   const sourceKind = readVisualSymbolSourceKind(block.content_payload);
   const reviewState = readVisualSymbolReviewState(block.content_payload);
+  const misplacedDocxMessage = getMisplacedDocxImageBlockMessage(block.content_payload);
   const candidateConfidence =
     typeof block.content_payload.candidate_confidence === "number"
       ? String(block.content_payload.candidate_confidence)
@@ -69,6 +70,15 @@ export function KnowledgeLibraryBlockImageEditor({
       <p className="knowledge-library-block-editor__hint">
         图片入口只接收图片。若作者用图片代替 `χ²`、公式片段或其他可编辑符号，这里应按对象型问题录入，而不是当作普通文本格式问题；Word 表格请点击“Word 表格证据”上传 .docx。
       </p>
+      {misplacedDocxMessage ? (
+        <p
+          className="knowledge-library-block-editor__error"
+          data-docx-image-block-error="true"
+          role="alert"
+        >
+          {misplacedDocxMessage}
+        </p>
+      ) : null}
       {uploadGuardMessage ? <p role="alert">{uploadGuardMessage}</p> : null}
 
       <label className="knowledge-library-rich-content-editor__field">
@@ -225,11 +235,7 @@ export function getImageUploadGuardMessage(input: {
 }): string | null {
   const fileName = input.name.trim().toLowerCase();
   const mimeType = (input.type ?? "").trim().toLowerCase();
-  const isDocx =
-    fileName.endsWith(".docx") ||
-    mimeType ===
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-  if (isDocx) {
+  if (isDocxLikeFile({ name: fileName, type: mimeType })) {
     return "这是 Word 文档。请点击“Word 表格证据”上传 .docx，系统会解析表格并打开预览确认区。";
   }
 
@@ -238,6 +244,18 @@ export function getImageUploadGuardMessage(input: {
   }
 
   return null;
+}
+
+export function getMisplacedDocxImageBlockMessage(
+  payload: Record<string, unknown>,
+): string | null {
+  const fileName = readPayloadString(payload, "file_name");
+  const mimeType = readPayloadString(payload, "mime_type");
+  if (!isDocxLikeFile({ name: fileName, type: mimeType })) {
+    return null;
+  }
+
+  return "这个图片块里已经是 Word 文档，不会触发表格解析和预览。请删除本图片块，然后在上方 Word 表格证据上传预览区重新上传 .docx。";
 }
 
 async function handleFileUpload(input: {
@@ -321,6 +339,16 @@ export function buildImageUnderstanding(
     caption: caption.length > 0 ? caption : undefined,
     image_id: imageId.length > 0 ? imageId : undefined,
   };
+}
+
+function isDocxLikeFile(input: { name: string; type?: string }): boolean {
+  const fileName = input.name.trim().toLowerCase();
+  const mimeType = (input.type ?? "").trim().toLowerCase();
+  return (
+    fileName.endsWith(".docx") ||
+    mimeType ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  );
 }
 
 function formatImageUnderstandingStatus(payload: Record<string, unknown>): string {

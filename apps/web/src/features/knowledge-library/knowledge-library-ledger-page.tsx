@@ -1060,9 +1060,7 @@ export function KnowledgeLibraryLedgerPage({
               )
             }
             onUploadImage={(input) => handleUploadInlineImage(input)}
-            tableEvidenceClient={
-              composer.persistedRevisionId ? defaultHttpClient : undefined
-            }
+            tableEvidenceClient={defaultHttpClient}
             onSelectFiles={(files) => void handleUploadFiles(files)}
             onRemoveAttachment={(blockId) =>
               setComposer((current) =>

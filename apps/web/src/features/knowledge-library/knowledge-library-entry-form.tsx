@@ -452,7 +452,7 @@ export function KnowledgeLibraryEntryForm({
             blocks={contentBlocks}
             onChange={onContentBlocksChange}
             onUploadImage={onUploadImage}
-            tableEvidenceClient={hasPersistedDraft ? tableEvidenceClient : undefined}
+            tableEvidenceClient={tableEvidenceClient}
             currentRevisionId={composer.persistedRevisionId ?? undefined}
           />
           <KnowledgeLibraryAttachmentField

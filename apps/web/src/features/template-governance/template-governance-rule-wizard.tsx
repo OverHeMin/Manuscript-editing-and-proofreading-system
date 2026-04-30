@@ -705,7 +705,7 @@ function renderWizardBody(input: {
           onUploadImage={async (payload) =>
             (await uploadKnowledgeImage(defaultRuleWizardClient, payload)).body
           }
-          tableEvidenceClient={input.draftRevisionId ? defaultRuleWizardClient : undefined}
+          tableEvidenceClient={defaultRuleWizardClient}
           draftRevisionId={input.draftRevisionId}
         />
       );

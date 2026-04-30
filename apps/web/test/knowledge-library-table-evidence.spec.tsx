@@ -27,6 +27,21 @@ test("knowledge library rich content editor exposes Word table evidence entry in
   assert.doesNotMatch(markup, /data-block-action="add-table"/u);
 });
 
+test("knowledge library rich content editor opens the DOCX upload and preview area when table evidence is available", () => {
+  const markup = renderToStaticMarkup(
+    <KnowledgeLibraryRichContentEditor
+      blocks={[]}
+      onChange={() => undefined}
+      tableEvidenceClient={{ request: async () => ({ status: 200, body: {} }) }}
+    />,
+  );
+
+  assert.match(markup, /data-table-evidence-upload-input="true"/u);
+  assert.match(markup, /data-table-evidence-client-state="available"/u);
+  assert.match(markup, /Word 表格证据上传预览区/u);
+  assert.match(markup, /预览确认区会在上传并选择表格后显示在这里/u);
+});
+
 test("knowledge library rich content editor does not create new ordinary table blocks", () => {
   assert.equal(
     createKnowledgeLibraryContentBlockForAction({
@@ -260,10 +275,10 @@ test("knowledge library table evidence UI selection handler catches binding fail
   assert.deepEqual(errors, ["binding service unavailable"]);
 });
 
-test("knowledge library table evidence selection requires a real knowledge revision before binding", async () => {
+test("knowledge library table evidence selection inserts a local draft block before backend binding is possible", async () => {
   const requests: unknown[] = [];
   const errors: string[] = [];
-  const changes: unknown[] = [];
+  const changes: KnowledgeContentBlockViewModel[][] = [];
   const client = {
     async request<TResponse>(input: unknown) {
       requests.push(input);
@@ -287,32 +302,42 @@ test("knowledge library table evidence selection requires a real knowledge revis
       assetId: "asset-1",
       revisionId: "table-revision-1",
       revisionStatus: "confirmed",
+      confirmedTablePackage: {
+        authority: "authoritative",
+      } as never,
     },
     onChange: (nextBlocks) => changes.push(nextBlocks),
     onError: (message) => errors.push(message),
   });
 
   assert.deepEqual(requests, []);
-  assert.deepEqual(changes, []);
-  assert.deepEqual(errors, ["请先保存草稿后再添加 Word 表格证据"]);
+  assert.deepEqual(errors, []);
+  assert.equal(changes.length, 1);
+  assert.equal(changes[0]?.[1]?.revision_id, "local-draft");
+  assert.deepEqual(changes[0]?.[1]?.content_payload, {
+    table_evidence_asset_id: "asset-1",
+    table_evidence_revision_id: "table-revision-1",
+    revision_status: "confirmed",
+    confirmed_table_package: {
+      authority: "authoritative",
+    },
+  });
 
-  await assert.rejects(
-    () =>
-      appendKnowledgeLibraryTableEvidenceBlock({
-        blocks: [],
-        currentRevisionId: "local-draft",
-        client,
-        selection: {
-          assetId: "asset-1",
-          revisionId: "table-revision-1",
-          revisionStatus: "confirmed",
-          confirmedTablePackage: {
-            authority: "authoritative",
-          } as never,
-        },
-      }),
-    /请先保存草稿后再添加 Word 表格证据/u,
-  );
+  const nextBlocks = await appendKnowledgeLibraryTableEvidenceBlock({
+    blocks: [],
+    currentRevisionId: "local-draft",
+    client,
+    selection: {
+      assetId: "asset-1",
+      revisionId: "table-revision-1",
+      revisionStatus: "confirmed",
+      confirmedTablePackage: {
+        authority: "authoritative",
+      } as never,
+    },
+  });
+  assert.equal(nextBlocks[0]?.revision_id, "local-draft");
+  assert.equal(nextBlocks[0]?.content_payload.binding_id, undefined);
   assert.deepEqual(requests, []);
 });
 
