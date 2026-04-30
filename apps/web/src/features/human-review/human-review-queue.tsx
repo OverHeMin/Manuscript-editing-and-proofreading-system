@@ -32,6 +32,8 @@ export interface HumanReviewQueueProps {
   preflight?: HumanReviewPublishPreflightResultViewModel | null;
   isUpdating?: boolean;
   isPublishing?: boolean;
+  canPublishFinal?: boolean;
+  publishBlockReason?: string;
   onDecisionChange?(input: HumanReviewQueueDecisionChangeInput): void;
   onBatchDecisionChange?(input: HumanReviewQueueBatchDecisionChangeInput): void;
   onPreflightPublish?(): void;
@@ -54,6 +56,8 @@ export function HumanReviewQueue({
   preflight = null,
   isUpdating = false,
   isPublishing = false,
+  canPublishFinal = true,
+  publishBlockReason,
   onDecisionChange,
   onBatchDecisionChange,
   onPreflightPublish,
@@ -73,6 +77,7 @@ export function HumanReviewQueue({
   const summary = summarizeHumanReviewDiffItems(items);
   const preflightSummary = preflight?.summary;
   const canPublish = preflight?.can_publish ?? summary.can_publish;
+  const publishBlocked = !canPublish || !canPublishFinal;
 
   return (
     <section
@@ -106,6 +111,11 @@ export function HumanReviewQueue({
             {preflight.blocking_reasons.map((reason) => (
               <li key={reason}>{reason}</li>
             ))}
+          </ul>
+        ) : null}
+        {!canPublishFinal && publishBlockReason ? (
+          <ul className="human-review-queue-blockers">
+            <li>{publishBlockReason}</li>
           </ul>
         ) : null}
       </section>
@@ -325,7 +335,7 @@ export function HumanReviewQueue({
         </button>
         <button
           type="button"
-          disabled={!canPublish || isPublishing || isUpdating}
+          disabled={publishBlocked || isPublishing || isUpdating}
           onClick={() => onPublishFinal?.()}
         >
           {isPublishing ? "生成中..." : "生成最终稿"}

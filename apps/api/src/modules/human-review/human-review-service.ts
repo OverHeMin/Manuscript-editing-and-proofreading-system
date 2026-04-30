@@ -87,6 +87,8 @@ export interface PublishHumanReviewFinalInput
   actorRole?: RoleKey;
   outputStorageKey?: string;
   outputFileName?: string;
+  proofreadingConfirmationDecisions?: readonly HumanReviewProofreadingConfirmationDecisionInput[];
+  proofreadingConfirmationItemCount?: number;
 }
 
 export interface HumanReviewBackflowResult {
@@ -123,6 +125,51 @@ export class HumanReviewPublishGateError extends Error {
     super(message);
     this.name = "HumanReviewPublishGateError";
   }
+}
+
+export type HumanReviewProofreadingConfirmationDecisionAction =
+  | "accepted"
+  | "accepted_with_manual_edit"
+  | "rejected"
+  | "accept"
+  | "accept_and_edit"
+  | "reject"
+  | "manual_only"
+  | "escalated"
+  | "route_to_rule_candidate"
+  | "route_to_knowledge_candidate";
+
+export interface HumanReviewProofreadingConfirmationDecisionInput {
+  itemId: string;
+  targetText: string;
+  replacementText: string;
+  action: HumanReviewProofreadingConfirmationDecisionAction;
+  finalReplacementText?: string;
+  editedReplacementText?: string;
+  routeToRuleCandidate?: boolean;
+  routeToKnowledgeCandidate?: boolean;
+  blocksFinal?: boolean;
+  severity?: "critical" | "high" | "medium" | "low";
+  note?: string;
+}
+
+interface ProofreadingConfirmationBackflowAttempt {
+  itemId: string;
+  target: HumanReviewBackflowTarget;
+  status: "succeeded" | "failed";
+  learningCandidateId?: string;
+  errorMessage?: string;
+}
+
+interface ProofreadingConfirmationBackflowResult {
+  attempts: ProofreadingConfirmationBackflowAttempt[];
+  summary: HumanReviewBackflowResult["summary"];
+}
+
+interface ProofreadingConfirmationGateItem {
+  itemId: string;
+  blocksFinal: boolean;
+  severity?: "critical" | "high" | "medium" | "low";
 }
 
 export class HumanReviewService {
@@ -219,6 +266,15 @@ export class HumanReviewService {
         "No human review differences were available to publish.",
       );
     }
+    const expectedProofreadingConfirmationItems =
+      await this.resolveExpectedProofreadingConfirmationItems(input.module, firstItem);
+    assertPublishableProofreadingConfirmationDecisions(
+      input.proofreadingConfirmationDecisions,
+      {
+        expectedItems: expectedProofreadingConfirmationItems,
+        fallbackExpectedItemCount: input.proofreadingConfirmationItemCount,
+      },
+    );
 
     const timestamp = this.now().toISOString();
     const jobId = this.createId();
@@ -243,7 +299,12 @@ export class HumanReviewService {
       rules: [],
       resolvedRules: [],
       tableSnapshots: [],
-      aiReplacements: buildKeptTextReplacements(items),
+      aiReplacements: [
+        ...buildProofreadingConfirmationTextReplacements(
+          input.proofreadingConfirmationDecisions,
+        ),
+        ...buildKeptTextReplacements(items),
+      ],
     });
 
     const job: JobRecord = {
@@ -265,6 +326,18 @@ export class HumanReviewService {
         rejectedDiffItemIds: items
           .filter((item) => item.content_decision === "reject")
           .map((item) => item.id),
+        ...(input.proofreadingConfirmationDecisions
+          ? {
+              proofreadingConfirmationDecisionIds:
+                input.proofreadingConfirmationDecisions.map(
+                  (decision) => decision.itemId,
+                ),
+              proofreadingConfirmationGovernanceIntents:
+                buildProofreadingConfirmationGovernanceIntents(
+                  input.proofreadingConfirmationDecisions,
+                ),
+            }
+          : {}),
         outputStorageKey,
       },
       attempt_count: 1,
@@ -286,6 +359,16 @@ export class HumanReviewService {
       sourceModule: resolveHumanReviewFinalSourceModule(input.module),
       sourceJobId: jobId,
     });
+    const proofreadingConfirmationBackflow =
+      await this.runProofreadingConfirmationBackflow({
+        decisions: input.proofreadingConfirmationDecisions ?? [],
+        module: input.module,
+        manuscriptId: input.manuscriptId,
+        finalAsset: asset,
+        requestedBy,
+        actorRole: input.actorRole,
+        timestamp,
+      });
 
     const completedJob = {
       ...job,
@@ -293,6 +376,12 @@ export class HumanReviewService {
         ...job.payload,
         outputAssetId: asset.id,
         outputAssetType: asset.asset_type,
+        ...(proofreadingConfirmationBackflow.attempts.length > 0
+          ? {
+              proofreadingConfirmationBackflow:
+                proofreadingConfirmationBackflow.summary,
+            }
+          : {}),
       },
     };
     await this.jobRepository.save(completedJob);
@@ -310,12 +399,16 @@ export class HumanReviewService {
       timestamp,
       targets: "all",
     });
+    const combinedBackflow = combineBackflowSummaries(
+      backflow,
+      proofreadingConfirmationBackflow,
+    );
 
     return {
       job: completedJob,
       asset,
       preflight,
-      backflow,
+      backflow: combinedBackflow,
     };
   }
 
@@ -488,6 +581,149 @@ export class HumanReviewService {
       return attempt;
     }
   }
+
+  private async runProofreadingConfirmationBackflow(input: {
+    decisions: readonly HumanReviewProofreadingConfirmationDecisionInput[];
+    module: HumanReviewPublishModule;
+    manuscriptId: string;
+    finalAsset: DocumentAssetRecord;
+    requestedBy: string;
+    actorRole?: RoleKey;
+    timestamp: string;
+  }): Promise<ProofreadingConfirmationBackflowResult> {
+    const attempts: ProofreadingConfirmationBackflowAttempt[] = [];
+
+    if (input.module !== "proofreading") {
+      return summarizeProofreadingConfirmationBackflow(attempts);
+    }
+
+    for (const decision of input.decisions) {
+      for (const target of buildProofreadingConfirmationBackflowTargets(decision)) {
+        attempts.push(
+          await this.runProofreadingConfirmationBackflowTarget({
+            decision,
+            target,
+            finalAsset: input.finalAsset,
+            manuscriptId: input.manuscriptId,
+            requestedBy: input.requestedBy,
+            actorRole: input.actorRole,
+          }),
+        );
+      }
+    }
+
+    return summarizeProofreadingConfirmationBackflow(attempts);
+  }
+
+  private async runProofreadingConfirmationBackflowTarget(input: {
+    decision: HumanReviewProofreadingConfirmationDecisionInput;
+    target: HumanReviewBackflowTarget;
+    finalAsset: DocumentAssetRecord;
+    manuscriptId: string;
+    requestedBy: string;
+    actorRole?: RoleKey;
+  }): Promise<ProofreadingConfirmationBackflowAttempt> {
+    try {
+      if (!this.reviewItemsService) {
+        throw new Error(
+          "proofreading confirmation candidate backflow service is not configured",
+        );
+      }
+
+      const manuscript = await this.manuscriptRepository.findById(input.manuscriptId);
+      if (!manuscript) {
+        throw new Error(`manuscript ${input.manuscriptId} was not found`);
+      }
+
+      const replacementText = resolveProofreadingConfirmationReplacementText(
+        input.decision,
+      );
+      const routeAction =
+        input.target === "knowledge_candidate"
+          ? "route_to_knowledge_candidate"
+          : "route_to_rule_candidate";
+      const governedHit = await this.reviewItemsService.submitGovernedHit({
+        manuscriptId: input.manuscriptId,
+        manuscriptType: manuscript.manuscript_type,
+        module: "proofreading",
+        snapshotId: `human-review:${input.finalAsset.id}`,
+        sourceAssetId: input.finalAsset.id,
+        feedbackCategory:
+          input.target === "knowledge_candidate"
+            ? "missing_knowledge"
+            : "missed_hit",
+        feedbackText:
+          input.decision.note ??
+          `Human confirmed proofreading issue for ${input.decision.targetText}.`,
+        title: `Proofreading confirmation ${input.decision.itemId}`,
+        excerpt: input.decision.targetText,
+        suggestion: replacementText,
+        rationale: `Confirmed after human review final asset ${input.finalAsset.id}.`,
+        candidatePosture: "candidate_change",
+        decisionSource: "manual_feedback",
+        originPayload: {
+          source: "proofreading_confirmation",
+          itemId: input.decision.itemId,
+          finalAssetId: input.finalAsset.id,
+          action: input.decision.action,
+          routeAction,
+        },
+        createdBy: input.requestedBy,
+      });
+
+      const decision = await this.reviewItemsService.decideReviewItem({
+        sourceKind: "governed_hit",
+        id: governedHit.item.id,
+        action: routeAction,
+        requestedBy: input.requestedBy,
+        requestedByRole: input.actorRole,
+        title: governedHit.item.title,
+        proposalText: replacementText,
+      });
+      const learningCandidateId = decision.item?.id;
+      if (!learningCandidateId) {
+        throw new Error(
+          "proofreading confirmation candidate backflow did not return a candidate id",
+        );
+      }
+
+      return {
+        itemId: input.decision.itemId,
+        target: input.target,
+        status: "succeeded",
+        learningCandidateId,
+      };
+    } catch (error) {
+      return {
+        itemId: input.decision.itemId,
+        target: input.target,
+        status: "failed",
+        errorMessage:
+          error instanceof Error
+            ? error.message
+            : "proofreading confirmation backflow failed",
+      };
+    }
+  }
+
+  private async resolveExpectedProofreadingConfirmationItems(
+    module: HumanReviewPublishModule,
+    firstItem: HumanReviewDiffRecord,
+  ): Promise<ProofreadingConfirmationGateItem[]> {
+    if (module !== "proofreading") {
+      return [];
+    }
+
+    const baselineAsset = await this.assetRepository.findById(
+      firstItem.baseline_asset_id,
+    );
+    if (!baselineAsset?.source_job_id) {
+      return [];
+    }
+
+    const sourceJob = await this.jobRepository.findById(baselineAsset.source_job_id);
+    return buildProofreadingConfirmationGateItems(sourceJob?.payload);
+  }
 }
 
 function resolveStatusForDecision(
@@ -572,6 +808,267 @@ function assertPublishable(preflight: HumanReviewPublishPreflightResult): void {
   throw new HumanReviewPublishGateError(preflight.blocking_reasons.join("; "));
 }
 
+function assertPublishableProofreadingConfirmationDecisions(
+  decisions: readonly HumanReviewProofreadingConfirmationDecisionInput[] | undefined,
+  options: {
+    expectedItems: readonly ProofreadingConfirmationGateItem[];
+    fallbackExpectedItemCount: number | undefined;
+  },
+): void {
+  const decisionsByItemId = new Map(
+    (decisions ?? []).map((decision) => [decision.itemId, decision]),
+  );
+  const confirmedItemIds = new Set(decisionsByItemId.keys());
+
+  if (options.expectedItems.length > 0) {
+    const missingItem = options.expectedItems.find(
+      (item) => !confirmedItemIds.has(item.itemId),
+    );
+    if (missingItem) {
+      throw new HumanReviewPublishGateError(
+        "AI proofreading issues must all be confirmed before publication.",
+      );
+    }
+  } else {
+    const expectedItemCount = options.fallbackExpectedItemCount;
+    if (expectedItemCount !== undefined) {
+      if (!Number.isInteger(expectedItemCount) || expectedItemCount < 0) {
+        throw new HumanReviewPublishGateError(
+          "AI proofreading confirmation item count is invalid.",
+        );
+      }
+
+      if (confirmedItemIds.size < expectedItemCount) {
+        throw new HumanReviewPublishGateError(
+          "AI proofreading issues must all be confirmed before publication.",
+        );
+      }
+    }
+  }
+
+  const decisionsWithServerRiskMetadata =
+    options.expectedItems.length > 0
+      ? options.expectedItems.flatMap((item) => {
+          const decision = decisionsByItemId.get(item.itemId);
+          if (!decision) {
+            return [];
+          }
+
+          return [
+            {
+              ...decision,
+              blocksFinal: item.blocksFinal || decision.blocksFinal === true,
+              severity: item.severity ?? decision.severity,
+            },
+          ];
+        })
+      : (decisions ?? []);
+
+  for (const decision of decisionsWithServerRiskMetadata) {
+    const normalizedAction = normalizeProofreadingConfirmationDecisionAction(
+      decision.action,
+    );
+
+    if (normalizedAction === "escalated") {
+      throw new HumanReviewPublishGateError(
+        `AI proofreading issue ${decision.itemId} is escalated and must be resolved before publication.`,
+      );
+    }
+
+    if (
+      normalizedAction === "manual_only" &&
+      (decision.blocksFinal === true ||
+        decision.severity === "critical" ||
+        decision.severity === "high")
+    ) {
+      throw new HumanReviewPublishGateError(
+        `AI proofreading issue ${decision.itemId} still requires manual confirmation before publication.`,
+      );
+    }
+  }
+}
+
+function buildProofreadingConfirmationGateItems(
+  payload: Record<string, unknown> | undefined,
+): ProofreadingConfirmationGateItem[] {
+  const plan = asRecord(payload?.proofreadingPlan);
+  const proofreadingFindings = asRecord(payload?.proofreadingFindings);
+  const planIssueItems = Array.isArray(plan?.issues)
+    ? plan.issues.flatMap((entry, index) => {
+        const issue = asRecord(entry);
+        const anchor = asRecord(issue?.anchor);
+        const suggestion = asRecord(issue?.suggestion);
+        const targetText =
+          readOptionalString(anchor?.quote) ??
+          readOptionalString(issue?.targetText);
+        const replacementText =
+          readOptionalString(suggestion?.replacementText) ??
+          readOptionalString(issue?.replacementText) ??
+          "";
+        if (!targetText) {
+          return [];
+        }
+
+        return [
+          {
+            itemId: readOptionalString(issue?.itemId) ?? `issue-${index + 1}`,
+            blocksFinal: Boolean(issue?.blocksFinal),
+            ...(normalizeProofreadingConfirmationSeverity(issue?.severity)
+              ? {
+                  severity: normalizeProofreadingConfirmationSeverity(
+                    issue?.severity,
+                  ),
+                }
+              : {}),
+          },
+        ];
+      })
+    : [];
+  const correctionItems =
+    planIssueItems.length === 0 && Array.isArray(plan?.corrections)
+      ? plan.corrections.flatMap((entry, index) => {
+          const correction = asRecord(entry);
+          const targetText = readOptionalString(correction?.targetText);
+          const replacementText = readOptionalString(correction?.replacementText);
+          if (!targetText || !replacementText) {
+            return [];
+          }
+
+          return [
+            {
+              itemId: `correction-${index + 1}`,
+              blocksFinal: false,
+            },
+          ];
+        })
+      : [];
+  const qualityFindingItems =
+    buildProofreadingQualityFindingGateItems(proofreadingFindings);
+  const failedCheckItems =
+    buildProofreadingFailedCheckGateItems(proofreadingFindings);
+  const baseItems = planIssueItems.length > 0 ? planIssueItems : correctionItems;
+
+  return dedupeProofreadingConfirmationGateItems([
+    ...baseItems,
+    ...qualityFindingItems,
+    ...failedCheckItems,
+  ]);
+}
+
+function buildProofreadingQualityFindingGateItems(
+  proofreadingFindings: Record<string, unknown> | undefined,
+): ProofreadingConfirmationGateItem[] {
+  const qualityFindings = Array.isArray(proofreadingFindings?.qualityFindings)
+    ? proofreadingFindings.qualityFindings
+    : [];
+
+  return qualityFindings.flatMap((entry, index) => {
+    const finding = asRecord(entry);
+    if (!finding) {
+      return [];
+    }
+
+    const evidencePack = asRecord(finding.evidence_pack);
+    const targetText =
+      readOptionalString(finding.excerpt) ??
+      readOptionalString(evidencePack?.excerpt);
+    if (!targetText) {
+      return [];
+    }
+
+    const severity = normalizeProofreadingConfirmationSeverity(finding.severity);
+    return [
+      {
+        itemId: readOptionalString(finding.id) ?? `quality-${index + 1}`,
+        blocksFinal:
+          Boolean(finding.blocksFinal) ||
+          severity === "high" ||
+          severity === "critical",
+        ...(severity ? { severity } : {}),
+      },
+    ];
+  });
+}
+
+function buildProofreadingFailedCheckGateItems(
+  proofreadingFindings: Record<string, unknown> | undefined,
+): ProofreadingConfirmationGateItem[] {
+  const failedChecks = Array.isArray(proofreadingFindings?.failedChecks)
+    ? proofreadingFindings.failedChecks
+    : [];
+
+  return failedChecks.flatMap((entry, index) => {
+    const failedCheck = asRecord(entry);
+    if (!failedCheck) {
+      return [];
+    }
+
+    const targetText =
+      readOptionalString(failedCheck.actual) ??
+      readOptionalString(failedCheck.excerpt);
+    if (!targetText) {
+      return [];
+    }
+
+    const severity = normalizeProofreadingConfirmationSeverity(failedCheck.severity);
+    return [
+      {
+        itemId: readOptionalString(failedCheck.ruleId) ?? `failed-check-${index + 1}`,
+        blocksFinal:
+          Boolean(failedCheck.blocksFinal) ||
+          severity === "high" ||
+          severity === "critical",
+        ...(severity ? { severity } : {}),
+      },
+    ];
+  });
+}
+
+function normalizeProofreadingConfirmationSeverity(
+  value: unknown,
+): ProofreadingConfirmationGateItem["severity"] {
+  const severity = readOptionalString(value);
+  switch (severity) {
+    case "critical":
+    case "high":
+    case "medium":
+    case "low":
+      return severity;
+    case "error":
+      return "high";
+    case "warning":
+      return "medium";
+    case "info":
+      return "low";
+    default:
+      return undefined;
+  }
+}
+
+function dedupeProofreadingConfirmationGateItems(
+  items: readonly ProofreadingConfirmationGateItem[],
+): ProofreadingConfirmationGateItem[] {
+  const deduped = new Map<string, ProofreadingConfirmationGateItem>();
+
+  for (const item of items) {
+    if (!deduped.has(item.itemId)) {
+      deduped.set(item.itemId, item);
+    }
+  }
+
+  return [...deduped.values()];
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function readOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
 function shareSameAssetLineage(items: readonly HumanReviewDiffRecord[]): boolean {
   const first = items[0];
   if (!first) {
@@ -609,6 +1106,165 @@ function buildKeptTextReplacements(
         },
       ];
     });
+}
+
+function buildProofreadingConfirmationTextReplacements(
+  decisions: readonly HumanReviewProofreadingConfirmationDecisionInput[] | undefined,
+): NonNullable<ApplyDeterministicDocxRulesInput["aiReplacements"]> {
+  return (decisions ?? []).flatMap((decision) => {
+    const normalizedAction = normalizeProofreadingConfirmationDecisionAction(
+      decision.action,
+    );
+    if (!isProofreadingConfirmationAcceptedIntoFinal(normalizedAction)) {
+      return [];
+    }
+
+    const targetText = decision.targetText.trim();
+    const replacementText = (
+      decision.finalReplacementText ??
+      decision.editedReplacementText ??
+      decision.replacementText
+    ).trim();
+    if (!targetText || !replacementText) {
+      return [];
+    }
+
+    return [
+      {
+        targetText,
+        replacementText,
+        reason: `Proofreading confirmation ${decision.itemId} kept by reviewer.`,
+      },
+    ];
+  });
+}
+
+function buildProofreadingConfirmationGovernanceIntents(
+  decisions: readonly HumanReviewProofreadingConfirmationDecisionInput[],
+): Array<{
+  itemId: string;
+  ruleCandidate: boolean;
+  knowledgeCandidate: boolean;
+}> {
+  return decisions
+    .map((decision) => {
+      const normalizedAction = normalizeProofreadingConfirmationDecisionAction(
+        decision.action,
+      );
+      return {
+        itemId: decision.itemId,
+        ruleCandidate:
+          decision.routeToRuleCandidate === true ||
+          normalizedAction === "route_to_rule_candidate",
+        knowledgeCandidate:
+          decision.routeToKnowledgeCandidate === true ||
+          normalizedAction === "route_to_knowledge_candidate",
+      };
+    })
+    .filter((intent) => intent.ruleCandidate || intent.knowledgeCandidate);
+}
+
+function buildProofreadingConfirmationBackflowTargets(
+  decision: HumanReviewProofreadingConfirmationDecisionInput,
+): HumanReviewBackflowTarget[] {
+  const normalizedAction = normalizeProofreadingConfirmationDecisionAction(
+    decision.action,
+  );
+  const targets: HumanReviewBackflowTarget[] = [];
+
+  if (
+    decision.routeToRuleCandidate === true ||
+    normalizedAction === "route_to_rule_candidate"
+  ) {
+    targets.push("rule_candidate");
+  }
+
+  if (
+    decision.routeToKnowledgeCandidate === true ||
+    normalizedAction === "route_to_knowledge_candidate"
+  ) {
+    targets.push("knowledge_candidate");
+  }
+
+  return targets;
+}
+
+function resolveProofreadingConfirmationReplacementText(
+  decision: HumanReviewProofreadingConfirmationDecisionInput,
+): string {
+  return (
+    decision.finalReplacementText ??
+    decision.editedReplacementText ??
+    decision.replacementText
+  ).trim();
+}
+
+function summarizeProofreadingConfirmationBackflow(
+  attempts: readonly ProofreadingConfirmationBackflowAttempt[],
+): ProofreadingConfirmationBackflowResult {
+  return {
+    attempts: [...attempts],
+    summary: {
+      attempted_count: attempts.length,
+      succeeded_count: attempts.filter((attempt) => attempt.status === "succeeded")
+        .length,
+      failed_count: attempts.filter((attempt) => attempt.status === "failed")
+        .length,
+    },
+  };
+}
+
+function combineBackflowSummaries(
+  diffBackflow: HumanReviewBackflowResult,
+  proofreadingBackflow: ProofreadingConfirmationBackflowResult,
+): HumanReviewBackflowResult {
+  return {
+    attempts: diffBackflow.attempts,
+    summary: {
+      attempted_count:
+        diffBackflow.summary.attempted_count +
+        proofreadingBackflow.summary.attempted_count,
+      succeeded_count:
+        diffBackflow.summary.succeeded_count +
+        proofreadingBackflow.summary.succeeded_count,
+      failed_count:
+        diffBackflow.summary.failed_count +
+        proofreadingBackflow.summary.failed_count,
+    },
+  };
+}
+
+function normalizeProofreadingConfirmationDecisionAction(
+  action: HumanReviewProofreadingConfirmationDecisionAction,
+):
+  | "accepted"
+  | "accepted_with_manual_edit"
+  | "rejected"
+  | "manual_only"
+  | "escalated"
+  | "route_to_rule_candidate"
+  | "route_to_knowledge_candidate" {
+  switch (action) {
+    case "accept":
+      return "accepted";
+    case "accept_and_edit":
+      return "accepted_with_manual_edit";
+    case "reject":
+      return "rejected";
+    default:
+      return action;
+  }
+}
+
+function isProofreadingConfirmationAcceptedIntoFinal(
+  action: ReturnType<typeof normalizeProofreadingConfirmationDecisionAction>,
+): boolean {
+  return (
+    action === "accepted" ||
+    action === "accepted_with_manual_edit" ||
+    action === "route_to_rule_candidate" ||
+    action === "route_to_knowledge_candidate"
+  );
 }
 
 function resolveBackflowTargets(

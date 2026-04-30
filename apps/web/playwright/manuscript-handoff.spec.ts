@@ -177,10 +177,12 @@ test("admin can follow screening to proofreading handoffs with visible prefill l
     ".manuscript-workbench-proofreading-issue-detail",
   );
   await expect(issueDetail).toBeVisible();
-  await clickViaDom(issueDetail.getByRole("button", { name: "转规则候选" }));
-  await expect(
-    issueDetail.getByRole("button", { name: "转规则候选" }),
-  ).toHaveClass(/is-selected/);
+  const ruleCandidateCheckbox = issueDetail.getByRole("checkbox", {
+    name: "转规则候选",
+  });
+  await expect(ruleCandidateCheckbox).toBeVisible();
+  await ruleCandidateCheckbox.check();
+  await expect(ruleCandidateCheckbox).toBeChecked();
 
   await resolveRemainingProofreadingIssues(page, 0);
 

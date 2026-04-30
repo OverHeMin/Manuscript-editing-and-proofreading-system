@@ -125,6 +125,8 @@ export interface ProofreadingConfirmationItemViewModel {
 export interface ProofreadingConfirmationDraftState {
   action?: ProofreadingConfirmationDecisionAction;
   editedReplacementText?: string;
+  routeToRuleCandidate?: boolean;
+  routeToKnowledgeCandidate?: boolean;
   note?: string;
 }
 
@@ -244,6 +246,11 @@ export interface ManuscriptWorkbenchAssetDetailPageProps {
   onConfirmationActionChange?(
     itemId: string,
     action: ProofreadingConfirmationDecisionAction,
+  ): void;
+  onConfirmationGovernanceIntentChange?(
+    itemId: string,
+    intent: "routeToRuleCandidate" | "routeToKnowledgeCandidate",
+    enabled: boolean,
   ): void;
   onConfirmationEditedReplacementTextChange?(itemId: string, value: string): void;
   onConfirmationNoteChange?(itemId: string, value: string): void;
@@ -1063,6 +1070,18 @@ export function buildProofreadingConfirmationDraftState(
 
       result[itemId] = {
         action,
+        ...(decision?.routeToRuleCandidate === true ||
+        action === "route_to_rule_candidate"
+          ? {
+              routeToRuleCandidate: true,
+            }
+          : {}),
+        ...(decision?.routeToKnowledgeCandidate === true ||
+        action === "route_to_knowledge_candidate"
+          ? {
+              routeToKnowledgeCandidate: true,
+            }
+          : {}),
         ...(readOptionalString(decision?.finalReplacementText) ??
         readOptionalString(decision?.editedReplacementText)
           ? {
@@ -1317,6 +1336,7 @@ export function ManuscriptWorkbenchAssetDetailPage({
   savingEditingSlotKey = null,
   onProofreadingIssueSelect,
   onConfirmationActionChange,
+  onConfirmationGovernanceIntentChange,
   onConfirmationEditedReplacementTextChange,
   onConfirmationNoteChange,
   onSaveDraft,
@@ -1675,6 +1695,25 @@ export function ManuscriptWorkbenchAssetDetailPage({
       confirmationState,
       filteredConfirmationItems.length,
     );
+    const unifiedIssueSummary = {
+      ...issueSummary,
+      totalCount: issueSummary.totalCount + humanReviewDiffItems.length,
+      filteredCount: issueSummary.filteredCount + humanReviewDiffItems.length,
+      pendingCount:
+        issueSummary.pendingCount +
+        humanReviewDiffItems.filter(
+          (item) =>
+            item.content_decision === "unconfirmed" ||
+            item.content_decision === "defer",
+        ).length,
+      processedCount:
+        issueSummary.processedCount +
+        humanReviewDiffItems.filter(
+          (item) =>
+            item.content_decision !== "unconfirmed" &&
+            item.content_decision !== "defer",
+        ).length,
+    };
     const activeIssue =
       filteredConfirmationItems.find((item) => item.itemId === activeProofreadingIssueId) ??
       filteredConfirmationItems[0] ??
@@ -1912,20 +1951,18 @@ export function ManuscriptWorkbenchAssetDetailPage({
           <article className="manuscript-workbench-proofreading-issue-pane">
             <div className="manuscript-workbench-detail-card-header">
               <div>
-                <h4>{showsHumanReviewDiffQueue ? "差异队列" : "问题队列"}</h4>
+                <h4>问题队列</h4>
                 <p>
                   {showsHumanReviewDiffQueue
-                    ? "确认每一处差异是否进入最终稿，并选择是否回流规则或知识候选。"
+                    ? "AI 问题和人工修改在同一页确认，决定是否进入最终稿并回流规则或知识。"
                     : "点击问题可定位到对应稿件位置，并在右侧展开人工确认。"}
                 </p>
               </div>
-              {showsHumanReviewDiffQueue ? null : (
-                <div className="manuscript-workbench-proofreading-issue-summary">
-                  <strong>{`共发现 ${issueSummary.totalCount} 项问题`}</strong>
-                  <span>{`高 ${issueSummary.highCount} · 中 ${issueSummary.mediumCount} · 低 ${issueSummary.lowCount}`}</span>
-                  <small>{`当前显示 ${issueSummary.filteredCount} / 共 ${issueSummary.totalCount}`}</small>
-                </div>
-              )}
+              <div className="manuscript-workbench-proofreading-issue-summary">
+                <strong>{`共发现 ${unifiedIssueSummary.totalCount} 项问题`}</strong>
+                <span>{`高 ${unifiedIssueSummary.highCount} · 中 ${unifiedIssueSummary.mediumCount} · 低 ${unifiedIssueSummary.lowCount}`}</span>
+                <small>{`当前显示 ${unifiedIssueSummary.filteredCount} / 共 ${unifiedIssueSummary.totalCount}`}</small>
+              </div>
               {previewOperationalState || activeLocateTarget ? (
                 <dl className="manuscript-workbench-detail-metadata">
                   {previewOperationalState ? (
@@ -1943,20 +1980,7 @@ export function ManuscriptWorkbenchAssetDetailPage({
                 </dl>
               ) : null}
             </div>
-            {showsHumanReviewDiffQueue && resolvedHumanReviewModule ? (
-              <HumanReviewQueue
-                module={resolvedHumanReviewModule}
-                items={humanReviewDiffItems}
-                preflight={humanReviewPreflight}
-                isUpdating={isHumanReviewUpdating}
-                isPublishing={isFinalizing}
-                onDecisionChange={onHumanReviewDecisionChange}
-                onBatchDecisionChange={onHumanReviewBatchDecisionChange}
-                onPreflightPublish={onHumanReviewPreflight}
-                onPublishFinal={onHumanReviewPublish}
-                onRetryBackflow={onHumanReviewRetryBackflow}
-              />
-            ) : confirmationItems.length > 0 ? (
+            {confirmationItems.length > 0 ? (
               <div className="manuscript-workbench-proofreading-issue-list">
                 <div className="manuscript-workbench-proofreading-issue-filters">
                   <label className="manuscript-workbench-field">
@@ -2068,6 +2092,36 @@ export function ManuscriptWorkbenchAssetDetailPage({
                               </button>
                             ))}
                           </div>
+                          <div className="manuscript-workbench-detail-decision-grid">
+                            <label className="manuscript-workbench-field">
+                              <span>转规则候选</span>
+                              <input
+                                type="checkbox"
+                                checked={draft.routeToRuleCandidate ?? false}
+                                onChange={(event) =>
+                                  onConfirmationGovernanceIntentChange?.(
+                                    item.itemId,
+                                    "routeToRuleCandidate",
+                                    event.target.checked,
+                                  )
+                                }
+                              />
+                            </label>
+                            <label className="manuscript-workbench-field">
+                              <span>转知识候选</span>
+                              <input
+                                type="checkbox"
+                                checked={draft.routeToKnowledgeCandidate ?? false}
+                                onChange={(event) =>
+                                  onConfirmationGovernanceIntentChange?.(
+                                    item.itemId,
+                                    "routeToKnowledgeCandidate",
+                                    event.target.checked,
+                                  )
+                                }
+                              />
+                            </label>
+                          </div>
                           {draft.action === "accepted_with_manual_edit" ? (
                             <label className="manuscript-workbench-field">
                               <span>人工修订文本</span>
@@ -2100,12 +2154,33 @@ export function ManuscriptWorkbenchAssetDetailPage({
                   );
                 })}
               </div>
-            ) : (
+            ) : null}
+
+            {showsHumanReviewDiffQueue && resolvedHumanReviewModule ? (
+              <HumanReviewQueue
+                module={resolvedHumanReviewModule}
+                items={humanReviewDiffItems}
+                preflight={humanReviewPreflight}
+                isUpdating={isHumanReviewUpdating}
+                isPublishing={isFinalizing}
+                canPublishFinal={isFinalizeEnabled}
+                publishBlockReason={
+                  isFinalizeEnabled ? undefined : "AI 校对问题尚未全部确认，不能生成最终稿。"
+                }
+                onDecisionChange={onHumanReviewDecisionChange}
+                onBatchDecisionChange={onHumanReviewBatchDecisionChange}
+                onPreflightPublish={onHumanReviewPreflight}
+                onPublishFinal={onHumanReviewPublish}
+                onRetryBackflow={onHumanReviewRetryBackflow}
+              />
+            ) : null}
+
+            {confirmationItems.length === 0 && !showsHumanReviewDiffQueue ? (
               <div className="manuscript-workbench-detail-empty">
                 <strong>当前没有可确认的问题</strong>
                 <p>本次校对没有生成结构化问题队列，暂时无法进入人工核验工作台。</p>
               </div>
-            )}
+            ) : null}
 
             {deepProofreadingEvidence
               ? renderDeepProofreadingEvidenceCard(deepProofreadingEvidence)
@@ -2767,8 +2842,6 @@ const CONFIRMATION_ACTIONS: ReadonlyArray<{
   { value: "rejected", label: "驳回" },
   { value: "manual_only", label: "仅人工处理" },
   { value: "escalated", label: "升级处理" },
-  { value: "route_to_rule_candidate", label: "转规则候选" },
-  { value: "route_to_knowledge_candidate", label: "转知识候选" },
 ];
 
 function renderGovernanceEvidenceCard(input: {

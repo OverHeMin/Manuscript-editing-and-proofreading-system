@@ -77,5 +77,9 @@ export interface ProofreadingConfirmationDecisionInput {
   replacementText: string;
   action: ProofreadingConfirmationDecisionAction;
   editedReplacementText?: string;
+  routeToRuleCandidate?: boolean;
+  routeToKnowledgeCandidate?: boolean;
+  blocksFinal?: boolean;
+  severity?: string;
   note?: string;
 }

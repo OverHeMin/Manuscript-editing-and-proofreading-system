@@ -917,14 +917,28 @@ export function pruneConfirmationState(
         ? normalizeOptionalText(draft.editedReplacementText ?? "")
         : undefined;
     const note = normalizeOptionalText(draft.note ?? "");
+    const routeToRuleCandidate =
+      draft.routeToRuleCandidate === true ||
+      draft.action === "route_to_rule_candidate";
+    const routeToKnowledgeCandidate =
+      draft.routeToKnowledgeCandidate === true ||
+      draft.action === "route_to_knowledge_candidate";
 
-    if (!draft.action && !editedReplacementText && !note) {
+    if (
+      !draft.action &&
+      !editedReplacementText &&
+      !note &&
+      !routeToRuleCandidate &&
+      !routeToKnowledgeCandidate
+    ) {
       continue;
     }
 
     next[item.itemId] = {
       ...(draft.action ? { action: draft.action } : {}),
       ...(editedReplacementText ? { editedReplacementText } : {}),
+      ...(routeToRuleCandidate ? { routeToRuleCandidate } : {}),
+      ...(routeToKnowledgeCandidate ? { routeToKnowledgeCandidate } : {}),
       ...(note ? { note } : {}),
     };
   }
@@ -948,6 +962,17 @@ export function buildProofreadingConfirmationDecisions(
         ? normalizeOptionalText(draft.editedReplacementText ?? "")
         : undefined;
     const note = normalizeOptionalText(draft.note ?? "");
+    const routeToRuleCandidate =
+      draft.routeToRuleCandidate === true ||
+      draft.action === "route_to_rule_candidate";
+    const routeToKnowledgeCandidate =
+      draft.routeToKnowledgeCandidate === true ||
+      draft.action === "route_to_knowledge_candidate";
+    const shouldSendRiskMetadata =
+      draft.action === "manual_only" &&
+      (item.blocksFinal ||
+        item.severity === "high" ||
+        item.severity === "critical");
 
     return [
       {
@@ -956,6 +981,12 @@ export function buildProofreadingConfirmationDecisions(
         replacementText: item.replacementText,
         action: draft.action,
         ...(editedReplacementText ? { editedReplacementText } : {}),
+        ...(routeToRuleCandidate ? { routeToRuleCandidate } : {}),
+        ...(routeToKnowledgeCandidate ? { routeToKnowledgeCandidate } : {}),
+        ...(shouldSendRiskMetadata && item.blocksFinal !== undefined
+          ? { blocksFinal: item.blocksFinal }
+          : {}),
+        ...(shouldSendRiskMetadata && item.severity ? { severity: item.severity } : {}),
         ...(note ? { note } : {}),
       },
     ];
@@ -973,6 +1004,8 @@ export function buildProofreadingConfirmationDecisionSignature(
       replacementText: decision.replacementText,
       editedReplacementText:
         normalizeOptionalText(decision.editedReplacementText ?? "") ?? "",
+      routeToRuleCandidate: decision.routeToRuleCandidate === true,
+      routeToKnowledgeCandidate: decision.routeToKnowledgeCandidate === true,
       note: normalizeOptionalText(decision.note ?? "") ?? "",
     })),
   );
@@ -2168,6 +2201,8 @@ export function ManuscriptWorkbenchPage({
   async function publishHumanReviewFinal(input: {
     workspace: ManuscriptWorkbenchWorkspace;
     module: HumanReviewPublishModule;
+    confirmationDecisions?: readonly ProofreadingConfirmationDecisionInput[];
+    confirmationItemCount?: number;
   }) {
     setIsHumanFinalPublishing(true);
     setError("");
@@ -2181,6 +2216,10 @@ export function ManuscriptWorkbenchPage({
         outputFileName: resolveWorkbenchHumanFinalFileName(
           input.workspace.manuscript.title,
         ),
+        proofreadingConfirmationDecisions:
+          input.module === "proofreading" ? input.confirmationDecisions : undefined,
+        proofreadingConfirmationItemCount:
+          input.module === "proofreading" ? input.confirmationItemCount : undefined,
       });
       const nextWorkspace = await syncWorkspaceConcurrencySnapshot(result.workspace);
       setWorkspace(nextWorkspace);
@@ -3693,12 +3732,27 @@ function buildTemplateContextActionResult(
                 [itemId]: {
                   ...current[itemId],
                   action,
+                  ...(action === "route_to_rule_candidate"
+                    ? { routeToRuleCandidate: true }
+                    : {}),
+                  ...(action === "route_to_knowledge_candidate"
+                    ? { routeToKnowledgeCandidate: true }
+                    : {}),
                   ...(action !== "accepted_with_manual_edit" &&
                     action !== "accept_and_edit"
                     ? {
                         editedReplacementText: undefined,
                       }
                     : {}),
+                },
+              }));
+            }}
+            onConfirmationGovernanceIntentChange={(itemId, intent, enabled) => {
+              setConfirmationState((current) => ({
+                ...current,
+                [itemId]: {
+                  ...current[itemId],
+                  [intent]: enabled,
                 },
               }));
             }}
@@ -3744,6 +3798,8 @@ function buildTemplateContextActionResult(
               void publishHumanReviewFinal({
                 workspace,
                 module: humanReviewModule,
+                confirmationDecisions,
+                confirmationItemCount: confirmationItems.length,
               });
             }}
             onHumanReviewRetryBackflow={(diffItemId) => {
