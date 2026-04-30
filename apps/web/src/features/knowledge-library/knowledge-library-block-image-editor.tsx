@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type {
   KnowledgeContentBlockViewModel,
   KnowledgeUploadInput,
@@ -24,6 +25,7 @@ export function KnowledgeLibraryBlockImageEditor({
   onChange,
   onUploadImage,
 }: KnowledgeLibraryBlockImageEditorProps) {
+  const [uploadGuardMessage, setUploadGuardMessage] = useState<string | null>(null);
   const fileName =
     typeof block.content_payload.file_name === "string"
       ? block.content_payload.file_name
@@ -65,8 +67,9 @@ export function KnowledgeLibraryBlockImageEditor({
       </div>
 
       <p className="knowledge-library-block-editor__hint">
-        支持上传截图、图表或扫描件。若作者用图片代替 `χ²`、公式片段或其他可编辑符号，这里应按对象型问题录入，而不是当作普通文本格式问题。
+        图片入口只接收图片。若作者用图片代替 `χ²`、公式片段或其他可编辑符号，这里应按对象型问题录入，而不是当作普通文本格式问题；Word 表格请点击“Word 表格证据”上传 .docx。
       </p>
+      {uploadGuardMessage ? <p role="alert">{uploadGuardMessage}</p> : null}
 
       <label className="knowledge-library-rich-content-editor__field">
         <span>上传图片或截图</span>
@@ -79,6 +82,14 @@ export function KnowledgeLibraryBlockImageEditor({
               return;
             }
 
+            const guardMessage = getImageUploadGuardMessage(file);
+            if (guardMessage) {
+              setUploadGuardMessage(guardMessage);
+              event.currentTarget.value = "";
+              return;
+            }
+
+            setUploadGuardMessage(null);
             void handleFileUpload({
               file,
               block,
@@ -206,6 +217,27 @@ export function KnowledgeLibraryBlockImageEditor({
       </div>
     </div>
   );
+}
+
+export function getImageUploadGuardMessage(input: {
+  name: string;
+  type?: string;
+}): string | null {
+  const fileName = input.name.trim().toLowerCase();
+  const mimeType = (input.type ?? "").trim().toLowerCase();
+  const isDocx =
+    fileName.endsWith(".docx") ||
+    mimeType ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (isDocx) {
+    return "这是 Word 文档。请点击“Word 表格证据”上传 .docx，系统会解析表格并打开预览确认区。";
+  }
+
+  if (mimeType.length > 0 && !mimeType.startsWith("image/")) {
+    return "图片入口只接收图片。Word 表格请点击“Word 表格证据”上传 .docx。";
+  }
+
+  return null;
 }
 
 async function handleFileUpload(input: {

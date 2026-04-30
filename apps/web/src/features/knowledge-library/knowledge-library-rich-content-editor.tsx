@@ -266,6 +266,10 @@ export function KnowledgeLibraryRichContentEditor({
         {tableEvidenceErrorMessage ? (
           <p role="alert">{tableEvidenceErrorMessage}</p>
         ) : null}
+        <p>
+          上传 Word 表格证据：请点击上方“Word 表格证据”按钮后在这里选择 .docx，
+          系统会解析表格并打开预览确认区；不要把 .docx 放进图片块。
+        </p>
 
         {isTableEvidenceOpen && !tableEvidenceClient && tableEvidencePickerItems.length === 0 ? (
           <p>Word 表格证据需要连接表格证据客户端或提供已确认证据列表后才能添加。</p>

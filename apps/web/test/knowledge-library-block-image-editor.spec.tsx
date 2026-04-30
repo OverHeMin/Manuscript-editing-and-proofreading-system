@@ -6,6 +6,7 @@ import React from "react";
 const {
   KnowledgeLibraryBlockImageEditor,
   buildImageUnderstanding,
+  getImageUploadGuardMessage,
 } = await import(
   "../src/features/knowledge-library/knowledge-library-block-image-editor.tsx"
 );
@@ -70,4 +71,19 @@ test("image block editor renders visual symbol guidance and structured fields", 
   assert.match(markup, /邻近文本/u);
   assert.match(markup, /对象型问题/u);
   assert.match(markup, /χ²/u);
+});
+
+test("image block editor directs DOCX uploads to Word table evidence", () => {
+  assert.equal(
+    getImageUploadGuardMessage({
+      name: "table.docx",
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    }),
+    "这是 Word 文档。请点击“Word 表格证据”上传 .docx，系统会解析表格并打开预览确认区。",
+  );
+
+  assert.equal(
+    getImageUploadGuardMessage({ name: "figure.png", type: "image/png" }),
+    null,
+  );
 });

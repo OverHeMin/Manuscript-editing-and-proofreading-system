@@ -326,6 +326,36 @@ test("rule wizard entry exposes table evidence only when a real draft revision i
   assert.match(availableMarkup, /Word 表格证据/u);
 });
 
+test("rule wizard entry keeps DOCX guidance separate from image upload", () => {
+  const StepEntry = TemplateGovernanceRuleWizardStepEntry as unknown as (
+    props: Record<string, unknown>,
+  ) => React.ReactElement;
+  const markup = renderToStaticMarkup(
+    <StepEntry
+      value={createRuleWizardEntryFormState({
+        supplementalBlocks: [
+          {
+            id: "block-1",
+            revision_id: "knowledge-revision-1",
+            block_type: "image_block",
+            order_no: 0,
+            status: "active",
+            content_payload: {},
+          },
+        ],
+      })}
+      onChange={() => undefined}
+      draftRevisionId="knowledge-revision-1"
+      tableEvidenceClient={{ request: async () => ({ status: 200, body: {} }) }}
+    />,
+  );
+
+  assert.match(markup, /Word 表格证据/u);
+  assert.match(markup, /上传 Word 表格证据/u);
+  assert.match(markup, /图片入口只接收图片/u);
+  assert.match(markup, /请点击“Word 表格证据”上传 \.docx/u);
+});
+
 test("rule wizard shell wires the default table evidence client when entry has a draft revision id", () => {
   const Wizard = TemplateGovernanceRuleWizard as unknown as (
     props: Record<string, unknown>,
