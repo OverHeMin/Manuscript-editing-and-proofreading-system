@@ -357,7 +357,7 @@ function formatOperatorFacingExecutionMode(
   executionMode: "governed" | "bare" | undefined,
 ): string {
   if (executionMode === "bare") {
-    return "单次 AI 识别";
+    return "bare AI";
   }
 
   if (executionMode === "governed") {
@@ -4403,7 +4403,7 @@ function formatActionResultActionLabel(actionLabel: string): string {
     case "Create Draft":
       return "生成校对草稿";
     case "Run Bare AI Once":
-      return "AI 自动处理（本次）";
+      return "执行 bare AI";
     case "Finalize Proofreading":
       return "完成校对定稿";
     case "Upload Manuscript":

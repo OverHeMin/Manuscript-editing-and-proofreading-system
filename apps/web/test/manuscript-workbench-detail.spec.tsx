@@ -635,13 +635,13 @@ test("editing human review queue can publish without proofreading confirmation i
   assert.match(markup, /<button type="button">生成最终稿<\/button>/u);
 });
 
-test("asset detail kind routes proofreading draft reports into the dedicated issue workbench", () => {
+test("asset detail kind keeps proofreading draft reports out of the old issue workbench entry", () => {
   assert.equal(
     resolveManuscriptAssetDetailKind({
       mode: "proofreading",
       assetType: "proofreading_draft_report",
     }),
-    "proofreading_workspace",
+    "report_preview",
   );
   assert.equal(
     resolveManuscriptAssetDetailKind({

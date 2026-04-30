@@ -35,6 +35,7 @@ test("drawer layout surfaces intake controls without extra intro scaffolding abo
       }}
       templateSelection={{
         title: "Journal Template",
+        bindingEnabled: true,
         resolvedManuscriptTypeLabel: "Clinical Study",
         confidenceLabel: "Low confidence",
         confidenceLevel: "low",
@@ -72,6 +73,7 @@ test("drawer layout surfaces intake controls without extra intro scaffolding abo
             label: "Journal Template One",
           },
         ],
+        onBindingEnabledChange: () => {},
         onManualManuscriptTypeSelect: () => {},
         onTemplateFamilySelect: () => {},
         onSelect: () => {},
@@ -92,13 +94,18 @@ test("drawer layout surfaces intake controls without extra intro scaffolding abo
   assert.match(markup, /上传稿件/u);
   assert.match(markup, /data-dropzone="manuscript-upload"/);
   assert.match(markup, /拖拽稿件到这里/u);
-  assert.match(markup, /高级导入/u);
-  assert.match(markup, /远程稿件地址（可选）/u);
+  assert.doesNotMatch(markup, /高级导入/u);
+  assert.doesNotMatch(markup, /远程稿件地址（可选）/u);
+  assert.doesNotMatch(markup, /远程导入/u);
   assert.match(markup, /已选择 2 个稿件/u);
-  assert.match(markup, /已附加 2 个稿件/u);
   assert.match(markup, /人工确认稿件类型/u);
+  assert.match(markup, /是否绑定模板/u);
+  assert.match(markup, /通用包/u);
+  assert.match(markup, /医用包/u);
+  assert.match(markup, /深度校对/u);
   assert.match(markup, /期刊模板（小期刊\/场景）/u);
-  assert.match(markup, /低置信度时请先人工确认稿件类型/u);
+  assert.doesNotMatch(markup, /AI 识别稿件类型/u);
+  assert.doesNotMatch(markup, /识别置信度/u);
   assert.doesNotMatch(markup, /存储键/u);
   assert.doesNotMatch(markup, /case-report\.docx/u);
   assert.doesNotMatch(markup, /case-report-supplement\.docx/u);
@@ -131,7 +138,7 @@ test("full layout keeps only operator-facing AI readiness copy on the main page"
 
   assert.match(markup, /data-execution-context="readonly"/);
   assert.match(markup, /data-execution-mode="editing"/);
-  assert.match(markup, /同屏完成接入、检索与处理动作/u);
+  assert.match(markup, /稿件处理/u);
   assert.match(markup, /稿件编号/u);
   assert.doesNotMatch(markup, /稿件 ID/u);
   assert.doesNotMatch(markup, /治理动作/u);
@@ -173,6 +180,7 @@ test("template selection warnings keep pending changes in operator language", ()
       }}
       templateSelection={{
         title: "Journal Template",
+        bindingEnabled: true,
         resolvedManuscriptTypeLabel: "Clinical Study",
         confidenceLabel: "High confidence",
         confidenceLevel: "high",
@@ -192,6 +200,7 @@ test("template selection warnings keep pending changes in operator language", ()
         currentAppliedLabel: "Base family only",
         hasPendingChange: true,
         options: [],
+        onBindingEnabledChange: () => {},
         onTemplateFamilySelect: () => {},
         onSelect: () => {},
         onApply: () => {},
@@ -203,7 +212,70 @@ test("template selection warnings keep pending changes in operator language", ()
   assert.doesNotMatch(markup, /治理动作/u);
 });
 
-test("module action panels expose a one-time bare AI secondary action without changing the primary governed action", () => {
+test("template selection hides template menus when the operator chooses bare AI", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchControls
+      mode="proofreading"
+      busy={false}
+      layout="drawer"
+      showLookupPanel={false}
+      lookup={{
+        manuscriptId: "manuscript-1",
+        onChange: () => {},
+        onLoad: () => {},
+      }}
+      templateSelection={{
+        title: "Journal Template",
+        bindingEnabled: false,
+        resolvedManuscriptTypeLabel: "Clinical Study",
+        confidenceLabel: "人工选择",
+        confidenceLevel: "high",
+        requiresOperatorReview: false,
+        showManualManuscriptTypeSelect: true,
+        manualManuscriptTypeValue: "clinical_study",
+        manualManuscriptTypeOptions: [
+          {
+            value: "clinical_study",
+            label: "临床研究",
+          },
+        ],
+        baseTemplateLabel: "Clinical Study Family",
+        selectedTemplateFamilyId: "family-clinical",
+        templateFamilyOptions: [
+          {
+            value: "family-clinical",
+            label: "Clinical Study Family",
+          },
+        ],
+        selectedJournalTemplateId: "",
+        currentAppliedLabel: "Base family only",
+        hasPendingChange: false,
+        options: [
+          {
+            value: "journal-template-1",
+            label: "Journal Template One",
+          },
+        ],
+        onBindingEnabledChange: () => {},
+        onManualManuscriptTypeSelect: () => {},
+        onTemplateFamilySelect: () => {},
+        onSelect: () => {},
+        onApply: () => {},
+      }}
+    />,
+  );
+
+  assert.match(markup, /是否绑定模板/u);
+  assert.match(markup, /bare AI/u);
+  assert.doesNotMatch(markup, /人工确认稿件类型/u);
+  assert.doesNotMatch(markup, /通用包/u);
+  assert.doesNotMatch(markup, /医用包/u);
+  assert.doesNotMatch(markup, /深度校对/u);
+  assert.doesNotMatch(markup, /基础模板家族/u);
+  assert.doesNotMatch(markup, /期刊模板（小期刊\/场景）/u);
+});
+
+test("module action panels expose only the primary execution action", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchControls
       mode="screening"
@@ -218,7 +290,6 @@ test("module action panels expose a one-time bare AI secondary action without ch
         selectedAssetId: "asset-original-1",
         emptyLabel: "请选择资产",
         actionLabel: "Run Screening",
-        secondaryActionLabel: "Run Bare AI Once",
         options: [
           {
             value: "asset-original-1",
@@ -228,17 +299,17 @@ test("module action panels expose a one-time bare AI secondary action without ch
         selectedContextLabel: "Selected Parent Asset",
         onSelect: () => {},
         onRun: () => {},
-        onSecondaryRun: () => {},
       }}
     />,
   );
 
   assert.match(markup, /执行初筛/u);
-  assert.match(markup, /AI 自动处理（本次）/u);
-  assert.match(markup, /data-secondary-action="available"/);
+  assert.doesNotMatch(markup, /AI 自动处理（本次）/u);
+  assert.doesNotMatch(markup, /AI识别/u);
+  assert.match(markup, /data-secondary-action="hidden"/);
 });
 
-test("proofreading utilities open the proofreading workbench instead of implying direct publication", () => {
+test("proofreading utilities keep result review entry owned by the result card", () => {
   const markup = renderToStaticMarkup(
     <ManuscriptWorkbenchControls
       mode="proofreading"
@@ -259,7 +330,9 @@ test("proofreading utilities open the proofreading workbench instead of implying
     />,
   );
 
-  assert.match(markup, /打开校对工作台/u);
-  assert.match(markup, /在需要时打开校对工作台/u);
+  assert.doesNotMatch(markup, /打开校对工作台/u);
+  assert.doesNotMatch(markup, /在需要时打开校对工作台/u);
   assert.doesNotMatch(markup, /发布人工终稿/u);
+  assert.match(markup, /导出当前文件/u);
+  assert.match(markup, /刷新最新任务/u);
 });

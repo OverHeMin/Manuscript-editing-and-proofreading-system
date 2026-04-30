@@ -308,7 +308,7 @@ export function resolveManuscriptAssetDetailKind(input: {
 
   if (input.mode === "proofreading") {
     if (input.assetType === "proofreading_draft_report") {
-      return "proofreading_workspace";
+      return "report_preview";
     }
 
     if (input.assetType === "final_proof_annotated_docx") {

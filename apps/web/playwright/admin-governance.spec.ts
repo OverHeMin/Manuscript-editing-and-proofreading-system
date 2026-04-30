@@ -8,28 +8,28 @@ const abstractObjectiveSource = "\u6458\u8981 \u76ee\u7684";
 const abstractObjectiveNormalized = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09";
 const journalObjectiveNormalized = "\uff08\u6458\u8981\u3000\u76ee\u7684\uff09\uff1a";
 
-test("management navigation exposes three direct entries and can hand off to harness", async ({
+test("workbench home cards expose management entries and can hand off to harness", async ({
   page,
   request,
 }) => {
   await loginAsDemoUser(request, "dev.admin");
 
-  await page.goto("/#screening", {
+  await page.goto("/#", {
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByRole("heading", { name: "管理区" })).toBeVisible();
-  await expect(page.locator("body")).toContainText("3 项");
-  await expect(page.getByRole("button", { name: "AI 接入" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "验证治理" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "账号与权限" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "管理总览" })).toHaveCount(0);
+  await expect(page.locator(".workbench-home-page")).toBeVisible();
+  await expect(page.getByRole("link", { name: /AI 接入/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Harness 控制/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /账号与权限/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /管理总览/ })).toHaveCount(0);
   await expect(page.locator("body")).not.toContainText("AI 接入快照");
   await expect(page.locator("body")).not.toContainText("管理总览");
 
-  await page.getByRole("button", { name: "验证治理" }).click();
+  await page.getByRole("link", { name: /Harness 控制/ }).click();
   await expect(page).toHaveURL(/#evaluation-workbench\?harnessMode=ab_acceptance/);
   await expect(page.getByRole("heading", { name: "验证治理" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "返回工作台" })).toBeVisible();
   await expect(page.locator(".harness-control-workbench")).toHaveAttribute(
     "data-harness-mode",
     "ab_acceptance",
@@ -42,12 +42,12 @@ test("management navigation opens settings pages and keeps removed overview out 
 }) => {
   await loginAsDemoUser(request, "dev.admin");
 
-  await page.goto("/#screening", {
+  await page.goto("/#", {
     waitUntil: "domcontentloaded",
   });
 
-  await expect(page.getByRole("heading", { name: "管理区" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "管理总览" })).toHaveCount(0);
+  await expect(page.locator(".workbench-home-page")).toBeVisible();
+  await expect(page.getByRole("link", { name: /管理总览/ })).toHaveCount(0);
   await expect(page.locator("body")).not.toContainText("AI 接入快照");
   await expect(page.locator("body")).not.toContainText("Harness 运行体征");
   await expect(page.locator("body")).not.toContainText("当前提醒");
@@ -58,11 +58,14 @@ test("management navigation opens settings pages and keeps removed overview out 
   await expect(page.locator("body")).not.toContainText("Quality Lab");
   await expect(page.locator("body")).not.toContainText("Activation Gate");
 
-  await page.getByRole("button", { name: "AI 接入" }).click();
+  await page.getByRole("link", { name: /AI 接入/ }).click();
   await expect(page).toHaveURL(/#system-settings\?settingsSection=ai-access/);
   await expect(page.getByRole("heading", { name: "AI 接入" })).toBeVisible();
 
-  await page.getByRole("button", { name: "账号与权限" }).click();
+  await page.getByRole("link", { name: "返回工作台" }).click();
+  await expect(page.locator(".workbench-home-page")).toBeVisible();
+
+  await page.getByRole("link", { name: /账号与权限/ }).click();
   await expect(page).toHaveURL(/#system-settings\?settingsSection=accounts/);
   await expect(page.getByRole("heading", { name: "账号与权限" })).toBeVisible();
 });
@@ -112,7 +115,7 @@ test("editing workbench saves a journal template context before running editing"
 
   await expect(page.getByRole("heading", { name: /编辑工作区/ })).toBeVisible();
   await expectLoadedManuscript(page, prepared.manuscriptTitle);
-  await expect(page.locator("body")).toContainText("基础模板家族");
+  await expect(page.locator("body")).toContainText("大模板");
   await expect(page.locator("body")).toContainText(seededFamilyName);
 
   const journalSelect = page.getByLabel("期刊模板（小期刊/场景）");
@@ -130,18 +133,11 @@ test("editing workbench saves a journal template context before running editing"
   );
   await expect(page.locator("body")).toContainText(prepared.journalName);
   await expect(page.locator("body")).toContainText("期刊覆写");
-  const resultDetails = page.locator(".manuscript-workbench-result-details");
-  await expect(resultDetails).toBeVisible();
-  await resultDetails
-    .locator("summary")
-    .evaluate((element: HTMLElement) => element.click());
-  const governanceTraceCard = page.locator(".manuscript-workbench-summary-card", {
-    has: page.getByRole("heading", { name: "治理链路" }),
-  });
-  await expect(governanceTraceCard).toContainText("目标模型版本");
-  await expect(governanceTraceCard).toContainText("质量包");
-  await expect(governanceTraceCard).toContainText("规则层栈");
-  await expect(governanceTraceCard).toContainText("知识激活");
+  await expect(page.locator("body")).toContainText("治理链路");
+  await expect(page.locator("body")).toContainText("目标模型版本");
+  await expect(page.locator("body")).toContainText("质量包");
+  await expect(page.locator("body")).toContainText("规则层栈");
+  await expect(page.locator("body")).toContainText("知识激活");
 
   const inputAssetSelect = page.getByLabel(/输入稿件资产|父资产/);
   await expect(inputAssetSelect).toBeVisible();

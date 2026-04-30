@@ -28,6 +28,11 @@ export interface ManuscriptWorkbenchQueueItem {
 export interface ManuscriptWorkbenchQueuePaneProps {
   mode: Exclude<ManuscriptWorkbenchMode, "submission">;
   busy: boolean;
+  lookup: {
+    manuscriptId: string;
+    onChange(value: string): void;
+    onLoad(): void;
+  };
   workspace: ManuscriptWorkbenchWorkspace | null;
   latestJob: AnyWorkbenchJob | null;
   queueItems: ManuscriptWorkbenchQueueItem[];
@@ -38,6 +43,7 @@ export interface ManuscriptWorkbenchQueuePaneProps {
 export function ManuscriptWorkbenchQueuePane({
   mode,
   busy,
+  lookup,
   workspace,
   latestJob,
   queueItems,
@@ -46,6 +52,18 @@ export function ManuscriptWorkbenchQueuePane({
 }: ManuscriptWorkbenchQueuePaneProps) {
   const concurrencySnapshot = workspace?.moduleExecutionConcurrency;
   const queueListHint = resolveQueueListHint(mode, concurrencySnapshot);
+  const searchText = lookup.manuscriptId.trim().toLocaleLowerCase();
+  const visibleQueueItems =
+    searchText.length === 0
+      ? queueItems
+      : queueItems.filter((item) =>
+          [
+            item.manuscriptId,
+            item.title,
+            item.manuscriptTypeLabel,
+            item.statusLabel,
+          ].some((value) => value.toLocaleLowerCase().includes(searchText)),
+        );
 
   return (
     <aside className="manuscript-workbench-queue-pane" data-queue-view="worklist">
@@ -57,14 +75,28 @@ export function ManuscriptWorkbenchQueuePane({
         </div>
       </header>
 
+      <label className="manuscript-workbench-queue-field">
+        <span>查找</span>
+        <input
+          value={lookup.manuscriptId}
+          placeholder="搜索完整稿件名或编号"
+          onChange={(event) => lookup.onChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              lookup.onLoad();
+            }
+          }}
+        />
+      </label>
+
       <div className="manuscript-workbench-queue-list-shell">
         <div className="manuscript-workbench-queue-list-header">
           <strong>已上传稿件</strong>
           <p>{queueListHint}</p>
         </div>
         <div className="manuscript-workbench-queue-list">
-          {queueItems.length > 0 ? (
-            queueItems.map((item) => (
+          {visibleQueueItems.length > 0 ? (
+            visibleQueueItems.map((item) => (
               <article
                 key={item.manuscriptId}
                 data-queue-item-status={item.queueStatus}
@@ -110,7 +142,7 @@ export function ManuscriptWorkbenchQueuePane({
             ))
           ) : (
             <div className="manuscript-workbench-queue-empty">
-              <strong>当前筛选下没有稿件</strong>
+              <strong>{searchText ? "没有匹配稿件" : "当前没有稿件"}</strong>
               <p>
                 {workspace
                   ? `最近任务：${latestJob ? formatWorkbenchModeLabel(latestJob.module) : "暂无执行记录"}`
@@ -126,14 +158,14 @@ export function ManuscriptWorkbenchQueuePane({
 
 function resolveQueueHint(mode: Exclude<ManuscriptWorkbenchMode, "submission">): string {
   if (mode === "screening") {
-    return "左侧只保留查找、状态和队列，不再堆额外参数。";
+    return "完整稿件名、状态和入口集中在这里。";
   }
 
   if (mode === "editing") {
-    return "先看稿件状态，再进入右侧结果区继续处理。";
+    return "先确认稿件，再在右侧继续处理。";
   }
 
-  return "校对入口保持简洁，状态和排队情况在这里直接可见。";
+  return "校对稿件和处理状态在这里直接可见。";
 }
 
 function formatWorkbenchModeLabel(mode: string): string {
