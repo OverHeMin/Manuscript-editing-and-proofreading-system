@@ -35,6 +35,7 @@ import {
   type WorkbenchNavigationItem,
   type WorkbenchNavigationTarget,
 } from "./workbench-navigation.ts";
+import { WorkbenchHomePage } from "./workbench-home-page.tsx";
 import { WorkbenchNavigationMenu } from "./workbench-navigation-menu.tsx";
 import { resolveResponsiveNavigationOpenState } from "./workbench-shell-layout.ts";
 import { WorkbenchShellHeader } from "./workbench-shell-header.tsx";
@@ -48,6 +49,7 @@ export interface WorkbenchHostProps {
 
 interface HostRouteState extends WorkbenchHandoff {
   activeWorkbenchId: WorkbenchId;
+  isHome?: boolean;
 }
 
 export function WorkbenchHost({
@@ -190,22 +192,38 @@ export function WorkbenchHost({
       : activeNavigationItem?.label ?? activeWorkbenchLabel;
   const activeWorkbenchGroupLabel = activeNavigationGroup?.label ?? "当前工作区";
   const activeRenderKind = resolveWorkbenchRenderKind(activeWorkbenchId);
+  const isHomeRoute = routeState.isHome === true;
+  const isFullscreenRoute = routeState.presentation === "fullscreen";
+  const headerActiveWorkbenchLabel = isHomeRoute ? "工作台入口" : headerWorkbenchLabel;
+  const headerActiveWorkbenchGroupLabel = isHomeRoute
+    ? "选择工作区"
+    : activeWorkbenchGroupLabel;
 
   return (
-    <main className="app-shell">
-      <section className="workbench-host">
-        <WorkbenchShellHeader
-          session={session}
-          activeWorkbenchLabel={headerWorkbenchLabel}
-          activeWorkbenchGroupLabel={activeWorkbenchGroupLabel}
-          isCompactNavigation={isCompactNavigation}
-          isNavigationOpen={isNavigationOpen}
-          onToggleNavigation={() => setIsNavigationOpen((current) => !current)}
-          onLogout={onLogout}
-          isLogoutPending={isLogoutPending}
-        />
+    <main className={isFullscreenRoute ? "app-shell app-shell--immersive" : "app-shell"}>
+      <section className={isFullscreenRoute ? "workbench-host workbench-host--fullscreen" : "workbench-host"}>
+        {!isFullscreenRoute ? (
+          <WorkbenchShellHeader
+            session={session}
+            activeWorkbenchLabel={headerActiveWorkbenchLabel}
+            activeWorkbenchGroupLabel={headerActiveWorkbenchGroupLabel}
+            isCompactNavigation={isCompactNavigation}
+            isNavigationOpen={isNavigationOpen}
+            onToggleNavigation={() => setIsNavigationOpen((current) => !current)}
+            onLogout={onLogout}
+            isLogoutPending={isLogoutPending}
+          />
+        ) : null}
 
-        <div className="workbench-layout">
+        <div
+          className={
+            isFullscreenRoute
+              ? "workbench-layout workbench-layout--fullscreen-detail"
+              : isHomeRoute
+                ? "workbench-layout workbench-layout--home"
+                : "workbench-layout"
+          }
+        >
           {noticeMessage ? (
             <article className="workbench-placeholder workbench-notice" role="alert">
               <h2>会话操作失败</h2>
@@ -213,18 +231,20 @@ export function WorkbenchHost({
             </article>
           ) : null}
 
-          <aside
-            id="workbench-navigation-panel"
-            className={`workbench-nav${isCompactNavigation ? " is-compact" : ""}${isCompactNavigation && !isNavigationOpen ? " is-collapsed" : ""}`}
-            aria-label="工作区导航"
-          >
-            <h2>工作区导航</h2>
-            <WorkbenchNavigationMenu
-              groups={navigationGroups}
-              activeTargetKey={activeNavigationTargetKey}
-              onNavigate={(target) => navigateToWorkbenchTarget(target)}
-            />
-          </aside>
+          {!isHomeRoute && !isFullscreenRoute ? (
+            <aside
+              id="workbench-navigation-panel"
+              className={`workbench-nav${isCompactNavigation ? " is-compact" : ""}${isCompactNavigation && !isNavigationOpen ? " is-collapsed" : ""}`}
+              aria-label="工作区导航"
+            >
+              <h2>工作区导航</h2>
+              <WorkbenchNavigationMenu
+                groups={navigationGroups}
+                activeTargetKey={activeNavigationTargetKey}
+                onNavigate={(target) => navigateToWorkbenchTarget(target)}
+              />
+            </aside>
+          ) : null}
 
           <section className={`workbench-content workbench-content--${activeRenderKind}`}>
             {renderContent()}
@@ -241,6 +261,16 @@ export function WorkbenchHost({
           <h2>暂无可用工作区</h2>
           <p>当前账号尚未分配可访问的 Web 工作区。</p>
         </article>
+      );
+    }
+
+    if (isHomeRoute) {
+      return (
+        <WorkbenchHomePage
+          entries={visibleEntries}
+          role={session.role}
+          onNavigate={(target) => navigateToWorkbenchTarget(target)}
+        />
       );
     }
 
@@ -377,9 +407,11 @@ export function WorkbenchHost({
 
     setRouteState({
       activeWorkbenchId: workbenchId,
+      isHome: false,
       manuscriptId: handoff?.manuscriptId,
       knowledgeItemId: handoff?.knowledgeItemId,
       assetId: handoff?.assetId,
+      presentation: handoff?.presentation,
       revisionId: handoff?.revisionId,
       learningCandidateId: handoff?.learningCandidateId,
       reviewItemId: handoff?.reviewItemId,
@@ -483,13 +515,24 @@ function resolveInitialWorkbenchId(
   return visibleEntries[0]?.id ?? defaultWorkbench;
 }
 
-function resolveInitialWorkbenchRoute(
+export function resolveInitialWorkbenchRoute(
   defaultWorkbench: WorkbenchId,
   visibleEntries: readonly WorkbenchEntry[],
   hash?: string,
 ): HostRouteState {
+  const rawHash = hash ?? (typeof window !== "undefined" ? window.location.hash : "");
+  const normalizedHash = rawHash.trim();
+  const fallbackWorkbenchId = resolveInitialWorkbenchId(defaultWorkbench, visibleEntries);
+
+  if (normalizedHash.length === 0 || normalizedHash === "#") {
+    return {
+      activeWorkbenchId: fallbackWorkbenchId,
+      isHome: true,
+    };
+  }
+
   const location = resolveWorkbenchLocation(
-    hash ?? (typeof window !== "undefined" ? window.location.hash : ""),
+    rawHash,
   );
   const hasRuleCenter = visibleEntries.some(
     (entry) => entry.id === "template-governance",
@@ -498,9 +541,11 @@ function resolveInitialWorkbenchRoute(
   if (location.workbenchId === "learning-review" && hasRuleCenter) {
     return {
       activeWorkbenchId: "template-governance",
+      isHome: false,
       manuscriptId: location.manuscriptId,
       knowledgeItemId: location.knowledgeItemId,
       assetId: location.assetId,
+      presentation: location.presentation,
       revisionId: location.revisionId,
       learningCandidateId: location.learningCandidateId,
       reviewItemId: location.reviewItemId,
@@ -520,9 +565,11 @@ function resolveInitialWorkbenchRoute(
   ) {
     return {
       activeWorkbenchId: location.workbenchId,
+      isHome: false,
       manuscriptId: location.manuscriptId,
       knowledgeItemId: location.knowledgeItemId,
       assetId: location.assetId,
+      presentation: location.presentation,
       revisionId: location.revisionId,
       learningCandidateId: location.learningCandidateId,
       reviewItemId: location.reviewItemId,
@@ -538,6 +585,7 @@ function resolveInitialWorkbenchRoute(
   }
 
   return {
-    activeWorkbenchId: resolveInitialWorkbenchId(defaultWorkbench, visibleEntries),
+    activeWorkbenchId: fallbackWorkbenchId,
+    isHome: true,
   };
 }

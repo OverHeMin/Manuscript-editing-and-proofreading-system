@@ -21,12 +21,15 @@ import {
   resolveGovernedExecutionBlockMessage,
   resolveDetailJobSourceAsset,
   resolveMaterializedModuleResultAsset,
+  resolveAutoFinalizeProofreadingDraftAssetId,
   resolveResultMaterializationFailureMessage,
+  resolveResultPreviewHref,
   resolveWorkbenchHumanFinalFileName,
   resolveWorkbenchProofreadingAnnotatedFileName,
   resolveTemplateSelectionApplyBlockMessage,
   resolveTemplateFamilyIdForManuscriptType,
   resolveManualFeedbackContext,
+  resolveDefaultParentAssetId,
   pruneConfirmationState,
   resolveQueueActivityLabel,
   buildTemplateFamilyOptions,
@@ -46,6 +49,7 @@ import {
   buildProofreadingConfirmationItems,
   buildProofreadingDocumentBlocks,
 } from "../src/features/manuscript-workbench/manuscript-workbench-detail.tsx";
+import { saveManuscriptWorkbenchQueueItems } from "../src/features/manuscript-workbench/manuscript-workbench-queue-storage.ts";
 
 function createStubController() {
   return {
@@ -77,6 +81,44 @@ function createStubController() {
       throw new Error("not used");
     },
   } as never;
+}
+
+function withLocalStorage<T>(
+  storage: Pick<Storage, "getItem" | "setItem" | "removeItem">,
+  callback: () => T,
+): T {
+  const previousWindow = globalThis.window;
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      localStorage: storage,
+    },
+  });
+
+  try {
+    return callback();
+  } finally {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: previousWindow,
+    });
+  }
+}
+
+function createMemoryStorage() {
+  const map = new Map<string, string>();
+
+  return {
+    getItem(key: string) {
+      return map.get(key) ?? null;
+    },
+    setItem(key: string, value: string) {
+      map.set(key, value);
+    },
+    removeItem(key: string) {
+      map.delete(key);
+    },
+  };
 }
 
 test("submission workbench keeps the upload intake as the default rendering path", () => {
@@ -167,6 +209,71 @@ test("proofreading draft saves are enabled on the actual workspace result page a
     }),
     false,
   );
+});
+
+test("proofreading result preview href always targets the new fullscreen confirmation page", () => {
+  const href = resolveResultPreviewHref({
+    mode: "proofreading",
+    manuscriptId: "manuscript-proof-1",
+    asset: {
+      id: "asset-final-proof-1",
+      manuscript_id: "manuscript-proof-1",
+      asset_type: "final_proof_annotated_docx",
+      status: "active",
+      storage_key: "runs/manuscript-proof-1/proofreading/final.docx",
+      mime_type:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      source_module: "proofreading",
+      created_by: "proofreader-1",
+      version_no: 3,
+      is_current: true,
+      file_name: "proofreading-final.docx",
+      created_at: "2026-04-30T08:00:00.000Z",
+      updated_at: "2026-04-30T08:00:00.000Z",
+    },
+  });
+
+  assert.equal(
+    href,
+    "#proofreading?manuscriptId=manuscript-proof-1&assetId=asset-final-proof-1&presentation=fullscreen",
+  );
+  assert.doesNotMatch(href, /proofreading_workspace/u);
+});
+
+test("mainline workbench restores only the current module queue from local storage", () => {
+  const storage = createMemoryStorage();
+  saveManuscriptWorkbenchQueueItems(storage, "screening", [
+    {
+      manuscriptId: "screening-only-1",
+      title: "初筛模块独立稿件",
+      manuscriptTypeLabel: "临床研究",
+      statusLabel: "待处理",
+      activityLabel: "等待执行",
+      queueScope: "recent",
+      queueStatus: "pending",
+      isActive: false,
+    },
+  ]);
+
+  const screeningMarkup = withLocalStorage(storage, () =>
+    renderToStaticMarkup(
+      <ManuscriptWorkbenchPage
+        mode="screening"
+        controller={createStubController()}
+      />,
+    ),
+  );
+  const proofreadingMarkup = withLocalStorage(storage, () =>
+    renderToStaticMarkup(
+      <ManuscriptWorkbenchPage
+        mode="proofreading"
+        controller={createStubController()}
+      />,
+    ),
+  );
+
+  assert.match(screeningMarkup, /初筛模块独立稿件/u);
+  assert.doesNotMatch(proofreadingMarkup, /初筛模块独立稿件/u);
 });
 
 test("prefilled proofreading page data includes governance handoff for the current proofreading snapshot", async () => {
@@ -843,6 +950,7 @@ test("AI recognition uses governed module input by default and only sends bare w
       manuscriptId: "manuscript-1",
       parentAssetId: "asset-edited-1",
       actorRole: "admin",
+      executionMode: "bare",
       outputBaseName: "心血管综述",
     }),
     {
@@ -852,8 +960,127 @@ test("AI recognition uses governed module input by default and only sends bare w
       actorRole: "admin",
       storageKey: "runs/manuscript-1/proofreading/output",
       fileName: "心血管综述-校对草稿报告.md",
+      executionMode: "bare",
     },
   );
+});
+
+test("mainline workbench defaults the executable parent asset after upload or reload", () => {
+  const workspace = {
+    manuscript: {
+      id: "manuscript-1",
+      title: "心血管综述",
+      manuscript_type: "review",
+      status: "uploaded",
+      created_by: "editor-1",
+      created_at: "2026-04-28T08:00:00.000Z",
+      updated_at: "2026-04-28T08:00:00.000Z",
+    },
+    assets: [
+      {
+        id: "asset-draft-1",
+        manuscript_id: "manuscript-1",
+        asset_type: "proofreading_draft_report",
+        status: "active",
+        storage_key: "runs/proofreading/draft.md",
+        mime_type: "text/markdown",
+        source_module: "proofreading",
+        created_by: "proofreader-1",
+        version_no: 2,
+        is_current: true,
+        file_name: "proofreading-draft.md",
+        created_at: "2026-04-28T08:10:00.000Z",
+        updated_at: "2026-04-28T08:10:00.000Z",
+      },
+      {
+        id: "asset-original-1",
+        manuscript_id: "manuscript-1",
+        asset_type: "original",
+        status: "active",
+        storage_key: "uploads/original.docx",
+        mime_type:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        source_module: "upload",
+        created_by: "editor-1",
+        version_no: 1,
+        is_current: true,
+        file_name: "original.docx",
+        created_at: "2026-04-28T08:00:00.000Z",
+        updated_at: "2026-04-28T08:00:00.000Z",
+      },
+    ],
+    currentAsset: null,
+    currentManuscriptAsset: null,
+    suggestedParentAsset: {
+      id: "asset-original-1",
+      manuscript_id: "manuscript-1",
+      asset_type: "original",
+      status: "active",
+      storage_key: "uploads/original.docx",
+      mime_type:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      source_module: "upload",
+      created_by: "editor-1",
+      version_no: 1,
+      is_current: true,
+      file_name: "original.docx",
+      created_at: "2026-04-28T08:00:00.000Z",
+      updated_at: "2026-04-28T08:00:00.000Z",
+    },
+  } as never;
+
+  assert.equal(resolveDefaultParentAssetId("", workspace), "asset-original-1");
+  assert.equal(
+    resolveDefaultParentAssetId("asset-draft-1", workspace),
+    "asset-original-1",
+  );
+});
+
+test("mainline workbench renders template binding controls as soon as a manuscript workspace is loaded", () => {
+  const markup = renderToStaticMarkup(
+    <ManuscriptWorkbenchPage
+      mode="proofreading"
+      actorRole="admin"
+      controller={createStubController()}
+      initialWorkspaceForTest={{
+        manuscript: {
+          id: "manuscript-1",
+          title: "心血管综述",
+          manuscript_type: "review",
+          status: "uploaded",
+          created_by: "editor-1",
+          created_at: "2026-04-28T08:00:00.000Z",
+          updated_at: "2026-04-28T08:00:00.000Z",
+          result_asset_matrix: {},
+        },
+        assets: [
+          {
+            id: "asset-original-1",
+            manuscript_id: "manuscript-1",
+            asset_type: "original",
+            status: "active",
+            storage_key: "uploads/original.docx",
+            mime_type:
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            source_module: "upload",
+            created_by: "editor-1",
+            version_no: 1,
+            is_current: true,
+            file_name: "original.docx",
+            created_at: "2026-04-28T08:00:00.000Z",
+            updated_at: "2026-04-28T08:00:00.000Z",
+          },
+        ],
+        currentAsset: null,
+        currentManuscriptAsset: null,
+        suggestedParentAsset: null,
+        latestProofreadingDraftAsset: null,
+      }}
+    />,
+  );
+
+  assert.match(markup, /是否绑定模板/u);
+  assert.match(markup, /执行校对/u);
 });
 
 test("upload title helper defaults single-file titles to the uploaded file name without the extension", () => {
@@ -1557,7 +1784,7 @@ test("proofreading confirmation detail follows the parent draft asset so the hum
   );
 });
 
-test("proofreading workspace preview session input targets the manuscript asset while keeping proofreading comments", () => {
+test("proofreading draft reports no longer create the legacy workspace preview session", () => {
   const editedAsset = {
     id: "asset-edited-1",
     manuscript_id: "manuscript-1",
@@ -1622,18 +1849,7 @@ test("proofreading workspace preview session input targets the manuscript asset 
     actorRole: "proofreader",
   });
 
-  assert.equal(previewRequest?.manuscriptId, "manuscript-1");
-  assert.equal(previewRequest?.assetId, "asset-edited-1");
-  assert.equal(previewRequest?.actorRole, "proofreader");
-  assert.equal(previewRequest?.comments[0]?.id, "issue-1");
-  assert.equal(previewRequest?.comments[0]?.anchor_text, "5 mg per dL");
-  assert.match(previewRequest?.comments[0]?.body ?? "", /5 mg\/dL/);
-  assert.deepEqual(previewRequest?.saveBack, {
-    enabled: true,
-    module: "proofreading",
-    baselineAssetId: "asset-edited-1",
-    purpose: "human_review_working_state",
-  });
+  assert.equal(previewRequest, null);
 });
 
 test("editing detail preview session input enables save-back for the edited manuscript version", () => {
@@ -1729,6 +1945,98 @@ test("proofreading current result selection prefers the annotated proof asset ov
       assets: [draftAsset, finalProofAsset],
     } as never)?.id,
     "asset-proof-final-1",
+  );
+});
+
+test("proofreading result selection does not expose the legacy draft workspace as the main result", () => {
+  const asset = resolveMaterializedModuleResultAsset("proofreading", {
+    manuscript: {
+      id: "manuscript-proof-1",
+      title: "Proofreading candidate",
+      manuscript_type: "clinical_study",
+      status: "processing",
+      created_by: "proofreader-1",
+      current_proofreading_asset_id: "asset-proof-draft-1",
+      current_export_selection: {
+        slot: "proofreading_draft_report",
+        asset: {
+          id: "asset-proof-draft-1",
+        },
+      },
+      created_at: "2026-04-20T09:00:00.000Z",
+      updated_at: "2026-04-20T09:40:00.000Z",
+    },
+    assets: [
+      {
+        id: "asset-proof-draft-1",
+        manuscript_id: "manuscript-proof-1",
+        asset_type: "proofreading_draft_report",
+        status: "active",
+        storage_key: "runs/proofreading/draft.md",
+        mime_type: "text/markdown",
+        parent_asset_id: "asset-edited-1",
+        source_module: "proofreading",
+        created_by: "proofreader-1",
+        version_no: 3,
+        is_current: true,
+        file_name: "proofreading-draft.md",
+        created_at: "2026-04-20T09:30:00.000Z",
+        updated_at: "2026-04-20T09:31:00.000Z",
+      },
+    ],
+    currentAsset: {
+      id: "asset-proof-draft-1",
+      manuscript_id: "manuscript-proof-1",
+      asset_type: "proofreading_draft_report",
+      status: "active",
+      storage_key: "runs/proofreading/draft.md",
+      mime_type: "text/markdown",
+      parent_asset_id: "asset-edited-1",
+      source_module: "proofreading",
+      created_by: "proofreader-1",
+      version_no: 3,
+      is_current: true,
+      file_name: "proofreading-draft.md",
+      created_at: "2026-04-20T09:30:00.000Z",
+      updated_at: "2026-04-20T09:31:00.000Z",
+    },
+    currentManuscriptAsset: null,
+  } as never);
+
+  assert.equal(asset, null);
+});
+
+test("proofreading auto-finalize targets the generated draft asset", () => {
+  const draftAsset = {
+    id: "asset-proof-draft-1",
+    manuscript_id: "manuscript-proof-1",
+    asset_type: "proofreading_draft_report",
+    status: "active",
+    storage_key: "runs/proofreading/draft.md",
+    mime_type: "text/markdown",
+    parent_asset_id: "asset-edited-1",
+    source_module: "proofreading",
+    created_by: "proofreader-1",
+    version_no: 3,
+    is_current: true,
+    file_name: "proofreading-draft.md",
+    created_at: "2026-04-20T09:30:00.000Z",
+    updated_at: "2026-04-20T09:31:00.000Z",
+  } as const;
+
+  assert.equal(
+    resolveAutoFinalizeProofreadingDraftAssetId(draftAsset as never, {
+      latestProofreadingDraftAsset: null,
+      assets: [],
+    } as never),
+    "asset-proof-draft-1",
+  );
+  assert.equal(
+    resolveAutoFinalizeProofreadingDraftAssetId(null, {
+      latestProofreadingDraftAsset: draftAsset,
+      assets: [draftAsset],
+    } as never),
+    "asset-proof-draft-1",
   );
 });
 

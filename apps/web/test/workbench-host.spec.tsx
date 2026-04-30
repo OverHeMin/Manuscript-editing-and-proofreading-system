@@ -99,6 +99,42 @@ test("workbench host runtime render forwards settingsSection=ai-access into acti
   );
 });
 
+test("workbench host opens the role-adaptive card homepage before any workbench route is selected", async () => {
+  const markup = await renderWorkbenchHostAtHash("", "admin");
+
+  assert.match(markup, /workbench-home-page/u);
+  assert.match(markup, /data-card-count="10"/u);
+  assert.equal(countOccurrences(markup, "workbench-home-card"), 10);
+  assert.match(markup, /href="#screening"/u);
+  assert.match(markup, /href="#proofreading"/u);
+  assert.match(markup, /href="#system-settings\?settingsSection=accounts"/u);
+  assert.doesNotMatch(markup, /workbench-nav/u);
+  assert.doesNotMatch(markup, /核心流程/u);
+  assert.doesNotMatch(markup, /管理区/u);
+});
+
+test("workbench homepage card grid adapts to limited roles without padding empty cards", async () => {
+  const editorMarkup = await renderWorkbenchHostAtHash("", "editor");
+  const knowledgeReviewerMarkup = await renderWorkbenchHostAtHash(
+    "",
+    "knowledge_reviewer",
+  );
+
+  assert.match(editorMarkup, /workbench-home-page/u);
+  assert.match(editorMarkup, /data-card-count="3"/u);
+  assert.equal(countOccurrences(editorMarkup, "workbench-home-card"), 3);
+  assert.match(editorMarkup, /href="#screening"/u);
+  assert.match(editorMarkup, /href="#editing"/u);
+  assert.match(editorMarkup, /href="#proofreading"/u);
+  assert.doesNotMatch(editorMarkup, /href="#manuscript-harness"/u);
+
+  assert.match(knowledgeReviewerMarkup, /workbench-home-page/u);
+  assert.match(knowledgeReviewerMarkup, /data-card-count="6"/u);
+  assert.equal(countOccurrences(knowledgeReviewerMarkup, "workbench-home-card"), 6);
+  assert.match(knowledgeReviewerMarkup, /href="#knowledge-library"/u);
+  assert.match(knowledgeReviewerMarkup, /href="#template-governance"/u);
+});
+
 test("workbench host runtime render shows split settings target label in header focus card", async () => {
   const markup = await renderWorkbenchHostAtHash(
     "#system-settings?settingsSection=accounts",
@@ -329,7 +365,8 @@ test("workbench host routes legacy admin-console hashes away from the removed ma
   assert.doesNotMatch(markup, /workbench-content--admin-governance/u);
   assert.doesNotMatch(markup, /管理总览/u);
   assert.doesNotMatch(markup, /正在加载管理总览/u);
-  assert.match(markup, /manuscript-workbench-shell--screening/u);
+  assert.match(markup, /workbench-home-page/u);
+  assert.match(markup, /href="#screening"/u);
 });
 
 test("admin navigation model aligns to the final IA groups and management target labels", async () => {
@@ -538,6 +575,33 @@ test("workbench routing formats and resolves knowledge library and revision revi
     workbenchId: "knowledge-review",
     revisionId: "knowledge-42-revision-3",
   });
+});
+
+test("workbench host route state preserves fullscreen manuscript detail handoffs", async () => {
+  const hostModule = await import("../src/app/workbench-host.tsx");
+  const route = hostModule.resolveInitialWorkbenchRoute(
+    "screening",
+    buildSession("admin").availableWorkbenchEntries,
+    "#proofreading?manuscriptId=manuscript-42&assetId=asset-proof-final-42&presentation=fullscreen",
+  );
+
+  assert.equal(route.activeWorkbenchId, "proofreading");
+  assert.equal(route.isHome, false);
+  assert.equal(route.manuscriptId, "manuscript-42");
+  assert.equal(route.assetId, "asset-proof-final-42");
+  assert.equal(route.presentation, "fullscreen");
+});
+
+test("fullscreen manuscript detail routes suppress the host navigation shell", async () => {
+  const markup = await renderWorkbenchHostAtHash(
+    "#proofreading?manuscriptId=manuscript-42&assetId=asset-proof-final-42&presentation=fullscreen",
+    "admin",
+  );
+
+  assert.match(markup, /app-shell--immersive/u);
+  assert.match(markup, /workbench-layout--fullscreen-detail/u);
+  assert.doesNotMatch(markup, /workbench-header/u);
+  assert.doesNotMatch(markup, /workbench-nav/u);
 });
 
 test("workbench routing supports harness mode hashes while keeping management nav at three items", async () => {
