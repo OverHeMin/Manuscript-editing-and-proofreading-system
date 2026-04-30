@@ -74,18 +74,34 @@ export function TemplateGovernanceV2WorkQueue({
             id: template.id,
             title: template.name,
             status: template.status,
+            selected: template.id === data.ledger.selectedTemplateId,
           }))
         : data.overview.journalTemplateProfiles.map((template) => ({
             id: template.id,
             title: template.journal_name,
             status: template.status,
+            selected: template.id === data.overview.selectedJournalTemplateId,
           }));
 
     return (
       <section data-v2-queue-section="templates" data-v2-subtype={data.subtype}>
         {rows.map((row) => (
-          <article key={row.id} className="rule-center-v2__queue-row">
-            <strong>{row.title}</strong>
+          <article
+            key={row.id}
+            className={`rule-center-v2__queue-row${row.selected ? " is-selected" : ""}`}
+          >
+            <button
+              type="button"
+              onClick={() =>
+                onSelectItem({
+                  selectedKind: "template",
+                  selectedId: row.id,
+                  panel: "template-detail",
+                })
+              }
+            >
+              <strong>{row.title}</strong>
+            </button>
             <small>{row.status}</small>
           </article>
         ))}
@@ -97,8 +113,24 @@ export function TemplateGovernanceV2WorkQueue({
     return (
       <section data-v2-queue-section="packages" data-v2-subtype={data.subtype}>
         {data.ledger.modules.map((module) => (
-          <article key={module.id} className="rule-center-v2__queue-row">
-            <strong>{module.name}</strong>
+          <article
+            key={module.id}
+            className={`rule-center-v2__queue-row${
+              module.id === data.ledger.selectedModuleId ? " is-selected" : ""
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() =>
+                onSelectItem({
+                  selectedKind: "package",
+                  selectedId: module.id,
+                  panel: "package-detail",
+                })
+              }
+            >
+              <strong>{module.name}</strong>
+            </button>
             <small>{module.status}</small>
           </article>
         ))}
@@ -110,8 +142,24 @@ export function TemplateGovernanceV2WorkQueue({
     return (
       <section data-v2-queue-section="extraction">
         {data.ledger.tasks.map((task) => (
-          <article key={task.id} className="rule-center-v2__queue-row">
-            <strong>{task.task_name}</strong>
+          <article
+            key={task.id}
+            className={`rule-center-v2__queue-row${
+              task.id === data.ledger.selectedTaskId ? " is-selected" : ""
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() =>
+                onSelectItem({
+                  selectedKind: "extraction-task",
+                  selectedId: task.id,
+                  panel: "extraction-detail",
+                })
+              }
+            >
+              <strong>{task.task_name}</strong>
+            </button>
             <small>{task.status}</small>
           </article>
         ))}
@@ -120,12 +168,48 @@ export function TemplateGovernanceV2WorkQueue({
   }
 
   if (data.section === "recovery") {
+    const rows = [
+      ...data.candidates.map((candidate) => ({
+        id: candidate.id,
+        title: candidate.title ?? candidate.id,
+        status: candidate.status,
+        selectedKind: "learning-candidate" as const,
+        panel: "candidate-detail" as const,
+      })),
+      ...data.reviewItems.map((item) => ({
+        id: item.id,
+        title: item.title ?? item.id,
+        status: item.review_status,
+        selectedKind: "review-item" as const,
+        panel: "review-item-detail" as const,
+      })),
+    ];
+
     return (
       <section data-v2-queue-section="recovery">
-        {[...data.candidates, ...data.reviewItems].map((item) => (
-          <article key={item.id} className="rule-center-v2__queue-row">
-            <strong>{item.title ?? item.id}</strong>
-            <small>{"status" in item ? item.status : item.review_status}</small>
+        {rows.map((item) => (
+          <article
+            key={`${item.selectedKind}:${item.id}`}
+            className={`rule-center-v2__queue-row${
+              routeState.selectedKind === item.selectedKind &&
+              routeState.selectedId === item.id
+                ? " is-selected"
+                : ""
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() =>
+                onSelectItem({
+                  selectedKind: item.selectedKind,
+                  selectedId: item.id,
+                  panel: item.panel,
+                })
+              }
+            >
+              <strong>{item.title}</strong>
+            </button>
+            <small>{item.status}</small>
           </article>
         ))}
       </section>
@@ -136,8 +220,24 @@ export function TemplateGovernanceV2WorkQueue({
     return (
       <section data-v2-queue-section="release">
         {data.overview.ruleSets.map((ruleSet) => (
-          <article key={ruleSet.id} className="rule-center-v2__queue-row">
-            <strong>{`${ruleSet.module} v${ruleSet.version_no}`}</strong>
+          <article
+            key={ruleSet.id}
+            className={`rule-center-v2__queue-row${
+              ruleSet.id === data.overview.selectedRuleSetId ? " is-selected" : ""
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() =>
+                onSelectItem({
+                  selectedKind: "rule-set",
+                  selectedId: ruleSet.id,
+                  panel: "release-check",
+                })
+              }
+            >
+              <strong>{`${ruleSet.module} v${ruleSet.version_no}`}</strong>
+            </button>
             <small>{ruleSet.status}</small>
           </article>
         ))}

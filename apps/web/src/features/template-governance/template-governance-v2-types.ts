@@ -29,7 +29,8 @@ export type TemplateGovernanceV2SelectedKind =
   | "review-item"
   | "template"
   | "package"
-  | "extraction-task";
+  | "extraction-task"
+  | "rule-set";
 
 export type TemplateGovernanceV2Subtype =
   | "large"

@@ -12,6 +12,8 @@ import type {
   TemplateGovernanceV2RouteState,
   TemplateGovernanceV2Subtype,
 } from "./template-governance-v2-types.ts";
+import { isRuleCenterReviewItem } from "./rule-learning-state.ts";
+import { isRuleCenterLearningCandidate } from "./template-governance-rule-wizard-handoff.ts";
 
 export type TemplateGovernanceV2SectionData =
   | {
@@ -131,15 +133,19 @@ export async function loadTemplateGovernanceV2SectionData(
 
     return {
       section: "recovery",
-      candidates,
-      reviewItems,
+      candidates: candidates.filter(isRuleCenterLearningCandidate),
+      reviewItems: reviewItems.filter(isRuleCenterReviewItem),
     };
   }
 
   if (routeState.section === "release") {
+    const selectedRuleSetId =
+      routeState.selectedKind === "rule-set" ? routeState.selectedId : undefined;
     return {
       section: "release",
-      overview: await controller.loadOverview(),
+      overview: await controller.loadOverview(
+        selectedRuleSetId ? { selectedRuleSetId } : undefined,
+      ),
     };
   }
 
